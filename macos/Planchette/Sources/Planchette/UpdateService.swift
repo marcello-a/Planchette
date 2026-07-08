@@ -97,9 +97,20 @@ final class UpdateService: ObservableObject {
         alert.informativeText = L10n.t(.updateAvailableBody)
         alert.addButton(withTitle: L10n.t(.updateDownload))
         alert.addButton(withTitle: L10n.t(.cancel))
-        if alert.runModal() == .alertFirstButtonReturn, let url = URL(string: downloadURL) {
+        if alert.runModal() == .alertFirstButtonReturn,
+           let url = URL(string: downloadURL), Self.isTrustedDownload(url) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Only follow HTTPS links on GitHub's own hosts, so a tampered API
+    /// response can't redirect the user to an arbitrary download.
+    nonisolated static func isTrustedDownload(_ url: URL) -> Bool {
+        guard url.scheme == "https", let host = url.host?.lowercased() else { return false }
+        return host == "github.com"
+            || host == "objects.githubusercontent.com"
+            || host.hasSuffix(".github.com")
+            || host.hasSuffix(".githubusercontent.com")
     }
 
     private func showUpToDate() {

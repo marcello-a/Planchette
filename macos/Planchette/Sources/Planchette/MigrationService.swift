@@ -85,7 +85,14 @@ enum MigrationService {
 
     /// Resolve each tty's foreground-process working directory via `lsof`.
     private static func resolveCwds(ttys: [String]) -> [String] {
-        let devs = ttys.map { $0.replacingOccurrences(of: "/dev/", with: "") }.joined(separator: " ")
+        // Device names are interpolated into a shell loop; allow only the safe
+        // charset (e.g. "ttys005") so a malformed name can't inject.
+        let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        let devs = ttys
+            .map { $0.replacingOccurrences(of: "/dev/", with: "") }
+            .filter { !$0.isEmpty && $0.unicodeScalars.allSatisfy { safe.contains($0) } }
+            .joined(separator: " ")
+        guard !devs.isEmpty else { return [] }
         let script = """
         for dev in \(devs); do
             pid=$(ps -t "$dev" -o pid=,stat= 2>/dev/null | awk '$2 ~ /\\+/{print $1}' | tail -1)
@@ -118,8 +125,14 @@ enum MigrationService {
         } catch {
             return (-1, "", "\(error)")
         }
-        let outData = out.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
+        // Drain both pipes concurrently: reading stdout fully before stderr can
+        // deadlock if the child fills the stderr pipe buffer meanwhile.
+        var outData = Data(), errData = Data()
+        let group = DispatchGroup()
+        let drain = DispatchQueue(label: "planchette.proc-drain", attributes: .concurrent)
+        drain.async(group: group) { outData = out.fileHandleForReading.readDataToEndOfFile() }
+        drain.async(group: group) { errData = err.fileHandleForReading.readDataToEndOfFile() }
+        group.wait()
         process.waitUntilExit()
         return (
             process.terminationStatus,

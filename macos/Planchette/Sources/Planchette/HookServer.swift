@@ -8,6 +8,7 @@ final class HookServer {
     private var fd: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private let queue = DispatchQueue(label: "planchette.hook-server")
+    private let readQueue = DispatchQueue(label: "planchette.hook-server.read", attributes: .concurrent)
     private weak var appState: AppState?
 
     init(appState: AppState) {
@@ -36,6 +37,9 @@ final class HookServer {
             close(fd)
             return
         }
+        // Only the owner may connect — the socket carries no auth and its events
+        // drive UI state, so keep other local users/processes out.
+        chmod(Self.socketPath, 0o600)
 
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptOne() }
@@ -53,16 +57,26 @@ final class HookServer {
     private func acceptOne() {
         let client = accept(fd, nil, nil)
         guard client >= 0 else { return }
-        defer { close(client) }
 
-        var data = Data()
-        var buf = [UInt8](repeating: 0, count: 65536)
-        while true {
-            let n = read(client, &buf, buf.count)
-            guard n > 0 else { break }
-            data.append(buf, count: n)
+        // Read each connection off the accept path so one slow/stuck client
+        // can't block the serial accept queue and stall all hook events. A
+        // receive timeout bounds a client that connects and never sends EOF.
+        var timeout = timeval(tv_sec: 5, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        readQueue.async { [weak self] in
+            defer { close(client) }
+            var data = Data()
+            var buf = [UInt8](repeating: 0, count: 65536)
+            // Cap total payload so a flood can't grow memory unbounded.
+            let maxBytes = 1 << 20
+            while data.count < maxBytes {
+                let n = read(client, &buf, buf.count)
+                guard n > 0 else { break }
+                data.append(buf, count: n)
+            }
+            self?.handle(data: data)
         }
-        handle(data: data)
     }
 
     private func handle(data: Data) {

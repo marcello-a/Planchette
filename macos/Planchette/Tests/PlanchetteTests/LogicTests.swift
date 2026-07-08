@@ -56,6 +56,20 @@ final class TitlesTests: XCTestCase {
     }
 }
 
+final class UpdateSecurityTests: XCTestCase {
+    func testTrustedGitHubDownloads() {
+        XCTAssertTrue(UpdateService.isTrustedDownload(URL(string: "https://github.com/marcello-a/Planchette/releases/download/v1/Planchette.dmg")!))
+        XCTAssertTrue(UpdateService.isTrustedDownload(URL(string: "https://objects.githubusercontent.com/x/y.dmg")!))
+    }
+
+    func testRejectsUntrustedOrInsecureDownloads() {
+        XCTAssertFalse(UpdateService.isTrustedDownload(URL(string: "http://github.com/x.dmg")!))       // not https
+        XCTAssertFalse(UpdateService.isTrustedDownload(URL(string: "https://evil.example.com/x.dmg")!))
+        XCTAssertFalse(UpdateService.isTrustedDownload(URL(string: "https://github.com.evil.com/x")!)) // suffix spoof
+        XCTAssertFalse(UpdateService.isTrustedDownload(URL(string: "file:///etc/passwd")!))
+    }
+}
+
 final class AttentionStateTests: XCTestCase {
     func testNeedsAttention() {
         XCTAssertTrue(AttentionState.asking.needsAttention)
