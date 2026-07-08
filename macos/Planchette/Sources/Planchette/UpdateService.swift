@@ -9,8 +9,8 @@ import AppKit
 /// it via /releases/latest.
 @MainActor
 final class UpdateService: ObservableObject {
-    /// owner/repo — set this to the real repository once it's pushed.
-    static let repo = "marcello/planchette"
+    /// owner/repo the in-app updater checks for new releases.
+    static let repo = "marcello-a/Planchette"
 
     @Published var isChecking = false
 
