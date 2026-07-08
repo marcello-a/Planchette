@@ -72,11 +72,44 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var stateSince: Date = .init()
     var lastMessage: String?
 
+    // Tags: what should happen with this terminal ("to test", "review", …)
+    var tags: [String] = []
+
+    // AI assist
+    var transcriptPath: String?   // Claude transcript JSONL, from hook events
+    var aiSummary: String?        // one-liner, only when AI assist is enabled
+    var aiTopic: String?          // one-word topic label for grouping
+
+    static let suggestedTags = ["to test", "review", "blocked", "wip"]
+
     init(id: UUID = UUID(), groupID: UUID, workingDirectory: String) {
         self.id = id
         self.groupID = groupID
         self.workingDirectory = workingDirectory
         self.currentDirectory = workingDirectory
+    }
+
+    // Backwards-compatible decoding: every field added after v1 falls back to
+    // its default when missing in an older state.json.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        groupID = try c.decode(UUID.self, forKey: .groupID)
+        workingDirectory = try c.decode(String.self, forKey: .workingDirectory)
+        currentDirectory = try c.decodeIfPresent(String.self, forKey: .currentDirectory) ?? workingDirectory
+        customTitle = try c.decodeIfPresent(String.self, forKey: .customTitle)
+        oscTitle = try c.decodeIfPresent(String.self, forKey: .oscTitle)
+        color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
+        claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
+        startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
+        resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
+        state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .free
+        stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
+        lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
+        tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
+        aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
+        aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)
     }
 
     /// Short display title: manual > ticket from git branch > OSC title > folder name.
@@ -111,4 +144,20 @@ struct PersistedState: Codable {
     var groups: [SessionGroup] = []
     var sessions: [TerminalSession] = []
     var selectedGroupID: UUID?
+    var aiEnabled: Bool = false
+
+    init(groups: [SessionGroup], sessions: [TerminalSession], selectedGroupID: UUID?, aiEnabled: Bool) {
+        self.groups = groups
+        self.sessions = sessions
+        self.selectedGroupID = selectedGroupID
+        self.aiEnabled = aiEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        groups = try c.decodeIfPresent([SessionGroup].self, forKey: .groups) ?? []
+        sessions = try c.decodeIfPresent([TerminalSession].self, forKey: .sessions) ?? []
+        selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
+        aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
+    }
 }

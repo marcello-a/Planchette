@@ -19,6 +19,10 @@ struct PlanchetteApp: App {
                 Button("Zur wartenden Session") { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
             }
+            CommandMenu("KI") {
+                AIMenu()
+                    .environmentObject(delegate.appState)
+            }
         }
 
         MenuBarExtra {
@@ -70,6 +74,15 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Toggle(isOn: $appState.aiEnabled) {
+                    Label("KI-Assistenz", systemImage: appState.aiEnabled ? "sparkles" : "sparkles.slash")
+                }
+                .toggleStyle(.button)
+                .help(appState.aiEnabled
+                    ? "KI-Assistenz aktiv: Sessions werden zusammengefasst und geordnet"
+                    : "KI-Assistenz aus")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 InboxToolbarButton()
             }
             ToolbarItem(placement: .primaryAction) {
@@ -97,6 +110,39 @@ struct ContentView: View {
                 .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct AIMenu: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Toggle("KI-Assistenz aktiv", isOn: $appState.aiEnabled)
+        Divider()
+        Button("Alle Sessions jetzt zusammenfassen") { appState.summarizeAllNow() }
+            .disabled(!appState.aiEnabled)
+        Button("Nach Themen gruppieren…") { proposeGrouping() }
+            .disabled(!appState.aiEnabled)
+    }
+
+    private func proposeGrouping() {
+        let proposal = appState.topicProposal
+        let alert = NSAlert()
+        if proposal.isEmpty {
+            alert.messageText = "Kein Gruppierungs-Vorschlag"
+            alert.informativeText = "Noch keine (oder zu wenige) Sessions mit gleichem Thema. Erst zusammenfassen lassen."
+            alert.runModal()
+            return
+        }
+        alert.messageText = "Nach Themen gruppieren?"
+        alert.informativeText = proposal
+            .map { "\($0.topic): \($0.sessions.map(\.displayTitle).joined(separator: ", "))" }
+            .joined(separator: "\n")
+        alert.addButton(withTitle: "Gruppieren")
+        alert.addButton(withTitle: "Abbrechen")
+        if alert.runModal() == .alertFirstButtonReturn {
+            appState.applyTopicGrouping()
+        }
     }
 }
 

@@ -7,6 +7,11 @@ final class AppState: ObservableObject {
     @Published var sessions: [UUID: TerminalSession] = [:]
     @Published var selectedGroupID: UUID?
     @Published var quickSwitcherShown = false
+    @Published var aiEnabled = false {
+        didSet { scheduleSave() }
+    }
+
+    private(set) lazy var aiAssist = AIAssist(appState: self)
 
     /// True while sessions from a previous run are being revived; the registry
     /// uses this to decide whether to replay startup/resume commands.
@@ -149,20 +154,31 @@ final class AppState: ObservableObject {
 
     // MARK: Hook events (from HookServer)
 
-    func applyHookEvent(sessionID: UUID, hookEvent: String, claudeSessionID: String?, message: String?) {
+    func applyHookEvent(
+        sessionID: UUID,
+        hookEvent: String,
+        claudeSessionID: String?,
+        transcriptPath: String?,
+        message: String?
+    ) {
         NSLog("hook-event: \(hookEvent) session=\(sessionID) claude=\(claudeSessionID ?? "-") message=\(message ?? "-")")
         guard sessions[sessionID] != nil else { return }
-        if let claudeSessionID {
-            update(sessionID) { $0.claudeSessionID = claudeSessionID }
+        if claudeSessionID != nil || transcriptPath != nil {
+            update(sessionID) {
+                if let claudeSessionID { $0.claudeSessionID = claudeSessionID }
+                if let transcriptPath { $0.transcriptPath = transcriptPath }
+            }
         }
         switch hookEvent {
         case "UserPromptSubmit":
             setState(sessionID, .working)
-        case "Notification":
+        case "Notification", "PermissionRequest":
             setState(sessionID, .asking, message: message)
             postUserNotification(sessionID: sessionID, message: message)
+            aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
             setState(sessionID, .done)
+            aiAssist.sessionUpdated(sessionID)
         case "SessionEnd":
             setState(sessionID, .free)
         case "SessionStart":
@@ -170,6 +186,79 @@ final class AppState: ObservableObject {
         default:
             break
         }
+    }
+
+    // MARK: Tags
+
+    /// All tags in use plus the default suggestions.
+    var knownTags: [String] {
+        var tags = TerminalSession.suggestedTags
+        for session in sessions.values {
+            for tag in session.tags where !tags.contains(tag) { tags.append(tag) }
+        }
+        return tags
+    }
+
+    func toggleTag(_ tag: String, on sessionID: UUID) {
+        update(sessionID) {
+            if let idx = $0.tags.firstIndex(of: tag) {
+                $0.tags.remove(at: idx)
+            } else {
+                $0.tags.append(tag)
+            }
+        }
+    }
+
+    // MARK: AI ordering
+
+    /// Preview of the AI grouping proposal: topic → sessions that would move.
+    var topicProposal: [(topic: String, sessions: [TerminalSession])] {
+        var byTopic: [String: [TerminalSession]] = [:]
+        for session in sessions.values {
+            guard let topic = session.aiTopic, !topic.isEmpty else { continue }
+            byTopic[topic, default: []].append(session)
+        }
+        return byTopic
+            .filter { $0.value.count >= 2 }
+            .map { (topic: $0.key, sessions: $0.value) }
+            .sorted { $0.topic < $1.topic }
+    }
+
+    /// Apply the proposal: sessions sharing a topic move into a group named
+    /// after it. Only ever called after explicit user confirmation.
+    func applyTopicGrouping() {
+        for (topic, topicSessions) in topicProposal {
+            let target: SessionGroup
+            if let existing = groups.first(where: { $0.name.lowercased() == topic }) {
+                target = existing
+            } else {
+                target = addGroup(name: topic)
+            }
+            for session in topicSessions where session.groupID != target.id {
+                moveSession(session.id, to: target.id)
+            }
+        }
+        scheduleSave()
+    }
+
+    func moveSession(_ id: UUID, to groupID: UUID) {
+        guard let session = sessions[id], session.groupID != groupID else { return }
+        if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
+            groups[idx].sessionIDs.removeAll { $0 == id }
+            if groups[idx].activeSessionID == id {
+                groups[idx].activeSessionID = groups[idx].sessionIDs.last
+            }
+            if groups[idx].sessionIDs.isEmpty { groups.remove(at: idx) }
+        }
+        if let idx = groups.firstIndex(where: { $0.id == groupID }) {
+            groups[idx].sessionIDs.append(id)
+        }
+        update(id) { $0.groupID = groupID }
+    }
+
+    /// Manual "summarize everything now" from the AI menu.
+    func summarizeAllNow() {
+        for id in sessions.keys { aiAssist.sessionUpdated(id, force: true) }
     }
 
     private func postUserNotification(sessionID: UUID, message: String?) {
@@ -217,7 +306,8 @@ final class AppState: ObservableObject {
         let state = PersistedState(
             groups: groups,
             sessions: Array(sessions.values),
-            selectedGroupID: selectedGroupID
+            selectedGroupID: selectedGroupID,
+            aiEnabled: aiEnabled
         )
         do {
             let encoder = JSONEncoder()
@@ -236,6 +326,7 @@ final class AppState: ObservableObject {
         groups = state.groups
         sessions = Dictionary(uniqueKeysWithValues: state.sessions.map { ($0.id, $0) })
         selectedGroupID = state.selectedGroupID ?? groups.first?.id
+        aiEnabled = state.aiEnabled
         // Terminals from the previous run are no longer live; their agents are
         // resumed lazily when the surface is (re)created by the registry.
         // After a short grace period, new surfaces are ordinary terminals again.

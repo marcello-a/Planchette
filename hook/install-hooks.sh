@@ -15,7 +15,7 @@ from pathlib import Path
 
 settings_path = Path(sys.argv[1])
 hook_bin = sys.argv[2]
-events = ["SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"]
+events = ["SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest", "Stop", "SessionEnd"]
 
 settings = {}
 if settings_path.exists():

@@ -57,7 +57,16 @@ struct InboxView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
-                    Text(session.shortPath).font(.caption2).foregroundStyle(.tertiary)
+                    if let summary = session.aiSummary {
+                        Text("🔮 \(summary)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    HStack(spacing: 4) {
+                        Text(session.shortPath).font(.caption2).foregroundStyle(.tertiary)
+                        TagChips(tags: session.tags)
+                    }
                 }
             }
             .padding(10)

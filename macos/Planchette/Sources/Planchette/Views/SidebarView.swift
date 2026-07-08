@@ -67,6 +67,7 @@ struct SidebarView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                    TagChips(tags: session.tags)
                 }
                 Spacer()
                 if session.state.needsAttention {
@@ -75,8 +76,10 @@ struct SidebarView: View {
             }
         }
         .buttonStyle(.plain)
-        .help(session.currentDirectory)
+        .help(sessionTooltip(session))
         .contextMenu {
+            TagMenu(session: session)
+            Divider()
             Button("Umbenennen…") { rename(session: session) }
             colorPicker(current: session.color) { color in
                 appState.update(session.id) { $0.color = color }
@@ -85,6 +88,13 @@ struct SidebarView: View {
             Divider()
             Button("Schließen", role: .destructive) { appState.closeSession(session.id) }
         }
+    }
+
+    private func sessionTooltip(_ session: TerminalSession) -> String {
+        var lines = [session.currentDirectory]
+        if let summary = session.aiSummary { lines.append("🔮 \(summary)") }
+        if !session.tags.isEmpty { lines.append("Tags: \(session.tags.joined(separator: ", "))") }
+        return lines.joined(separator: "\n")
     }
 
     private func attentionSummary(_ group: SessionGroup) -> some View {

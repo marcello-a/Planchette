@@ -77,6 +77,7 @@ final class HookServer {
         let event = obj["event"] as? [String: Any] ?? [:]
         let hookEvent = event["hook_event_name"] as? String ?? ""
         let claudeSessionID = event["session_id"] as? String
+        let transcriptPath = event["transcript_path"] as? String
         let message = event["message"] as? String
 
         DispatchQueue.main.async { [weak self] in
@@ -84,6 +85,7 @@ final class HookServer {
                 sessionID: sessionID,
                 hookEvent: hookEvent,
                 claudeSessionID: claudeSessionID,
+                transcriptPath: transcriptPath,
                 message: message
             )
         }

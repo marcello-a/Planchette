@@ -19,7 +19,24 @@ the one that speaks.
 Early development. See [docs/CONCEPT.md](docs/CONCEPT.md) for the full concept,
 architecture and roadmap.
 
-Current phase: **Phase 0 — Spikes**
+**Working today (macOS, `macos/Planchette`):**
+- Multiple libghostty terminals in groups: tab view or cluster grid per group
+- Attention engine driven by Claude Code hooks: working / asking / done / free,
+  inbox, menu-bar badge, per-session idle timers
+- Favorites (Hauptprojekte) — prioritized in inbox, notifications, switcher
+- Quick switcher ⌘K (fuzzy over title/path/branch/tags) and ⌘⇧K (jump to the
+  most urgent waiting session)
+- Auto titles (ticket from git branch), short paths with full path on hover,
+  colors and custom titles for sessions and groups
+- **Tags** on terminals ("to test", "review", …) — chips in sidebar/tabs,
+  searchable in the switcher
+- **AI assist (toggleable)**: transcript-based one-line summaries per agent
+  session via headless `claude -p`, topic labels, and opt-in group-by-topic
+- Persistence across restart & reboot: layout, colors, titles, cwd, tags,
+  Claude session — resumed via `claude --resume`, plus per-session startup
+  commands
+
+Current phase: **Phase 0/1 done, hardening**
 
 - [x] Spike A (macOS): GhosttyKit embedded in a minimal SwiftUI app, 2 interactive surfaces
 - [ ] Spike B (Linux): libghostty in a Zig + GTK4 widget (needs a Linux machine)

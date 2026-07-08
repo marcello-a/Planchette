@@ -20,12 +20,13 @@ struct QuickSwitcherView: View {
         guard !query.isEmpty else { return Array(ranked.prefix(12)) }
         let q = query.lowercased()
         return ranked.filter { session in
-            let haystack = [
+            let haystack = ([
                 session.displayTitle,
                 session.currentDirectory,
                 appState.group(of: session)?.name ?? "",
                 Titles.gitBranch(forDirectory: session.currentDirectory) ?? "",
-            ].joined(separator: " ").lowercased()
+                session.aiSummary ?? "",
+            ] + session.tags).joined(separator: " ").lowercased()
             return fuzzyMatch(needle: q, haystack: haystack)
         }
     }
@@ -98,7 +99,13 @@ struct QuickSwitcherView: View {
                         Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
                     }
                 }
-                Text(session.shortPath).font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(session.shortPath).font(.caption).foregroundStyle(.secondary)
+                    TagChips(tags: session.tags)
+                }
+                if let summary = session.aiSummary {
+                    Text(summary).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                }
             }
             Spacer()
             if session.state.needsAttention {

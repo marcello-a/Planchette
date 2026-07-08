@@ -75,6 +75,7 @@ struct TerminalAreaView: View {
                 Text(session.shortPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                TagChips(tags: session.tags)
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
@@ -84,8 +85,10 @@ struct TerminalAreaView: View {
             )
         }
         .buttonStyle(.plain)
-        .help(session.currentDirectory)
+        .help(session.aiSummary.map { "\(session.currentDirectory)\n🔮 \($0)" } ?? session.currentDirectory)
         .contextMenu {
+            TagMenu(session: session)
+            Divider()
             Button("Schließen", role: .destructive) { appState.closeSession(session.id) }
         }
     }
