@@ -2,11 +2,21 @@ import SwiftUI
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.openWindow) private var openWindow
+    let windowID: UUID
+
+    private var selectionBinding: Binding<UUID?> {
+        Binding(
+            get: { appState.window(for: windowID)?.selectedGroupID },
+            set: { newValue in appState.updateWindow(windowID) { $0.selectedGroupID = newValue } }
+        )
+    }
 
     var body: some View {
-        List(selection: $appState.selectedGroupID) {
-            let favorites = appState.groups.filter(\.favorite)
-            let normal = appState.groups.filter { !$0.favorite }
+        let windowGroups = appState.window(for: windowID).map { appState.groups(inWindow: $0) } ?? []
+        List(selection: selectionBinding) {
+            let favorites = windowGroups.filter(\.favorite)
+            let normal = windowGroups.filter { !$0.favorite }
 
             if !favorites.isEmpty {
                 Section("Hauptprojekte") {
@@ -45,6 +55,10 @@ struct SidebarView: View {
                     appState.updateGroup(group.id) { $0.color = color }
                 }
                 Button("Umbenennen…") { rename(group: group) }
+                Divider()
+                Button("In neues Fenster verschieben") {
+                    openWindow(value: appState.moveGroupToNewWindow(group.id))
+                }
             }
         }
         .tag(group.id)

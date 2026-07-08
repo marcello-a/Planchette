@@ -73,6 +73,13 @@ Namensprüfung erledigt: GitHub praktisch frei (größtes Repo 7★, andere Dom�
 - **Sound-Hooks:** Events optional an bestehende Hooks durchreichen (z.B. peon-ping) statt eigener Sounds
 - **Cross-Session-Suche** im Scrollback aller Sessions
 
+## Fenster & Restore
+
+- **Start-Dialog:** Beim App-Start mit gespeicherter Sitzung fragt ein Dialog „Wiederherstellen" vs. „Neu starten". Neu starten archiviert den alten State (`state-previous.json`) statt ihn zu löschen.
+- **Multi-Window:** Jedes Fenster besitzt einen Satz Gruppen und eine eigene Auswahl (`WindowModel` im State). ⌘N öffnet ein leeres Fenster; „In neues Fenster verschieben" (Gruppen-Kontextmenü) zieht eine Gruppe heraus.
+- **Merge:** Ein sekundäres Fenster kann per Toolbar-Button „In Hauptfenster mergen" seine Gruppen zurück ins Hauptfenster schieben; das leere Fenster schließt sich.
+- **Persistenz:** Die Fenster-Aufteilung überlebt Restart/Reboot — beim Wiederherstellen öffnen alle Fenster mit ihren Gruppen erneut. Das Hauptfenster hat eine stabile ID; leere Sekundärfenster müssen einen Neustart nicht überleben.
+
 ## Tags
 
 Terminals lassen sich mit freien **Tags** markieren (`to test`, `review`, `blocked`, …) — orthogonal zu Gruppen: Eine Gruppe sagt *wo* eine Session hingehört, ein Tag sagt *was mit ihr passieren soll*.

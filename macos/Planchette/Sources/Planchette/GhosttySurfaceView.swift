@@ -235,7 +235,8 @@ final class TerminalRegistry {
         view.onFocus = { [weak appState] in appState?.sessionWasAttended(id) }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }
-            return appState.selectedGroupID == session.groupID
+            let window = appState.windowContaining(groupID: session.groupID)
+            return window?.selectedGroupID == session.groupID
                 && appState.groups.first { $0.id == session.groupID }?.activeSessionID == id
         }
         views[id] = view

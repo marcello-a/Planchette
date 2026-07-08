@@ -5,11 +5,15 @@ import SwiftUI
 final class AppState: ObservableObject {
     @Published var groups: [SessionGroup] = []
     @Published var sessions: [UUID: TerminalSession] = [:]
-    @Published var selectedGroupID: UUID?
-    @Published var quickSwitcherShown = false
+    @Published var windows: [WindowModel] = []
+    /// Window the quick switcher is currently shown in (nil = hidden).
+    @Published var quickSwitcherWindowID: UUID?
     @Published var aiEnabled = false {
         didSet { scheduleSave() }
     }
+    /// Windows (beyond the main one) that still need to be opened after a
+    /// restore; the main window's ContentView consumes this.
+    @Published var windowsToOpen: [UUID] = []
 
     private(set) lazy var aiAssist = AIAssist(appState: self)
 
@@ -27,15 +31,103 @@ final class AppState: ObservableObject {
     }()
 
     init() {
-        restore()
         observeSurfaceNotifications()
     }
 
-    // MARK: Derived
+    // MARK: Windows
 
-    var selectedGroup: SessionGroup? {
-        groups.first { $0.id == selectedGroupID }
+    /// Stable id of the main window (SwiftUI's default window value).
+    static let mainWindowID = UUID(uuidString: "00000000-0000-0000-0000-0000000000a1")!
+
+    func window(for id: UUID) -> WindowModel? {
+        windows.first { $0.id == id }
     }
+
+    func updateWindow(_ id: UUID, _ mutate: (inout WindowModel) -> Void) {
+        guard let idx = windows.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&windows[idx])
+        scheduleSave()
+    }
+
+    func groups(inWindow window: WindowModel) -> [SessionGroup] {
+        window.groupIDs.compactMap { id in groups.first { $0.id == id } }
+    }
+
+    func windowContaining(groupID: UUID) -> WindowModel? {
+        windows.first { $0.groupIDs.contains(groupID) }
+    }
+
+    /// Ensure there is a main window (stable id) and every group lives in
+    /// exactly one window.
+    func sanitizeWindows() {
+        if !windows.contains(where: { $0.id == Self.mainWindowID }) {
+            if windows.isEmpty {
+                windows.append(WindowModel(id: Self.mainWindowID))
+            } else {
+                // Promote the first window to be the main one.
+                var main = WindowModel(id: Self.mainWindowID)
+                main.groupIDs = windows[0].groupIDs
+                main.selectedGroupID = windows[0].selectedGroupID
+                windows[0] = main
+            }
+        }
+        // Main window always first.
+        windows.sort { a, _ in a.id == Self.mainWindowID }
+        var seen = Set<UUID>()
+        for idx in windows.indices {
+            windows[idx].groupIDs.removeAll { id in
+                !groups.contains { $0.id == id } || !seen.insert(id).inserted
+            }
+        }
+        let orphans = groups.map(\.id).filter { !seen.contains($0) }
+        windows[0].groupIDs.append(contentsOf: orphans)
+        // Drop empty secondary windows.
+        windows.removeAll { $0.id != windows[0].id && $0.groupIDs.isEmpty }
+        for idx in windows.indices where windows[idx].selectedGroupID == nil
+            || !windows[idx].groupIDs.contains(windows[idx].selectedGroupID!) {
+            windows[idx].selectedGroupID = windows[idx].groupIDs.first
+        }
+    }
+
+    /// Move a group into a brand-new window; returns the window id to open.
+    func moveGroupToNewWindow(_ groupID: UUID) -> UUID {
+        var newWindow = WindowModel()
+        newWindow.groupIDs = [groupID]
+        newWindow.selectedGroupID = groupID
+        for idx in windows.indices {
+            windows[idx].groupIDs.removeAll { $0 == groupID }
+            if windows[idx].selectedGroupID == groupID {
+                windows[idx].selectedGroupID = windows[idx].groupIDs.first
+            }
+        }
+        windows.append(newWindow)
+        scheduleSave()
+        return newWindow.id
+    }
+
+    /// Create a new, empty window; returns its id to open.
+    func newWindow() -> UUID {
+        let window = WindowModel()
+        windows.append(window)
+        scheduleSave()
+        return window.id
+    }
+
+    /// Merge all groups of `sourceID` into `targetID` (default: main window).
+    /// The source window model disappears; the caller closes the NSWindow.
+    func mergeWindow(_ sourceID: UUID, into targetID: UUID? = nil) {
+        guard let source = windows.first(where: { $0.id == sourceID }) else { return }
+        let target = targetID ?? windows.first(where: { $0.id != sourceID })?.id
+        guard let target, let targetIdx = windows.firstIndex(where: { $0.id == target }) else { return }
+        windows[targetIdx].groupIDs.append(contentsOf: source.groupIDs)
+        if windows[targetIdx].selectedGroupID == nil {
+            windows[targetIdx].selectedGroupID = source.selectedGroupID
+        }
+        windows.removeAll { $0.id == sourceID }
+        scheduleSave()
+    }
+
+    // MARK: Derived
 
     func sessions(in group: SessionGroup) -> [TerminalSession] {
         group.sessionIDs.compactMap { sessions[$0] }
@@ -65,29 +157,27 @@ final class AppState: ObservableObject {
     // MARK: Mutations
 
     @discardableResult
-    func addGroup(name: String, favorite: Bool = false) -> SessionGroup {
+    func addGroup(name: String, favorite: Bool = false, inWindow windowID: UUID? = nil) -> SessionGroup {
         var group = SessionGroup(name: name)
         group.favorite = favorite
         groups.append(group)
-        selectedGroupID = group.id
+        sanitizeWindows()
+        let target = windowID ?? windows[0].id
+        if let idx = windows.firstIndex(where: { $0.id == target }) {
+            // sanitizeWindows put the orphan into windows[0]; move if needed.
+            for i in windows.indices { windows[i].groupIDs.removeAll { $0 == group.id } }
+            windows[idx].groupIDs.append(group.id)
+            windows[idx].selectedGroupID = group.id
+        }
         scheduleSave()
         return group
     }
 
     @discardableResult
-    func addSession(directory: String, groupID: UUID? = nil) -> TerminalSession {
-        let targetGroupID: UUID
-        if let groupID {
-            targetGroupID = groupID
-        } else if let selected = selectedGroupID {
-            targetGroupID = selected
-        } else {
-            targetGroupID = addGroup(name: (directory as NSString).lastPathComponent).id
-        }
-
-        let session = TerminalSession(groupID: targetGroupID, workingDirectory: directory)
+    func addSession(directory: String, groupID: UUID) -> TerminalSession {
+        let session = TerminalSession(groupID: groupID, workingDirectory: directory)
         sessions[session.id] = session
-        if let idx = groups.firstIndex(where: { $0.id == targetGroupID }) {
+        if let idx = groups.firstIndex(where: { $0.id == groupID }) {
             groups[idx].sessionIDs.append(session.id)
             groups[idx].activeSessionID = session.id
         }
@@ -105,9 +195,8 @@ final class AppState: ObservableObject {
                 groups[idx].activeSessionID = groups[idx].sessionIDs.last
             }
             if groups[idx].sessionIDs.isEmpty {
-                let groupID = groups[idx].id
                 groups.remove(at: idx)
-                if selectedGroupID == groupID { selectedGroupID = groups.first?.id }
+                sanitizeWindows()
             }
         }
         scheduleSave()
@@ -127,7 +216,10 @@ final class AppState: ObservableObject {
     }
 
     func select(session: TerminalSession) {
-        selectedGroupID = session.groupID
+        if let window = windowContaining(groupID: session.groupID) {
+            updateWindow(window.id) { $0.selectedGroupID = session.groupID }
+            WindowRegistry.shared.raise(window.id)
+        }
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
     }
 
@@ -135,6 +227,10 @@ final class AppState: ObservableObject {
     func jumpToNextWaiting() {
         guard let next = attentionQueue.first else { return }
         select(session: next)
+    }
+
+    func showQuickSwitcher() {
+        quickSwitcherWindowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
     }
 
     /// The user focused this terminal: asking → they're answering, done → seen.
@@ -161,7 +257,6 @@ final class AppState: ObservableObject {
         transcriptPath: String?,
         message: String?
     ) {
-        NSLog("hook-event: \(hookEvent) session=\(sessionID) claude=\(claudeSessionID ?? "-") message=\(message ?? "-")")
         guard sessions[sessionID] != nil else { return }
         if claudeSessionID != nil || transcriptPath != nil {
             update(sessionID) {
@@ -186,6 +281,16 @@ final class AppState: ObservableObject {
         default:
             break
         }
+    }
+
+    private func postUserNotification(sessionID: UUID, message: String?) {
+        guard let session = sessions[sessionID] else { return }
+        // Only interrupt for favorites; side projects just queue in the inbox.
+        guard group(of: session)?.favorite == true else { return }
+        let notification = NSUserNotification()
+        notification.title = "\(session.displayTitle) fragt"
+        notification.informativeText = message ?? ""
+        NSUserNotificationCenter.default.deliver(notification)
     }
 
     // MARK: Tags
@@ -248,7 +353,10 @@ final class AppState: ObservableObject {
             if groups[idx].activeSessionID == id {
                 groups[idx].activeSessionID = groups[idx].sessionIDs.last
             }
-            if groups[idx].sessionIDs.isEmpty { groups.remove(at: idx) }
+            if groups[idx].sessionIDs.isEmpty {
+                groups.remove(at: idx)
+                sanitizeWindows()
+            }
         }
         if let idx = groups.firstIndex(where: { $0.id == groupID }) {
             groups[idx].sessionIDs.append(id)
@@ -261,14 +369,77 @@ final class AppState: ObservableObject {
         for id in sessions.keys { aiAssist.sessionUpdated(id, force: true) }
     }
 
-    private func postUserNotification(sessionID: UUID, message: String?) {
-        guard let session = sessions[sessionID] else { return }
-        // Only interrupt for favorites; side projects just queue in the inbox.
-        guard group(of: session)?.favorite == true else { return }
-        let notification = NSUserNotification()
-        notification.title = "\(session.displayTitle) fragt"
-        notification.informativeText = message ?? ""
-        NSUserNotificationCenter.default.deliver(notification)
+    // MARK: Persistence
+
+    func scheduleSave() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.saveNow()
+        }
+    }
+
+    func saveNow() {
+        // Never overwrite a real saved state with an empty one before the
+        // restore decision was made.
+        guard !groups.isEmpty || !windows.isEmpty else { return }
+        let state = PersistedState(
+            groups: groups,
+            sessions: Array(sessions.values),
+            windows: windows,
+            aiEnabled: aiEnabled
+        )
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(state).write(to: Self.stateURL, options: .atomic)
+        } catch {
+            NSLog("save failed: \(error)")
+        }
+    }
+
+    /// Read the saved state without applying it (for the restore dialog).
+    static func loadPersistedState() -> PersistedState? {
+        guard let data = try? Data(contentsOf: stateURL),
+              let state = try? JSONDecoder().decode(PersistedState.self, from: data)
+        else { return nil }
+        return state
+    }
+
+    /// Apply a saved state ("Wiederherstellen").
+    func applyRestore(_ state: PersistedState) {
+        isRestoring = true
+        groups = state.groups
+        sessions = Dictionary(uniqueKeysWithValues: state.sessions.map { ($0.id, $0) })
+        windows = state.windows
+        // Legacy states (pre-multi-window) had a flat selectedGroupID.
+        sanitizeWindows()
+        if windows[0].selectedGroupID == nil {
+            windows[0].selectedGroupID = state.selectedGroupID ?? windows[0].groupIDs.first
+        }
+        aiEnabled = state.aiEnabled
+        windowsToOpen = windows.dropFirst().map(\.id)
+        // After a grace period, new surfaces are ordinary terminals again.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(30))
+            self.isRestoring = false
+        }
+    }
+
+    /// Start fresh ("Neu") — the previous state is archived, not deleted.
+    func startFresh(archiving previous: PersistedState?) {
+        if previous != nil {
+            let archive = Self.stateURL.deletingLastPathComponent()
+                .appendingPathComponent("state-previous.json")
+            try? FileManager.default.removeItem(at: archive)
+            try? FileManager.default.copyItem(at: Self.stateURL, to: archive)
+        }
+        try? FileManager.default.removeItem(at: Self.stateURL)
+        groups = []
+        sessions = [:]
+        windows = [WindowModel(id: Self.mainWindowID)]
+        aiEnabled = previous?.aiEnabled ?? false
     }
 
     // MARK: Surface notifications (title / pwd / child exit)
@@ -290,49 +461,30 @@ final class AppState: ObservableObject {
             Task { @MainActor in self?.closeSession(id) }
         }
     }
+}
 
-    // MARK: Persistence
+/// Maps window models to their NSWindows (for raising and key-window lookup).
+@MainActor
+final class WindowRegistry {
+    static let shared = WindowRegistry()
+    private var map: [UUID: WeakWindow] = [:]
 
-    func scheduleSave() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
-            guard !Task.isCancelled else { return }
-            self?.saveNow()
-        }
+    private struct WeakWindow { weak var window: NSWindow? }
+
+    func register(_ windowID: UUID, window: NSWindow) {
+        map[windowID] = WeakWindow(window: window)
     }
 
-    func saveNow() {
-        let state = PersistedState(
-            groups: groups,
-            sessions: Array(sessions.values),
-            selectedGroupID: selectedGroupID,
-            aiEnabled: aiEnabled
-        )
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(state).write(to: Self.stateURL, options: .atomic)
-        } catch {
-            NSLog("save failed: \(error)")
-        }
+    func raise(_ windowID: UUID) {
+        map[windowID]?.window?.makeKeyAndOrderFront(nil)
     }
 
-    private func restore() {
-        guard let data = try? Data(contentsOf: Self.stateURL),
-              let state = try? JSONDecoder().decode(PersistedState.self, from: data)
-        else { return }
-        isRestoring = true
-        groups = state.groups
-        sessions = Dictionary(uniqueKeysWithValues: state.sessions.map { ($0.id, $0) })
-        selectedGroupID = state.selectedGroupID ?? groups.first?.id
-        aiEnabled = state.aiEnabled
-        // Terminals from the previous run are no longer live; their agents are
-        // resumed lazily when the surface is (re)created by the registry.
-        // After a short grace period, new surfaces are ordinary terminals again.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(30))
-            self.isRestoring = false
-        }
+    func keyWindowID() -> UUID? {
+        map.first { $0.value.window?.isKeyWindow == true }?.key
+    }
+
+    func close(_ windowID: UUID) {
+        map[windowID]?.window?.close()
+        map[windowID] = nil
     }
 }

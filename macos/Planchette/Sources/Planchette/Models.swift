@@ -139,17 +139,35 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     }
 }
 
+/// One app window: owns a set of groups and its own selection. Groups can be
+/// moved to a new window and windows merged back together.
+struct WindowModel: Identifiable, Codable, Equatable {
+    let id: UUID
+    var groupIDs: [UUID] = []
+    var selectedGroupID: UUID?
+
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
 /// Persisted snapshot of everything.
 struct PersistedState: Codable {
     var groups: [SessionGroup] = []
     var sessions: [TerminalSession] = []
-    var selectedGroupID: UUID?
+    var windows: [WindowModel] = []
+    var selectedGroupID: UUID?   // legacy (pre-multi-window)
     var aiEnabled: Bool = false
 
-    init(groups: [SessionGroup], sessions: [TerminalSession], selectedGroupID: UUID?, aiEnabled: Bool) {
+    init(
+        groups: [SessionGroup],
+        sessions: [TerminalSession],
+        windows: [WindowModel],
+        aiEnabled: Bool
+    ) {
         self.groups = groups
         self.sessions = sessions
-        self.selectedGroupID = selectedGroupID
+        self.windows = windows
         self.aiEnabled = aiEnabled
     }
 
@@ -157,6 +175,7 @@ struct PersistedState: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         groups = try c.decodeIfPresent([SessionGroup].self, forKey: .groups) ?? []
         sessions = try c.decodeIfPresent([TerminalSession].self, forKey: .sessions) ?? []
+        windows = try c.decodeIfPresent([WindowModel].self, forKey: .windows) ?? []
         selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
     }
