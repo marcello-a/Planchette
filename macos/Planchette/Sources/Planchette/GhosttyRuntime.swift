@@ -15,6 +15,15 @@ final class GhosttyRuntime {
     private var config: ghostty_config_t?
 
     private init() {
+        // In a packaged .app the Ghostty resources (terminfo, shell
+        // integration) live in the bundle; point libghostty at them if the
+        // env var isn't already set (dev runs still set it explicitly).
+        if ProcessInfo.processInfo.environment["GHOSTTY_RESOURCES_DIR"] == nil,
+           let bundled = Bundle.main.resourceURL?.appendingPathComponent("ghostty"),
+           FileManager.default.fileExists(atPath: bundled.path) {
+            setenv("GHOSTTY_RESOURCES_DIR", bundled.path, 1)
+        }
+
         guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
             NSLog("ghostty_init failed")
             return

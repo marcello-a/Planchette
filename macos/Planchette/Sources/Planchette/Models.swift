@@ -160,6 +160,7 @@ struct PersistedState: Codable {
     var aiEnabled: Bool = false
     var language: AppLanguage = .system
     var appearance: AppAppearance = .system
+    var autoUpdateCheck: Bool = true
 
     init(
         groups: [SessionGroup],
@@ -167,7 +168,8 @@ struct PersistedState: Codable {
         windows: [WindowModel],
         aiEnabled: Bool,
         language: AppLanguage,
-        appearance: AppAppearance
+        appearance: AppAppearance,
+        autoUpdateCheck: Bool
     ) {
         self.groups = groups
         self.sessions = sessions
@@ -175,6 +177,7 @@ struct PersistedState: Codable {
         self.aiEnabled = aiEnabled
         self.language = language
         self.appearance = appearance
+        self.autoUpdateCheck = autoUpdateCheck
     }
 
     init(from decoder: Decoder) throws {
@@ -186,5 +189,6 @@ struct PersistedState: Codable {
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
+        autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
     }
 }

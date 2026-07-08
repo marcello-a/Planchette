@@ -122,6 +122,11 @@ enum LKey: String {
     case importMenu, importFromITerm, importFromTerminal
     case importNothing, importNotRunning, importNotAuthorized, importAuthHint, importFailed
     case importMenuHelp, dropHint
+
+    // Updates
+    case updates, checkForUpdates, autoUpdateCheck, autoUpdateHelp
+    case updateAvailable, updateAvailableBody, updateDownload
+    case updateUpToDate, updateCurrentVersion, updateFailed
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -202,6 +207,9 @@ enum L10n {
         .windowMerged: "Window was merged",
         .importMenu: "Import", .importFromITerm: "Import from iTerm2", .importFromTerminal: "Import from Terminal.app",
         .importNothing: "no open terminals found", .importNotRunning: "is not running", .importNotAuthorized: "Automation not allowed", .importAuthHint: "Allow Planchette to control the terminal app in System Settings → Privacy & Security → Automation, then try again.", .importFailed: "Import failed", .importMenuHelp: "Open the working directories of another terminal app as Planchette terminals", .dropHint: "Drop a folder here to open a terminal",
+        .updates: "Updates", .checkForUpdates: "Check for updates…", .autoUpdateCheck: "Automatically check for updates", .autoUpdateHelp: "Check GitHub for a newer stable release on launch",
+        .updateAvailable: "Version %@ is available", .updateAvailableBody: "Download the new version and drag it into Applications.", .updateDownload: "Download",
+        .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
     ]
 
     // MARK: German
@@ -261,6 +269,9 @@ enum L10n {
         .windowMerged: "Fenster wurde zusammengeführt",
         .importMenu: "Import", .importFromITerm: "Aus iTerm2 importieren", .importFromTerminal: "Aus Terminal.app importieren",
         .importNothing: "keine offenen Terminals gefunden", .importNotRunning: "läuft nicht", .importNotAuthorized: "Automatisierung nicht erlaubt", .importAuthHint: "Erlaube Planchette in Systemeinstellungen → Datenschutz & Sicherheit → Automatisierung, die Terminal-App zu steuern, und versuche es erneut.", .importFailed: "Import fehlgeschlagen", .importMenuHelp: "Die Arbeitsverzeichnisse einer anderen Terminal-App als Planchette-Terminals öffnen", .dropHint: "Ordner hierher ziehen, um ein Terminal zu öffnen",
+        .updates: "Updates", .checkForUpdates: "Nach Updates suchen…", .autoUpdateCheck: "Automatisch nach Updates suchen", .autoUpdateHelp: "Beim Start auf GitHub nach einer neueren stabilen Version prüfen",
+        .updateAvailable: "Version %@ ist verfügbar", .updateAvailableBody: "Lade die neue Version herunter und ziehe sie in „Programme“.", .updateDownload: "Herunterladen",
+        .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
     ]
 
     // MARK: French
@@ -320,6 +331,9 @@ enum L10n {
         .windowMerged: "La fenêtre a été fusionnée",
         .importMenu: "Importer", .importFromITerm: "Importer depuis iTerm2", .importFromTerminal: "Importer depuis Terminal.app",
         .importNothing: "aucun terminal ouvert trouvé", .importNotRunning: "n'est pas en cours d'exécution", .importNotAuthorized: "Automatisation non autorisée", .importAuthHint: "Autorisez Planchette à contrôler l'app de terminal dans Réglages Système → Confidentialité et sécurité → Automatisation, puis réessayez.", .importFailed: "Échec de l'import", .importMenuHelp: "Ouvrir les répertoires de travail d'une autre app de terminal comme terminaux Planchette", .dropHint: "Déposez un dossier ici pour ouvrir un terminal",
+        .updates: "Mises à jour", .checkForUpdates: "Rechercher des mises à jour…", .autoUpdateCheck: "Rechercher automatiquement les mises à jour", .autoUpdateHelp: "Vérifier sur GitHub une nouvelle version stable au lancement",
+        .updateAvailable: "La version %@ est disponible", .updateAvailableBody: "Téléchargez la nouvelle version et glissez-la dans Applications.", .updateDownload: "Télécharger",
+        .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
     ]
 
     // MARK: Spanish
@@ -379,6 +393,9 @@ enum L10n {
         .windowMerged: "La ventana se combinó",
         .importMenu: "Importar", .importFromITerm: "Importar desde iTerm2", .importFromTerminal: "Importar desde Terminal.app",
         .importNothing: "no se encontraron terminales abiertos", .importNotRunning: "no se está ejecutando", .importNotAuthorized: "Automatización no permitida", .importAuthHint: "Permite que Planchette controle la app de terminal en Ajustes del Sistema → Privacidad y seguridad → Automatización, y vuelve a intentarlo.", .importFailed: "Error al importar", .importMenuHelp: "Abrir los directorios de trabajo de otra app de terminal como terminales de Planchette", .dropHint: "Suelta una carpeta aquí para abrir un terminal",
+        .updates: "Actualizaciones", .checkForUpdates: "Buscar actualizaciones…", .autoUpdateCheck: "Buscar actualizaciones automáticamente", .autoUpdateHelp: "Comprobar en GitHub una nueva versión estable al iniciar",
+        .updateAvailable: "La versión %@ está disponible", .updateAvailableBody: "Descarga la nueva versión y arrástrala a Aplicaciones.", .updateDownload: "Descargar",
+        .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
     ]
 
     // MARK: Italian
@@ -438,6 +455,9 @@ enum L10n {
         .windowMerged: "La finestra è stata unita",
         .importMenu: "Importa", .importFromITerm: "Importa da iTerm2", .importFromTerminal: "Importa da Terminal.app",
         .importNothing: "nessun terminale aperto trovato", .importNotRunning: "non è in esecuzione", .importNotAuthorized: "Automazione non consentita", .importAuthHint: "Consenti a Planchette di controllare l'app Terminale in Impostazioni di Sistema → Privacy e sicurezza → Automazione, poi riprova.", .importFailed: "Importazione non riuscita", .importMenuHelp: "Apri le directory di lavoro di un'altra app terminale come terminali Planchette", .dropHint: "Trascina qui una cartella per aprire un terminale",
+        .updates: "Aggiornamenti", .checkForUpdates: "Cerca aggiornamenti…", .autoUpdateCheck: "Cerca aggiornamenti automaticamente", .autoUpdateHelp: "Controlla su GitHub una nuova versione stabile all'avvio",
+        .updateAvailable: "La versione %@ è disponibile", .updateAvailableBody: "Scarica la nuova versione e trascinala in Applicazioni.", .updateDownload: "Scarica",
+        .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
     ]
 
     // MARK: Dutch
@@ -497,6 +517,9 @@ enum L10n {
         .windowMerged: "Venster is samengevoegd",
         .importMenu: "Importeren", .importFromITerm: "Importeren uit iTerm2", .importFromTerminal: "Importeren uit Terminal.app",
         .importNothing: "geen open terminals gevonden", .importNotRunning: "is niet actief", .importNotAuthorized: "Automatisering niet toegestaan", .importAuthHint: "Sta Planchette toe de terminal-app te bedienen in Systeeminstellingen → Privacy en beveiliging → Automatisering en probeer opnieuw.", .importFailed: "Importeren mislukt", .importMenuHelp: "De werkmappen van een andere terminal-app als Planchette-terminals openen", .dropHint: "Sleep een map hierheen om een terminal te openen",
+        .updates: "Updates", .checkForUpdates: "Zoeken naar updates…", .autoUpdateCheck: "Automatisch naar updates zoeken", .autoUpdateHelp: "Bij het starten op GitHub naar een nieuwere stabiele versie zoeken",
+        .updateAvailable: "Versie %@ is beschikbaar", .updateAvailableBody: "Download de nieuwe versie en sleep die naar Programma's.", .updateDownload: "Downloaden",
+        .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
     ]
 
     // MARK: Portuguese
@@ -556,5 +579,8 @@ enum L10n {
         .windowMerged: "A janela foi fundida",
         .importMenu: "Importar", .importFromITerm: "Importar do iTerm2", .importFromTerminal: "Importar do Terminal.app",
         .importNothing: "nenhum terminal aberto encontrado", .importNotRunning: "não está em execução", .importNotAuthorized: "Automação não permitida", .importAuthHint: "Permite que o Planchette controle a app de terminal em Definições do Sistema → Privacidade e segurança → Automação e tenta de novo.", .importFailed: "Falha na importação", .importMenuHelp: "Abrir os diretórios de trabalho de outra app de terminal como terminais do Planchette", .dropHint: "Arrasta uma pasta para aqui para abrir um terminal",
+        .updates: "Atualizações", .checkForUpdates: "Procurar atualizações…", .autoUpdateCheck: "Procurar atualizações automaticamente", .autoUpdateHelp: "Verificar no GitHub uma nova versão estável ao iniciar",
+        .updateAvailable: "A versão %@ está disponível", .updateAvailableBody: "Descarrega a nova versão e arrasta-a para Aplicações.", .updateDownload: "Descarregar",
+        .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
     ]
 }

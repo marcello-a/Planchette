@@ -20,3 +20,6 @@ xcuserdata/
 
 # SwiftPM build dir
 macos/*/.build/
+
+# Packaging output
+dist/

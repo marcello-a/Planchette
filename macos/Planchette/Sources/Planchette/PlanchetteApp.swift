@@ -42,10 +42,13 @@ struct PlanchetteApp: App {
                     delegate.appState.importFrom(.terminalApp, windowID: nil)
                 }
             }
+            CommandGroup(after: .appInfo) {
+                Button(L10n.t(.checkForUpdates)) { delegate.updater.checkNow() }
+            }
         }
 
         Settings {
-            SettingsView()
+            SettingsView(updater: delegate.updater)
                 .environmentObject(delegate.appState)
         }
 
@@ -61,6 +64,7 @@ struct PlanchetteApp: App {
 
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject var updater: UpdateService
 
     var body: some View {
         Form {
@@ -85,20 +89,29 @@ struct SettingsView: View {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
             }
+            Section(L10n.t(.updates)) {
+                Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
+                    .help(L10n.t(.autoUpdateHelp))
+                Button(L10n.t(.checkForUpdates)) { updater.checkNow() }
+                    .disabled(updater.isChecking)
+            }
         }
         .formStyle(.grouped)
-        .frame(width: 380)
+        .frame(width: 400)
         .navigationTitle(L10n.t(.settingsTitle))
     }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let appState: AppState
+    let updater: UpdateService
     private var hookServer: HookServer?
     private(set) var isTerminating = false
 
     override init() {
-        self.appState = MainActor.assumeIsolated { AppState() }
+        let state = MainActor.assumeIsolated { AppState() }
+        self.appState = state
+        self.updater = MainActor.assumeIsolated { UpdateService(appState: state) }
         super.init()
     }
 
@@ -130,6 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let server = HookServer(appState: appState)
         server.start()
         hookServer = server
+
+        MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
