@@ -32,11 +32,42 @@ enum AppLanguage: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+import AppKit
+
+/// Light/dark/system appearance choice.
+enum AppAppearance: String, CaseIterable, Codable, Identifiable {
+    case system, light, dark
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .system: return L10n.t(.langSystem)
+        case .light: return L10n.t(.appearanceLight)
+        case .dark: return L10n.t(.appearanceDark)
+        }
+    }
+
+    /// The AppKit appearance to apply (nil = follow the system).
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+
+    func apply() {
+        NSApp.appearance = nsAppearance
+    }
+}
+
 /// Translation keys — compile-checked so a missing usage is caught, and a
 /// missing translation falls back to English, then to the raw key.
 enum LKey: String {
     // Languages / settings
     case langSystem, settingsTitle, language, appearance, aiSection
+    case appearanceLight, appearanceDark, appearanceHelp
 
     // Sidebar sections & group/session menus
     case mainProjects, projects, sideProjects
@@ -113,6 +144,7 @@ enum L10n {
     private static let en: [LKey: String] = [
         .langSystem: "System", .settingsTitle: "Settings", .language: "Language",
         .appearance: "Appearance", .aiSection: "AI",
+        .appearanceLight: "Light", .appearanceDark: "Dark", .appearanceHelp: "Light, dark, or follow the system",
         .mainProjects: "Main projects", .projects: "Projects", .sideProjects: "Side projects",
         .makeFavorite: "Mark as main project", .unmakeFavorite: "Remove main project",
         .color: "Color", .colorNone: "None", .rename: "Rename…",
@@ -169,6 +201,7 @@ enum L10n {
     private static let de: [LKey: String] = [
         .langSystem: "System", .settingsTitle: "Einstellungen", .language: "Sprache",
         .appearance: "Darstellung", .aiSection: "KI",
+        .appearanceLight: "Hell", .appearanceDark: "Dunkel", .appearanceHelp: "Hell, dunkel oder dem System folgen",
         .mainProjects: "Hauptprojekte", .projects: "Projekte", .sideProjects: "Side Projects",
         .makeFavorite: "Als Hauptprojekt", .unmakeFavorite: "Kein Hauptprojekt mehr",
         .color: "Farbe", .colorNone: "Keine", .rename: "Umbenennen…",
@@ -225,6 +258,7 @@ enum L10n {
     private static let fr: [LKey: String] = [
         .langSystem: "Système", .settingsTitle: "Réglages", .language: "Langue",
         .appearance: "Apparence", .aiSection: "IA",
+        .appearanceLight: "Clair", .appearanceDark: "Sombre", .appearanceHelp: "Clair, sombre ou suivre le système",
         .mainProjects: "Projets principaux", .projects: "Projets", .sideProjects: "Projets secondaires",
         .makeFavorite: "Définir comme projet principal", .unmakeFavorite: "Retirer des projets principaux",
         .color: "Couleur", .colorNone: "Aucune", .rename: "Renommer…",
@@ -281,6 +315,7 @@ enum L10n {
     private static let es: [LKey: String] = [
         .langSystem: "Sistema", .settingsTitle: "Ajustes", .language: "Idioma",
         .appearance: "Apariencia", .aiSection: "IA",
+        .appearanceLight: "Claro", .appearanceDark: "Oscuro", .appearanceHelp: "Claro, oscuro o seguir el sistema",
         .mainProjects: "Proyectos principales", .projects: "Proyectos", .sideProjects: "Proyectos secundarios",
         .makeFavorite: "Marcar como proyecto principal", .unmakeFavorite: "Quitar de principales",
         .color: "Color", .colorNone: "Ninguno", .rename: "Renombrar…",
@@ -337,6 +372,7 @@ enum L10n {
     private static let it: [LKey: String] = [
         .langSystem: "Sistema", .settingsTitle: "Impostazioni", .language: "Lingua",
         .appearance: "Aspetto", .aiSection: "IA",
+        .appearanceLight: "Chiaro", .appearanceDark: "Scuro", .appearanceHelp: "Chiaro, scuro o segui il sistema",
         .mainProjects: "Progetti principali", .projects: "Progetti", .sideProjects: "Progetti secondari",
         .makeFavorite: "Segna come progetto principale", .unmakeFavorite: "Rimuovi da principali",
         .color: "Colore", .colorNone: "Nessuno", .rename: "Rinomina…",
@@ -393,6 +429,7 @@ enum L10n {
     private static let nl: [LKey: String] = [
         .langSystem: "Systeem", .settingsTitle: "Instellingen", .language: "Taal",
         .appearance: "Weergave", .aiSection: "AI",
+        .appearanceLight: "Licht", .appearanceDark: "Donker", .appearanceHelp: "Licht, donker of het systeem volgen",
         .mainProjects: "Hoofdprojecten", .projects: "Projecten", .sideProjects: "Nevenprojecten",
         .makeFavorite: "Als hoofdproject markeren", .unmakeFavorite: "Hoofdproject verwijderen",
         .color: "Kleur", .colorNone: "Geen", .rename: "Hernoemen…",
@@ -449,6 +486,7 @@ enum L10n {
     private static let pt: [LKey: String] = [
         .langSystem: "Sistema", .settingsTitle: "Definições", .language: "Idioma",
         .appearance: "Aparência", .aiSection: "IA",
+        .appearanceLight: "Claro", .appearanceDark: "Escuro", .appearanceHelp: "Claro, escuro ou seguir o sistema",
         .mainProjects: "Projetos principais", .projects: "Projetos", .sideProjects: "Projetos secundários",
         .makeFavorite: "Marcar como projeto principal", .unmakeFavorite: "Remover dos principais",
         .color: "Cor", .colorNone: "Nenhuma", .rename: "Renomear…",

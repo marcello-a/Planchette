@@ -64,6 +64,15 @@ struct SettingsView: View {
                 }
                 .help(L10n.t(.languageHelp))
             }
+            Section(L10n.t(.appearance)) {
+                Picker(L10n.t(.appearance), selection: $appState.appearance) {
+                    ForEach(AppAppearance.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .help(L10n.t(.appearanceHelp))
+            }
             Section(L10n.t(.aiSection)) {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
@@ -88,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        MainActor.assumeIsolated { appState.appearance.apply() }
 
         MainActor.assumeIsolated {
             let saved = AppState.loadPersistedState()

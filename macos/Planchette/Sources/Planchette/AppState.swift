@@ -17,6 +17,12 @@ final class AppState: ObservableObject {
             scheduleSave()
         }
     }
+    @Published var appearance: AppAppearance = .system {
+        didSet {
+            appearance.apply()
+            scheduleSave()
+        }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -42,6 +48,7 @@ final class AppState: ObservableObject {
         if let saved = Self.loadPersistedState() {
             language = saved.language
             L10n.current = saved.language
+            appearance = saved.appearance
         }
         observeSurfaceNotifications()
     }
@@ -401,7 +408,8 @@ final class AppState: ObservableObject {
             sessions: Array(sessions.values),
             windows: windows,
             aiEnabled: aiEnabled,
-            language: language
+            language: language,
+            appearance: appearance
         )
         do {
             let encoder = JSONEncoder()
@@ -433,6 +441,7 @@ final class AppState: ObservableObject {
         }
         aiEnabled = state.aiEnabled
         language = state.language
+        appearance = state.appearance
         windowsToOpen = windows.dropFirst().map(\.id)
         // After a grace period, new surfaces are ordinary terminals again.
         Task { @MainActor in
@@ -454,8 +463,9 @@ final class AppState: ObservableObject {
         sessions = [:]
         windows = [WindowModel(id: Self.mainWindowID)]
         aiEnabled = previous?.aiEnabled ?? aiEnabled
-        // Keep the user's chosen language across a fresh start.
+        // Keep the user's chosen language and appearance across a fresh start.
         language = previous?.language ?? language
+        appearance = previous?.appearance ?? appearance
     }
 
     // MARK: Surface notifications (title / pwd / child exit)
