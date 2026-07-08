@@ -5,6 +5,7 @@ extension Notification.Name {
     static let planchetteSurfaceTitle = Notification.Name("planchette.surface.title")
     static let planchetteSurfacePwd = Notification.Name("planchette.surface.pwd")
     static let planchetteSurfaceChildExited = Notification.Name("planchette.surface.childExited")
+    static let planchetteCommandFinished = Notification.Name("planchette.surface.commandFinished")
 }
 
 /// libghostty runtime: one app instance, ticked on the main thread on wakeup.
@@ -129,6 +130,18 @@ final class GhosttyRuntime {
                 NotificationCenter.default.post(
                     name: .planchetteSurfacePwd, object: nil,
                     userInfo: ["sessionID": sessionID, "pwd": pwd])
+            }
+            return true
+
+        case GHOSTTY_ACTION_COMMAND_FINISHED:
+            // OSC 133 shell-integration exit code of the last command.
+            guard let view = view(for: target) else { return false }
+            let exitCode = Int(action.action.command_finished.exit_code)
+            let sessionID = view.sessionID
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .planchetteCommandFinished, object: nil,
+                    userInfo: ["sessionID": sessionID, "exitCode": exitCode])
             }
             return true
 

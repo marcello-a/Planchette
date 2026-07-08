@@ -67,6 +67,16 @@ struct SettingsView: View {
     @ObservedObject var updater: UpdateService
 
     var body: some View {
+        TabView {
+            general
+                .tabItem { Label(L10n.t(.generalTab), systemImage: "gearshape") }
+            InfoTab()
+                .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
+        }
+        .frame(width: 440)
+    }
+
+    private var general: some View {
         Form {
             Section(L10n.t(.language)) {
                 Picker(L10n.t(.language), selection: $appState.language) {
@@ -97,8 +107,40 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 400)
-        .navigationTitle(L10n.t(.settingsTitle))
+    }
+}
+
+/// Settings → Information: explains the status-color system.
+struct InfoTab: View {
+    private let states: [AttentionState] = [.ready, .running, .waiting, .error]
+
+    var body: some View {
+        Form {
+            Section(L10n.t(.colorLegendTitle)) {
+                Text(L10n.t(.colorLegendIntro)).foregroundStyle(.secondary)
+                ForEach(states, id: \.self) { state in
+                    HStack(alignment: .top, spacing: 10) {
+                        Circle().fill(state.tint).frame(width: 14, height: 14).padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(state.label).fontWeight(.semibold)
+                            Text(description(for: state))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func description(for state: AttentionState) -> String {
+        switch state {
+        case .ready: L10n.t(.readyDesc)
+        case .running: L10n.t(.runningDesc)
+        case .waiting: L10n.t(.waitingDesc)
+        case .error: L10n.t(.errorDesc)
+        }
     }
 }
 
@@ -149,6 +191,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // When the app is activated, guarantee a key window so keyboard input is
+        // delivered (the launch modal + window restoration can leave none).
+        if NSApp.keyWindow == nil {
+            NSApp.windows.first { $0.canBecomeKey && $0.isVisible }?.makeKeyAndOrderFront(nil)
+        }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         isTerminating = true
         MainActor.assumeIsolated { appState.saveNow() }
@@ -164,6 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("sidebarMinified") private var sidebarMinified = false
     let windowID: UUID
 
     private var resolvedWindow: WindowModel? { appState.window(for: windowID) }
@@ -174,7 +225,10 @@ struct ContentView: View {
             if let window = resolvedWindow {
                 NavigationSplitView {
                     SidebarView(windowID: window.id)
-                        .navigationSplitViewColumnWidth(min: 210, ideal: 250)
+                        .navigationSplitViewColumnWidth(
+                            min: sidebarMinified ? 60 : 210,
+                            ideal: sidebarMinified ? 60 : 250,
+                            max: sidebarMinified ? 72 : 400)
                 } detail: {
                     if let groupID = window.selectedGroupID,
                        let group = appState.groups.first(where: { $0.id == groupID }) {
@@ -199,9 +253,14 @@ struct ContentView: View {
                     for id in toOpen { openWindow(value: id) }
                     if !toOpen.isEmpty { appState.windowsToOpen = [] }
                 }
+            } else if isMainWindow {
+                // Main window's model isn't ready yet (first render before
+                // restore/sanitize) — never close it; show the welcome screen.
+                welcome
             } else {
-                // The window's model was merged away — nothing to show.
-                Text(L10n.t(.windowMerged)).padding()
+                // A stale non-main window restored by macOS with no backing
+                // model — close it so it can't sit blank and steal key focus.
+                Color.clear.background(PhantomWindowCloser())
             }
         }
     }
@@ -222,14 +281,6 @@ struct ContentView: View {
                 }
                 .help(L10n.t(.mergeIntoMainHelp))
             }
-        }
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                appState.promptNewTerminal(inWindow: window.id)
-            } label: {
-                Label(L10n.t(.newTerminal), systemImage: "plus")
-            }
-            .help(L10n.t(.newTerminalHelp))
         }
     }
 
@@ -256,25 +307,41 @@ struct ContentView: View {
     }
 }
 
+/// Closes a stale (macOS-restored) window that has no backing model.
+struct PhantomWindowCloser: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async { view.window?.close() }
+        return view
+    }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 /// Registers the hosting NSWindow in the WindowRegistry.
 struct WindowAccessor: NSViewRepresentable {
     let windowID: UUID
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        DispatchQueue.main.async {
-            if let window = view.window {
-                WindowRegistry.shared.register(windowID, window: window)
-            }
-        }
+        DispatchQueue.main.async { attach(view) }
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            if let window = nsView.window {
-                WindowRegistry.shared.register(windowID, window: window)
-            }
+        DispatchQueue.main.async { attach(nsView) }
+    }
+
+    private func attach(_ view: NSView) {
+        guard let window = view.window else { return }
+        // Stop macOS from restoring a blank duplicate window on next launch —
+        // Planchette manages its own windows from persisted state.
+        window.isRestorable = false
+        WindowRegistry.shared.register(windowID, window: window)
+        // After the launch modal + window restoration the app can end up with
+        // no key window, which drops all keyboard input. Claim key status for a
+        // real content window when none exists.
+        if NSApp.keyWindow == nil, window.canBecomeKey {
+            window.makeKeyAndOrderFront(nil)
         }
     }
 }
@@ -320,21 +387,23 @@ struct InboxToolbarButton: View {
     @State private var shown = false
 
     var body: some View {
+        let count = appState.attentionQueue.count
         Button {
             shown.toggle()
         } label: {
-            Label(L10n.t(.inbox), systemImage: "bell")
-                .overlay(alignment: .topTrailing) {
-                    let count = appState.attentionQueue.count
-                    if count > 0 {
-                        Text("\(count)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(3)
-                            .background(appState.askingCount > 0 ? .orange : .green, in: Circle())
-                            .offset(x: 7, y: -7)
-                    }
+            HStack(spacing: 4) {
+                // Count badge sits to the LEFT of the bell when something waits.
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(appState.errorCount > 0 ? .red : .blue, in: Capsule())
                 }
+                Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
+                    .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
+            }
         }
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             InboxView()
@@ -347,12 +416,12 @@ struct MenuBarLabel: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        let asking = appState.askingCount
-        let done = appState.doneCount
-        if asking == 0 && done == 0 {
+        let waiting = appState.waitingCount
+        let errors = appState.errorCount
+        if waiting == 0 && errors == 0 {
             Image(systemName: "moon.zzz")
         } else {
-            Text([asking > 0 ? "\(asking)❓" : nil, done > 0 ? "\(done)✅" : nil]
+            Text([errors > 0 ? "\(errors)🔴" : nil, waiting > 0 ? "\(waiting)🔵" : nil]
                 .compactMap(\.self).joined(separator: " "))
         }
     }
@@ -367,7 +436,7 @@ struct MenuBarContent: View {
             Text(L10n.t(.allQuietShort))
         } else {
             ForEach(queue) { session in
-                Button("\(session.state == .asking ? "❓" : "✅") \(session.displayTitle) — \(session.shortPath)") {
+                Button("\(session.state == .error ? "🔴" : "🔵") \(session.displayTitle) — \(session.shortPath)") {
                     NSApp.activate(ignoringOtherApps: true)
                     appState.select(session: session)
                 }
@@ -406,5 +475,32 @@ extension AppState {
         let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
         guard let windowID else { return }
         promptNewTerminal(inWindow: windowID)
+    }
+
+    /// Folder picker → always create a NEW project (group) with a first terminal.
+    func promptNewProject(inWindow windowID: UUID) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = L10n.t(.chooseFolder)
+        panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("development")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let dir = url.path
+        let group = addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
+        let session = addSession(directory: dir, groupID: group.id)
+        select(session: session)
+    }
+
+    /// Add a terminal to an existing group, in that group's folder.
+    func addTerminalToGroup(_ groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        // Use the folder of an existing session in the group, else the group name.
+        let dir = sessions(in: group).first?.currentDirectory
+            ?? sessions(in: group).first?.workingDirectory
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let session = addSession(directory: dir, groupID: groupID)
+        select(session: session)
     }
 }

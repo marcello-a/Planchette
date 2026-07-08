@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("sidebarMinified") private var minified = false
     let windowID: UUID
     @State private var isDropTargeted = false
 
@@ -17,6 +18,43 @@ struct SidebarView: View {
     var body: some View {
         let windowGroups = appState.window(for: windowID).map { appState.groups(inWindow: $0) } ?? []
         VStack(spacing: 0) {
+            if minified {
+                minifiedRail(windowGroups)
+            } else {
+                fullList(windowGroups)
+            }
+            SidebarBottomBar(windowID: windowID)
+        }
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+        }
+    }
+
+    // MARK: Full list
+
+    @ViewBuilder
+    private func fullList(_ windowGroups: [SessionGroup]) -> some View {
+        VStack(spacing: 0) {
+            // Header row: title + add-project + collapse.
+            HStack(spacing: 6) {
+                Text(L10n.t(.projects)).font(.headline)
+                Button {
+                    appState.promptNewProject(inWindow: windowID)
+                } label: { Image(systemName: "plus") }
+                    .buttonStyle(.plain)
+                    .help(L10n.t(.newProjectHelp))
+                Spacer()
+                Button { minified = true } label: {
+                    Image(systemName: "sidebar.leading")
+                }
+                .buttonStyle(.plain)
+                .help(L10n.t(.minifySidebar))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
+
             List(selection: selectionBinding) {
                 let favorites = windowGroups.filter(\.favorite)
                 let normal = windowGroups.filter { !$0.favorite }
@@ -45,12 +83,60 @@ struct SidebarView: View {
                         .allowsHitTesting(false)
                 }
             }
+        }
+    }
 
-            SidebarBottomBar(windowID: windowID)
+    // MARK: Minified rail
+
+    @ViewBuilder
+    private func minifiedRail(_ windowGroups: [SessionGroup]) -> some View {
+        VStack(spacing: 0) {
+            Button { minified = false } label: {
+                Image(systemName: "sidebar.leading")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L10n.t(.expandSidebar))
+            .padding(.vertical, 8)
+
+            ScrollView {
+                VStack(spacing: 6) {
+                    ForEach(windowGroups) { group in
+                        ForEach(appState.sessions(in: group)) { session in
+                            minifiedItem(session)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            Spacer(minLength: 0)
         }
-        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-            handleDrop(providers)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func minifiedItem(_ session: TerminalSession) -> some View {
+        let isSelected = appState.window(for: windowID)?.selectedGroupID == session.groupID
+            && appState.groups.first { $0.id == session.groupID }?.activeSessionID == session.id
+        return Button {
+            appState.select(session: session)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(session.state.tint)
+                    .frame(width: 24, height: 24)
+                Image(systemName: session.state.symbol)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay(
+                Circle().strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 2)
+            )
+            .padding(4)
+            .background(isSelected ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
+                        in: RoundedRectangle(cornerRadius: 7))
         }
+        .buttonStyle(.plain)
+        .help("\(session.displayTitle) — \(session.state.label)\n\(session.currentDirectory)")
     }
 
     /// Accept folders dropped from Finder (or a terminal's proxy icon) and open
@@ -144,6 +230,10 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .help(sessionTooltip(session))
         .contextMenu {
+            if session.state.needsAttention {
+                Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+                Divider()
+            }
             TagMenu(session: session)
             Divider()
             Button(L10n.t(.rename)) { rename(session: session) }
@@ -166,16 +256,16 @@ struct SidebarView: View {
 
     private func attentionSummary(_ group: SessionGroup) -> some View {
         let sessions = appState.sessions(in: group)
-        let asking = sessions.filter { $0.state == .asking }.count
-        let done = sessions.filter { $0.state == .done }.count
+        let waiting = sessions.filter { $0.state == .waiting }.count
+        let errors = sessions.filter { $0.state == .error }.count
         return HStack(spacing: 4) {
-            if asking > 0 {
-                Text("\(asking)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.orange.opacity(0.8), in: Capsule()).foregroundStyle(.white)
+            if errors > 0 {
+                Text("\(errors)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(.red.opacity(0.85), in: Capsule()).foregroundStyle(.white)
             }
-            if done > 0 {
-                Text("\(done)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.green.opacity(0.8), in: Capsule()).foregroundStyle(.white)
+            if waiting > 0 {
+                Text("\(waiting)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(.blue.opacity(0.85), in: Capsule()).foregroundStyle(.white)
             }
         }
     }
@@ -236,39 +326,17 @@ struct SidebarView: View {
 struct SidebarBottomBar: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
     let windowID: UUID
 
     var body: some View {
         HStack(spacing: 2) {
-            // AI assist toggle (compact icon form).
-            Button {
-                appState.aiEnabled.toggle()
-            } label: {
-                Image(systemName: appState.aiEnabled ? "sparkles" : "sparkles.slash")
-                    .foregroundStyle(appState.aiEnabled ? Color.green : Color.secondary)
-                    .frame(width: 26, height: 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(appState.aiEnabled ? Color.green.opacity(0.18) : Color.clear)
-                    )
-            }
-            .buttonStyle(.plain)
-            .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
-
-            barButton("gearshape", help: L10n.t(.settingsHelp)) { openSettings() }
-            barButton("macwindow.badge.plus", help: L10n.t(.newWindowHelp)) {
-                openWindow(value: appState.newWindow())
-            }
-
-            Spacer()
-
-            barButton("command", help: L10n.t(.quickSwitcherHelp)) {
+            // Search / quick switcher (far left).
+            barButton("magnifyingglass", help: L10n.t(.quickSwitcherHelp)) {
                 appState.showQuickSwitcher()
             }
-            barButton("plus.rectangle", help: L10n.t(.newTerminalHelp)) {
-                appState.promptNewTerminal(inWindow: windowID)
-            }
+            Spacer()
+            // Settings (far right).
+            barButton("gearshape", help: L10n.t(.settingsHelp)) { openSettings() }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

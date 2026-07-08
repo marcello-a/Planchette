@@ -34,10 +34,10 @@ struct QuickSwitcherView: View {
     private func urgencyScore(_ session: TerminalSession) -> Int {
         let favorite = appState.group(of: session)?.favorite == true
         switch (session.state, favorite) {
-        case (.asking, true): return 5
-        case (.done, true): return 4
-        case (.asking, false): return 3
-        case (.done, false): return 2
+        case (.error, true): return 6
+        case (.waiting, true): return 5
+        case (.error, false): return 4
+        case (.waiting, false): return 3
         default: return favorite ? 1 : 0
         }
     }

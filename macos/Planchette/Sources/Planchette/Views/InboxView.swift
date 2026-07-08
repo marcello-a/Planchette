@@ -51,9 +51,9 @@ struct InboxView: View {
                         Spacer()
                         WaitingTimeText(since: session.stateSince)
                     }
-                    Text(session.state == .asking
+                    Text(session.state == .waiting
                         ? (session.lastMessage ?? L10n.t(.waitingForAnswer))
-                        : L10n.t(.doneSeeResult))
+                        : L10n.t(.errorOccurred))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

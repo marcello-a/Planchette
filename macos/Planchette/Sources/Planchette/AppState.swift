@@ -160,8 +160,8 @@ final class AppState: ObservableObject {
         groups.first { $0.id == session.groupID }
     }
 
-    /// Inbox: everything needing attention. Favorites first, asking before
-    /// done, longest-waiting first.
+    /// Inbox: everything needing attention. Favorites first, errors before
+    /// waiting, longest-waiting first.
     var attentionQueue: [TerminalSession] {
         sessions.values
             .filter { $0.state.needsAttention }
@@ -169,13 +169,13 @@ final class AppState: ObservableObject {
                 let aFav = group(of: a)?.favorite ?? false
                 let bFav = group(of: b)?.favorite ?? false
                 if aFav != bFav { return aFav }
-                if a.state != b.state { return a.state == .asking }
+                if a.state != b.state { return a.state == .error }
                 return a.stateSince < b.stateSince
             }
     }
 
-    var askingCount: Int { sessions.values.filter { $0.state == .asking }.count }
-    var doneCount: Int { sessions.values.filter { $0.state == .done }.count }
+    var waitingCount: Int { sessions.values.filter { $0.state == .waiting }.count }
+    var errorCount: Int { sessions.values.filter { $0.state == .error }.count }
 
     // MARK: Mutations
 
@@ -256,10 +256,20 @@ final class AppState: ObservableObject {
         quickSwitcherWindowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
     }
 
-    /// The user focused this terminal: asking → they're answering, done → seen.
-    func sessionWasAttended(_ id: UUID) {
-        guard let session = sessions[id], session.state.needsAttention else { return }
-        setState(id, session.state == .asking ? .working : .free)
+    /// Focusing a terminal does NOT clear its attention state — a glance isn't
+    /// an answer. `waiting`/`error` persist until the agent moves on (a hook or
+    /// command result) or the user explicitly marks it ready.
+    func markReady(_ id: UUID) {
+        setState(id, .ready)
+    }
+
+    /// OSC 133: the last shell command finished. Non-zero exit → error (red),
+    /// otherwise ready (green). Ignored while an agent turn is active so it
+    /// doesn't stomp running/waiting.
+    func commandFinished(_ id: UUID, exitCode: Int) {
+        guard let session = sessions[id] else { return }
+        if session.state == .running || session.state == .waiting { return }
+        setState(id, exitCode > 0 ? .error : .ready)
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
@@ -289,16 +299,16 @@ final class AppState: ObservableObject {
         }
         switch hookEvent {
         case "UserPromptSubmit":
-            setState(sessionID, .working)
+            setState(sessionID, .running)
         case "Notification", "PermissionRequest":
-            setState(sessionID, .asking, message: message)
+            setState(sessionID, .waiting, message: message)
             postUserNotification(sessionID: sessionID, message: message)
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
-            setState(sessionID, .done)
+            setState(sessionID, .ready)
             aiAssist.sessionUpdated(sessionID)
         case "SessionEnd":
-            setState(sessionID, .free)
+            setState(sessionID, .ready)
         case "SessionStart":
             break // claudeSessionID captured above
         default:
@@ -551,6 +561,11 @@ final class AppState: ObservableObject {
         center.addObserver(forName: .planchetteSurfaceChildExited, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID else { return }
             Task { @MainActor in self?.closeSession(id) }
+        }
+        center.addObserver(forName: .planchetteCommandFinished, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["sessionID"] as? UUID,
+                  let exitCode = note.userInfo?["exitCode"] as? Int else { return }
+            Task { @MainActor in self?.commandFinished(id, exitCode: exitCode) }
         }
     }
 }

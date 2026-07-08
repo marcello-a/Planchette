@@ -37,6 +37,15 @@ struct TerminalAreaView: View {
                     ForEach(sessions) { session in
                         tab(session, isActive: session.id == activeSession(sessions)?.id)
                     }
+                    // Add a terminal in this project's folder.
+                    Button {
+                        appState.addTerminalToGroup(group.id)
+                    } label: {
+                        Image(systemName: "plus")
+                            .padding(.horizontal, 6).padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.t(.addTerminalHelp))
                 }
                 .padding(.horizontal, 8)
             }

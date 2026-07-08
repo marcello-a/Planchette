@@ -146,28 +146,35 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     // MARK: Keyboard
+    //
+    // Direct key handling: send the event's characters to the surface on press,
+    // and keycode-only for control/navigation keys. This is the approach that
+    // works reliably inside our SwiftUI embedding — adopting NSTextInputClient
+    // here caused AppKit's input context to swallow key events before keyDown.
+    // Known limitation: press-and-hold accent picker / CJK IME composition
+    // aren't supported (direct keys, incl. German umlauts, work fine).
 
     override func keyDown(with event: NSEvent) {
-        handleKey(event: event, action: GHOSTTY_ACTION_PRESS)
+        sendKey(event: event, action: GHOSTTY_ACTION_PRESS)
     }
 
     override func keyUp(with event: NSEvent) {
-        handleKey(event: event, action: GHOSTTY_ACTION_RELEASE)
+        sendKey(event: event, action: GHOSTTY_ACTION_RELEASE)
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Let app-level shortcuts (⌘K, ⌘N, …) through; feed everything else
-        // (⌘C/⌘V/… have ghostty bindings) to the surface.
+        // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus; feed the
+        // rest to the surface (⌘C/⌘V etc. have ghostty bindings).
         guard event.modifierFlags.contains(.command) else { return false }
         let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
         if let chars = event.charactersIgnoringModifiers, appShortcuts.contains(chars) {
             return false
         }
-        handleKey(event: event, action: GHOSTTY_ACTION_PRESS)
+        sendKey(event: event, action: GHOSTTY_ACTION_PRESS)
         return true
     }
 
-    private func handleKey(event: NSEvent, action: ghostty_input_action_e) {
+    private func sendKey(event: NSEvent, action: ghostty_input_action_e) {
         guard let surface else { return }
 
         var key = ghostty_input_key_s()
@@ -178,8 +185,8 @@ final class GhosttySurfaceNSView: NSView {
         key.unshifted_codepoint = 0
         key.composing = false
 
-        // Provide text only for printable input; libghostty encodes the rest
-        // from keycode + modifiers.
+        // Provide text only for printable presses; libghostty encodes control
+        // and navigation keys from the keycode + modifiers itself.
         var text: String? = nil
         if action == GHOSTTY_ACTION_PRESS,
            !event.modifierFlags.contains(.command),
@@ -232,7 +239,8 @@ final class TerminalRegistry {
             initialInput: initialInput
         )
         let id = session.id
-        view.onFocus = { [weak appState] in appState?.sessionWasAttended(id) }
+        // Focusing must not clear attention state (a glance isn't an answer).
+        view.onFocus = nil
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }
             let window = appState.windowContaining(groupID: session.groupID)
@@ -256,13 +264,31 @@ struct TerminalHostView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let view = TerminalRegistry.shared.view(for: session, appState: appState) ?? NSView()
-        if autoFocus {
-            DispatchQueue.main.async {
-                view.window?.makeFirstResponder(view)
-            }
-        }
+        focusIfActive(view)
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    // SwiftUI re-runs updateNSView when the observed state (selection) changes,
+    // so this reliably moves focus to whichever terminal just became active —
+    // covering restore, tab switches, and quick-switcher jumps where a single
+    // makeFirstResponder at creation time races ahead of the selection.
+    func updateNSView(_ nsView: NSView, context: Context) {
+        focusIfActive(nsView)
+    }
+
+    private func focusIfActive(_ view: NSView) {
+        guard autoFocus, let surfaceView = view as? GhosttySurfaceNSView else { return }
+        DispatchQueue.main.async {
+            guard let window = surfaceView.window, surfaceView.isActive() else { return }
+            // Ensure a key window exists so keystrokes are delivered at all
+            // (after the launch modal + window restoration the app can end up
+            // with no key window).
+            if NSApp.keyWindow == nil, window.canBecomeKey {
+                window.makeKeyAndOrderFront(nil)
+            }
+            if window.firstResponder !== surfaceView {
+                window.makeFirstResponder(surfaceView)
+            }
+        }
+    }
 }

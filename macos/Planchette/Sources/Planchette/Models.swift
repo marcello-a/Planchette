@@ -1,32 +1,55 @@
 import SwiftUI
 
 /// Attention state of a terminal session — the heart of Planchette.
+/// Color system: green = ready for input, purple = running,
+/// blue = waiting for your input, red = error.
 enum AttentionState: String, Codable {
-    case working  // agent/process is busy
-    case asking   // Claude asked a question / needs permission
-    case done     // Claude finished its turn
-    case free     // nothing needs this terminal
+    case ready    // green  — idle at the prompt / finished, ready for input
+    case running  // purple — an agent or command is running
+    case waiting  // blue   — waiting for YOUR input (question / permission)
+    case error    // red    — the last command or agent exited with an error
 
     var symbol: String {
         switch self {
-        case .working: "circle.dotted"
-        case .asking: "questionmark.bubble.fill"
-        case .done: "checkmark.circle.fill"
-        case .free: "moon.zzz"
+        case .ready: "circle.fill"
+        case .running: "circle.dotted"
+        case .waiting: "questionmark.bubble.fill"
+        case .error: "exclamationmark.triangle.fill"
         }
     }
 
     var tint: Color {
         switch self {
-        case .working: .blue
-        case .asking: .orange
-        case .done: .green
-        case .free: .secondary
+        case .ready: .green
+        case .running: .purple
+        case .waiting: .blue
+        case .error: .red
+        }
+    }
+
+    /// Localized name for the settings legend / inbox.
+    var label: String {
+        switch self {
+        case .ready: L10n.t(.stateReady)
+        case .running: L10n.t(.stateRunning)
+        case .waiting: L10n.t(.stateWaiting)
+        case .error: L10n.t(.stateError)
         }
     }
 
     /// Does this state belong in the attention inbox?
-    var needsAttention: Bool { self == .asking || self == .done }
+    var needsAttention: Bool { self == .waiting || self == .error }
+
+    /// Migrate v0.1.x raw values ("working/asking/done/free") to the new set.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        switch raw {
+        case "running", "working": self = .running
+        case "waiting", "asking": self = .waiting
+        case "error": self = .error
+        default: self = .ready   // "ready", "done", "free", or anything unknown
+        }
+    }
 }
 
 /// Named palette so colors persist as stable strings.
@@ -68,7 +91,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var resumeClaudeOnRestore: Bool = true
 
     // Attention (persisted so a restart doesn't lose the inbox)
-    var state: AttentionState = .free
+    var state: AttentionState = .ready
     var stateSince: Date = .init()
     var lastMessage: String?
 
@@ -103,7 +126,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
-        state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .free
+        state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .ready
         stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []

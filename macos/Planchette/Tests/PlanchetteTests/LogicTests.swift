@@ -72,10 +72,24 @@ final class UpdateSecurityTests: XCTestCase {
 
 final class AttentionStateTests: XCTestCase {
     func testNeedsAttention() {
-        XCTAssertTrue(AttentionState.asking.needsAttention)
-        XCTAssertTrue(AttentionState.done.needsAttention)
-        XCTAssertFalse(AttentionState.working.needsAttention)
-        XCTAssertFalse(AttentionState.free.needsAttention)
+        XCTAssertTrue(AttentionState.waiting.needsAttention)
+        XCTAssertTrue(AttentionState.error.needsAttention)
+        XCTAssertFalse(AttentionState.running.needsAttention)
+        XCTAssertFalse(AttentionState.ready.needsAttention)
+    }
+
+    func testDecodesLegacyRawValues() throws {
+        func decode(_ raw: String) throws -> AttentionState {
+            try JSONDecoder().decode(AttentionState.self, from: Data("\"\(raw)\"".utf8))
+        }
+        // v0.1.x values migrate to the new color-system states.
+        XCTAssertEqual(try decode("working"), .running)
+        XCTAssertEqual(try decode("asking"), .waiting)
+        XCTAssertEqual(try decode("done"), .ready)
+        XCTAssertEqual(try decode("free"), .ready)
+        // New values round-trip; unknown falls back to ready.
+        XCTAssertEqual(try decode("error"), .error)
+        XCTAssertEqual(try decode("bogus"), .ready)
     }
 }
 
