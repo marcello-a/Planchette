@@ -158,17 +158,20 @@ struct PersistedState: Codable {
     var windows: [WindowModel] = []
     var selectedGroupID: UUID?   // legacy (pre-multi-window)
     var aiEnabled: Bool = false
+    var language: AppLanguage = .system
 
     init(
         groups: [SessionGroup],
         sessions: [TerminalSession],
         windows: [WindowModel],
-        aiEnabled: Bool
+        aiEnabled: Bool,
+        language: AppLanguage
     ) {
         self.groups = groups
         self.sessions = sessions
         self.windows = windows
         self.aiEnabled = aiEnabled
+        self.language = language
     }
 
     init(from decoder: Decoder) throws {
@@ -178,5 +181,6 @@ struct PersistedState: Codable {
         windows = try c.decodeIfPresent([WindowModel].self, forKey: .windows) ?? []
         selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
         aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
+        language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
     }
 }

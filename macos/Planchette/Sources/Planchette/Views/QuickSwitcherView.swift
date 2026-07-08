@@ -53,7 +53,7 @@ struct QuickSwitcherView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            TextField("Titel, Pfad, Branch, Gruppe…", text: $query)
+            TextField(L10n.t(.switcherPlaceholder), text: $query)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .padding(12)

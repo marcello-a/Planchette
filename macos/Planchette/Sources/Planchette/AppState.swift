@@ -11,6 +11,12 @@ final class AppState: ObservableObject {
     @Published var aiEnabled = false {
         didSet { scheduleSave() }
     }
+    @Published var language: AppLanguage = .system {
+        didSet {
+            L10n.current = language
+            scheduleSave()
+        }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -31,6 +37,12 @@ final class AppState: ObservableObject {
     }()
 
     init() {
+        // Load the persisted language before any SwiftUI scene (incl. menus)
+        // is built, so the whole UI launches in the right language.
+        if let saved = Self.loadPersistedState() {
+            language = saved.language
+            L10n.current = saved.language
+        }
         observeSurfaceNotifications()
     }
 
@@ -388,7 +400,8 @@ final class AppState: ObservableObject {
             groups: groups,
             sessions: Array(sessions.values),
             windows: windows,
-            aiEnabled: aiEnabled
+            aiEnabled: aiEnabled,
+            language: language
         )
         do {
             let encoder = JSONEncoder()
@@ -419,6 +432,7 @@ final class AppState: ObservableObject {
             windows[0].selectedGroupID = state.selectedGroupID ?? windows[0].groupIDs.first
         }
         aiEnabled = state.aiEnabled
+        language = state.language
         windowsToOpen = windows.dropFirst().map(\.id)
         // After a grace period, new surfaces are ordinary terminals again.
         Task { @MainActor in
@@ -439,7 +453,9 @@ final class AppState: ObservableObject {
         groups = []
         sessions = [:]
         windows = [WindowModel(id: Self.mainWindowID)]
-        aiEnabled = previous?.aiEnabled ?? false
+        aiEnabled = previous?.aiEnabled ?? aiEnabled
+        // Keep the user's chosen language across a fresh start.
+        language = previous?.language ?? language
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

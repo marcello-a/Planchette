@@ -8,14 +8,14 @@ struct InboxView: View {
     var body: some View {
         let queue = appState.attentionQueue
         VStack(alignment: .leading, spacing: 0) {
-            Text("Aufmerksamkeit")
+            Text(L10n.t(.attention))
                 .font(.headline)
                 .padding(10)
             Divider()
             if queue.isEmpty {
                 HStack {
                     Image(systemName: "moon.zzz")
-                    Text("Alles ruhig — nichts wartet auf dich.")
+                    Text(L10n.t(.allQuiet))
                 }
                 .foregroundStyle(.secondary)
                 .padding(14)
@@ -52,8 +52,8 @@ struct InboxView: View {
                         WaitingTimeText(since: session.stateSince)
                     }
                     Text(session.state == .asking
-                        ? (session.lastMessage ?? "Wartet auf eine Antwort")
-                        : "Fertig — Ergebnis ansehen")
+                        ? (session.lastMessage ?? L10n.t(.waitingForAnswer))
+                        : L10n.t(.doneSeeResult))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)

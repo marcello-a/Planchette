@@ -17,3 +17,6 @@ xcuserdata/
 
 # Local toolchain
 .tooling/
+
+# SwiftPM build dir
+macos/*/.build/

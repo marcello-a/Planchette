@@ -89,7 +89,8 @@ struct TerminalAreaView: View {
         .contextMenu {
             TagMenu(session: session)
             Divider()
-            Button("Schließen", role: .destructive) { appState.closeSession(session.id) }
+            Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
+                .help(L10n.t(.closeHelp))
         }
     }
 
@@ -128,8 +129,8 @@ struct TerminalAreaView: View {
     private var emptyHint: some View {
         VStack(spacing: 10) {
             Image(systemName: "ghost").font(.largeTitle)
-            Text("Keine Terminals in dieser Gruppe")
-            Text("⌘T öffnet ein neues Terminal").foregroundStyle(.secondary)
+            Text(L10n.t(.noTerminalsInGroup))
+            Text(L10n.t(.newTerminalHint)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

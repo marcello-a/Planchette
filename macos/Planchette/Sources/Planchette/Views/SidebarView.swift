@@ -19,11 +19,11 @@ struct SidebarView: View {
             let normal = windowGroups.filter { !$0.favorite }
 
             if !favorites.isEmpty {
-                Section("Hauptprojekte") {
+                Section(L10n.t(.mainProjects)) {
                     ForEach(favorites) { group in groupRow(group) }
                 }
             }
-            Section(favorites.isEmpty ? "Projekte" : "Side Projects") {
+            Section(favorites.isEmpty ? L10n.t(.projects) : L10n.t(.sideProjects)) {
                 ForEach(normal) { group in groupRow(group) }
             }
         }
@@ -48,17 +48,19 @@ struct SidebarView: View {
                 attentionSummary(group)
             }
             .contextMenu {
-                Button(group.favorite ? "Kein Hauptprojekt mehr" : "Als Hauptprojekt") {
+                Button(group.favorite ? L10n.t(.unmakeFavorite) : L10n.t(.makeFavorite)) {
                     appState.updateGroup(group.id) { $0.favorite.toggle() }
                 }
+                .help(L10n.t(.favoriteHelp))
                 colorPicker(current: group.color) { color in
                     appState.updateGroup(group.id) { $0.color = color }
                 }
-                Button("Umbenennen…") { rename(group: group) }
+                Button(L10n.t(.rename)) { rename(group: group) }
                 Divider()
-                Button("In neues Fenster verschieben") {
+                Button(L10n.t(.moveToNewWindow)) {
                     openWindow(value: appState.moveGroupToNewWindow(group.id))
                 }
+                .help(L10n.t(.moveToNewWindowHelp))
             }
         }
         .tag(group.id)
@@ -94,13 +96,14 @@ struct SidebarView: View {
         .contextMenu {
             TagMenu(session: session)
             Divider()
-            Button("Umbenennen…") { rename(session: session) }
+            Button(L10n.t(.rename)) { rename(session: session) }
             colorPicker(current: session.color) { color in
                 appState.update(session.id) { $0.color = color }
             }
-            Button("Startup-Command…") { editStartupCommand(session: session) }
+            Button(L10n.t(.startupCommand)) { editStartupCommand(session: session) }
+                .help(L10n.t(.startupCommandHelp))
             Divider()
-            Button("Schließen", role: .destructive) { appState.closeSession(session.id) }
+            Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
         }
     }
 
@@ -129,35 +132,36 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func colorPicker(current: SessionColor, apply: @escaping (SessionColor) -> Void) -> some View {
-        Menu("Farbe") {
+        Menu(L10n.t(.color)) {
             ForEach(SessionColor.allCases) { option in
                 Button {
                     apply(option)
                 } label: {
                     HStack {
-                        Text(option == .none ? "Keine" : option.rawValue.capitalized)
+                        Text(option == .none ? L10n.t(.colorNone) : option.rawValue.capitalized)
                         if option == current { Image(systemName: "checkmark") }
                     }
                 }
             }
         }
+        .help(L10n.t(.colorHelp))
     }
 
     private func rename(group: SessionGroup) {
-        prompt(title: "Gruppe umbenennen", value: group.name) { name in
+        prompt(title: L10n.t(.renameGroup), value: group.name) { name in
             appState.updateGroup(group.id) { $0.name = name }
         }
     }
 
     private func rename(session: TerminalSession) {
-        prompt(title: "Terminal umbenennen", value: session.customTitle ?? "") { name in
+        prompt(title: L10n.t(.renameTerminal), value: session.customTitle ?? "") { name in
             appState.update(session.id) { $0.customTitle = name.isEmpty ? nil : name }
         }
     }
 
     private func editStartupCommand(session: TerminalSession) {
         prompt(
-            title: "Startup-Command (läuft nach einem Restore erneut)",
+            title: L10n.t(.startupCommandPrompt),
             value: session.startupCommand ?? ""
         ) { command in
             appState.update(session.id) { $0.startupCommand = command.isEmpty ? nil : command }
@@ -167,8 +171,8 @@ struct SidebarView: View {
     private func prompt(title: String, value: String, apply: @escaping (String) -> Void) {
         let alert = NSAlert()
         alert.messageText = title
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.addButton(withTitle: L10n.t(.cancel))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         field.stringValue = value
         alert.accessoryView = field
@@ -192,8 +196,8 @@ struct WaitingTimeText: View {
 
     static func format(_ interval: TimeInterval) -> String {
         let minutes = Int(interval / 60)
-        if minutes < 1 { return "jetzt" }
-        if minutes < 60 { return "\(minutes) min" }
-        return "\(minutes / 60) h \(minutes % 60) min"
+        if minutes < 1 { return L10n.t(.now) }
+        if minutes < 60 { return L10n.t(.minutesShort, minutes) }
+        return L10n.t(.hoursShort, minutes / 60, minutes % 60)
     }
 }

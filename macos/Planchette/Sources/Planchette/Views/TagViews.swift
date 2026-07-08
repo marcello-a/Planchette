@@ -26,7 +26,7 @@ struct TagMenu: View {
     let session: TerminalSession
 
     var body: some View {
-        Menu("Tags") {
+        Menu(L10n.t(.tags)) {
             ForEach(appState.knownTags, id: \.self) { tag in
                 Button {
                     appState.toggleTag(tag, on: session.id)
@@ -38,22 +38,23 @@ struct TagMenu: View {
                 }
             }
             Divider()
-            Button("Neues Tag…") { promptNewTag() }
+            Button(L10n.t(.newTag)) { promptNewTag() }
             if !session.tags.isEmpty {
-                Button("Alle entfernen") {
+                Button(L10n.t(.removeAllTags)) {
                     appState.update(session.id) { $0.tags = [] }
                 }
             }
         }
+        .help(L10n.t(.tagsHelp))
     }
 
     private func promptNewTag() {
         let alert = NSAlert()
-        alert.messageText = "Neues Tag"
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.messageText = L10n.t(.newTagTitle)
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.addButton(withTitle: L10n.t(.cancel))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        field.placeholderString = "z.B. to test"
+        field.placeholderString = "to test"
         alert.accessoryView = field
         if alert.runModal() == .alertFirstButtonReturn {
             let tag = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()

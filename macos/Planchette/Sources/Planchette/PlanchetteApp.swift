@@ -17,23 +17,28 @@ struct PlanchetteApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Neues Fenster") {
+                Button(L10n.t(.newWindow)) {
                     openWindow(value: delegate.appState.newWindow())
                 }
                 .keyboardShortcut("n")
             }
-            CommandMenu("Session") {
-                Button("Neues Terminal…") { delegate.appState.promptNewTerminalInKeyWindow() }
+            CommandMenu(L10n.t(.sessionMenu)) {
+                Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
                     .keyboardShortcut("t")
-                Button("Quick Switcher") { delegate.appState.showQuickSwitcher() }
+                Button(L10n.t(.quickSwitcher)) { delegate.appState.showQuickSwitcher() }
                     .keyboardShortcut("k")
-                Button("Zur wartenden Session") { delegate.appState.jumpToNextWaiting() }
+                Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
             }
-            CommandMenu("KI") {
+            CommandMenu(L10n.t(.aiMenu)) {
                 AIMenu()
                     .environmentObject(delegate.appState)
             }
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(delegate.appState)
         }
 
         MenuBarExtra {
@@ -43,6 +48,30 @@ struct PlanchetteApp: App {
             MenuBarLabel()
                 .environmentObject(delegate.appState)
         }
+    }
+}
+
+struct SettingsView: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Form {
+            Section(L10n.t(.language)) {
+                Picker(L10n.t(.language), selection: $appState.language) {
+                    ForEach(AppLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .help(L10n.t(.languageHelp))
+            }
+            Section(L10n.t(.aiSection)) {
+                Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
+                    .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
+            }
+        }
+        .formStyle(.grouped)
+        .frame(width: 380)
+        .navigationTitle(L10n.t(.settingsTitle))
     }
 }
 
@@ -62,15 +91,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         MainActor.assumeIsolated {
             let saved = AppState.loadPersistedState()
+            // Localize the dialog in the previously chosen language.
+            L10n.current = saved?.language ?? .system
             if let saved, !saved.sessions.isEmpty {
                 let alert = NSAlert()
-                alert.messageText = "Letzte Sitzung wiederherstellen?"
-                alert.informativeText = """
-                \(saved.sessions.count) Terminal(s) in \(saved.groups.count) Gruppe(n). \
-                Claude-Sessions werden fortgesetzt, Startup-Commands laufen erneut an.
-                """
-                alert.addButton(withTitle: "Wiederherstellen")
-                alert.addButton(withTitle: "Neu starten")
+                alert.messageText = L10n.t(.restoreTitle)
+                alert.informativeText = L10n.t(.restoreBody, saved.sessions.count, saved.groups.count)
+                alert.addButton(withTitle: L10n.t(.restore))
+                alert.addButton(withTitle: L10n.t(.startFresh))
                 if alert.runModal() == .alertFirstButtonReturn {
                     appState.applyRestore(saved)
                 } else {
@@ -138,7 +166,7 @@ struct ContentView: View {
                 }
             } else {
                 // The window's model was merged away — nothing to show.
-                Text("Fenster wurde zusammengeführt").padding()
+                Text(L10n.t(.windowMerged)).padding()
             }
         }
     }
@@ -147,12 +175,10 @@ struct ContentView: View {
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Toggle(isOn: $appState.aiEnabled) {
-                Label("KI-Assistenz", systemImage: appState.aiEnabled ? "sparkles" : "sparkles.slash")
+                Label(L10n.t(.aiAssist), systemImage: appState.aiEnabled ? "sparkles" : "sparkles.slash")
             }
             .toggleStyle(.button)
-            .help(appState.aiEnabled
-                ? "KI-Assistenz aktiv: Sessions werden zusammengefasst und geordnet"
-                : "KI-Assistenz aus")
+            .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
         }
         ToolbarItem(placement: .primaryAction) {
             InboxToolbarButton()
@@ -164,18 +190,18 @@ struct ContentView: View {
                     appState.mergeWindow(id, into: appState.windows.first?.id)
                     WindowRegistry.shared.close(id)
                 } label: {
-                    Label("In Hauptfenster mergen", systemImage: "rectangle.stack")
+                    Label(L10n.t(.mergeIntoMain), systemImage: "rectangle.stack")
                 }
-                .help("Alle Gruppen dieses Fensters ins Hauptfenster verschieben")
+                .help(L10n.t(.mergeIntoMainHelp))
             }
         }
         ToolbarItem(placement: .primaryAction) {
             Button {
                 appState.promptNewTerminal(inWindow: window.id)
             } label: {
-                Label("Neues Terminal", systemImage: "plus")
+                Label(L10n.t(.newTerminal), systemImage: "plus")
             }
-            .help("Neues Terminal (⌘T)")
+            .help(L10n.t(.newTerminalHelp))
         }
     }
 
@@ -190,9 +216,9 @@ struct ContentView: View {
         VStack(spacing: 12) {
             Text("🔮").font(.system(size: 56))
             Text("Planchette").font(.largeTitle.bold())
-            Text("points you to the session that speaks")
+            Text(L10n.t(.tagline))
                 .foregroundStyle(.secondary)
-            Button("Erstes Terminal öffnen (⌘T)") {
+            Button(L10n.t(.openFirstTerminal)) {
                 if let id = resolvedWindow?.id { appState.promptNewTerminal(inWindow: id) }
             }
             .buttonStyle(.borderedProminent)
@@ -229,29 +255,32 @@ struct AIMenu: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        Toggle("KI-Assistenz aktiv", isOn: $appState.aiEnabled)
+        Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
+            .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
         Divider()
-        Button("Alle Sessions jetzt zusammenfassen") { appState.summarizeAllNow() }
+        Button(L10n.t(.summarizeAll)) { appState.summarizeAllNow() }
             .disabled(!appState.aiEnabled)
-        Button("Nach Themen gruppieren…") { proposeGrouping() }
+            .help(L10n.t(.summarizeAllHelp))
+        Button(L10n.t(.groupByTopic)) { proposeGrouping() }
             .disabled(!appState.aiEnabled)
+            .help(L10n.t(.groupByTopicHelp))
     }
 
     private func proposeGrouping() {
         let proposal = appState.topicProposal
         let alert = NSAlert()
         if proposal.isEmpty {
-            alert.messageText = "Kein Gruppierungs-Vorschlag"
-            alert.informativeText = "Noch keine (oder zu wenige) Sessions mit gleichem Thema. Erst zusammenfassen lassen."
+            alert.messageText = L10n.t(.noGroupingTitle)
+            alert.informativeText = L10n.t(.noGroupingBody)
             alert.runModal()
             return
         }
-        alert.messageText = "Nach Themen gruppieren?"
+        alert.messageText = L10n.t(.groupByTopicTitle)
         alert.informativeText = proposal
             .map { "\($0.topic): \($0.sessions.map(\.displayTitle).joined(separator: ", "))" }
             .joined(separator: "\n")
-        alert.addButton(withTitle: "Gruppieren")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L10n.t(.group))
+        alert.addButton(withTitle: L10n.t(.cancel))
         if alert.runModal() == .alertFirstButtonReturn {
             appState.applyTopicGrouping()
         }
@@ -266,7 +295,7 @@ struct InboxToolbarButton: View {
         Button {
             shown.toggle()
         } label: {
-            Label("Inbox", systemImage: "bell")
+            Label(L10n.t(.inbox), systemImage: "bell")
                 .overlay(alignment: .topTrailing) {
                     let count = appState.attentionQueue.count
                     if count > 0 {
@@ -282,7 +311,7 @@ struct InboxToolbarButton: View {
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             InboxView()
         }
-        .help("Aufmerksamkeits-Inbox")
+        .help(L10n.t(.inboxHelp))
     }
 }
 
@@ -307,7 +336,7 @@ struct MenuBarContent: View {
     var body: some View {
         let queue = appState.attentionQueue
         if queue.isEmpty {
-            Text("Alles ruhig")
+            Text(L10n.t(.allQuietShort))
         } else {
             ForEach(queue) { session in
                 Button("\(session.state == .asking ? "❓" : "✅") \(session.displayTitle) — \(session.shortPath)") {
@@ -317,7 +346,7 @@ struct MenuBarContent: View {
             }
         }
         Divider()
-        Button("Planchette öffnen") { NSApp.activate(ignoringOtherApps: true) }
+        Button(L10n.t(.openPlanchette)) { NSApp.activate(ignoringOtherApps: true) }
     }
 }
 
@@ -329,7 +358,7 @@ extension AppState {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
-        panel.message = "Projektordner für das neue Terminal wählen"
+        panel.message = L10n.t(.chooseFolder)
         panel.directoryURL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("development")
         guard panel.runModal() == .OK, let url = panel.url else { return }
