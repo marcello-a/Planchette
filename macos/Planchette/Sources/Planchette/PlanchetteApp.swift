@@ -184,9 +184,6 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            AIToggleButton()
-        }
-        ToolbarItem(placement: .primaryAction) {
             InboxToolbarButton()
         }
         if !isMainWindow {
@@ -290,40 +287,6 @@ struct AIMenu: View {
         if alert.runModal() == .alertFirstButtonReturn {
             appState.applyTopicGrouping()
         }
-    }
-}
-
-/// Clearly-visible AI on/off control: filled green pill with a checkmark-ish
-/// sparkles icon when on, outlined gray with a slashed icon when off, plus an
-/// explicit status label so the state is never ambiguous.
-struct AIToggleButton: View {
-    @EnvironmentObject var appState: AppState
-
-    var body: some View {
-        let on = appState.aiEnabled
-        Button {
-            appState.aiEnabled.toggle()
-        } label: {
-            HStack(spacing: 5) {
-                Image(systemName: on ? "sparkles" : "sparkles.slash")
-                    .imageScale(.medium)
-                Text(on ? L10n.t(.aiAssistOn) : L10n.t(.aiAssistOff))
-                    .fontWeight(.semibold)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .foregroundStyle(on ? Color.white : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(on ? AnyShapeStyle(Color.green) : AnyShapeStyle(.quaternary))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7)
-                    .stroke(on ? Color.green : Color.secondary.opacity(0.5), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .help(on ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
     }
 }
 

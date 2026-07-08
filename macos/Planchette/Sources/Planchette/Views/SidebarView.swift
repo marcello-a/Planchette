@@ -14,20 +14,24 @@ struct SidebarView: View {
 
     var body: some View {
         let windowGroups = appState.window(for: windowID).map { appState.groups(inWindow: $0) } ?? []
-        List(selection: selectionBinding) {
-            let favorites = windowGroups.filter(\.favorite)
-            let normal = windowGroups.filter { !$0.favorite }
+        VStack(spacing: 0) {
+            List(selection: selectionBinding) {
+                let favorites = windowGroups.filter(\.favorite)
+                let normal = windowGroups.filter { !$0.favorite }
 
-            if !favorites.isEmpty {
-                Section(L10n.t(.mainProjects)) {
-                    ForEach(favorites) { group in groupRow(group) }
+                if !favorites.isEmpty {
+                    Section(L10n.t(.mainProjects)) {
+                        ForEach(favorites) { group in groupRow(group) }
+                    }
+                }
+                Section(favorites.isEmpty ? L10n.t(.projects) : L10n.t(.sideProjects)) {
+                    ForEach(normal) { group in groupRow(group) }
                 }
             }
-            Section(favorites.isEmpty ? L10n.t(.projects) : L10n.t(.sideProjects)) {
-                ForEach(normal) { group in groupRow(group) }
-            }
+            .listStyle(.sidebar)
+
+            SidebarBottomBar(windowID: windowID)
         }
-        .listStyle(.sidebar)
     }
 
     private func groupRow(_ group: SessionGroup) -> some View {
@@ -179,6 +183,62 @@ struct SidebarView: View {
         if alert.runModal() == .alertFirstButtonReturn {
             apply(field.stringValue.trimmingCharacters(in: .whitespaces))
         }
+    }
+}
+
+/// Bottom bar of the project panel: project-settings icons + quick switcher.
+struct SidebarBottomBar: View {
+    @EnvironmentObject var appState: AppState
+    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
+    let windowID: UUID
+
+    var body: some View {
+        HStack(spacing: 2) {
+            // AI assist toggle (compact icon form).
+            Button {
+                appState.aiEnabled.toggle()
+            } label: {
+                Image(systemName: appState.aiEnabled ? "sparkles" : "sparkles.slash")
+                    .foregroundStyle(appState.aiEnabled ? Color.green : Color.secondary)
+                    .frame(width: 26, height: 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(appState.aiEnabled ? Color.green.opacity(0.18) : Color.clear)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
+
+            barButton("gearshape", help: L10n.t(.settingsHelp)) { openSettings() }
+            barButton("macwindow.badge.plus", help: L10n.t(.newWindowHelp)) {
+                openWindow(value: appState.newWindow())
+            }
+
+            Spacer()
+
+            barButton("command", help: L10n.t(.quickSwitcherHelp)) {
+                appState.showQuickSwitcher()
+            }
+            barButton("plus.rectangle", help: L10n.t(.newTerminalHelp)) {
+                appState.promptNewTerminal(inWindow: windowID)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .background(.bar)
+        .overlay(Divider(), alignment: .top)
+    }
+
+    private func barButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 }
 
