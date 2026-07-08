@@ -1,0 +1,16 @@
+# Zig
+zig-cache/
+.zig-cache/
+zig-out/
+
+# Xcode / Swift
+macos/build/
+macos/DerivedData/
+*.xcuserstate
+xcuserdata/
+.DS_Store
+
+# Build artifacts
+*.xcframework
+*.dylib
+*.a
