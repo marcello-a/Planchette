@@ -21,9 +21,26 @@ architecture and roadmap.
 
 Current phase: **Phase 0 — Spikes**
 
-- [ ] Spike A (macOS): GhosttyKit embedded in a minimal SwiftUI app, 2 interactive surfaces
-- [ ] Spike B (Linux): libghostty in a Zig + GTK4 widget
-- [ ] Spike C: Claude Code hook → unix socket → in-app notification roundtrip
+- [x] Spike A (macOS): GhosttyKit embedded in a minimal SwiftUI app, 2 interactive surfaces
+- [ ] Spike B (Linux): libghostty in a Zig + GTK4 widget (needs a Linux machine)
+- [x] Spike C: hook → unix socket → in-app notification roundtrip, with per-terminal
+      session identity via injected `PLANCHETTE_SESSION` env var
+
+### Running the spike
+
+```sh
+# 1. Build GhosttyKit from the pinned submodule (once; needs Zig 0.15.2 in .tooling/)
+cd vendor/ghostty && ../../.tooling/zig/zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast && cd ../..
+cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/PlancheSpike/
+
+# 2. Build & run the app
+cd macos/PlancheSpike && swift build
+GHOSTTY_RESOURCES_DIR=$PWD/../../vendor/ghostty/zig-out/share/ghostty ./.build/debug/PlancheSpike
+
+# 3. Simulate a Claude Code hook event (from any shell)
+echo '{"hook_event_name":"Notification","message":"needs permission"}' \
+  | PLANCHETTE_SESSION=term-1 ../../hook/planchette-hook
+```
 
 ## Structure
 

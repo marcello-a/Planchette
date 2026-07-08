@@ -7,7 +7,7 @@ import GhosttyKit
 final class GhosttySurfaceNSView: NSView {
     private(set) var surface: ghostty_surface_t?
 
-    init(app: ghostty_app_t, workingDirectory: String) {
+    init(app: ghostty_app_t, workingDirectory: String, environment: [String: String] = [:]) {
         super.init(frame: .zero)
         wantsLayer = true
 
@@ -19,9 +19,20 @@ final class GhosttySurfaceNSView: NSView {
         cfg.userdata = Unmanaged.passUnretained(self).toOpaque()
         cfg.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2.0)
 
+        // Duplicate env strings for the duration of the surface_new call.
+        var envDup: [(UnsafeMutablePointer<CChar>, UnsafeMutablePointer<CChar>)] = environment.map {
+            (strdup($0.key), strdup($0.value))
+        }
+        var envVars: [ghostty_env_var_s] = envDup.map { .init(key: $0.0, value: $0.1) }
+        defer { envDup.forEach { free($0.0); free($0.1) } }
+
         workingDirectory.withCString { cwd in
             cfg.working_directory = cwd
-            self.surface = ghostty_surface_new(app, &cfg)
+            envVars.withUnsafeMutableBufferPointer { buf in
+                cfg.env_vars = buf.baseAddress
+                cfg.env_var_count = buf.count
+                self.surface = ghostty_surface_new(app, &cfg)
+            }
         }
         if surface == nil { NSLog("ghostty_surface_new failed") }
     }
@@ -155,9 +166,10 @@ final class GhosttySurfaceNSView: NSView {
 struct GhosttyTerminalView: NSViewRepresentable {
     let app: ghostty_app_t
     var workingDirectory: String = FileManager.default.homeDirectoryForCurrentUser.path
+    var environment: [String: String] = [:]
 
     func makeNSView(context: Context) -> GhosttySurfaceNSView {
-        GhosttySurfaceNSView(app: app, workingDirectory: workingDirectory)
+        GhosttySurfaceNSView(app: app, workingDirectory: workingDirectory, environment: environment)
     }
 
     func updateNSView(_ nsView: GhosttySurfaceNSView, context: Context) {}
