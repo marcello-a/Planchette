@@ -77,7 +77,7 @@ final class UpdateService: ObservableObject {
             }
             let release = try JSONDecoder().decode(Release.self, from: data)
             let latest = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-            if isNewer(latest, than: currentVersion) {
+            if Semver.isNewer(latest, than: currentVersion) {
                 let dmg = release.assets.first { $0.name.hasSuffix(".dmg") }
                 showUpdateAvailable(
                     version: latest,
@@ -89,18 +89,6 @@ final class UpdateService: ObservableObject {
         } catch {
             if userInitiated { showError(error.localizedDescription) }
         }
-    }
-
-    /// Semantic-version comparison (numeric, component-wise).
-    private func isNewer(_ a: String, than b: String) -> Bool {
-        let pa = a.split(separator: ".").map { Int($0) ?? 0 }
-        let pb = b.split(separator: ".").map { Int($0) ?? 0 }
-        for i in 0..<max(pa.count, pb.count) {
-            let x = i < pa.count ? pa[i] : 0
-            let y = i < pb.count ? pb[i] : 0
-            if x != y { return x > y }
-        }
-        return false
     }
 
     private func showUpdateAvailable(version: String, downloadURL: String) {

@@ -27,6 +27,10 @@ let package = Package(
                 .linkedFramework("UserNotifications"),
                 .linkedLibrary("c++"),
             ]
-        )
+        ),
+        .testTarget(
+            name: "PlanchetteTests",
+            dependencies: ["Planchette"]
+        ),
     ]
 )

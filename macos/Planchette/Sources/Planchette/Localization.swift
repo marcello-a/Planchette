@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// Supported UI languages. `.system` follows the OS preference.
@@ -32,8 +33,6 @@ enum AppLanguage: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-import AppKit
-
 /// Light/dark/system appearance choice.
 enum AppAppearance: String, CaseIterable, Codable, Identifiable {
     case system, light, dark
@@ -64,7 +63,7 @@ enum AppAppearance: String, CaseIterable, Codable, Identifiable {
 
 /// Translation keys — compile-checked so a missing usage is caught, and a
 /// missing translation falls back to English, then to the raw key.
-enum LKey: String {
+enum LKey: String, CaseIterable {
     // Languages / settings
     case langSystem, settingsTitle, language, appearance, aiSection
     case appearanceLight, appearanceDark, appearanceHelp, settingsHelp

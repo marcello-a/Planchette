@@ -310,10 +310,10 @@ final class AppState: ObservableObject {
         guard let session = sessions[sessionID] else { return }
         // Only interrupt for favorites; side projects just queue in the inbox.
         guard group(of: session)?.favorite == true else { return }
-        let notification = NSUserNotification()
-        notification.title = "\(session.displayTitle) fragt"
-        notification.informativeText = message ?? ""
-        NSUserNotificationCenter.default.deliver(notification)
+        NotificationService.post(
+            title: "\(session.displayTitle) \(L10n.t(.asks))",
+            body: message ?? ""
+        )
     }
 
     // MARK: Tags
@@ -417,14 +417,20 @@ final class AppState: ObservableObject {
         return opened
     }
 
-    /// Import all tabs/sessions from another terminal app.
+    /// Import all tabs/sessions from another terminal app. The AppleScript +
+    /// `lsof` resolution runs off the main thread so the UI never blocks.
     func importFrom(_ source: MigrationService.Source, windowID: UUID?) {
-        switch MigrationService.importDirectories(from: source) {
-        case .success(let dirs):
-            let count = openTerminals(inDirectories: dirs, windowID: windowID)
-            if count == 0 { showImportAlert(source, .nothingFound) }
-        case .failure(let error):
-            showImportAlert(source, error)
+        Task {
+            let result = await Task.detached(priority: .userInitiated) {
+                MigrationService.importDirectories(from: source)
+            }.value
+            switch result {
+            case .success(let dirs):
+                let count = openTerminals(inDirectories: dirs, windowID: windowID)
+                if count == 0 { showImportAlert(source, .nothingFound) }
+            case .failure(let error):
+                showImportAlert(source, error)
+            }
         }
     }
 

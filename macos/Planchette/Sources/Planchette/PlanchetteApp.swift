@@ -140,6 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        NotificationService.requestAuthorization()
+
         let server = HookServer(appState: appState)
         server.start()
         hookServer = server

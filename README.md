@@ -59,6 +59,13 @@ echo '{"hook_event_name":"Notification","message":"needs permission"}' \
   | PLANCHETTE_SESSION=term-1 ../../hook/planchette-hook
 ```
 
+## Documentation
+
+- [docs/CONCEPT.md](docs/CONCEPT.md) — product vision, feature set, roadmap
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the code fits together
+- [CONTRIBUTING.md](CONTRIBUTING.md) — build, test, package, release
+- [AGENTS.md](AGENTS.md) — rules & orientation for AI contributors
+
 ## Structure
 
 ```
