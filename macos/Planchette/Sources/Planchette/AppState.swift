@@ -388,6 +388,59 @@ final class AppState: ObservableObject {
         for id in sessions.keys { aiAssist.sessionUpdated(id, force: true) }
     }
 
+    // MARK: Migration / import
+
+    /// Open a terminal for each directory (used by import & drag-and-drop).
+    /// Reuses a group whose sessions already live in the same folder.
+    @discardableResult
+    func openTerminals(inDirectories dirs: [String], windowID: UUID?) -> Int {
+        let target = windowID ?? WindowRegistry.shared.keyWindowID() ?? windows.first?.id
+        guard let target else { return 0 }
+        var opened = 0
+        var lastSession: TerminalSession?
+        for dir in dirs {
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: dir, isDirectory: &isDir), isDir.boolValue
+            else { continue }
+            let existing = window(for: target).map { groups(inWindow: $0) }?.first { group in
+                sessions(in: group).contains { $0.workingDirectory == dir }
+            }
+            let group = existing ?? addGroup(name: (dir as NSString).lastPathComponent, inWindow: target)
+            lastSession = addSession(directory: dir, groupID: group.id)
+            opened += 1
+        }
+        if let lastSession { select(session: lastSession) }
+        return opened
+    }
+
+    /// Import all tabs/sessions from another terminal app.
+    func importFrom(_ source: MigrationService.Source, windowID: UUID?) {
+        switch MigrationService.importDirectories(from: source) {
+        case .success(let dirs):
+            let count = openTerminals(inDirectories: dirs, windowID: windowID)
+            if count == 0 { showImportAlert(source, .nothingFound) }
+        case .failure(let error):
+            showImportAlert(source, error)
+        }
+    }
+
+    private func showImportAlert(_ source: MigrationService.Source, _ error: MigrationService.MigrationError) {
+        let alert = NSAlert()
+        switch error {
+        case .notRunning:
+            alert.messageText = "\(source.displayName) \(L10n.t(.importNotRunning))"
+        case .notAuthorized:
+            alert.messageText = L10n.t(.importNotAuthorized)
+            alert.informativeText = L10n.t(.importAuthHint)
+        case .nothingFound:
+            alert.messageText = "\(source.displayName): \(L10n.t(.importNothing))"
+        case .failed(let detail):
+            alert.messageText = L10n.t(.importFailed)
+            alert.informativeText = detail
+        }
+        alert.runModal()
+    }
+
     // MARK: Persistence
 
     func scheduleSave() {

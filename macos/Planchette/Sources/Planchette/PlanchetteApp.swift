@@ -34,6 +34,14 @@ struct PlanchetteApp: App {
                 AIMenu()
                     .environmentObject(delegate.appState)
             }
+            CommandMenu(L10n.t(.importMenu)) {
+                Button(L10n.t(.importFromITerm)) {
+                    delegate.appState.importFrom(.iterm2, windowID: nil)
+                }
+                Button(L10n.t(.importFromTerminal)) {
+                    delegate.appState.importFrom(.terminalApp, windowID: nil)
+                }
+            }
         }
 
         Settings {

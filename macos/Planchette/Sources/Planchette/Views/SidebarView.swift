@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     let windowID: UUID
+    @State private var isDropTargeted = false
 
     private var selectionBinding: Binding<UUID?> {
         Binding(
@@ -29,9 +31,53 @@ struct SidebarView: View {
                 }
             }
             .listStyle(.sidebar)
+            .overlay {
+                if isDropTargeted {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                        .background(Color.accentColor.opacity(0.08))
+                        .overlay(
+                            Label(L10n.t(.dropHint), systemImage: "folder.badge.plus")
+                                .padding(8)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                        )
+                        .padding(6)
+                        .allowsHitTesting(false)
+                }
+            }
 
             SidebarBottomBar(windowID: windowID)
         }
+        .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+        }
+    }
+
+    /// Accept folders dropped from Finder (or a terminal's proxy icon) and open
+    /// a terminal in each. A live terminal window can't be adopted across apps,
+    /// but dropping its folder brings that workspace into Planchette.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        var handledAny = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            handledAny = true
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                let path = url.path
+                DispatchQueue.main.async {
+                    appState.openTerminals(inDirectories: [resolveDirectory(path)], windowID: windowID)
+                }
+            }
+        }
+        return handledAny
+    }
+
+    /// If a file was dropped, use its containing folder.
+    private func resolveDirectory(_ path: String) -> String {
+        var isDir: ObjCBool = false
+        if FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+            return path
+        }
+        return (path as NSString).deletingLastPathComponent
     }
 
     private func groupRow(_ group: SessionGroup) -> some View {

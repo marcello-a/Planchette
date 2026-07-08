@@ -117,6 +117,11 @@ enum LKey: String {
 
     // Merged window placeholder
     case windowMerged
+
+    // Migration / import
+    case importMenu, importFromITerm, importFromTerminal
+    case importNothing, importNotRunning, importNotAuthorized, importAuthHint, importFailed
+    case importMenuHelp, dropHint
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -195,6 +200,8 @@ enum L10n {
         .allQuietShort: "All quiet", .openPlanchette: "Open Planchette", .asks: "asks",
         .chooseFolder: "Choose the project folder for the new terminal",
         .windowMerged: "Window was merged",
+        .importMenu: "Import", .importFromITerm: "Import from iTerm2", .importFromTerminal: "Import from Terminal.app",
+        .importNothing: "no open terminals found", .importNotRunning: "is not running", .importNotAuthorized: "Automation not allowed", .importAuthHint: "Allow Planchette to control the terminal app in System Settings → Privacy & Security → Automation, then try again.", .importFailed: "Import failed", .importMenuHelp: "Open the working directories of another terminal app as Planchette terminals", .dropHint: "Drop a folder here to open a terminal",
     ]
 
     // MARK: German
@@ -252,6 +259,8 @@ enum L10n {
         .allQuietShort: "Alles ruhig", .openPlanchette: "Planchette öffnen", .asks: "fragt",
         .chooseFolder: "Projektordner für das neue Terminal wählen",
         .windowMerged: "Fenster wurde zusammengeführt",
+        .importMenu: "Import", .importFromITerm: "Aus iTerm2 importieren", .importFromTerminal: "Aus Terminal.app importieren",
+        .importNothing: "keine offenen Terminals gefunden", .importNotRunning: "läuft nicht", .importNotAuthorized: "Automatisierung nicht erlaubt", .importAuthHint: "Erlaube Planchette in Systemeinstellungen → Datenschutz & Sicherheit → Automatisierung, die Terminal-App zu steuern, und versuche es erneut.", .importFailed: "Import fehlgeschlagen", .importMenuHelp: "Die Arbeitsverzeichnisse einer anderen Terminal-App als Planchette-Terminals öffnen", .dropHint: "Ordner hierher ziehen, um ein Terminal zu öffnen",
     ]
 
     // MARK: French
@@ -309,6 +318,8 @@ enum L10n {
         .allQuietShort: "Tout est calme", .openPlanchette: "Ouvrir Planchette", .asks: "demande",
         .chooseFolder: "Choisir le dossier du projet pour le nouveau terminal",
         .windowMerged: "La fenêtre a été fusionnée",
+        .importMenu: "Importer", .importFromITerm: "Importer depuis iTerm2", .importFromTerminal: "Importer depuis Terminal.app",
+        .importNothing: "aucun terminal ouvert trouvé", .importNotRunning: "n'est pas en cours d'exécution", .importNotAuthorized: "Automatisation non autorisée", .importAuthHint: "Autorisez Planchette à contrôler l'app de terminal dans Réglages Système → Confidentialité et sécurité → Automatisation, puis réessayez.", .importFailed: "Échec de l'import", .importMenuHelp: "Ouvrir les répertoires de travail d'une autre app de terminal comme terminaux Planchette", .dropHint: "Déposez un dossier ici pour ouvrir un terminal",
     ]
 
     // MARK: Spanish
@@ -366,6 +377,8 @@ enum L10n {
         .allQuietShort: "Todo tranquilo", .openPlanchette: "Abrir Planchette", .asks: "pregunta",
         .chooseFolder: "Elige la carpeta del proyecto para el nuevo terminal",
         .windowMerged: "La ventana se combinó",
+        .importMenu: "Importar", .importFromITerm: "Importar desde iTerm2", .importFromTerminal: "Importar desde Terminal.app",
+        .importNothing: "no se encontraron terminales abiertos", .importNotRunning: "no se está ejecutando", .importNotAuthorized: "Automatización no permitida", .importAuthHint: "Permite que Planchette controle la app de terminal en Ajustes del Sistema → Privacidad y seguridad → Automatización, y vuelve a intentarlo.", .importFailed: "Error al importar", .importMenuHelp: "Abrir los directorios de trabajo de otra app de terminal como terminales de Planchette", .dropHint: "Suelta una carpeta aquí para abrir un terminal",
     ]
 
     // MARK: Italian
@@ -423,6 +436,8 @@ enum L10n {
         .allQuietShort: "Tutto tranquillo", .openPlanchette: "Apri Planchette", .asks: "chiede",
         .chooseFolder: "Scegli la cartella del progetto per il nuovo terminale",
         .windowMerged: "La finestra è stata unita",
+        .importMenu: "Importa", .importFromITerm: "Importa da iTerm2", .importFromTerminal: "Importa da Terminal.app",
+        .importNothing: "nessun terminale aperto trovato", .importNotRunning: "non è in esecuzione", .importNotAuthorized: "Automazione non consentita", .importAuthHint: "Consenti a Planchette di controllare l'app Terminale in Impostazioni di Sistema → Privacy e sicurezza → Automazione, poi riprova.", .importFailed: "Importazione non riuscita", .importMenuHelp: "Apri le directory di lavoro di un'altra app terminale come terminali Planchette", .dropHint: "Trascina qui una cartella per aprire un terminale",
     ]
 
     // MARK: Dutch
@@ -480,6 +495,8 @@ enum L10n {
         .allQuietShort: "Alles rustig", .openPlanchette: "Planchette openen", .asks: "vraagt",
         .chooseFolder: "Kies de projectmap voor de nieuwe terminal",
         .windowMerged: "Venster is samengevoegd",
+        .importMenu: "Importeren", .importFromITerm: "Importeren uit iTerm2", .importFromTerminal: "Importeren uit Terminal.app",
+        .importNothing: "geen open terminals gevonden", .importNotRunning: "is niet actief", .importNotAuthorized: "Automatisering niet toegestaan", .importAuthHint: "Sta Planchette toe de terminal-app te bedienen in Systeeminstellingen → Privacy en beveiliging → Automatisering en probeer opnieuw.", .importFailed: "Importeren mislukt", .importMenuHelp: "De werkmappen van een andere terminal-app als Planchette-terminals openen", .dropHint: "Sleep een map hierheen om een terminal te openen",
     ]
 
     // MARK: Portuguese
@@ -537,5 +554,7 @@ enum L10n {
         .allQuietShort: "Tudo calmo", .openPlanchette: "Abrir Planchette", .asks: "pergunta",
         .chooseFolder: "Escolhe a pasta do projeto para o novo terminal",
         .windowMerged: "A janela foi fundida",
+        .importMenu: "Importar", .importFromITerm: "Importar do iTerm2", .importFromTerminal: "Importar do Terminal.app",
+        .importNothing: "nenhum terminal aberto encontrado", .importNotRunning: "não está em execução", .importNotAuthorized: "Automação não permitida", .importAuthHint: "Permite que o Planchette controle a app de terminal em Definições do Sistema → Privacidade e segurança → Automação e tenta de novo.", .importFailed: "Falha na importação", .importMenuHelp: "Abrir os diretórios de trabalho de outra app de terminal como terminais do Planchette", .dropHint: "Arrasta uma pasta para aqui para abrir um terminal",
     ]
 }
