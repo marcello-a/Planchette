@@ -10,7 +10,11 @@
 #
 # Always exit 0: a missing/busy app must never block Claude.
 
-SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette-spike.sock}"
+# Not inside a Planchette terminal → nothing to do (keeps the hook a no-op
+# for every other Claude session on this machine).
+[ -n "$PLANCHETTE_SESSION" ] || exit 0
+
+SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette.sock}"
 [ -S "$SOCKET" ] || exit 0
 
 payload=$(cat)
