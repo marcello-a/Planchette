@@ -62,7 +62,7 @@ enum LKey: String {
     case aiMenu, aiActive, summarizeAll, groupByTopic
 
     // Toolbar
-    case aiAssist, aiAssistOnHelp, aiAssistOffHelp
+    case aiAssist, aiAssistOn, aiAssistOff, aiAssistOnHelp, aiAssistOffHelp
     case inbox, inboxHelp, mergeIntoMain, mergeIntoMainHelp
     case newTerminalHelp, newWindowHelp, quickSwitcherHelp, jumpToWaitingHelp
     case moveToNewWindowHelp, favoriteHelp, tagsHelp, startupCommandHelp
@@ -132,7 +132,7 @@ enum L10n {
         .quickSwitcher: "Quick switcher", .jumpToWaiting: "Jump to waiting session",
         .aiMenu: "AI", .aiActive: "AI assist active", .summarizeAll: "Summarize all sessions now",
         .groupByTopic: "Group by topic…",
-        .aiAssist: "AI assist",
+        .aiAssist: "AI assist", .aiAssistOn: "AI: On", .aiAssistOff: "AI: Off",
         .aiAssistOnHelp: "AI assist on: sessions are summarized and can be grouped by topic",
         .aiAssistOffHelp: "AI assist off — turn on to summarize agent sessions and group them by topic",
         .inbox: "Inbox", .inboxHelp: "Attention inbox: sessions that ask or finished, most urgent first",
@@ -188,7 +188,7 @@ enum L10n {
         .quickSwitcher: "Quick Switcher", .jumpToWaiting: "Zur wartenden Session",
         .aiMenu: "KI", .aiActive: "KI-Assistenz aktiv", .summarizeAll: "Alle Sessions jetzt zusammenfassen",
         .groupByTopic: "Nach Themen gruppieren…",
-        .aiAssist: "KI-Assistenz",
+        .aiAssist: "KI-Assistenz", .aiAssistOn: "KI: An", .aiAssistOff: "KI: Aus",
         .aiAssistOnHelp: "KI-Assistenz aktiv: Sessions werden zusammengefasst und können nach Themen gruppiert werden",
         .aiAssistOffHelp: "KI-Assistenz aus — einschalten, um Agent-Sessions zusammenzufassen und nach Themen zu gruppieren",
         .inbox: "Inbox", .inboxHelp: "Aufmerksamkeits-Inbox: Sessions, die fragen oder fertig sind, dringendste zuerst",
@@ -244,7 +244,7 @@ enum L10n {
         .quickSwitcher: "Sélecteur rapide", .jumpToWaiting: "Aller à la session en attente",
         .aiMenu: "IA", .aiActive: "Assistance IA active", .summarizeAll: "Résumer toutes les sessions",
         .groupByTopic: "Grouper par thème…",
-        .aiAssist: "Assistance IA",
+        .aiAssist: "Assistance IA", .aiAssistOn: "IA : activée", .aiAssistOff: "IA : désactivée",
         .aiAssistOnHelp: "Assistance IA active : les sessions sont résumées et peuvent être groupées par thème",
         .aiAssistOffHelp: "Assistance IA désactivée — activez-la pour résumer les sessions et les grouper par thème",
         .inbox: "Boîte", .inboxHelp: "Boîte d'attention : sessions qui demandent ou ont fini, les plus urgentes d'abord",
@@ -300,7 +300,7 @@ enum L10n {
         .quickSwitcher: "Selector rápido", .jumpToWaiting: "Ir a la sesión en espera",
         .aiMenu: "IA", .aiActive: "Asistencia IA activa", .summarizeAll: "Resumir todas las sesiones",
         .groupByTopic: "Agrupar por tema…",
-        .aiAssist: "Asistencia IA",
+        .aiAssist: "Asistencia IA", .aiAssistOn: "IA: activada", .aiAssistOff: "IA: desactivada",
         .aiAssistOnHelp: "Asistencia IA activa: las sesiones se resumen y pueden agruparse por tema",
         .aiAssistOffHelp: "Asistencia IA desactivada — actívala para resumir sesiones y agruparlas por tema",
         .inbox: "Bandeja", .inboxHelp: "Bandeja de atención: sesiones que preguntan o terminaron, las más urgentes primero",
@@ -356,7 +356,7 @@ enum L10n {
         .quickSwitcher: "Selettore rapido", .jumpToWaiting: "Vai alla sessione in attesa",
         .aiMenu: "IA", .aiActive: "Assistenza IA attiva", .summarizeAll: "Riassumi tutte le sessioni",
         .groupByTopic: "Raggruppa per tema…",
-        .aiAssist: "Assistenza IA",
+        .aiAssist: "Assistenza IA", .aiAssistOn: "IA: attiva", .aiAssistOff: "IA: disattivata",
         .aiAssistOnHelp: "Assistenza IA attiva: le sessioni vengono riassunte e possono essere raggruppate per tema",
         .aiAssistOffHelp: "Assistenza IA disattivata — attivala per riassumere le sessioni e raggrupparle per tema",
         .inbox: "In arrivo", .inboxHelp: "Casella attenzione: sessioni che chiedono o hanno finito, le più urgenti prima",
@@ -412,7 +412,7 @@ enum L10n {
         .quickSwitcher: "Snelkiezer", .jumpToWaiting: "Ga naar wachtende sessie",
         .aiMenu: "AI", .aiActive: "AI-assistentie actief", .summarizeAll: "Alle sessies nu samenvatten",
         .groupByTopic: "Groeperen op thema…",
-        .aiAssist: "AI-assistentie",
+        .aiAssist: "AI-assistentie", .aiAssistOn: "AI: aan", .aiAssistOff: "AI: uit",
         .aiAssistOnHelp: "AI-assistentie aan: sessies worden samengevat en kunnen op thema worden gegroepeerd",
         .aiAssistOffHelp: "AI-assistentie uit — zet aan om sessies samen te vatten en op thema te groeperen",
         .inbox: "Postvak", .inboxHelp: "Aandachtspostvak: sessies die vragen of klaar zijn, meest dringende eerst",
@@ -468,7 +468,7 @@ enum L10n {
         .quickSwitcher: "Seletor rápido", .jumpToWaiting: "Ir para a sessão em espera",
         .aiMenu: "IA", .aiActive: "Assistência IA ativa", .summarizeAll: "Resumir todas as sessões",
         .groupByTopic: "Agrupar por tema…",
-        .aiAssist: "Assistência IA",
+        .aiAssist: "Assistência IA", .aiAssistOn: "IA: ligada", .aiAssistOff: "IA: desligada",
         .aiAssistOnHelp: "Assistência IA ativa: as sessões são resumidas e podem ser agrupadas por tema",
         .aiAssistOffHelp: "Assistência IA desativada — ativa para resumir sessões e agrupá-las por tema",
         .inbox: "Caixa", .inboxHelp: "Caixa de atenção: sessões que perguntam ou terminaram, as mais urgentes primeiro",
