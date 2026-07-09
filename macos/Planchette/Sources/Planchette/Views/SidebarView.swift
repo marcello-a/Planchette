@@ -112,7 +112,7 @@ struct SidebarView: View {
             Divider().frame(width: Self.railTile)
 
             ScrollView {
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     ForEach(windowGroups) { group in
                         minifiedProjectItem(group)
                     }
@@ -128,12 +128,12 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .help(L10n.t(.newProjectHelp))
                 }
-                .padding(.top, 8)
+                .frame(maxWidth: .infinity)   // center tiles in the rail
+                .padding(.vertical, 10)
             }
             Spacer(minLength: 0)
         }
         .frame(width: Self.railWidth)
-        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     /// A single project tile in the minified rail: initial + color, with a
@@ -166,10 +166,11 @@ struct SidebarView: View {
                 )
                 .overlay(alignment: .topTrailing) {
                     if let badge {
+                        // Kept inside the tile bounds so it's never clipped.
                         Circle().fill(badge.tint)
-                            .frame(width: 11, height: 11)
+                            .frame(width: 10, height: 10)
                             .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
-                            .offset(x: 4, y: -4)
+                            .padding(3)
                     }
                 }
         }

@@ -215,6 +215,7 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     @AppStorage("sidebarMinified") private var sidebarMinified = false
+    @AppStorage("inboxShown") private var inboxShown = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     let windowID: UUID
 
@@ -242,11 +243,23 @@ struct ContentView: View {
                             }
                         }
                 } detail: {
-                    if let groupID = window.selectedGroupID,
-                       let group = appState.groups.first(where: { $0.id == groupID }) {
-                        TerminalAreaView(group: group)
-                    } else {
-                        welcome
+                    HSplitView {
+                        Group {
+                            if let groupID = window.selectedGroupID,
+                               let group = appState.groups.first(where: { $0.id == groupID }) {
+                                TerminalAreaView(group: group)
+                            } else {
+                                welcome
+                            }
+                        }
+                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+
+                        if inboxShown {
+                            // Persistent, drag-resizable notification sidebar.
+                            AttentionPanel()
+                                .frame(minWidth: 240, idealWidth: 300, maxWidth: 520,
+                                       maxHeight: .infinity)
+                        }
                     }
                 }
                 .background(WindowAccessor(windowID: window.id))
@@ -280,7 +293,7 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            InboxToolbarButton()
+            InboxToolbarButton(shown: $inboxShown)
         }
         if !isMainWindow {
             ToolbarItem(placement: .primaryAction) {
@@ -394,9 +407,11 @@ struct AIMenu: View {
     }
 }
 
+/// Top-right bell: toggles the persistent notifications sidebar, with a live
+/// count badge to its left.
 struct InboxToolbarButton: View {
     @EnvironmentObject var appState: AppState
-    @State private var shown = false
+    @Binding var shown: Bool
 
     var body: some View {
         let count = appState.attentionQueue.count
@@ -404,7 +419,6 @@ struct InboxToolbarButton: View {
             shown.toggle()
         } label: {
             HStack(spacing: 4) {
-                // Count badge sits to the LEFT of the bell when something waits.
                 if count > 0 {
                     Text("\(count)")
                         .font(.system(size: 11, weight: .bold))
@@ -417,10 +431,7 @@ struct InboxToolbarButton: View {
                     .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
             }
         }
-        .popover(isPresented: $shown, arrowEdge: .bottom) {
-            InboxView()
-        }
-        .help(L10n.t(.inboxHelp))
+        .help(L10n.t(.notificationsPanelHelp))
     }
 }
 
