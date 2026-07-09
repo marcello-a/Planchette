@@ -7,6 +7,7 @@ struct SidebarView: View {
     @AppStorage("sidebarMinified") private var minified = false
     let windowID: UUID
     @State private var isDropTargeted = false
+    @State private var hoveredGroup: UUID?
 
     private var selectionBinding: Binding<UUID?> {
         Binding(
@@ -239,8 +240,21 @@ struct SidebarView: View {
                     Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
                 }
                 Spacer()
-                attentionSummary(group)
+                // Close (X) appears on hover; attention summary otherwise.
+                if hoveredGroup == group.id {
+                    Button { confirmClose(group) } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help(L10n.t(.closeProject))
+                } else {
+                    attentionSummary(group)
+                }
             }
+            .contentShape(Rectangle())
+            .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
             .contextMenu {
                 Button(group.favorite ? L10n.t(.unmakeFavorite) : L10n.t(.makeFavorite)) {
                     appState.updateGroup(group.id) { $0.favorite.toggle() }
@@ -250,14 +264,29 @@ struct SidebarView: View {
                     appState.updateGroup(group.id) { $0.color = color }
                 }
                 Button(L10n.t(.rename)) { rename(group: group) }
-                Divider()
                 Button(L10n.t(.moveToNewWindow)) {
                     openWindow(value: appState.moveGroupToNewWindow(group.id))
                 }
                 .help(L10n.t(.moveToNewWindowHelp))
+                Divider()
+                Button(L10n.t(.closeProject), role: .destructive) { confirmClose(group) }
             }
         }
         .tag(group.id)
+    }
+
+    /// Confirm before closing a project — it ends the project's terminals.
+    private func confirmClose(_ group: SessionGroup) {
+        let count = appState.sessions(in: group).count
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.closeProject)
+        alert.informativeText = L10n.t(.closeProjectBody, group.name, count)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t(.closeProject))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        if alert.runModal() == .alertFirstButtonReturn {
+            appState.closeGroup(group.id)
+        }
     }
 
     private func sessionRow(_ session: TerminalSession) -> some View {

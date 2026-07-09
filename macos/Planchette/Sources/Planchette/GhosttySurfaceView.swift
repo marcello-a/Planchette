@@ -348,6 +348,15 @@ final class TerminalRegistry {
         views[id]?.destroySurface()
         views[id] = nil
     }
+
+    /// Push a rebuilt config (e.g. after a light/dark change) to every surface.
+    func updateConfig(_ config: ghostty_config_t) {
+        for view in views.values {
+            if let surface = view.surface {
+                ghostty_surface_update_config(surface, config)
+            }
+        }
+    }
 }
 
 /// Hosts a terminal surface, sized by SwiftUI's layout. The GeometryReader is

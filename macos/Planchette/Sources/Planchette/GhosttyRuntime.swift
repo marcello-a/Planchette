@@ -49,13 +49,10 @@ final class GhosttyRuntime {
             return
         }
 
-        guard let config = ghostty_config_new() else {
+        guard let config = GhosttyRuntime.makeConfig(dark: GhosttyRuntime.isDarkAppearance()) else {
             NSLog("ghostty_config_new failed")
             return
         }
-        // Respect the user's regular Ghostty config (fonts, theme) if present.
-        ghostty_config_load_default_files(config)
-        ghostty_config_finalize(config)
         self.config = config
 
         var runtime = ghostty_runtime_config_s(
@@ -106,11 +103,63 @@ final class GhosttyRuntime {
         }
         self.app = app
         ghostty_app_set_focus(app, NSApp.isActive)
+        ghostty_app_set_color_scheme(app, GhosttyRuntime.isDarkAppearance()
+            ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+        startAppearanceTracking()
     }
 
     func tick() {
         guard let app else { return }
         ghostty_app_tick(app)
+    }
+
+    // MARK: Appearance
+    //
+    // The terminal background follows the app's light/dark mode: white on light,
+    // black on dark. libghostty is configured from files only, so we write the
+    // color overrides to a small config file and (re)load it.
+
+    private var appearanceObserver: NSKeyValueObservation?
+
+    static func isDarkAppearance() -> Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
+    private static func makeConfig(dark: Bool) -> ghostty_config_t? {
+        guard let cfg = ghostty_config_new() else { return nil }
+        // Respect the user's regular Ghostty config (fonts, palette) if present…
+        ghostty_config_load_default_files(cfg)
+        // …then force the background/foreground to match the app's mode.
+        let bg = dark ? "000000" : "ffffff"
+        let fg = dark ? "ffffff" : "000000"
+        let text = "background = \(bg)\nforeground = \(fg)\ncursor-color = \(fg)\n"
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-ghostty-\(dark ? "dark" : "light").conf")
+        if (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil {
+            url.path.withCString { ghostty_config_load_file(cfg, $0) }
+        }
+        ghostty_config_finalize(cfg)
+        return cfg
+    }
+
+    private func startAppearanceTracking() {
+        appearanceObserver = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.applyCurrentAppearance() }
+        }
+    }
+
+    /// Rebuild the config for the current mode and push it to the app + every
+    /// live surface.
+    func applyCurrentAppearance() {
+        guard let app, let cfg = GhosttyRuntime.makeConfig(dark: GhosttyRuntime.isDarkAppearance())
+        else { return }
+        let old = config
+        config = cfg
+        ghostty_app_update_config(app, cfg)
+        ghostty_app_set_color_scheme(app, GhosttyRuntime.isDarkAppearance()
+            ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT)
+        MainActor.assumeIsolated { TerminalRegistry.shared.updateConfig(cfg) }
+        if let old { ghostty_config_free(old) }
     }
 
     // MARK: Callbacks

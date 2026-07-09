@@ -72,6 +72,7 @@ enum LKey: String, CaseIterable {
     case mainProjects, projects, sideProjects
     case makeFavorite, unmakeFavorite, color, colorNone, rename, moveToNewWindow
     case tags, newTag, removeAllTags, startupCommand, close
+    case closeProject, closeProjectBody
     case renameGroup, renameTerminal, startupCommandPrompt, newTagTitle
     case ok, cancel
 
@@ -176,6 +177,7 @@ enum L10n {
         .moveToNewWindow: "Move to new window",
         .tags: "Tags", .newTag: "New tag…", .removeAllTags: "Remove all",
         .startupCommand: "Startup command…", .close: "Close",
+        .closeProject: "Close Project", .closeProjectBody: "Close \"%@\" and its %d terminal(s)? This ends any running sessions.",
         .renameGroup: "Rename group", .renameTerminal: "Rename terminal",
         .startupCommandPrompt: "Startup command (runs again after a restore)",
         .newTagTitle: "New tag", .ok: "OK", .cancel: "Cancel",
@@ -244,6 +246,7 @@ enum L10n {
         .moveToNewWindow: "In neues Fenster verschieben",
         .tags: "Tags", .newTag: "Neues Tag…", .removeAllTags: "Alle entfernen",
         .startupCommand: "Startup-Command…", .close: "Schließen",
+        .closeProject: "Projekt schließen", .closeProjectBody: "„%@“ und seine %d Terminal(s) schließen? Laufende Sitzungen werden beendet.",
         .renameGroup: "Gruppe umbenennen", .renameTerminal: "Terminal umbenennen",
         .startupCommandPrompt: "Startup-Command (läuft nach einem Restore erneut)",
         .newTagTitle: "Neues Tag", .ok: "OK", .cancel: "Abbrechen",
@@ -312,6 +315,7 @@ enum L10n {
         .moveToNewWindow: "Déplacer vers une nouvelle fenêtre",
         .tags: "Étiquettes", .newTag: "Nouvelle étiquette…", .removeAllTags: "Tout retirer",
         .startupCommand: "Commande de démarrage…", .close: "Fermer",
+        .closeProject: "Fermer le projet", .closeProjectBody: "Fermer « %@ » et ses %d terminal(aux) ? Les sessions en cours seront arrêtées.",
         .renameGroup: "Renommer le groupe", .renameTerminal: "Renommer le terminal",
         .startupCommandPrompt: "Commande de démarrage (relancée après une restauration)",
         .newTagTitle: "Nouvelle étiquette", .ok: "OK", .cancel: "Annuler",
@@ -380,6 +384,7 @@ enum L10n {
         .moveToNewWindow: "Mover a una nueva ventana",
         .tags: "Etiquetas", .newTag: "Nueva etiqueta…", .removeAllTags: "Quitar todas",
         .startupCommand: "Comando de inicio…", .close: "Cerrar",
+        .closeProject: "Cerrar proyecto", .closeProjectBody: "¿Cerrar «%@» y sus %d terminal(es)? Se finalizarán las sesiones en curso.",
         .renameGroup: "Renombrar grupo", .renameTerminal: "Renombrar terminal",
         .startupCommandPrompt: "Comando de inicio (se ejecuta de nuevo tras restaurar)",
         .newTagTitle: "Nueva etiqueta", .ok: "OK", .cancel: "Cancelar",
@@ -448,6 +453,7 @@ enum L10n {
         .moveToNewWindow: "Sposta in una nuova finestra",
         .tags: "Tag", .newTag: "Nuovo tag…", .removeAllTags: "Rimuovi tutti",
         .startupCommand: "Comando di avvio…", .close: "Chiudi",
+        .closeProject: "Chiudi progetto", .closeProjectBody: "Chiudere «%@» e i suoi %d terminale/i? Le sessioni in corso verranno terminate.",
         .renameGroup: "Rinomina gruppo", .renameTerminal: "Rinomina terminale",
         .startupCommandPrompt: "Comando di avvio (rieseguito dopo un ripristino)",
         .newTagTitle: "Nuovo tag", .ok: "OK", .cancel: "Annulla",
@@ -516,6 +522,7 @@ enum L10n {
         .moveToNewWindow: "Naar nieuw venster verplaatsen",
         .tags: "Tags", .newTag: "Nieuwe tag…", .removeAllTags: "Alle verwijderen",
         .startupCommand: "Opstartcommando…", .close: "Sluiten",
+        .closeProject: "Project sluiten", .closeProjectBody: "\"%@\" en de %d terminal(s) sluiten? Actieve sessies worden beëindigd.",
         .renameGroup: "Groep hernoemen", .renameTerminal: "Terminal hernoemen",
         .startupCommandPrompt: "Opstartcommando (draait opnieuw na een herstel)",
         .newTagTitle: "Nieuwe tag", .ok: "OK", .cancel: "Annuleren",
@@ -584,6 +591,7 @@ enum L10n {
         .moveToNewWindow: "Mover para nova janela",
         .tags: "Etiquetas", .newTag: "Nova etiqueta…", .removeAllTags: "Remover todas",
         .startupCommand: "Comando de arranque…", .close: "Fechar",
+        .closeProject: "Fechar projeto", .closeProjectBody: "Fechar \"%@\" e os seus %d terminal(is)? As sessões em curso serão terminadas.",
         .renameGroup: "Renomear grupo", .renameTerminal: "Renomear terminal",
         .startupCommandPrompt: "Comando de arranque (executado de novo após restauro)",
         .newTagTitle: "Nova etiqueta", .ok: "OK", .cancel: "Cancelar",

@@ -229,6 +229,19 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
+    /// Close a whole project: free its terminals' surfaces, drop its sessions,
+    /// remove the group, and repair window group lists and selection.
+    func closeGroup(_ groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        for sid in group.sessionIDs {
+            TerminalRegistry.shared.close(sid)
+            sessions[sid] = nil
+        }
+        groups.removeAll { $0.id == groupID }
+        sanitizeWindows()
+        scheduleSave()
+    }
+
     func update(_ id: UUID, _ mutate: (inout TerminalSession) -> Void) {
         guard var session = sessions[id] else { return }
         mutate(&session)
