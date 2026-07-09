@@ -7,6 +7,8 @@
 # Produces:
 #   dist/Planchette.app   — double-clickable, drag to /Applications
 #   dist/Planchette.dmg   — distributable disk image with an Applications alias
+#   dist/Planchette.zip   — the .app zipped (used by the in-app auto-updater)
+#   dist/SHA256SUMS       — checksums the updater verifies the download against
 #
 # The GhosttyKit static lib is linked into the executable, so the only runtime
 # data we must bundle is the Ghostty resources dir (terminfo, shell
@@ -88,5 +90,15 @@ ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
 hdiutil create -volname "Planchette" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 echo "→ built $DMG"
+
+# 5. Zip the .app for the in-app updater (ditto preserves the bundle + signature).
+ZIP="$DIST/Planchette.zip"
+rm -f "$ZIP"
+( cd "$DIST" && ditto -c -k --keepParent "Planchette.app" "Planchette.zip" )
+echo "→ built $ZIP"
+
+# 6. Checksums the updater verifies the download against.
+( cd "$DIST" && shasum -a 256 "Planchette.zip" "Planchette.dmg" > "SHA256SUMS" )
+echo "→ built $DIST/SHA256SUMS"
 echo
 echo "Install: open dist/Planchette.dmg and drag Planchette to Applications."

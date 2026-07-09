@@ -102,8 +102,14 @@ struct SettingsView: View {
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))
-                Button(L10n.t(.checkForUpdates)) { updater.checkNow() }
-                    .disabled(updater.isChecking)
+                HStack {
+                    Button(L10n.t(.checkForUpdates)) { updater.checkNow() }
+                        .disabled(updater.isChecking || updater.isInstalling)
+                    if updater.isInstalling {
+                        ProgressView().controlSize(.small)
+                        Text(L10n.t(.updateInstalling)).foregroundStyle(.secondary)
+                    }
+                }
             }
         }
         .formStyle(.grouped)
