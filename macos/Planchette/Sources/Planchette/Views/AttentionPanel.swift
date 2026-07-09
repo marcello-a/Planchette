@@ -53,37 +53,55 @@ struct AttentionPanel: View {
     }
 
     private func row(_ session: TerminalSession) -> some View {
-        Button {
+        let group = appState.group(of: session)
+        let folder = group?.name ?? (session.currentDirectory as NSString).lastPathComponent
+        // What I'm working on: the git ticket, else the running program.
+        let context = Titles.ticket(forDirectory: session.currentDirectory) ?? runningProgram(session)
+        // What's happening / what the error is.
+        let detail = session.state == .waiting
+            ? (session.lastMessage ?? session.state.label)
+            : (session.aiSummary ?? session.lastMessage ?? session.state.label)
+
+        return Button {
             appState.select(session: session)
         } label: {
             HStack(alignment: .top, spacing: 9) {
                 Circle().fill(session.state.tint)
                     .frame(width: 9, height: 9)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 2) {
+                    .padding(.top, 5)
+                VStack(alignment: .leading, spacing: 4) {
+                    // Folder name (small) + time.
                     HStack(spacing: 5) {
-                        Text(session.displayTitle).fontWeight(.semibold).lineLimit(1)
-                        if appState.group(of: session)?.favorite == true {
+                        Text(folder)
+                            .font(.caption).fontWeight(.medium)
+                            .foregroundStyle(.secondary).lineLimit(1)
+                        if group?.favorite == true {
                             Image(systemName: "star.fill").font(.system(size: 8)).foregroundStyle(.yellow)
                         }
                         Spacer(minLength: 4)
                         Text(session.stateSince, style: .time)
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
-                    let detail = session.state == .waiting
-                        ? (session.lastMessage ?? session.state.label)
-                        : (session.aiSummary ?? session.state.label)
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    HStack(spacing: 5) {
-                        Text(appState.group(of: session)?.name ?? "")
-                        Text("·"); Text(session.shortPath)
-                        Spacer()
+                    // What the error / status is.
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary).lineLimit(2)
+                    // Ticket / working context (bottom-left) + time-ago.
+                    HStack(spacing: 6) {
+                        if let context, !context.isEmpty {
+                            Text(context)
+                                .font(.caption2.weight(.semibold))
+                                .lineLimit(1)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(session.state.tint.opacity(0.16), in: Capsule())
+                                .foregroundStyle(session.state.tint)
+                        }
+                        Spacer(minLength: 0)
                         WaitingTimeText(since: session.stateSince)
                     }
-                    .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
+            .padding(.horizontal, 12).padding(.vertical, 9)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -92,6 +110,15 @@ struct AttentionPanel: View {
                 Button(L10n.t(.markReady)) { appState.markReady(session.id) }
             }
         }
+    }
+
+    /// The running program from the OSC title, stripped of any leading status
+    /// glyph (Claude Code prefixes "✳ ", which reads as a stray dot).
+    private func runningProgram(_ session: TerminalSession) -> String? {
+        guard let osc = session.oscTitle else { return nil }
+        let cleaned = String(osc.drop(while: { !$0.isLetter && !$0.isNumber }))
+            .trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? nil : cleaned
     }
 }
 
