@@ -38,7 +38,8 @@ struct SidebarView: View {
     @ViewBuilder
     private func fullList(_ windowGroups: [SessionGroup]) -> some View {
         VStack(spacing: 0) {
-            // Header row: title + add-project + collapse.
+            // Header row: title + add-project. The collapse control lives in the
+            // window's top-right toolbar (see .toolbar below), not inline.
             HStack(spacing: 6) {
                 Text(L10n.t(.projects)).font(.headline)
                 Button {
@@ -47,15 +48,10 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .help(L10n.t(.newProjectHelp))
                 Spacer()
-                Button { withAnimation(.easeInOut(duration: 0.22)) { minified = true } } label: {
-                    Image(systemName: "arrow.left.to.line")
-                }
-                .buttonStyle(.plain)
-                .help(L10n.t(.minifySidebar))
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 12)
-            .padding(.top, 8)
+            .padding(.top, 6)
             .padding(.bottom, 2)
 
             List(selection: selectionBinding) {
@@ -98,14 +94,7 @@ struct SidebarView: View {
     @ViewBuilder
     private func minifiedRail(_ windowGroups: [SessionGroup]) -> some View {
         VStack(spacing: 0) {
-            Button { withAnimation(.easeInOut(duration: 0.22)) { minified = false } } label: {
-                Image(systemName: "arrow.right.to.line")
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help(L10n.t(.expandSidebar))
-            .padding(.vertical, 8)
-
+            // Expand is handled by the top-right toolbar toggle.
             ScrollView {
                 VStack(spacing: 4) {
                     // One quick-access tile per project (group), stacked small.

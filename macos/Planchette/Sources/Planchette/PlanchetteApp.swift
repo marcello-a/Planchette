@@ -215,6 +215,7 @@ struct ContentView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
     @AppStorage("sidebarMinified") private var sidebarMinified = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     let windowID: UUID
 
     private var resolvedWindow: WindowModel? { appState.window(for: windowID) }
@@ -223,12 +224,23 @@ struct ContentView: View {
     var body: some View {
         Group {
             if let window = resolvedWindow {
-                NavigationSplitView {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
                     SidebarView(windowID: window.id)
                         .navigationSplitViewColumnWidth(
                             min: sidebarMinified ? 60 : 210,
                             ideal: sidebarMinified ? 60 : 250,
                             max: sidebarMinified ? 72 : 400)
+                        // The built-in top-right toggle drives our minified rail
+                        // instead of fully hiding: intercept the collapse and
+                        // flip `minified`, keeping the sidebar visible.
+                        .onChange(of: columnVisibility) { _, new in
+                            if new != .all {
+                                columnVisibility = .all
+                                withAnimation(.easeInOut(duration: 0.22)) {
+                                    sidebarMinified.toggle()
+                                }
+                            }
+                        }
                 } detail: {
                     if let groupID = window.selectedGroupID,
                        let group = appState.groups.first(where: { $0.id == groupID }) {
