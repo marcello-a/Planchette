@@ -49,6 +49,20 @@ final class AppState: ObservableObject {
         return dir.appendingPathComponent("state.json")
     }()
 
+    /// Where per-session scrollback dumps live (one <sessionID>.txt each).
+    static let scrollbackDir: URL =
+        stateURL.deletingLastPathComponent().appendingPathComponent("scrollback", isDirectory: true)
+
+    static func scrollbackURL(for id: UUID) -> URL {
+        scrollbackDir.appendingPathComponent("\(id.uuidString).txt")
+    }
+
+    /// Capture every live terminal's scrollback to disk (called at durability
+    /// moments: quit, resign-active, hide).
+    func saveScrollbacks() {
+        TerminalRegistry.shared.saveScrollback(to: Self.scrollbackDir)
+    }
+
     init() {
         // Load the persisted language before any SwiftUI scene (incl. menus)
         // is built, so the whole UI launches in the right language.
@@ -215,6 +229,7 @@ final class AppState: ObservableObject {
     func closeSession(_ id: UUID) {
         guard let session = sessions[id] else { return }
         TerminalRegistry.shared.close(id)
+        try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         sessions[id] = nil
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
@@ -235,6 +250,7 @@ final class AppState: ObservableObject {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
         for sid in group.sessionIDs {
             TerminalRegistry.shared.close(sid)
+            try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             sessions[sid] = nil
         }
         groups.removeAll { $0.id == groupID }
@@ -579,6 +595,8 @@ final class AppState: ObservableObject {
             try? FileManager.default.copyItem(at: Self.stateURL, to: archive)
         }
         try? FileManager.default.removeItem(at: Self.stateURL)
+        // Drop stale scrollback dumps so a fresh start shows no old history.
+        try? FileManager.default.removeItem(at: Self.scrollbackDir)
         groups = []
         sessions = [:]
         windows = [WindowModel(id: Self.mainWindowID)]

@@ -98,6 +98,25 @@ final class GhosttySurfaceNSView: NSView {
         syncSurfaceSize()
     }
 
+    // MARK: Scrollback
+
+    /// The full screen buffer (scrollback + screen) as plain text, for
+    /// persistence. Plain text only — colors/styling aren't captured.
+    func readScrollback() -> String? {
+        guard let surface else { return nil }
+        var text = ghostty_text_s()
+        let sel = ghostty_selection_s(
+            top_left: ghostty_point_s(
+                tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(
+                tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            rectangle: false)
+        guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+        guard let ptr = text.text else { return nil }
+        return String(cString: ptr)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         viewDidChangeBackingProperties()
@@ -316,6 +335,13 @@ final class TerminalRegistry {
         var initialInput: String? = nil
         if appState.isRestoring {
             var commands: [String] = []
+            // Replay the saved scrollback (plain text) so the history is back.
+            // `clear` wipes the injected command line, leaving just the history.
+            let sbPath = AppState.scrollbackURL(for: session.id).path
+            if FileManager.default.fileExists(atPath: sbPath) {
+                let escaped = sbPath.replacingOccurrences(of: "'", with: "'\\''")
+                commands.append("clear; cat '\(escaped)' 2>/dev/null")
+            }
             if let startup = session.startupCommand, !startup.isEmpty {
                 commands.append(startup)
             }
@@ -359,6 +385,19 @@ final class TerminalRegistry {
             if let surface = view.surface {
                 ghostty_surface_update_config(surface, config)
             }
+        }
+    }
+
+    /// Persist each live surface's scrollback (plain text) into `dir`, so the
+    /// terminal history survives a restart. Capped per session to stay small.
+    func saveScrollback(to dir: URL) {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for (id, view) in views {
+            guard let text = view.readScrollback(), !text.isEmpty else { continue }
+            let capped = String(text.suffix(200_000))
+            try? capped.write(
+                to: dir.appendingPathComponent("\(id.uuidString).txt"),
+                atomically: true, encoding: .utf8)
         }
     }
 }
