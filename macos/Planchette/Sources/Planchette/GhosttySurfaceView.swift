@@ -176,16 +176,43 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus; feed the
-        // rest to the surface (⌘C/⌘V etc. have ghostty bindings).
+        // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus.
         guard event.modifierFlags.contains(.command) else { return false }
+        let chars = event.charactersIgnoringModifiers ?? ""
         let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
-        if let chars = event.charactersIgnoringModifiers, appShortcuts.contains(chars) {
-            return false
+        if appShortcuts.contains(chars) { return false }
+
+        // The embedded runtime has no default clipboard keybindings, so drive
+        // ghostty's clipboard actions directly (⌘V respects bracketed paste).
+        let plainCommand = event.modifierFlags
+            .intersection([.command, .option, .control, .shift]) == .command
+        if plainCommand {
+            switch chars {
+            case "v": if performBindingAction("paste_from_clipboard") { return true }
+            case "c": if performBindingAction("copy_to_clipboard") { return true }
+            case "a": if performBindingAction("select_all") { return true }
+            default: break
+            }
         }
+
         keyDown(with: event)
         return true
     }
+
+    /// Trigger a ghostty keybind action by name (e.g. `paste_from_clipboard`).
+    @discardableResult
+    private func performBindingAction(_ action: String) -> Bool {
+        guard let surface else { return false }
+        let len = action.utf8CString.count
+        guard len > 0 else { return false }
+        return action.withCString { ghostty_surface_binding_action(surface, $0, UInt(len - 1)) }
+    }
+
+    // Standard clipboard responder selectors so the Edit menu items (Paste,
+    // Copy, Select All) are enabled and routed to the surface too.
+    @objc func paste(_ sender: Any?) { performBindingAction("paste_from_clipboard") }
+    @objc func copy(_ sender: Any?) { performBindingAction("copy_to_clipboard") }
+    @objc override func selectAll(_ sender: Any?) { performBindingAction("select_all") }
 
     private func sendKey(event: NSEvent, action: ghostty_input_action_e, texts: [String]) {
         guard let surface else { return }
