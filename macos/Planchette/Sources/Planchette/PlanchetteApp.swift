@@ -236,7 +236,7 @@ struct ContentView: View {
                         .onChange(of: columnVisibility) { _, new in
                             if new != .all {
                                 columnVisibility = .all
-                                withAnimation(.easeInOut(duration: 0.22)) {
+                                withAnimation(.easeInOut(duration: 0.25)) {
                                     sidebarMinified.toggle()
                                 }
                             }

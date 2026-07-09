@@ -20,14 +20,14 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             if minified {
                 minifiedRail(windowGroups)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .transition(.opacity)
             } else {
                 fullList(windowGroups)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+                    .transition(.opacity)
             }
             SidebarBottomBar(windowID: windowID)
         }
-        .animation(.easeInOut(duration: 0.22), value: minified)
+        .animation(.easeInOut(duration: 0.25), value: minified)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -91,31 +91,49 @@ struct SidebarView: View {
 
     // MARK: Minified rail
 
+    private static let railWidth: CGFloat = 60
+    private static let railTile: CGFloat = 38
+
     @ViewBuilder
     private func minifiedRail(_ windowGroups: [SessionGroup]) -> some View {
         VStack(spacing: 0) {
-            // Expand is handled by the top-right toolbar toggle.
+            // Expand control, aligned to the same height as the full header.
+            Button { withAnimation(.easeInOut(duration: 0.25)) { minified = false } } label: {
+                Image(systemName: "sidebar.leading")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: Self.railTile, height: 28)
+            }
+            .buttonStyle(.plain)
+            .help(L10n.t(.expandSidebar))
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+
+            Divider().frame(width: Self.railTile)
+
             ScrollView {
-                VStack(spacing: 4) {
-                    // One quick-access tile per project (group), stacked small.
+                VStack(spacing: 8) {
                     ForEach(windowGroups) { group in
                         minifiedProjectItem(group)
                     }
                     Button {
                         appState.promptNewProject(inWindow: windowID)
                     } label: {
-                        Image(systemName: "plus")
-                            .frame(width: 34, height: 30)
-                            .foregroundStyle(.secondary)
+                        RoundedRectangle(cornerRadius: 9)
+                            .strokeBorder(Color.secondary.opacity(0.4),
+                                          style: StrokeStyle(lineWidth: 1.2, dash: [3]))
+                            .frame(width: Self.railTile, height: Self.railTile)
+                            .overlay(Image(systemName: "plus").foregroundStyle(.secondary))
                     }
                     .buttonStyle(.plain)
                     .help(L10n.t(.newProjectHelp))
                 }
-                .padding(.vertical, 4)
+                .padding(.top, 8)
             }
             Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: Self.railWidth)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     /// A single project tile in the minified rail: initial + color, with a
@@ -123,11 +141,10 @@ struct SidebarView: View {
     private func minifiedProjectItem(_ group: SessionGroup) -> some View {
         let isSelected = appState.window(for: windowID)?.selectedGroupID == group.id
         let sessions = appState.sessions(in: group)
-        // Most urgent state among the group's sessions drives the badge.
-        let badge: AttentionState? = sessions.map(\.state)
-            .filter(\.needsAttention)
-            .min { ($0 == .error ? 0 : 1) < ($1 == .error ? 0 : 1) }
+        let badge: AttentionState? = sessions.map(\.state).contains(.error) ? .error
+            : (sessions.map(\.state).contains(.waiting) ? .waiting : nil)
         let initial = String(group.name.prefix(1)).uppercased()
+        let fill = group.color.color ?? Color.secondary.opacity(0.22)
         return Button {
             if let active = sessions.first(where: { $0.id == group.activeSessionID }) ?? sessions.first {
                 appState.select(session: active)
@@ -135,27 +152,26 @@ struct SidebarView: View {
                 appState.updateWindow(windowID) { $0.selectedGroupID = group.id }
             }
         } label: {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(group.color.color?.opacity(0.9) ?? Color.secondary.opacity(0.25))
-                    .frame(width: 34, height: 34)
-                    .overlay(
-                        Text(initial)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(group.color.color != nil ? .white : .primary)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 2)
-                    )
-                if let badge {
-                    Circle().fill(badge.tint)
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
-                        .offset(x: 3, y: -3)
+            RoundedRectangle(cornerRadius: 9)
+                .fill(fill)
+                .frame(width: Self.railTile, height: Self.railTile)
+                .overlay(
+                    Text(initial)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(group.color.color != nil ? .white : .primary)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(Color.accentColor, lineWidth: isSelected ? 2.5 : 0)
+                )
+                .overlay(alignment: .topTrailing) {
+                    if let badge {
+                        Circle().fill(badge.tint)
+                            .frame(width: 11, height: 11)
+                            .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                            .offset(x: 4, y: -4)
+                    }
                 }
-            }
-            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
         .help(group.name)
