@@ -22,6 +22,13 @@ final class GhosttySurfaceNSView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
 
+        // Reliably catch every frame change (SwiftUI does not always call
+        // setFrameSize on a hosted NSView during window/live resize).
+        postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(frameDidChange),
+            name: NSView.frameDidChangeNotification, object: self)
+
         var cfg = ghostty_surface_config_new()
         cfg.platform_tag = GHOSTTY_PLATFORM_MACOS
         cfg.platform = ghostty_platform_u(
@@ -58,14 +65,30 @@ final class GhosttySurfaceNSView: NSView {
         surface = nil
     }
 
-    deinit { destroySurface() }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        destroySurface()
+    }
 
     // MARK: Sizing
+
+    /// Size handed down by SwiftUI's GeometryReader (points). Authoritative —
+    /// during window/fullscreen animation the frame lags behind the final size.
+    private var explicitSize: CGSize?
+
+    /// Called from the SwiftUI representable with the layout size.
+    func updateSize(_ size: CGSize) {
+        guard size.width > 1, size.height > 1 else { return }
+        explicitSize = size
+        syncSurfaceSize()
+    }
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         syncSurfaceSize()
     }
+
+    @objc private func frameDidChange() { syncSurfaceSize() }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
@@ -93,8 +116,10 @@ final class GhosttySurfaceNSView: NSView {
     private func syncSurfaceSize() {
         guard let surface else { return }
         let scale = window?.backingScaleFactor ?? (NSScreen.main?.backingScaleFactor ?? 2.0)
-        let width = UInt32(max(1, frame.width * scale))
-        let height = UInt32(max(1, frame.height * scale))
+        // Prefer the SwiftUI-provided size; fall back to the view's own frame.
+        let size = explicitSize ?? frame.size
+        let width = UInt32(max(1, size.width * scale))
+        let height = UInt32(max(1, size.height * scale))
         ghostty_surface_set_size(surface, width, height)
     }
 
@@ -325,22 +350,39 @@ final class TerminalRegistry {
     }
 }
 
-struct TerminalHostView: NSViewRepresentable {
-    @EnvironmentObject var appState: AppState
+/// Hosts a terminal surface, sized by SwiftUI's layout. The GeometryReader is
+/// the authoritative size source: SwiftUI does not reliably call setFrameSize
+/// on a hosted NSView during window/live resize, so we feed geo.size straight
+/// to the surface (this is Ghostty's own recommended embedding approach).
+struct TerminalHostView: View {
     let session: TerminalSession
     var autoFocus = true
 
+    var body: some View {
+        GeometryReader { geo in
+            TerminalSurfaceRepresentable(session: session, autoFocus: autoFocus, size: geo.size)
+        }
+    }
+}
+
+private struct TerminalSurfaceRepresentable: NSViewRepresentable {
+    @EnvironmentObject var appState: AppState
+    let session: TerminalSession
+    var autoFocus: Bool
+    let size: CGSize
+
     func makeNSView(context: Context) -> NSView {
         let view = TerminalRegistry.shared.view(for: session, appState: appState) ?? NSView()
+        (view as? GhosttySurfaceNSView)?.updateSize(size)
         focusIfActive(view)
         return view
     }
 
-    // SwiftUI re-runs updateNSView when the observed state (selection) changes,
-    // so this reliably moves focus to whichever terminal just became active —
-    // covering restore, tab switches, and quick-switcher jumps where a single
-    // makeFirstResponder at creation time races ahead of the selection.
+    // SwiftUI re-runs updateNSView when the layout size or observed state
+    // changes, so this both resizes the surface and moves focus to whichever
+    // terminal just became active (restore, tab switches, quick-switcher jumps).
     func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? GhosttySurfaceNSView)?.updateSize(size)
         focusIfActive(nsView)
     }
 
