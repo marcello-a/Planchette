@@ -210,6 +210,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // Flush state whenever we lose focus or hide, so an abrupt kill/crash while
+    // in the background can't lose the workspace (on top of the debounced save
+    // after every change and the save on quit).
+    func applicationDidResignActive(_ notification: Notification) {
+        MainActor.assumeIsolated { appState.saveNow() }
+    }
+
+    func applicationDidHide(_ notification: Notification) {
+        MainActor.assumeIsolated { appState.saveNow() }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         isTerminating = true
         MainActor.assumeIsolated { appState.saveNow() }

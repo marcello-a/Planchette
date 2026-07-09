@@ -320,7 +320,11 @@ final class TerminalRegistry {
                 commands.append(startup)
             }
             if session.resumeClaudeOnRestore, let claudeID = session.claudeSessionID {
-                commands.append("claude --resume \(claudeID)")
+                // Resume the exact conversation; if its transcript is gone (the
+                // id went stale after a crash), fall back to continuing the most
+                // recent conversation in this folder, then to a fresh session —
+                // so a restore never dead-ends on "No conversation found".
+                commands.append("claude --resume \(claudeID) || claude --continue || claude")
             }
             if !commands.isEmpty { initialInput = commands.joined(separator: "\n") + "\n" }
         }
