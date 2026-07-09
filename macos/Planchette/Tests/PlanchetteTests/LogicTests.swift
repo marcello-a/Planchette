@@ -93,6 +93,56 @@ final class AttentionStateTests: XCTestCase {
     }
 }
 
+final class SplitLayoutTests: XCTestCase {
+    let a = UUID(), b = UUID(), c = UUID()
+
+    func testSplitLeafRightMakesRow() {
+        let layout = SplitLayout.leaf(a).splitting(a, with: b, edge: .right).normalized()
+        XCTAssertEqual(layout, .row([.leaf(a), .leaf(b)]))
+    }
+
+    func testSplitLeafTopMakesColumnNewFirst() {
+        let layout = SplitLayout.leaf(a).splitting(a, with: b, edge: .top).normalized()
+        XCTAssertEqual(layout, .column([.leaf(b), .leaf(a)]))
+    }
+
+    func testNormalizeFlattensNestedSameAxis() {
+        let nested = SplitLayout.row([.leaf(a), .row([.leaf(b), .leaf(c)])])
+        XCTAssertEqual(nested.normalized(), .row([.leaf(a), .leaf(b), .leaf(c)]))
+    }
+
+    func testRemovingLeafCollapsesSingleton() {
+        let layout = SplitLayout.row([.leaf(a), .leaf(b)])
+        XCTAssertEqual(layout.removingLeaf(a), .leaf(b))
+    }
+
+    func testSyncedAddsAndRemoves() {
+        let layout = SplitLayout.row([.leaf(a), .leaf(b)])
+        let synced = layout.synced(to: [a, c])   // drop b, add c
+        XCTAssertEqual(Set(synced.leaves), [a, c])
+    }
+
+    func testDropWhereAlreadyPresentIsNoOp() {
+        // row([a,b]) → drop b on a's RIGHT edge → still row([a,b]) (no change).
+        let current = SplitLayout.row([.leaf(a), .leaf(b)]).normalized()
+        let removed = current.removingLeaf(b) ?? .leaf(a)
+        let result = removed.splitting(a, with: b, edge: .right).normalized()
+        XCTAssertEqual(result, current, "dropping a pane where it already sits must be a no-op")
+        // …but dropping b on a's LEFT edge does change it.
+        let changed = (current.removingLeaf(b) ?? .leaf(a))
+            .splitting(a, with: b, edge: .left).normalized()
+        XCTAssertNotEqual(changed, current)
+    }
+
+    func testMoveAcrossTree() {
+        // a | b  →  drop a below b  →  b over a in one column
+        let start = SplitLayout.row([.leaf(a), .leaf(b)])
+        let moved = (start.removingLeaf(a) ?? .leaf(b))
+            .splitting(b, with: a, edge: .bottom).normalized()
+        XCTAssertEqual(moved, .column([.leaf(b), .leaf(a)]))
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.

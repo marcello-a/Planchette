@@ -20,7 +20,11 @@ struct TerminalAreaView: View {
                     emptyHint
                 }
             case .cluster:
-                clusterGrid(sessions: sessions)
+                if sessions.isEmpty {
+                    emptyHint
+                } else {
+                    ClusterView(group: group)
+                }
             }
         }
     }
@@ -100,38 +104,6 @@ struct TerminalAreaView: View {
             Divider()
             Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
                 .help(L10n.t(.closeHelp))
-        }
-    }
-
-    private func clusterGrid(sessions: [TerminalSession]) -> some View {
-        let columns = sessions.count <= 1
-            ? [GridItem(.flexible())]
-            : [GridItem(.flexible(), spacing: 1), GridItem(.flexible(), spacing: 1)]
-        return GeometryReader { geo in
-            let rows = max(1, Int(ceil(Double(sessions.count) / Double(columns.count))))
-            let height = max(200, geo.size.height / CGFloat(rows)) - 1
-            ScrollView {
-                LazyVGrid(columns: columns, spacing: 1) {
-                    ForEach(sessions) { session in
-                        VStack(spacing: 0) {
-                            HStack(spacing: 5) {
-                                Image(systemName: session.state.symbol)
-                                    .foregroundStyle(session.state.tint).font(.caption2)
-                                Text(session.displayTitle).font(.caption.bold())
-                                Text(session.shortPath).font(.caption2).foregroundStyle(.secondary)
-                                Spacer()
-                            }
-                            .padding(4)
-                            .background(session.color.color?.opacity(0.15) ?? Color(nsColor: .windowBackgroundColor))
-                            .help(session.currentDirectory)
-                            TerminalHostView(session: session, autoFocus: false)
-                                .id(session.id)
-                        }
-                        .frame(height: height)
-                        .border(Color.black.opacity(0.3), width: 0.5)
-                    }
-                }
-            }
         }
     }
 

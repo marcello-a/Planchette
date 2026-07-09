@@ -8,6 +8,10 @@ final class AppState: ObservableObject {
     @Published var windows: [WindowModel] = []
     /// Window the quick switcher is currently shown in (nil = hidden).
     @Published var quickSwitcherWindowID: UUID?
+    /// Session currently being dragged in a cluster (nil = none). Lets a drop
+    /// target decide, during hover, whether a drop would actually rearrange
+    /// anything — so it can refuse a no-op instead of showing a phantom highlight.
+    @Published var draggingClusterSessionID: UUID?
     @Published var aiEnabled = false {
         didSet { scheduleSave() }
     }
@@ -236,6 +240,34 @@ final class AppState: ObservableObject {
         guard let idx = groups.firstIndex(where: { $0.id == id }) else { return }
         mutate(&groups[idx])
         scheduleSave()
+    }
+
+    // MARK: Cluster split layout
+
+    /// The split arrangement for a group's cluster view, synced to its current
+    /// sessions (defaults to a single row).
+    func clusterLayout(for group: SessionGroup) -> SplitLayout {
+        let base = group.clusterLayout ?? .row(group.sessionIDs.map { SplitLayout.leaf($0) })
+        return base.synced(to: group.sessionIDs)
+    }
+
+    /// The layout that would result from dropping `dragged` on `target`'s edge,
+    /// or nil if the move is invalid or wouldn't change anything (e.g. dropping
+    /// a pane back where it already is).
+    func clusterMoveResult(dragged: UUID, target: UUID, edge: LayoutEdge, groupID: UUID) -> SplitLayout? {
+        guard dragged != target, let group = groups.first(where: { $0.id == groupID }) else { return nil }
+        let current = clusterLayout(for: group).normalized()
+        let removed = current.removingLeaf(dragged) ?? .leaf(target)
+        let result = removed.splitting(target, with: dragged, edge: edge).normalized()
+        return result == current ? nil : result
+    }
+
+    /// Drag-and-drop: place `dragged` on the given edge of `target`. No-op if the
+    /// move wouldn't change the arrangement.
+    func moveInCluster(_ dragged: UUID, target: UUID, edge: LayoutEdge, groupID: UUID) {
+        guard let result = clusterMoveResult(dragged: dragged, target: target, edge: edge, groupID: groupID)
+        else { return }
+        updateGroup(groupID) { $0.clusterLayout = result }
     }
 
     func select(session: TerminalSession) {

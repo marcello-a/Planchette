@@ -191,6 +191,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
     }
 
+    // Clicking the dock icon with no open window reopens one.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        true
+    }
+
     func applicationDidBecomeActive(_ notification: Notification) {
         // When the app is activated, guarantee a key window so keyboard input is
         // delivered (the launch modal + window restoration can leave none).
@@ -216,50 +221,47 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @AppStorage("sidebarMinified") private var sidebarMinified = false
     @AppStorage("inboxShown") private var inboxShown = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     let windowID: UUID
 
-    private var resolvedWindow: WindowModel? { appState.window(for: windowID) }
+    // A window whose id has no model (e.g. one macOS restored from a previous
+    // session) redirects to the main window model instead of sitting blank or
+    // being closed — guaranteeing there's always at least one usable window.
+    private var resolvedWindow: WindowModel? {
+        appState.window(for: windowID) ?? appState.window(for: AppState.mainWindowID)
+    }
     private var isMainWindow: Bool { windowID == AppState.mainWindowID }
 
     var body: some View {
         Group {
             if let window = resolvedWindow {
-                NavigationSplitView(columnVisibility: $columnVisibility) {
-                    SidebarView(windowID: window.id)
-                        .navigationSplitViewColumnWidth(
-                            min: sidebarMinified ? 60 : 210,
-                            ideal: sidebarMinified ? 60 : 250,
-                            max: sidebarMinified ? 72 : 400)
-                        // The built-in top-right toggle drives our minified rail
-                        // instead of fully hiding: intercept the collapse and
-                        // flip `minified`, keeping the sidebar visible.
-                        .onChange(of: columnVisibility) { _, new in
-                            if new != .all {
-                                columnVisibility = .all
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    sidebarMinified.toggle()
-                                }
-                            }
-                        }
-                } detail: {
-                    HSplitView {
-                        Group {
-                            if let groupID = window.selectedGroupID,
-                               let group = appState.groups.first(where: { $0.id == groupID }) {
-                                TerminalAreaView(group: group)
-                            } else {
-                                welcome
-                            }
-                        }
-                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+                HSplitView {
+                    // Left "Projects" panel — a body panel (below the toolbar),
+                    // symmetric with the Notifications panel on the right.
+                    if sidebarMinified {
+                        SidebarView(windowID: window.id)
+                            .frame(width: 60)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        SidebarView(windowID: window.id)
+                            .frame(minWidth: 210, idealWidth: 250, maxWidth: 400,
+                                   maxHeight: .infinity)
+                    }
 
-                        if inboxShown {
-                            // Persistent, drag-resizable notification sidebar.
-                            AttentionPanel()
-                                .frame(minWidth: 240, idealWidth: 300, maxWidth: 520,
-                                       maxHeight: .infinity)
+                    Group {
+                        if let groupID = window.selectedGroupID,
+                           let group = appState.groups.first(where: { $0.id == groupID }) {
+                            TerminalAreaView(group: group)
+                        } else {
+                            welcome
                         }
+                    }
+                    .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+
+                    if inboxShown {
+                        // Persistent, drag-resizable notification sidebar.
+                        AttentionPanel()
+                            .frame(minWidth: 240, idealWidth: 300, maxWidth: 520,
+                                   maxHeight: .infinity)
                     }
                 }
                 .background(WindowAccessor(windowID: window.id))
@@ -278,14 +280,10 @@ struct ContentView: View {
                     for id in toOpen { openWindow(value: id) }
                     if !toOpen.isEmpty { appState.windowsToOpen = [] }
                 }
-            } else if isMainWindow {
-                // Main window's model isn't ready yet (first render before
-                // restore/sanitize) — never close it; show the welcome screen.
-                welcome
             } else {
-                // A stale non-main window restored by macOS with no backing
-                // model — close it so it can't sit blank and steal key focus.
-                Color.clear.background(PhantomWindowCloser())
+                // No model at all yet (very first render before restore) —
+                // transient; show the welcome screen rather than a blank window.
+                welcome
             }
         }
     }
@@ -330,16 +328,6 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-}
-
-/// Closes a stale (macOS-restored) window that has no backing model.
-struct PhantomWindowCloser: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { view.window?.close() }
-        return view
-    }
-    func updateNSView(_ nsView: NSView, context: Context) {}
 }
 
 /// Registers the hosting NSWindow in the WindowRegistry.

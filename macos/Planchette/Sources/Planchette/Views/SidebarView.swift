@@ -22,69 +22,88 @@ struct SidebarView: View {
                 minifiedRail(windowGroups)
                     .transition(.opacity)
             } else {
+                // Header sits in the body (below the toolbar), mirroring the
+                // Notifications panel on the right — same font and insets.
+                projectsHeader
+                Divider()
                 fullList(windowGroups)
                     .transition(.opacity)
             }
             SidebarBottomBar(windowID: windowID)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
         .animation(.easeInOut(duration: 0.25), value: minified)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
     }
 
+    // MARK: Header
+
+    /// Matches AttentionPanel's header (font + 12/10/6 insets) so the left and
+    /// right panels line up exactly.
+    private var projectsHeader: some View {
+        HStack(spacing: 8) {
+            Text(L10n.t(.projects)).font(.headline)
+            Button {
+                appState.promptNewProject(inWindow: windowID)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L10n.t(.newProjectHelp))
+            Spacer()
+            Button { withAnimation(.easeInOut(duration: 0.25)) { minified = true } } label: {
+                Image(systemName: "sidebar.leading")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L10n.t(.minifySidebar))
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+    }
+
     // MARK: Full list
 
     @ViewBuilder
     private func fullList(_ windowGroups: [SessionGroup]) -> some View {
-        VStack(spacing: 0) {
-            // Header row: title + add-project. The collapse control lives in the
-            // window's top-right toolbar (see .toolbar below), not inline.
-            HStack(spacing: 6) {
-                Text(L10n.t(.projects)).font(.headline)
-                Button {
-                    appState.promptNewProject(inWindow: windowID)
-                } label: { Image(systemName: "plus") }
-                    .buttonStyle(.plain)
-                    .help(L10n.t(.newProjectHelp))
-                Spacer()
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.top, 6)
-            .padding(.bottom, 2)
-
-            List(selection: selectionBinding) {
-                let favorites = windowGroups.filter(\.favorite)
-                let normal = windowGroups.filter { !$0.favorite }
-
-                // The header above already says "Projects"; only label the
-                // sections when the favorite/side split is meaningful.
-                if favorites.isEmpty {
-                    ForEach(normal) { group in groupRow(group) }
-                } else {
-                    Section(L10n.t(.mainProjects)) {
-                        ForEach(favorites) { group in groupRow(group) }
-                    }
-                    Section(L10n.t(.sideProjects)) {
-                        ForEach(normal) { group in groupRow(group) }
-                    }
+        let favorites = windowGroups.filter(\.favorite)
+        let normal = windowGroups.filter { !$0.favorite }
+        List(selection: selectionBinding) {
+            ForEach(favorites) { group in groupRow(group) }
+            ForEach(normal) { group in groupRow(group) }
+        }
+        .listStyle(.sidebar)
+        .overlay {
+            // Centered empty state — can't clip like an inset list row.
+            if windowGroups.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.title2).foregroundStyle(.secondary)
+                    Text(L10n.t(.noProjectsYet))
+                        .font(.callout).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 20)
+                .allowsHitTesting(false)
             }
-            .listStyle(.sidebar)
-            .overlay {
-                if isDropTargeted {
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
-                        .background(Color.accentColor.opacity(0.08))
-                        .overlay(
-                            Label(L10n.t(.dropHint), systemImage: "folder.badge.plus")
-                                .padding(8)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                        )
-                        .padding(6)
-                        .allowsHitTesting(false)
-                }
+        }
+        .overlay {
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                    .background(Color.accentColor.opacity(0.08))
+                    .overlay(
+                        Label(L10n.t(.dropHint), systemImage: "folder.badge.plus")
+                            .padding(8)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    )
+                    .padding(6)
+                    .allowsHitTesting(false)
             }
         }
     }

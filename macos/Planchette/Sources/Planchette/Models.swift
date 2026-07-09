@@ -147,6 +147,100 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var shortPath: String { Titles.shortPath(currentDirectory) }
 }
 
+/// Where a dragged terminal is dropped relative to a target pane.
+enum LayoutEdge { case top, bottom, left, right }
+
+/// A recursive split arrangement of terminals in cluster mode (like iTerm2's
+/// split panes). `row` lays children left→right, `column` top→bottom.
+indirect enum SplitLayout: Codable, Equatable {
+    case leaf(UUID)               // a terminal session
+    case row([SplitLayout])       // horizontal splits
+    case column([SplitLayout])    // vertical splits
+
+    var leaves: [UUID] {
+        switch self {
+        case .leaf(let id): [id]
+        case .row(let c), .column(let c): c.flatMap(\.leaves)
+        }
+    }
+
+    /// Identity for SwiftUI's ForEach. Derived from the node's leaves so a view's
+    /// @State (e.g. the drop highlight) follows its content when panes reorder,
+    /// instead of leaking to whatever lands at the same index. Unique among
+    /// siblings because a leaf can only appear in one child.
+    var stableID: String { leaves.map(\.uuidString).joined(separator: "+") }
+
+    /// Remove a leaf, collapsing empty/single-child nodes.
+    func removingLeaf(_ id: UUID) -> SplitLayout? {
+        switch self {
+        case .leaf(let l): return l == id ? nil : self
+        case .row(let c):
+            let n = c.compactMap { $0.removingLeaf(id) }
+            return n.isEmpty ? nil : (n.count == 1 ? n[0] : .row(n))
+        case .column(let c):
+            let n = c.compactMap { $0.removingLeaf(id) }
+            return n.isEmpty ? nil : (n.count == 1 ? n[0] : .column(n))
+        }
+    }
+
+    /// Split the target leaf, placing `newID` on the given edge.
+    func splitting(_ target: UUID, with newID: UUID, edge: LayoutEdge) -> SplitLayout {
+        switch self {
+        case .leaf(let l):
+            guard l == target else { return self }
+            switch edge {
+            case .left:   return .row([.leaf(newID), .leaf(target)])
+            case .right:  return .row([.leaf(target), .leaf(newID)])
+            case .top:    return .column([.leaf(newID), .leaf(target)])
+            case .bottom: return .column([.leaf(target), .leaf(newID)])
+            }
+        case .row(let c):   return .row(c.map { $0.splitting(target, with: newID, edge: edge) })
+        case .column(let c): return .column(c.map { $0.splitting(target, with: newID, edge: edge) })
+        }
+    }
+
+    /// Flatten nested same-axis nodes and collapse singletons.
+    func normalized() -> SplitLayout {
+        func flatten(_ children: [SplitLayout], isRow: Bool) -> [SplitLayout] {
+            var out: [SplitLayout] = []
+            for child in children.map({ $0.normalized() }) {
+                switch child {
+                case .row(let g) where isRow: out.append(contentsOf: g)
+                case .column(let g) where !isRow: out.append(contentsOf: g)
+                default: out.append(child)
+                }
+            }
+            return out
+        }
+        switch self {
+        case .leaf: return self
+        case .row(let c):
+            let f = flatten(c, isRow: true); return f.count == 1 ? f[0] : .row(f)
+        case .column(let c):
+            let f = flatten(c, isRow: false); return f.count == 1 ? f[0] : .column(f)
+        }
+    }
+
+    /// Ensure the tree contains exactly `ids` (append new, drop removed).
+    func synced(to ids: [UUID]) -> SplitLayout {
+        var tree: SplitLayout? = self
+        for gone in leaves where !ids.contains(gone) { tree = tree?.removingLeaf(gone) }
+        var result = tree ?? .row(ids.isEmpty ? [] : [.leaf(ids[0])])
+        let present = Set(result.leaves)
+        for id in ids where !present.contains(id) {
+            result = (result.normalized().appendingRight(id))
+        }
+        return result.normalized()
+    }
+
+    private func appendingRight(_ id: UUID) -> SplitLayout {
+        switch self {
+        case .row(let c): return .row(c + [.leaf(id)])
+        default: return .row([self, .leaf(id)])
+        }
+    }
+}
+
 struct SessionGroup: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
@@ -155,6 +249,7 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     var favorite: Bool = false   // "Hauptprojekt": high priority
     var sessionIDs: [UUID] = []
     var activeSessionID: UUID?
+    var clusterLayout: SplitLayout?   // custom split arrangement (cluster mode)
 
     init(id: UUID = UUID(), name: String) {
         self.id = id
