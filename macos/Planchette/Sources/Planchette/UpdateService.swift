@@ -201,33 +201,45 @@ final class UpdateService: ObservableObject {
         return items.first { $0.pathExtension == "app" }
     }
 
-    /// Writes a helper script that waits for us to quit, replaces the installed
-    /// bundle with the new one (keeping a backup to roll back on failure),
-    /// clears quarantine, and relaunches. The child survives our termination.
+    /// Writes a helper script that waits for us to fully quit, then swaps the
+    /// installed bundle for the new one and relaunches. The child survives our
+    /// termination. The new build is staged next to the destination and only
+    /// swapped in once the copy fully succeeds, so a failed copy can never leave
+    /// the app missing. All output is logged for diagnosis.
+    /// Args: $1 = new .app (extracted), $2 = installed .app, $3 = log file.
     private func swapAndRelaunch(newApp: String, dest: String) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let script = """
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-update.log")
+        let script = #"""
         #!/bin/sh
-        # $1 = new .app (extracted)   $2 = installed .app to replace
-        while kill -0 \(pid) 2>/dev/null; do sleep 0.2; done
-        BACKUP="$2.old"
-        rm -rf "$BACKUP"
-        if ! mv "$2" "$BACKUP"; then open "$2"; exit 1; fi
-        if /usr/bin/ditto "$1" "$2"; then
-            rm -rf "$BACKUP"
-            /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+        exec >> "$3" 2>&1
+        echo "--- swap $(date) : pid \#(pid) ---"
+        while kill -0 \#(pid) 2>/dev/null; do sleep 0.2; done
+        sleep 0.7   # let the OS release the old bundle after the process exits
+        STAGING="$2.new"
+        rm -rf "$STAGING"
+        if /usr/bin/ditto "$1" "$STAGING"; then
+            rm -rf "$2"
+            if mv "$STAGING" "$2"; then
+                /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+                echo "swap ok -> $2"
+            else
+                echo "ERROR: mv staging into place failed"
+            fi
         else
-            rm -rf "$2"; mv "$BACKUP" "$2"
+            echo "ERROR: ditto to staging failed; app left untouched"
+            rm -rf "$STAGING"
         fi
         open "$2"
-        """
+        """#
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("planchette-swap-\(UUID().uuidString).sh")
         try script.write(to: scriptURL, atomically: true, encoding: .utf8)
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = [scriptURL.path, newApp, dest]
+        task.arguments = [scriptURL.path, newApp, dest, logURL.path]
         try task.run()   // detached; keeps running after we terminate
     }
 
