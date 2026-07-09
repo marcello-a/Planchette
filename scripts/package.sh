@@ -44,6 +44,10 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$EXE" "$APP/Contents/MacOS/Planchette"
 cp -R "$GHOSTTY_SHARE" "$APP/Contents/Resources/ghostty"
+# terminfo (sibling of the ghostty resources dir) so `xterm-ghostty` resolves.
+if [ -d "$GHOSTTY_SHARE/../terminfo" ]; then
+    cp -R "$GHOSTTY_SHARE/../terminfo" "$APP/Contents/Resources/terminfo"
+fi
 [ -f "$PKG/Resources/AppIcon.icns" ] && cp "$PKG/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<PLIST

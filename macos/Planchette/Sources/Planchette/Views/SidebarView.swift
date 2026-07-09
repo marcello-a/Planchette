@@ -20,11 +20,14 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             if minified {
                 minifiedRail(windowGroups)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             } else {
                 fullList(windowGroups)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
             SidebarBottomBar(windowID: windowID)
         }
+        .animation(.easeInOut(duration: 0.22), value: minified)
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -44,8 +47,8 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .help(L10n.t(.newProjectHelp))
                 Spacer()
-                Button { minified = true } label: {
-                    Image(systemName: "sidebar.leading")
+                Button { withAnimation(.easeInOut(duration: 0.22)) { minified = true } } label: {
+                    Image(systemName: "arrow.left.to.line")
                 }
                 .buttonStyle(.plain)
                 .help(L10n.t(.minifySidebar))
@@ -59,13 +62,17 @@ struct SidebarView: View {
                 let favorites = windowGroups.filter(\.favorite)
                 let normal = windowGroups.filter { !$0.favorite }
 
-                if !favorites.isEmpty {
+                // The header above already says "Projects"; only label the
+                // sections when the favorite/side split is meaningful.
+                if favorites.isEmpty {
+                    ForEach(normal) { group in groupRow(group) }
+                } else {
                     Section(L10n.t(.mainProjects)) {
                         ForEach(favorites) { group in groupRow(group) }
                     }
-                }
-                Section(favorites.isEmpty ? L10n.t(.projects) : L10n.t(.sideProjects)) {
-                    ForEach(normal) { group in groupRow(group) }
+                    Section(L10n.t(.sideProjects)) {
+                        ForEach(normal) { group in groupRow(group) }
+                    }
                 }
             }
             .listStyle(.sidebar)
@@ -91,8 +98,8 @@ struct SidebarView: View {
     @ViewBuilder
     private func minifiedRail(_ windowGroups: [SessionGroup]) -> some View {
         VStack(spacing: 0) {
-            Button { minified = false } label: {
-                Image(systemName: "sidebar.leading")
+            Button { withAnimation(.easeInOut(duration: 0.22)) { minified = false } } label: {
+                Image(systemName: "arrow.right.to.line")
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
@@ -100,12 +107,20 @@ struct SidebarView: View {
             .padding(.vertical, 8)
 
             ScrollView {
-                VStack(spacing: 6) {
+                VStack(spacing: 4) {
+                    // One quick-access tile per project (group), stacked small.
                     ForEach(windowGroups) { group in
-                        ForEach(appState.sessions(in: group)) { session in
-                            minifiedItem(session)
-                        }
+                        minifiedProjectItem(group)
                     }
+                    Button {
+                        appState.promptNewProject(inWindow: windowID)
+                    } label: {
+                        Image(systemName: "plus")
+                            .frame(width: 34, height: 30)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.t(.newProjectHelp))
                 }
                 .padding(.vertical, 4)
             }
@@ -114,29 +129,47 @@ struct SidebarView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func minifiedItem(_ session: TerminalSession) -> some View {
-        let isSelected = appState.window(for: windowID)?.selectedGroupID == session.groupID
-            && appState.groups.first { $0.id == session.groupID }?.activeSessionID == session.id
+    /// A single project tile in the minified rail: initial + color, with a
+    /// status dot when any of its terminals needs attention.
+    private func minifiedProjectItem(_ group: SessionGroup) -> some View {
+        let isSelected = appState.window(for: windowID)?.selectedGroupID == group.id
+        let sessions = appState.sessions(in: group)
+        // Most urgent state among the group's sessions drives the badge.
+        let badge: AttentionState? = sessions.map(\.state)
+            .filter(\.needsAttention)
+            .min { ($0 == .error ? 0 : 1) < ($1 == .error ? 0 : 1) }
+        let initial = String(group.name.prefix(1)).uppercased()
         return Button {
-            appState.select(session: session)
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(session.state.tint)
-                    .frame(width: 24, height: 24)
-                Image(systemName: session.state.symbol)
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.white)
+            if let active = sessions.first(where: { $0.id == group.activeSessionID }) ?? sessions.first {
+                appState.select(session: active)
+            } else {
+                appState.updateWindow(windowID) { $0.selectedGroupID = group.id }
             }
-            .overlay(
-                Circle().strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 2)
-            )
-            .padding(4)
-            .background(isSelected ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
-                        in: RoundedRectangle(cornerRadius: 7))
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(group.color.color?.opacity(0.9) ?? Color.secondary.opacity(0.25))
+                    .frame(width: 34, height: 34)
+                    .overlay(
+                        Text(initial)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(group.color.color != nil ? .white : .primary)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 2)
+                    )
+                if let badge {
+                    Circle().fill(badge.tint)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
+                        .offset(x: 3, y: -3)
+                }
+            }
+            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
-        .help("\(session.displayTitle) — \(session.state.label)\n\(session.currentDirectory)")
+        .help(group.name)
     }
 
     /// Accept folders dropped from Finder (or a terminal's proxy icon) and open

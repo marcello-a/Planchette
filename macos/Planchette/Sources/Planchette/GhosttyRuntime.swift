@@ -25,6 +25,25 @@ final class GhosttyRuntime {
             setenv("GHOSTTY_RESOURCES_DIR", bundled.path, 1)
         }
 
+        // Point ncurses at Ghostty's terminfo so `xterm-ghostty` resolves —
+        // without it, clear/line-editing/redraw sequences fail and the display
+        // garbles ("'xterm-ghostty': unknown terminal type"). Set before the
+        // shell spawns so child processes inherit it.
+        if ProcessInfo.processInfo.environment["TERMINFO"] == nil {
+            let fm = FileManager.default
+            var terminfo: String?
+            if let bundled = Bundle.main.resourceURL?.appendingPathComponent("terminfo"),
+               fm.fileExists(atPath: bundled.path) {
+                terminfo = bundled.path
+            } else if let res = ProcessInfo.processInfo.environment["GHOSTTY_RESOURCES_DIR"] {
+                // Dev: resources dir is …/share/ghostty; terminfo is …/share/terminfo.
+                let sibling = URL(fileURLWithPath: res).deletingLastPathComponent()
+                    .appendingPathComponent("terminfo").path
+                if fm.fileExists(atPath: sibling) { terminfo = sibling }
+            }
+            if let terminfo { setenv("TERMINFO", terminfo, 1) }
+        }
+
         guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
             NSLog("ghostty_init failed")
             return

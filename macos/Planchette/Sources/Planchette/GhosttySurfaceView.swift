@@ -147,19 +147,32 @@ final class GhosttySurfaceNSView: NSView {
 
     // MARK: Keyboard
     //
-    // Direct key handling: send the event's characters to the surface on press,
-    // and keycode-only for control/navigation keys. This is the approach that
-    // works reliably inside our SwiftUI embedding — adopting NSTextInputClient
-    // here caused AppKit's input context to swallow key events before keyDown.
-    // Known limitation: press-and-hold accent picker / CJK IME composition
-    // aren't supported (direct keys, incl. German umlauts, work fine).
+    // Route key presses through AppKit's text input system
+    // (`interpretKeyEvents` → NSTextInputClient), exactly like Ghostty's own
+    // app. The system resolves the correct characters in order — hand-decoding
+    // `event.characters` dropped/reordered characters during fast typing
+    // (e.g. "ls a aa" arriving as "laaa"). Control/navigation keys produce no
+    // insertText, so we fall back to sending the keycode for those.
+
+    /// Text the input system produced during the current keyDown.
+    private var keyTextAccumulator: [String]?
+    private var markedTextValue = NSMutableAttributedString()
 
     override func keyDown(with event: NSEvent) {
-        sendKey(event: event, action: GHOSTTY_ACTION_PRESS)
+        keyTextAccumulator = []
+        interpretKeyEvents([event])
+        let produced = keyTextAccumulator ?? []
+        keyTextAccumulator = nil
+        sendKey(event: event, action: GHOSTTY_ACTION_PRESS, texts: produced)
     }
 
     override func keyUp(with event: NSEvent) {
-        sendKey(event: event, action: GHOSTTY_ACTION_RELEASE)
+        sendKey(event: event, action: GHOSTTY_ACTION_RELEASE, texts: [])
+    }
+
+    override func doCommand(by selector: Selector) {
+        // Swallow — the key is already forwarded to the surface via sendKey;
+        // letting the responder chain also handle it would double-fire or beep.
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
@@ -170,11 +183,11 @@ final class GhosttySurfaceNSView: NSView {
         if let chars = event.charactersIgnoringModifiers, appShortcuts.contains(chars) {
             return false
         }
-        sendKey(event: event, action: GHOSTTY_ACTION_PRESS)
+        keyDown(with: event)
         return true
     }
 
-    private func sendKey(event: NSEvent, action: ghostty_input_action_e) {
+    private func sendKey(event: NSEvent, action: ghostty_input_action_e, texts: [String]) {
         guard let surface else { return }
 
         var key = ghostty_input_key_s()
@@ -183,30 +196,58 @@ final class GhosttySurfaceNSView: NSView {
         key.consumed_mods = ghostty_input_mods_e(0)
         key.keycode = UInt32(event.keyCode)
         key.unshifted_codepoint = 0
-        key.composing = false
+        key.composing = markedTextValue.length > 0
 
-        // Provide text only for printable presses; libghostty encodes control
-        // and navigation keys from the keycode + modifiers itself.
-        var text: String? = nil
-        if action == GHOSTTY_ACTION_PRESS,
-           !event.modifierFlags.contains(.command),
-           !event.modifierFlags.contains(.control),
-           let chars = event.characters,
-           let scalar = chars.unicodeScalars.first,
-           scalar.value >= 0x20, scalar.value != 0x7F {
-            text = chars
+        let printable = texts.filter { s in
+            guard let scalar = s.unicodeScalars.first else { return false }
+            return scalar.value >= 0x20 && scalar.value != 0x7F
         }
-
-        if let text {
-            text.withCString { ptr in
-                key.text = ptr
-                _ = ghostty_surface_key(surface, key)
-            }
-        } else {
+        if printable.isEmpty {
             key.text = nil
             _ = ghostty_surface_key(surface, key)
+        } else {
+            for text in printable {
+                text.withCString { ptr in
+                    key.text = ptr
+                    _ = ghostty_surface_key(surface, key)
+                }
+            }
         }
     }
+}
+
+// MARK: - NSTextInputClient
+// Lets `interpretKeyEvents` deliver resolved characters via insertText (in
+// order) and provides basic dead-key/IME composition.
+extension GhosttySurfaceNSView: NSTextInputClient {
+    func insertText(_ string: Any, replacementRange: NSRange) {
+        let text = (string as? String) ?? (string as? NSAttributedString)?.string ?? ""
+        markedTextValue = NSMutableAttributedString()
+        if keyTextAccumulator != nil { keyTextAccumulator?.append(text) }
+    }
+
+    func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        if let s = string as? NSAttributedString {
+            markedTextValue = NSMutableAttributedString(attributedString: s)
+        } else if let s = string as? String {
+            markedTextValue = NSMutableAttributedString(string: s)
+        }
+    }
+
+    func unmarkText() { markedTextValue = NSMutableAttributedString() }
+    func hasMarkedText() -> Bool { markedTextValue.length > 0 }
+    func selectedRange() -> NSRange { NSRange(location: NSNotFound, length: 0) }
+    func markedRange() -> NSRange {
+        markedTextValue.length > 0 ? NSRange(location: 0, length: markedTextValue.length)
+                                   : NSRange(location: NSNotFound, length: 0)
+    }
+    func attributedSubstring(forProposedRange range: NSRange, actualRange: NSRangePointer?) -> NSAttributedString? { nil }
+    func validAttributesForMarkedText() -> [NSAttributedString.Key] { [] }
+    func firstRect(forCharacterRange range: NSRange, actualRange: NSRangePointer?) -> NSRect {
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
+    }
+    func characterIndex(for point: NSPoint) -> Int { 0 }
 }
 
 /// Keeps terminal NSViews alive independent of SwiftUI view lifecycles —
