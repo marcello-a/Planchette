@@ -108,6 +108,7 @@ enum LKey: String, CaseIterable {
 
     // Hook install prompt
     case hooksTitle, hooksBody, hooksInstall, hooksLater, hooksDontAsk, hooksFailed
+    case hooksSection, hooksInstalled, hooksInstallButton
 
     // Grouping alerts
     case noGroupingTitle, noGroupingBody, groupByTopicTitle, group
@@ -222,6 +223,8 @@ enum L10n {
         .hooksBody: "Planchette installs Claude Code hooks to show session status and resume conversations after a restart. Existing hooks stay untouched (a backup is written).",
         .hooksInstall: "Install", .hooksLater: "Not Now", .hooksDontAsk: "Don't ask again",
         .hooksFailed: "Hook installation failed",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks installed",
+        .hooksInstallButton: "Install hooks",
         .noGroupingTitle: "No grouping suggestion",
         .noGroupingBody: "Not enough sessions share a topic yet. Summarize first.",
         .groupByTopicTitle: "Group by topic?",
@@ -295,6 +298,8 @@ enum L10n {
         .hooksBody: "Planchette installiert Claude-Code-Hooks, um den Sitzungsstatus anzuzeigen und Unterhaltungen nach einem Neustart fortzusetzen. Bestehende Hooks bleiben unangetastet (ein Backup wird angelegt).",
         .hooksInstall: "Installieren", .hooksLater: "Später", .hooksDontAsk: "Nicht mehr fragen",
         .hooksFailed: "Hook-Installation fehlgeschlagen",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks installiert",
+        .hooksInstallButton: "Hooks installieren",
         .noGroupingTitle: "Kein Gruppierungs-Vorschlag",
         .noGroupingBody: "Noch zu wenige Sessions mit gleichem Thema. Erst zusammenfassen lassen.",
         .groupByTopicTitle: "Nach Themen gruppieren?",
@@ -368,6 +373,8 @@ enum L10n {
         .hooksBody: "Planchette installe des hooks Claude Code pour afficher l'état des sessions et reprendre les conversations après un redémarrage. Vos hooks existants restent intacts (une sauvegarde est créée).",
         .hooksInstall: "Installer", .hooksLater: "Plus tard", .hooksDontAsk: "Ne plus demander",
         .hooksFailed: "Échec de l'installation des hooks",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks installés",
+        .hooksInstallButton: "Installer les hooks",
         .noGroupingTitle: "Aucune suggestion de groupe",
         .noGroupingBody: "Pas encore assez de sessions partageant un thème. Résumez d'abord.",
         .groupByTopicTitle: "Grouper par thème ?",
@@ -441,6 +448,8 @@ enum L10n {
         .hooksBody: "Planchette instala hooks de Claude Code para mostrar el estado de las sesiones y reanudar conversaciones tras un reinicio. Tus hooks existentes quedan intactos (se crea una copia de seguridad).",
         .hooksInstall: "Instalar", .hooksLater: "Ahora no", .hooksDontAsk: "No volver a preguntar",
         .hooksFailed: "Error al instalar los hooks",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks instalados",
+        .hooksInstallButton: "Instalar hooks",
         .noGroupingTitle: "Sin sugerencia de agrupación",
         .noGroupingBody: "Aún no hay suficientes sesiones con el mismo tema. Resume primero.",
         .groupByTopicTitle: "¿Agrupar por tema?",
@@ -514,6 +523,8 @@ enum L10n {
         .hooksBody: "Planchette installa gli hook di Claude Code per mostrare lo stato delle sessioni e riprendere le conversazioni dopo un riavvio. Gli hook esistenti restano intatti (viene creato un backup).",
         .hooksInstall: "Installa", .hooksLater: "Non ora", .hooksDontAsk: "Non chiedere più",
         .hooksFailed: "Installazione degli hook non riuscita",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hook installati",
+        .hooksInstallButton: "Installa gli hook",
         .noGroupingTitle: "Nessun suggerimento di raggruppamento",
         .noGroupingBody: "Non ci sono ancora abbastanza sessioni con lo stesso tema. Riassumi prima.",
         .groupByTopicTitle: "Raggruppare per tema?",
@@ -587,6 +598,8 @@ enum L10n {
         .hooksBody: "Planchette installeert Claude Code-hooks om de sessiestatus te tonen en gesprekken na een herstart te hervatten. Bestaande hooks blijven onaangeroerd (er wordt een back-up gemaakt).",
         .hooksInstall: "Installeren", .hooksLater: "Niet nu", .hooksDontAsk: "Niet meer vragen",
         .hooksFailed: "Installatie van hooks mislukt",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks geïnstalleerd",
+        .hooksInstallButton: "Hooks installeren",
         .noGroupingTitle: "Geen groeperingssuggestie",
         .noGroupingBody: "Nog niet genoeg sessies met hetzelfde thema. Vat eerst samen.",
         .groupByTopicTitle: "Op thema groeperen?",
@@ -660,6 +673,8 @@ enum L10n {
         .hooksBody: "O Planchette instala hooks do Claude Code para mostrar o estado das sessões e retomar conversas após um reinício. Os seus hooks existentes ficam intactos (é criada uma cópia de segurança).",
         .hooksInstall: "Instalar", .hooksLater: "Agora não", .hooksDontAsk: "Não perguntar novamente",
         .hooksFailed: "Falha na instalação dos hooks",
+        .hooksSection: "Claude Code", .hooksInstalled: "Hooks instalados",
+        .hooksInstallButton: "Instalar hooks",
         .noGroupingTitle: "Sem sugestão de agrupamento",
         .noGroupingBody: "Ainda não há sessões suficientes com o mesmo tema. Resume primeiro.",
         .groupByTopicTitle: "Agrupar por tema?",

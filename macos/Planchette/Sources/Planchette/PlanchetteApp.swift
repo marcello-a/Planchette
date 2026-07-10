@@ -65,6 +65,7 @@ struct PlanchetteApp: App {
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var updater: UpdateService
+    @State private var hooksInstalled = HookInstaller.isInstalled()
 
     var body: some View {
         TabView {
@@ -99,6 +100,19 @@ struct SettingsView: View {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
             }
+            Section(L10n.t(.hooksSection)) {
+                if hooksInstalled {
+                    Label(L10n.t(.hooksInstalled), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button(L10n.t(.hooksInstallButton)) {
+                        HookInstaller.installReportingFailure()
+                        hooksInstalled = HookInstaller.isInstalled()
+                    }
+                    .help(L10n.t(.hooksBody))
+                }
+            }
+            .onAppear { hooksInstalled = HookInstaller.isInstalled() }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))

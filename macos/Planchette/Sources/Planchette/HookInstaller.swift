@@ -18,8 +18,8 @@ enum HookInstaller {
     /// The hook script lives in Application Support — a stable path that
     /// survives app updates and relocations.
     static var hookBinURL: URL {
-        AppState.stateURL.deletingLastPathComponent()
-            .appendingPathComponent("planchette-hook")
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Planchette/planchette-hook")
     }
 
     /// Verbatim copy of hook/planchette-hook.
@@ -104,7 +104,12 @@ enum HookInstaller {
             UserDefaults.standard.set(true, forKey: suppressKey)
         }
         guard response == .alertFirstButtonReturn else { return }
+        installReportingFailure()
+    }
 
+    /// Install and surface any error as an alert (launch prompt + settings).
+    @MainActor
+    static func installReportingFailure() {
         do {
             try install()
         } catch {
