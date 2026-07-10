@@ -13,10 +13,13 @@ enum HookInstaller {
         "PermissionRequest", "Stop", "SubagentStop", "SessionEnd",
     ]
 
-    /// Stable path for the hook script — in Application Support, so it survives
-    /// app moves/updates (settings.json references it by absolute path).
+    /// Stable path for the hook script. Deliberately a space-free path under
+    /// ~/.planchette: Claude runs the hook command through the shell, and a
+    /// space (e.g. "Application Support") would break the unquoted path.
     static var hookScriptURL: URL {
-        AppState.stateURL.deletingLastPathComponent().appendingPathComponent("planchette-hook")
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".planchette", isDirectory: true)
+            .appendingPathComponent("planchette-hook")
     }
 
     static func installIfNeeded() {
