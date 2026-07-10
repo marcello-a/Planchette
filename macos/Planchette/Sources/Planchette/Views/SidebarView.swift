@@ -81,6 +81,10 @@ struct SidebarView: View {
                 .onMove { moveGroups(normal, other: favorites, favoritesSection: false, from: $0, to: $1) }
         }
         .listStyle(.sidebar)
+        // Drop the translucent sidebar material so the panel is the same solid
+        // background as the terminal and the Notifications panel.
+        .scrollContentBackground(.hidden)
+        .background(.background)
         .overlay {
             // Centered empty state — can't clip like an inset list row.
             if windowGroups.isEmpty {
