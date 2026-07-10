@@ -165,26 +165,33 @@ final class GhosttySurfaceNSView: NSView {
 
     // MARK: Mouse
 
+    /// Tell ghostty the pointer position for this event. Must be sent BEFORE a
+    /// button press/release, otherwise ghostty uses a stale position and a click
+    /// selects from there (e.g. the start of the line) to the release point.
+    private func sendMousePos(_ event: NSEvent) {
+        guard let surface else { return }
+        let pos = convert(event.locationInWindow, from: nil)
+        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        sendMousePos(event)   // position first → click lands where clicked
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
     }
 
     override func mouseUp(with event: NSEvent) {
+        sendMousePos(event)
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        guard let surface else { return }
-        let pos = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
-    }
+    override func mouseMoved(with event: NSEvent) { sendMousePos(event) }
 
-    override func mouseDragged(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseDragged(with event: NSEvent) { sendMousePos(event) }
 
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
