@@ -193,6 +193,32 @@ final class GhosttySurfaceNSView: NSView {
 
     override func mouseDragged(with event: NSEvent) { sendMousePos(event) }
 
+    // Clicking an unfocused terminal should register the click, not just focus.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // Tracking area so mouseMoved/Entered/Exited fire — ghostty needs the live
+    // pointer position for hover, selection, and mouse reporting. Without this
+    // the position is stale and clicks/selection behave unintuitively.
+    override func updateTrackingAreas() {
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .inVisibleRect, .activeAlways],
+            owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        sendMousePos(event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        guard let surface else { return }
+        // Negative position tells ghostty the cursor left the viewport.
+        ghostty_surface_mouse_pos(surface, -1, -1, event.modifierFlags.ghosttyMods)
+    }
+
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
         var mods: Int32 = 0
