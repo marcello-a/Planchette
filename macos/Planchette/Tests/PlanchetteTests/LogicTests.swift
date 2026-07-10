@@ -191,6 +191,62 @@ final class RestoreCommandTests: XCTestCase {
     }
 }
 
+final class HookInstallerTests: XCTestCase {
+    private func tempDir() throws -> URL {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("planchette-hooks-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
+    func testInstallMergesAndPreservesExistingHooks() throws {
+        let dir = try tempDir()
+        let settings = dir.appendingPathComponent("settings.json")
+        let hookBin = dir.appendingPathComponent("planchette-hook")
+        try #"{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"other.sh"}]}]}}"#
+            .write(to: settings, atomically: true, encoding: .utf8)
+
+        XCTAssertFalse(HookInstaller.isInstalled(settings: settings))
+        try HookInstaller.install(settings: settings, hookBin: hookBin)
+
+        XCTAssertTrue(HookInstaller.isInstalled(settings: settings))
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: hookBin.path))
+        let root = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: settings)) as! [String: Any]
+        XCTAssertEqual(root["model"] as? String, "opus")
+        let hooks = root["hooks"] as! [String: Any]
+        for event in HookInstaller.events {
+            let entries = hooks[event] as! [[String: Any]]
+            let commands = entries.flatMap { ($0["hooks"] as! [[String: Any]]) }
+                .compactMap { $0["command"] as? String }
+            XCTAssertTrue(commands.contains(hookBin.path), "missing hook for \(event)")
+        }
+        // The pre-existing Stop hook survived.
+        let stop = (hooks["Stop"] as! [[String: Any]])
+            .flatMap { $0["hooks"] as! [[String: Any]] }
+            .compactMap { $0["command"] as? String }
+        XCTAssertTrue(stop.contains("other.sh"))
+        // Backup written next to the settings file.
+        XCTAssertTrue(FileManager.default.fileExists(
+            atPath: settings.appendingPathExtension("planchette-bak").path))
+    }
+
+    func testInstallIsIdempotent() throws {
+        let dir = try tempDir()
+        let settings = dir.appendingPathComponent("settings.json")
+        let hookBin = dir.appendingPathComponent("planchette-hook")
+        try HookInstaller.install(settings: settings, hookBin: hookBin)
+        try HookInstaller.install(settings: settings, hookBin: hookBin)
+        let root = try JSONSerialization.jsonObject(
+            with: Data(contentsOf: settings)) as! [String: Any]
+        let hooks = root["hooks"] as! [String: Any]
+        for event in HookInstaller.events {
+            XCTAssertEqual((hooks[event] as! [[String: Any]]).count, 1, "duplicate for \(event)")
+        }
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.

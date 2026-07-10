@@ -85,9 +85,11 @@ session. The inbox, menu-bar badge, and quick switcher are all just sorted views
 over these states (favorites first, `asking` before `done`, longest-waiting
 first). Focusing an `asking`/`done` terminal clears it.
 
-Install the hooks with `hook/install-hooks.sh` (merges into
-`~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
-terminals).
+The app offers to install the hooks on launch when they're missing
+(`HookInstaller`, a Swift port of `hook/install-hooks.sh`): it writes the hook
+script to Application Support and merges the entries into
+`~/.claude/settings.json` (backed up, existing hooks untouched, a no-op outside
+Planchette terminals). `hook/install-hooks.sh` remains for manual installs.
 
 ## AI assist (opt-in)
 

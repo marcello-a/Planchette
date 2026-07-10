@@ -188,6 +188,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        MainActor.assumeIsolated { HookInstaller.offerInstallIfNeeded() }
+
         NotificationService.requestAuthorization()
 
         let server = HookServer(appState: appState)
