@@ -57,6 +57,11 @@ final class AppState: ObservableObject {
         scrollbackDir.appendingPathComponent("\(id.uuidString).txt")
     }
 
+    /// Unsent prompt input captured for restore (best-effort).
+    static func pendingInputURL(for id: UUID) -> URL {
+        scrollbackDir.appendingPathComponent("\(id.uuidString).input")
+    }
+
     /// Capture every live terminal's scrollback to disk (called at durability
     /// moments: quit, resign-active, hide).
     func saveScrollbacks() {
@@ -230,6 +235,7 @@ final class AppState: ObservableObject {
         guard let session = sessions[id] else { return }
         TerminalRegistry.shared.close(id)
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
+        try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
@@ -251,6 +257,7 @@ final class AppState: ObservableObject {
         for sid in group.sessionIDs {
             TerminalRegistry.shared.close(sid)
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
+            try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
         }
         groups.removeAll { $0.id == groupID }

@@ -271,6 +271,43 @@ final class RestoreCommandTests: XCTestCase {
             startupCommand: "npm run dev", claudeSessionID: nil, resumeClaude: false) ?? ""
         XCTAssertTrue(cmd.contains("npm run dev"))
     }
+
+    // Pending input is re-typed at the prompt WITHOUT a trailing newline (so it
+    // never auto-runs), and only for a plain shell.
+    func testPendingInputTypedButNotSent() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "git push") ?? ""
+        XCTAssertEqual(cmd, "git push")          // no trailing newline
+        XCTAssertFalse(cmd.hasSuffix("\n"))
+    }
+
+    func testPendingInputAfterScrollbackReplay() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: true, scrollbackPath: "/tmp/s.txt",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "make test") ?? ""
+        XCTAssertTrue(cmd.contains("clear; cat "))
+        XCTAssertTrue(cmd.hasSuffix("make test"))  // sits at the prompt after replay
+    }
+
+    func testPendingInputSkippedWhenResumingClaude() {
+        // Would land in Claude's TUI, not the shell — so we don't inject it.
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true,
+            pendingInput: "secret") ?? ""
+        XCTAssertFalse(cmd.contains("secret"))
+    }
+
+    func testPendingInputSkippedWithStartupCommand() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: "npm run dev", claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "ls") ?? ""
+        XCTAssertFalse(cmd.hasSuffix("ls"))
+    }
 }
 
 final class LocalizationTests: XCTestCase {

@@ -208,11 +208,50 @@ final class GhosttySurfaceNSView: NSView {
     private var keyTextAccumulator: [String]?
     private var markedTextValue = NSMutableAttributedString()
 
+    // MARK: Pending input (best-effort, for restore)
+    //
+    // Mirrors plain typing at the prompt so a restart can re-type what you'd
+    // entered but not yet sent. It stays *conservative*: the moment anything
+    // ambiguous happens (arrow keys, shortcuts, history recall, paste), we mark
+    // it invalid and simply won't restore — never inject the wrong text.
+    private var pendingInput = ""
+    private var pendingValid = true
+
+    /// The unsent line to restore, or nil if we can't trust it.
+    func capturedPendingInput() -> String? {
+        guard pendingValid, !pendingInput.isEmpty, pendingInput.count <= 4096 else { return nil }
+        return pendingInput
+    }
+
+    private func trackPendingInput(event: NSEvent, produced: [String]) {
+        switch event.keyCode {
+        case 36, 76:                       // Return / Enter → line submitted
+            pendingInput = ""; pendingValid = true; return
+        case 51:                           // Backspace
+            if pendingValid, !pendingInput.isEmpty { pendingInput.removeLast() }
+            return
+        default: break
+        }
+        // Any modifier combo (shortcuts, ⌃-sequences) → can't track.
+        if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+            pendingValid = false; return
+        }
+        let printable = produced.joined().filter {
+            ($0.unicodeScalars.first?.value ?? 0) >= 0x20 && $0 != "\u{7F}"
+        }
+        if printable.isEmpty {             // arrows, tab, esc, fn keys, history…
+            pendingValid = false
+        } else if pendingValid {
+            pendingInput += printable
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         keyTextAccumulator = []
         interpretKeyEvents([event])
         let produced = keyTextAccumulator ?? []
         keyTextAccumulator = nil
+        trackPendingInput(event: event, produced: produced)
         sendKey(event: event, action: GHOSTTY_ACTION_PRESS, texts: produced)
     }
 
@@ -246,7 +285,9 @@ final class GhosttySurfaceNSView: NSView {
             .intersection([.command, .option, .control, .shift]) == .command
         if plainCommand {
             switch chars {
-            case "v": if performBindingAction("paste_from_clipboard") { return true }
+            case "v":
+                pendingValid = false   // can't track pasted text
+                if performBindingAction("paste_from_clipboard") { return true }
             case "c": if performBindingAction("copy_to_clipboard") { return true }
             case "a": if performBindingAction("select_all") { return true }
             default: break
@@ -273,7 +314,7 @@ final class GhosttySurfaceNSView: NSView {
 
     // Standard clipboard responder selectors so the Edit menu items (Paste,
     // Copy, Select All) are enabled and routed to the surface too.
-    @objc func paste(_ sender: Any?) { performBindingAction("paste_from_clipboard") }
+    @objc func paste(_ sender: Any?) { pendingValid = false; performBindingAction("paste_from_clipboard") }
     @objc func copy(_ sender: Any?) { performBindingAction("copy_to_clipboard") }
     @objc override func selectAll(_ sender: Any?) { performBindingAction("select_all") }
 
@@ -283,9 +324,19 @@ final class GhosttySurfaceNSView: NSView {
         var key = ghostty_input_key_s()
         key.action = action
         key.mods = event.modifierFlags.ghosttyMods
-        key.consumed_mods = ghostty_input_mods_e(0)
+        // Control/Command never contribute to text translation (ghostty's own
+        // heuristic); everything else did.
+        key.consumed_mods = event.modifierFlags.subtracting([.control, .command]).ghosttyMods
         key.keycode = UInt32(event.keyCode)
+        // The codepoint with NO modifiers applied. Ghostty needs this to encode
+        // control shortcuts (⌃C → \x03, ⌃U, ⌃A, ⌃E, ⌃W, …) and Alt combos.
+        // Without it, control-key shortcuts silently do nothing.
         key.unshifted_codepoint = 0
+        if event.type == .keyDown || event.type == .keyUp,
+           let chars = event.characters(byApplyingModifiers: []),
+           let scalar = chars.unicodeScalars.first {
+            key.unshifted_codepoint = scalar.value
+        }
         key.composing = markedTextValue.length > 0
 
         let printable = texts.filter { s in
@@ -348,7 +399,8 @@ enum RestoreCommand {
         scrollbackPath: String,
         startupCommand: String?,
         claudeSessionID: String?,
-        resumeClaude: Bool
+        resumeClaude: Bool,
+        pendingInput: String? = nil
     ) -> String? {
         var commands: [String] = []
         let willResumeClaude = resumeClaude && claudeSessionID != nil
@@ -362,7 +414,8 @@ enum RestoreCommand {
             let escaped = scrollbackPath.replacingOccurrences(of: "'", with: "'\\''")
             commands.append("clear; cat '\(escaped)' 2>/dev/null")
         }
-        if let startup = startupCommand, !startup.isEmpty {
+        let hasStartup = !(startupCommand ?? "").isEmpty
+        if let startup = startupCommand, hasStartup {
             commands.append(startup)
         }
         if willResumeClaude, let claudeID = claudeSessionID {
@@ -371,7 +424,16 @@ enum RestoreCommand {
             // in the folder, which may belong to a different terminal.
             commands.append("claude --resume \(claudeID) || claude")
         }
-        return commands.isEmpty ? nil : commands.joined(separator: "\n") + "\n"
+
+        var script = commands.isEmpty ? "" : commands.joined(separator: "\n") + "\n"
+        // Best-effort: re-type unsent input at the prompt WITHOUT a newline, so
+        // it sits there ready to edit and nothing runs. Only for a plain shell —
+        // if we're launching Claude or a startup command, the input would land
+        // in the wrong place.
+        if !willResumeClaude, !hasStartup, let pending = pendingInput, !pending.isEmpty {
+            script += pending
+        }
+        return script.isEmpty ? nil : script
     }
 }
 
@@ -389,12 +451,14 @@ final class TerminalRegistry {
         var initialInput: String? = nil
         if appState.isRestoring {
             let sbPath = AppState.scrollbackURL(for: session.id).path
+            let pending = try? String(contentsOf: AppState.pendingInputURL(for: session.id), encoding: .utf8)
             initialInput = RestoreCommand.input(
                 hasScrollback: FileManager.default.fileExists(atPath: sbPath),
                 scrollbackPath: sbPath,
                 startupCommand: session.startupCommand,
                 claudeSessionID: session.claudeSessionID,
-                resumeClaude: session.resumeClaudeOnRestore)
+                resumeClaude: session.resumeClaudeOnRestore,
+                pendingInput: pending)
         }
 
         let view = GhosttySurfaceNSView(
@@ -441,11 +505,23 @@ final class TerminalRegistry {
             at: dir, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
         for (id, view) in views {
-            guard let text = view.readScrollback(), !text.isEmpty else { continue }
-            let capped = String(text.suffix(200_000))
-            let url = dir.appendingPathComponent("\(id.uuidString).txt")
-            guard (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil else { continue }
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            // Scrollback (visual history).
+            if let text = view.readScrollback(), !text.isEmpty {
+                let capped = String(text.suffix(200_000))
+                let url = dir.appendingPathComponent("\(id.uuidString).txt")
+                if (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                }
+            }
+            // Unsent input at the prompt (best-effort) — write, or clear stale.
+            let inputURL = dir.appendingPathComponent("\(id.uuidString).input")
+            if let pending = view.capturedPendingInput() {
+                if (try? pending.write(to: inputURL, atomically: true, encoding: .utf8)) != nil {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: inputURL.path)
+                }
+            } else {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
         }
     }
 }

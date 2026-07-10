@@ -162,9 +162,11 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         if let ticket = Titles.ticket(forDirectory: currentDirectory) { return ticket }
         if let oscTitle {
             // Strip a leading status glyph (Claude Code prefixes "✳ "/"●",
-            // which reads as a stray star/dot next to the name).
+            // which reads as a stray star/dot next to the name). Return the full
+            // title — each view truncates it to the width it actually has.
             let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
-            if !cleaned.isEmpty { return Titles.shorten(cleaned) }
+                .trimmingCharacters(in: .whitespaces)
+            if !cleaned.isEmpty { return cleaned }
         }
         return (currentDirectory as NSString).lastPathComponent
     }

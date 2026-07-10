@@ -117,6 +117,8 @@ struct TerminalAreaView: View {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }
                 Text(session.displayTitle)
+                    .lineLimit(1)
+                    .frame(maxWidth: 200, alignment: .leading)
                 Text(session.shortPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
