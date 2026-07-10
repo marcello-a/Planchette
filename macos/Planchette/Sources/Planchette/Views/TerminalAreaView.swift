@@ -132,6 +132,25 @@ struct TerminalAreaView: View {
             )
         }
         .buttonStyle(.plain)
+        // Drag a tab onto another to reorder terminals within the project.
+        .onDrag {
+            NSItemProvider(object: session.id.uuidString as NSString)
+        } preview: {
+            Text(session.displayTitle).lineLimit(1)
+                .padding(.horizontal, 8).padding(.vertical, 4)
+        }
+        .onDrop(of: [.plainText, .text], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+            let targetID = session.id
+            let groupID = group.id
+            _ = provider.loadObject(ofClass: NSString.self) { obj, _ in
+                guard let str = obj as? String, let dragged = UUID(uuidString: str) else { return }
+                DispatchQueue.main.async {
+                    appState.reorderSession(dragged, before: targetID, groupID: groupID)
+                }
+            }
+            return true
+        }
         .help(session.aiSummary.map { "\(session.currentDirectory)\n🔮 \($0)" } ?? session.currentDirectory)
         .contextMenu {
             TagMenu(session: session)

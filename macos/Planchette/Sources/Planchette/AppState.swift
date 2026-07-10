@@ -265,6 +265,18 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
+    /// Reorder terminals within a group: place `dragged` right before `target`.
+    func reorderSession(_ dragged: UUID, before target: UUID, groupID: UUID) {
+        guard dragged != target, let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        var ids = groups[gi].sessionIDs
+        guard ids.contains(dragged), ids.contains(target) else { return }
+        ids.removeAll { $0 == dragged }
+        guard let ti = ids.firstIndex(of: target) else { return }
+        ids.insert(dragged, at: ti)
+        groups[gi].sessionIDs = ids
+        scheduleSave()
+    }
+
     func update(_ id: UUID, _ mutate: (inout TerminalSession) -> Void) {
         guard var session = sessions[id] else { return }
         mutate(&session)
