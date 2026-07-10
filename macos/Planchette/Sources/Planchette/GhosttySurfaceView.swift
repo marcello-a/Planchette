@@ -90,6 +90,12 @@ final class GhosttySurfaceNSView: NSView {
 
     @objc private func frameDidChange() { syncSurfaceSize() }
 
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        // Authoritative final sync after a live drag settles.
+        syncSurfaceSize()
+    }
+
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         guard let surface, let window else { return }
@@ -226,6 +232,14 @@ final class GhosttySurfaceNSView: NSView {
         let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
         if appShortcuts.contains(chars) { return false }
 
+        // Font zoom: ⌘+ / ⌘- / ⌘0 (⌘= and ⌘⇧= both map to "+"/"=").
+        switch chars {
+        case "+", "=": increaseFontSize(); return true
+        case "-": decreaseFontSize(); return true
+        case "0": resetFontSize(); return true
+        default: break
+        }
+
         // The embedded runtime has no default clipboard keybindings, so drive
         // ghostty's clipboard actions directly (⌘V respects bracketed paste).
         let plainCommand = event.modifierFlags
@@ -251,6 +265,11 @@ final class GhosttySurfaceNSView: NSView {
         guard len > 0 else { return false }
         return action.withCString { ghostty_surface_binding_action(surface, $0, UInt(len - 1)) }
     }
+
+    // Font zoom, driven by the header buttons and ⌘+/⌘-/⌘0.
+    func increaseFontSize() { performBindingAction("increase_font_size:1") }
+    func decreaseFontSize() { performBindingAction("decrease_font_size:1") }
+    func resetFontSize() { performBindingAction("reset_font_size") }
 
     // Standard clipboard responder selectors so the Edit menu items (Paste,
     // Copy, Select All) are enabled and routed to the surface too.
@@ -401,6 +420,9 @@ final class TerminalRegistry {
         views[id]?.destroySurface()
         views[id] = nil
     }
+
+    /// The live surface view for a session, if it exists (no creation).
+    func existingView(_ id: UUID) -> GhosttySurfaceNSView? { views[id] }
 
     /// Push a rebuilt config (e.g. after a light/dark change) to every surface.
     func updateConfig(_ config: ghostty_config_t) {

@@ -50,6 +50,27 @@ enum AttentionState: String, Codable {
         default: self = .ready   // "ready", "done", "free", or anything unknown
         }
     }
+
+    // MARK: State machine (pure + unit-tested so the colors stay reliable)
+
+    /// The state a Claude Code hook event transitions to (nil = no change).
+    /// running = an agent turn is working, waiting = it needs you, ready = idle.
+    static func forHookEvent(_ event: String) -> AttentionState? {
+        switch event {
+        case "UserPromptSubmit": .running
+        case "Notification", "PermissionRequest": .waiting
+        case "Stop", "SubagentStop", "SessionEnd": .ready
+        default: nil
+        }
+    }
+
+    /// The state after a shell command finishes (OSC 133). Returns nil to keep
+    /// the current state — an active agent turn (running/waiting) owns the
+    /// indicator and a plain command result must not stomp it.
+    static func afterCommandFinish(exitCode: Int, current: AttentionState) -> AttentionState? {
+        if current == .running || current == .waiting { return nil }
+        return exitCode > 0 ? .error : .ready
+    }
 }
 
 /// Named palette so colors persist as stable strings.
@@ -139,7 +160,12 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var displayTitle: String {
         if let customTitle, !customTitle.isEmpty { return customTitle }
         if let ticket = Titles.ticket(forDirectory: currentDirectory) { return ticket }
-        if let oscTitle, !oscTitle.isEmpty { return Titles.shorten(oscTitle) }
+        if let oscTitle {
+            // Strip a leading status glyph (Claude Code prefixes "✳ "/"●",
+            // which reads as a stray star/dot next to the name).
+            let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
+            if !cleaned.isEmpty { return Titles.shorten(cleaned) }
+        }
         return (currentDirectory as NSString).lastPathComponent
     }
 
@@ -304,7 +330,7 @@ struct PersistedState: Codable {
         sessions = try c.decodeIfPresent([TerminalSession].self, forKey: .sessions) ?? []
         windows = try c.decodeIfPresent([WindowModel].self, forKey: .windows) ?? []
         selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
-        aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? false
+        aiEnabled = try c.decodeIfPresent(Bool.self, forKey: .aiEnabled) ?? true
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true

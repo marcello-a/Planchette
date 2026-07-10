@@ -90,7 +90,7 @@ enum LKey: String, CaseIterable {
 
     // Menus / commands
     case newWindow, sessionMenu, newTerminal, quickSwitcher, jumpToWaiting
-    case aiMenu, aiActive, summarizeAll, groupByTopic
+    case aiMenu, aiActive, aiExplanation, summarizeAll, groupByTopic
 
     // Toolbar
     case aiAssist, aiAssistOn, aiAssistOff, aiAssistOnHelp, aiAssistOffHelp
@@ -136,6 +136,7 @@ enum LKey: String, CaseIterable {
 
     // Projects / terminals / sidebar
     case newProject, newProjectHelp, addTerminalHelp
+    case fontSmaller, fontLarger, fontReset
     case minifySidebar, expandSidebar, markReady
 
     // Notifications panel (right sidebar)
@@ -189,7 +190,7 @@ enum L10n {
         .switcherPlaceholder: "Title, path, branch, group…",
         .newWindow: "New window", .sessionMenu: "Session", .newTerminal: "New terminal…",
         .quickSwitcher: "Quick switcher", .jumpToWaiting: "Jump to waiting session",
-        .aiMenu: "AI", .aiActive: "AI assist active", .summarizeAll: "Summarize all sessions now",
+        .aiMenu: "AI", .aiActive: "AI assist active", .aiExplanation: "Shows a one-line summary of what each terminal is working on (and a topic to group them). It reads each session's local Claude transcript and condenses it with your existing Claude login — no API key, and it only runs while this is on.", .summarizeAll: "Summarize all sessions now",
         .groupByTopic: "Group by topic…",
         .aiAssist: "AI assist", .aiAssistOn: "AI: On", .aiAssistOff: "AI: Off",
         .aiAssistOnHelp: "AI assist on: sessions are summarized and can be grouped by topic",
@@ -232,6 +233,7 @@ enum L10n {
         .generalTab: "General", .infoTab: "Information", .colorLegendTitle: "Status colors", .colorLegendIntro: "Each terminal shows a colored status dot:",
         .readyDesc: "idle at the prompt or finished — ready for your input", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
         .newProject: "New project…", .newProjectHelp: "Add a project from a folder", .addTerminalHelp: "Add a terminal in this project's folder",
+        .fontSmaller: "Smaller font (⌘-)", .fontLarger: "Larger font (⌘+)", .fontReset: "Reset font size (⌘0)",
         .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .clearReady: "Hide idle", .noProjectsYet: "No projects yet — click + to add one.",
     ]
 
@@ -258,7 +260,7 @@ enum L10n {
         .switcherPlaceholder: "Titel, Pfad, Branch, Gruppe…",
         .newWindow: "Neues Fenster", .sessionMenu: "Session", .newTerminal: "Neues Terminal…",
         .quickSwitcher: "Quick Switcher", .jumpToWaiting: "Zur wartenden Session",
-        .aiMenu: "KI", .aiActive: "KI-Assistenz aktiv", .summarizeAll: "Alle Sessions jetzt zusammenfassen",
+        .aiMenu: "KI", .aiActive: "KI-Assistenz aktiv", .aiExplanation: "Zeigt eine einzeilige Zusammenfassung, woran jedes Terminal gerade arbeitet (und ein Thema zum Gruppieren). Liest das lokale Claude-Transcript jeder Session und verdichtet es mit deinem bestehenden Claude-Login — kein API-Key, läuft nur wenn aktiv.", .summarizeAll: "Alle Sessions jetzt zusammenfassen",
         .groupByTopic: "Nach Themen gruppieren…",
         .aiAssist: "KI-Assistenz", .aiAssistOn: "KI: An", .aiAssistOff: "KI: Aus",
         .aiAssistOnHelp: "KI-Assistenz aktiv: Sessions werden zusammengefasst und können nach Themen gruppiert werden",
@@ -301,6 +303,7 @@ enum L10n {
         .generalTab: "Allgemein", .infoTab: "Information", .colorLegendTitle: "Status-Farben", .colorLegendIntro: "Jedes Terminal zeigt einen farbigen Statuspunkt:",
         .readyDesc: "am Prompt oder fertig — bereit für deine Eingabe", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
         .newProject: "Neues Projekt…", .newProjectHelp: "Projekt aus einem Ordner hinzufügen", .addTerminalHelp: "Terminal im Ordner dieses Projekts hinzufügen",
+        .fontSmaller: "Kleinere Schrift (⌘-)", .fontLarger: "Größere Schrift (⌘+)", .fontReset: "Schriftgröße zurücksetzen (⌘0)",
         .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .clearReady: "Ruhige ausblenden", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.",
     ]
 
@@ -327,7 +330,7 @@ enum L10n {
         .switcherPlaceholder: "Titre, chemin, branche, groupe…",
         .newWindow: "Nouvelle fenêtre", .sessionMenu: "Session", .newTerminal: "Nouveau terminal…",
         .quickSwitcher: "Sélecteur rapide", .jumpToWaiting: "Aller à la session en attente",
-        .aiMenu: "IA", .aiActive: "Assistance IA active", .summarizeAll: "Résumer toutes les sessions",
+        .aiMenu: "IA", .aiActive: "Assistance IA active", .aiExplanation: "Affiche un résumé d'une ligne de ce sur quoi chaque terminal travaille (et un thème pour les regrouper). Lit le transcript Claude local de chaque session et le condense avec votre connexion Claude existante — sans clé API, uniquement quand c'est activé.", .summarizeAll: "Résumer toutes les sessions",
         .groupByTopic: "Grouper par thème…",
         .aiAssist: "Assistance IA", .aiAssistOn: "IA : activée", .aiAssistOff: "IA : désactivée",
         .aiAssistOnHelp: "Assistance IA active : les sessions sont résumées et peuvent être groupées par thème",
@@ -370,6 +373,7 @@ enum L10n {
         .generalTab: "Général", .infoTab: "Informations", .colorLegendTitle: "Couleurs d'état", .colorLegendIntro: "Chaque terminal affiche une pastille d'état colorée :",
         .readyDesc: "au prompt ou terminé — prêt pour votre saisie", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
         .newProject: "Nouveau projet…", .newProjectHelp: "Ajouter un projet depuis un dossier", .addTerminalHelp: "Ajouter un terminal dans le dossier de ce projet",
+        .fontSmaller: "Police plus petite (⌘-)", .fontLarger: "Police plus grande (⌘+)", .fontReset: "Réinitialiser la police (⌘0)",
         .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .clearReady: "Masquer les inactifs", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.",
     ]
 
@@ -396,7 +400,7 @@ enum L10n {
         .switcherPlaceholder: "Título, ruta, rama, grupo…",
         .newWindow: "Nueva ventana", .sessionMenu: "Sesión", .newTerminal: "Nuevo terminal…",
         .quickSwitcher: "Selector rápido", .jumpToWaiting: "Ir a la sesión en espera",
-        .aiMenu: "IA", .aiActive: "Asistencia IA activa", .summarizeAll: "Resumir todas las sesiones",
+        .aiMenu: "IA", .aiActive: "Asistencia IA activa", .aiExplanation: "Muestra un resumen de una línea de en qué trabaja cada terminal (y un tema para agruparlos). Lee el transcript local de Claude de cada sesión y lo condensa con tu sesión de Claude existente — sin clave API, solo cuando está activo.", .summarizeAll: "Resumir todas las sesiones",
         .groupByTopic: "Agrupar por tema…",
         .aiAssist: "Asistencia IA", .aiAssistOn: "IA: activada", .aiAssistOff: "IA: desactivada",
         .aiAssistOnHelp: "Asistencia IA activa: las sesiones se resumen y pueden agruparse por tema",
@@ -439,6 +443,7 @@ enum L10n {
         .generalTab: "General", .infoTab: "Información", .colorLegendTitle: "Colores de estado", .colorLegendIntro: "Cada terminal muestra un punto de estado de color:",
         .readyDesc: "en el prompt o terminado — listo para tu entrada", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
         .newProject: "Nuevo proyecto…", .newProjectHelp: "Añadir un proyecto desde una carpeta", .addTerminalHelp: "Añadir un terminal en la carpeta de este proyecto",
+        .fontSmaller: "Fuente más pequeña (⌘-)", .fontLarger: "Fuente más grande (⌘+)", .fontReset: "Restablecer tamaño (⌘0)",
         .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .clearReady: "Ocultar inactivos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.",
     ]
 
@@ -465,7 +470,7 @@ enum L10n {
         .switcherPlaceholder: "Titolo, percorso, branch, gruppo…",
         .newWindow: "Nuova finestra", .sessionMenu: "Sessione", .newTerminal: "Nuovo terminale…",
         .quickSwitcher: "Selettore rapido", .jumpToWaiting: "Vai alla sessione in attesa",
-        .aiMenu: "IA", .aiActive: "Assistenza IA attiva", .summarizeAll: "Riassumi tutte le sessioni",
+        .aiMenu: "IA", .aiActive: "Assistenza IA attiva", .aiExplanation: "Mostra un riassunto di una riga di cosa sta facendo ogni terminale (e un tema per raggrupparli). Legge il transcript locale di Claude di ogni sessione e lo condensa con il tuo accesso Claude esistente — nessuna chiave API, solo quando è attivo.", .summarizeAll: "Riassumi tutte le sessioni",
         .groupByTopic: "Raggruppa per tema…",
         .aiAssist: "Assistenza IA", .aiAssistOn: "IA: attiva", .aiAssistOff: "IA: disattivata",
         .aiAssistOnHelp: "Assistenza IA attiva: le sessioni vengono riassunte e possono essere raggruppate per tema",
@@ -508,6 +513,7 @@ enum L10n {
         .generalTab: "Generale", .infoTab: "Informazioni", .colorLegendTitle: "Colori di stato", .colorLegendIntro: "Ogni terminale mostra un pallino di stato colorato:",
         .readyDesc: "al prompt o terminato — pronto per il tuo input", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
         .newProject: "Nuovo progetto…", .newProjectHelp: "Aggiungi un progetto da una cartella", .addTerminalHelp: "Aggiungi un terminale nella cartella di questo progetto",
+        .fontSmaller: "Carattere più piccolo (⌘-)", .fontLarger: "Carattere più grande (⌘+)", .fontReset: "Reimposta dimensione (⌘0)",
         .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .clearReady: "Nascondi inattivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.",
     ]
 
@@ -534,7 +540,7 @@ enum L10n {
         .switcherPlaceholder: "Titel, pad, branch, groep…",
         .newWindow: "Nieuw venster", .sessionMenu: "Sessie", .newTerminal: "Nieuwe terminal…",
         .quickSwitcher: "Snelkiezer", .jumpToWaiting: "Ga naar wachtende sessie",
-        .aiMenu: "AI", .aiActive: "AI-assistentie actief", .summarizeAll: "Alle sessies nu samenvatten",
+        .aiMenu: "AI", .aiActive: "AI-assistentie actief", .aiExplanation: "Toont een samenvatting van één regel van waar elke terminal aan werkt (en een onderwerp om ze te groeperen). Leest het lokale Claude-transcript van elke sessie en condenseert het met je bestaande Claude-login — geen API-sleutel, alleen actief wanneer ingeschakeld.", .summarizeAll: "Alle sessies nu samenvatten",
         .groupByTopic: "Groeperen op thema…",
         .aiAssist: "AI-assistentie", .aiAssistOn: "AI: aan", .aiAssistOff: "AI: uit",
         .aiAssistOnHelp: "AI-assistentie aan: sessies worden samengevat en kunnen op thema worden gegroepeerd",
@@ -577,6 +583,7 @@ enum L10n {
         .generalTab: "Algemeen", .infoTab: "Informatie", .colorLegendTitle: "Statuskleuren", .colorLegendIntro: "Elk terminal toont een gekleurde statusstip:",
         .readyDesc: "bij de prompt of klaar — gereed voor je invoer", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
         .newProject: "Nieuw project…", .newProjectHelp: "Een project vanuit een map toevoegen", .addTerminalHelp: "Een terminal in de map van dit project toevoegen",
+        .fontSmaller: "Kleiner lettertype (⌘-)", .fontLarger: "Groter lettertype (⌘+)", .fontReset: "Lettergrootte herstellen (⌘0)",
         .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .clearReady: "Rustige verbergen", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.",
     ]
 
@@ -603,7 +610,7 @@ enum L10n {
         .switcherPlaceholder: "Título, caminho, branch, grupo…",
         .newWindow: "Nova janela", .sessionMenu: "Sessão", .newTerminal: "Novo terminal…",
         .quickSwitcher: "Seletor rápido", .jumpToWaiting: "Ir para a sessão em espera",
-        .aiMenu: "IA", .aiActive: "Assistência IA ativa", .summarizeAll: "Resumir todas as sessões",
+        .aiMenu: "IA", .aiActive: "Assistência IA ativa", .aiExplanation: "Mostra um resumo de uma linha do que cada terminal está a fazer (e um tema para os agrupar). Lê o transcript local do Claude de cada sessão e condensa-o com o teu login existente do Claude — sem chave de API, só corre quando está ativo.", .summarizeAll: "Resumir todas as sessões",
         .groupByTopic: "Agrupar por tema…",
         .aiAssist: "Assistência IA", .aiAssistOn: "IA: ligada", .aiAssistOff: "IA: desligada",
         .aiAssistOnHelp: "Assistência IA ativa: as sessões são resumidas e podem ser agrupadas por tema",
@@ -646,6 +653,7 @@ enum L10n {
         .generalTab: "Geral", .infoTab: "Informação", .colorLegendTitle: "Cores de estado", .colorLegendIntro: "Cada terminal mostra um ponto de estado colorido:",
         .readyDesc: "no prompt ou terminado — pronto para a tua entrada", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
         .newProject: "Novo projeto…", .newProjectHelp: "Adicionar um projeto a partir de uma pasta", .addTerminalHelp: "Adicionar um terminal na pasta deste projeto",
+        .fontSmaller: "Fonte menor (⌘-)", .fontLarger: "Fonte maior (⌘+)", .fontReset: "Repor tamanho da fonte (⌘0)",
         .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .clearReady: "Ocultar inativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.",
     ]
 }

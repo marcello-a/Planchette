@@ -12,7 +12,7 @@ final class AppState: ObservableObject {
     /// target decide, during hover, whether a drop would actually rearrange
     /// anything — so it can refuse a no-op instead of showing a phantom highlight.
     @Published var draggingClusterSessionID: UUID?
-    @Published var aiEnabled = false {
+    @Published var aiEnabled = true {
         didSet { scheduleSave() }
     }
     @Published var language: AppLanguage = .system {
@@ -328,9 +328,10 @@ final class AppState: ObservableObject {
     /// otherwise ready (green). Ignored while an agent turn is active so it
     /// doesn't stomp running/waiting.
     func commandFinished(_ id: UUID, exitCode: Int) {
-        guard let session = sessions[id] else { return }
-        if session.state == .running || session.state == .waiting { return }
-        setState(id, exitCode > 0 ? .error : .ready)
+        guard let session = sessions[id],
+              let newState = AttentionState.afterCommandFinish(exitCode: exitCode, current: session.state)
+        else { return }
+        setState(id, newState)
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
@@ -358,20 +359,17 @@ final class AppState: ObservableObject {
                 if let transcriptPath { $0.transcriptPath = transcriptPath }
             }
         }
+        // State transition (pure, tested). Message only carried for `waiting`.
+        if let newState = AttentionState.forHookEvent(hookEvent) {
+            setState(sessionID, newState, message: newState == .waiting ? message : nil)
+        }
+        // Per-event side effects.
         switch hookEvent {
-        case "UserPromptSubmit":
-            setState(sessionID, .running)
         case "Notification", "PermissionRequest":
-            setState(sessionID, .waiting, message: message)
             postUserNotification(sessionID: sessionID, message: message)
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
-            setState(sessionID, .ready)
             aiAssist.sessionUpdated(sessionID)
-        case "SessionEnd":
-            setState(sessionID, .ready)
-        case "SessionStart":
-            break // claudeSessionID captured above
         default:
             break
         }

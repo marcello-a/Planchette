@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Planchette
 
 final class SemverTests: XCTestCase {
@@ -140,6 +141,87 @@ final class SplitLayoutTests: XCTestCase {
         let moved = (start.removingLeaf(a) ?? .leaf(b))
             .splitting(b, with: a, edge: .bottom).normalized()
         XCTAssertEqual(moved, .column([.leaf(b), .leaf(a)]))
+    }
+}
+
+final class StatusColorTests: XCTestCase {
+    // Each state must map to its documented color — this is the whole point of
+    // the app (which terminal is idle / in use / waiting / errored).
+    func testTintPerState() {
+        XCTAssertEqual(AttentionState.ready.tint, Color.green)
+        XCTAssertEqual(AttentionState.running.tint, Color.purple)
+        XCTAssertEqual(AttentionState.waiting.tint, Color.blue)
+        XCTAssertEqual(AttentionState.error.tint, Color.red)
+    }
+
+    func testEveryStateHasADistinctSymbol() {
+        let all: [AttentionState] = [.ready, .running, .waiting, .error]
+        XCTAssertEqual(Set(all.map(\.symbol)).count, all.count)
+    }
+
+    func testInboxContainsOnlyWaitingAndError() {
+        XCTAssertTrue(AttentionState.waiting.needsAttention)
+        XCTAssertTrue(AttentionState.error.needsAttention)
+        XCTAssertFalse(AttentionState.running.needsAttention)
+        XCTAssertFalse(AttentionState.ready.needsAttention)
+    }
+
+    // Hook events → states (the live "in use / waiting / idle" transitions).
+    func testHookEventTransitions() {
+        XCTAssertEqual(AttentionState.forHookEvent("UserPromptSubmit"), .running)
+        XCTAssertEqual(AttentionState.forHookEvent("Notification"), .waiting)
+        XCTAssertEqual(AttentionState.forHookEvent("PermissionRequest"), .waiting)
+        XCTAssertEqual(AttentionState.forHookEvent("Stop"), .ready)
+        XCTAssertEqual(AttentionState.forHookEvent("SubagentStop"), .ready)
+        XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .ready)
+        XCTAssertNil(AttentionState.forHookEvent("SessionStart"))
+        XCTAssertNil(AttentionState.forHookEvent("whatever"))
+    }
+
+    // A shell command result must never stomp an active agent turn, but at the
+    // prompt the exit code decides idle (green) vs error (red).
+    func testCommandFinishHonorsAgentTurn() {
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 0, current: .running))
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .running))
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .waiting))
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .ready), .ready)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 2, current: .ready), .error)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 1, current: .error), .error)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .error), .ready)
+    }
+
+    // Inbox ordering: error is most urgent, ready least.
+    func testRankOrdering() {
+        XCTAssertLessThan(AttentionState.error.rank, AttentionState.waiting.rank)
+        XCTAssertLessThan(AttentionState.waiting.rank, AttentionState.running.rank)
+        XCTAssertLessThan(AttentionState.running.rank, AttentionState.ready.rank)
+    }
+}
+
+final class DisplayTitleTests: XCTestCase {
+    private func session(osc: String?, custom: String? = nil) -> TerminalSession {
+        var s = TerminalSession(groupID: UUID(), workingDirectory: "/tmp/proj")
+        s.oscTitle = osc
+        s.customTitle = custom
+        return s
+    }
+
+    func testStripsLeadingStatusGlyph() {
+        XCTAssertEqual(session(osc: "✳ Building app").displayTitle, "Building app")
+        XCTAssertEqual(session(osc: "● Deploy").displayTitle, "Deploy")
+        XCTAssertFalse(session(osc: "✳ Claude Code").displayTitle.hasPrefix("✳"))
+    }
+
+    func testKeepsNormalTitles() {
+        XCTAssertEqual(session(osc: "npm run dev").displayTitle, "npm run dev")
+    }
+
+    func testCustomTitleWins() {
+        XCTAssertEqual(session(osc: "✳ x", custom: "My Title").displayTitle, "My Title")
+    }
+
+    func testFallsBackToFolderWhenGlyphOnly() {
+        XCTAssertEqual(session(osc: "✳").displayTitle, "proj")
     }
 }
 

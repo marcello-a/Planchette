@@ -54,6 +54,25 @@ struct TerminalAreaView: View {
                 .padding(.horizontal, 8)
             }
             Spacer()
+            // Font zoom for the active terminal.
+            HStack(spacing: 1) {
+                Button { fontZoom(sessions, .decrease) } label: {
+                    Image(systemName: "textformat.size.smaller").padding(.horizontal, 4).padding(.vertical, 3)
+                }
+                .help(L10n.t(.fontSmaller))
+                Button { fontZoom(sessions, .reset) } label: {
+                    Image(systemName: "textformat.size").padding(.horizontal, 4).padding(.vertical, 3)
+                }
+                .help(L10n.t(.fontReset))
+                Button { fontZoom(sessions, .increase) } label: {
+                    Image(systemName: "textformat.size.larger").padding(.horizontal, 4).padding(.vertical, 3)
+                }
+                .help(L10n.t(.fontLarger))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .padding(.trailing, 6)
+
             Picker("", selection: viewModeBinding) {
                 Image(systemName: "rectangle").tag(GroupViewMode.tabs)
                 Image(systemName: "square.grid.2x2").tag(GroupViewMode.cluster)
@@ -64,6 +83,19 @@ struct TerminalAreaView: View {
         }
         .padding(.vertical, 5)
         .background(group.color.color?.opacity(0.12) ?? Color.clear)
+    }
+
+    private enum FontZoom { case increase, decrease, reset }
+
+    /// Zoom the font of the group's active terminal (the focused pane).
+    private func fontZoom(_ sessions: [TerminalSession], _ action: FontZoom) {
+        guard let active = activeSession(sessions),
+              let view = TerminalRegistry.shared.existingView(active.id) else { return }
+        switch action {
+        case .increase: view.increaseFontSize()
+        case .decrease: view.decreaseFontSize()
+        case .reset: view.resetFontSize()
+        }
     }
 
     private var viewModeBinding: Binding<GroupViewMode> {

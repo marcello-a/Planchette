@@ -98,6 +98,10 @@ struct SettingsView: View {
             Section(L10n.t(.aiSection)) {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
+                Text(L10n.t(.aiExplanation))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
