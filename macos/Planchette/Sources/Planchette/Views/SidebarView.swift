@@ -76,7 +76,9 @@ struct SidebarView: View {
         let normal = windowGroups.filter { !$0.favorite }
         List(selection: selectionBinding) {
             ForEach(favorites) { group in groupRow(group) }
+                .onMove { moveGroups(favorites, other: normal, favoritesSection: true, from: $0, to: $1) }
             ForEach(normal) { group in groupRow(group) }
+                .onMove { moveGroups(normal, other: favorites, favoritesSection: false, from: $0, to: $1) }
         }
         .listStyle(.sidebar)
         .overlay {
@@ -107,6 +109,16 @@ struct SidebarView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    /// Reorder within a section (favorites or normal) and write the combined
+    /// order back to the window — favorites always stored first.
+    private func moveGroups(_ section: [SessionGroup], other: [SessionGroup],
+                            favoritesSection: Bool, from: IndexSet, to: Int) {
+        var moved = section
+        moved.move(fromOffsets: from, toOffset: to)
+        let ordered = favoritesSection ? moved + other : other + moved
+        appState.updateWindow(windowID) { $0.groupIDs = ordered.map(\.id) }
     }
 
     // MARK: Minified rail
