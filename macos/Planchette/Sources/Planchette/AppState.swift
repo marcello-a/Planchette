@@ -599,6 +599,21 @@ final class AppState: ObservableObject {
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
         windowsToOpen = windows.dropFirst().map(\.id)
+
+        // Eagerly create EVERY terminal's surface now (while isRestoring is
+        // true) so they all resume in the background — Claude resume, scrollback
+        // replay, startup commands — not just the visible tab. Lazy creation
+        // would skip background tabs and unselected projects/windows, so those
+        // sessions would never restore. Surfaces are registry-cached, so the
+        // SwiftUI views reuse them when they eventually appear.
+        for group in groups {
+            for id in group.sessionIDs {
+                if let session = sessions[id] {
+                    _ = TerminalRegistry.shared.view(for: session, appState: self)
+                }
+            }
+        }
+
         // After a grace period, new surfaces are ordinary terminals again.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(30))
