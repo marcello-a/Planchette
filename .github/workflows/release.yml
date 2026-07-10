@@ -23,12 +23,17 @@ concurrency:
 
 jobs:
   build-release:
-    runs-on: macos-14
+    # macos-15 ships a recent macOS SDK; ghostty v1.3.1 needs CoreVideo symbols
+    # (e.g. kCVPixelFormatType_30RGB_r210) absent from the older 14.x SDK.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
+
+      - name: Use latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)/Contents/Developer" || true
 
       - name: Read version
         id: ver
