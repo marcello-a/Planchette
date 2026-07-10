@@ -198,6 +198,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         server.start()
         hookServer = server
 
+        // Auto-install the Claude Code hooks so attention events work with no
+        // manual setup (idempotent; merges into ~/.claude/settings.json).
+        DispatchQueue.global(qos: .utility).async { HookInstaller.installIfNeeded() }
+
         MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
     }
 

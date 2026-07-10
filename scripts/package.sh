@@ -51,6 +51,9 @@ if [ -d "$GHOSTTY_SHARE/../terminfo" ]; then
     cp -R "$GHOSTTY_SHARE/../terminfo" "$APP/Contents/Resources/terminfo"
 fi
 [ -f "$PKG/Resources/AppIcon.icns" ] && cp "$PKG/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+# Bundle the Claude Code hook script so the app can auto-install it on launch.
+cp "$ROOT/hook/planchette-hook" "$APP/Contents/Resources/planchette-hook"
+chmod +x "$APP/Contents/Resources/planchette-hook"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
