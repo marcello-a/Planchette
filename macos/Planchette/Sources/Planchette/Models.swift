@@ -166,9 +166,12 @@ struct TerminalSession: Identifiable, Codable, Equatable {
             // title — each view truncates it to the width it actually has.
             let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
                 .trimmingCharacters(in: .whitespaces)
-            if !cleaned.isEmpty { return cleaned }
+            // Skip the shell's default prompt (user@host:path) — it's not a name.
+            if !cleaned.isEmpty && !Titles.looksLikeShellPrompt(cleaned) { return cleaned }
         }
-        return (currentDirectory as NSString).lastPathComponent
+        // Nothing meaningful running: an idle terminal is "free", otherwise the
+        // folder name.
+        return state == .ready ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
     }
 
     /// Last two path components, full path shown on hover.

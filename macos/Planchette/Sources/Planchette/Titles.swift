@@ -39,4 +39,10 @@ enum Titles {
     static func shorten(_ title: String, max: Int = 24) -> String {
         title.count <= max ? title : String(title.prefix(max - 1)) + "…"
     }
+
+    /// True if a title is just the shell's default prompt (`user@host:~/path`),
+    /// which isn't a useful name — an idle terminal showing this is "free".
+    static func looksLikeShellPrompt(_ title: String) -> Bool {
+        title.range(of: #"^\S+@\S+[:~/]"#, options: .regularExpression) != nil
+    }
 }

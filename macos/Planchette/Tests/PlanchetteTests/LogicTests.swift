@@ -220,8 +220,30 @@ final class DisplayTitleTests: XCTestCase {
         XCTAssertEqual(session(osc: "✳ x", custom: "My Title").displayTitle, "My Title")
     }
 
-    func testFallsBackToFolderWhenGlyphOnly() {
-        XCTAssertEqual(session(osc: "✳").displayTitle, "proj")
+    func testIdleShellPromptShowsFree() {
+        L10n.current = .en
+        var s = session(osc: "marcello.alte@PCL2023110901:~/development/mp/x")
+        s.state = .ready
+        XCTAssertEqual(s.displayTitle, "free")
+    }
+
+    func testRunningWithoutTitleShowsFolderNotFree() {
+        var s = session(osc: "marcello.alte@host:~/x")
+        s.state = .running
+        XCTAssertEqual(s.displayTitle, "proj")   // not idle → folder, not "free"
+    }
+
+    func testGlyphOnlyIdleShowsFree() {
+        L10n.current = .en
+        XCTAssertEqual(session(osc: "✳").displayTitle, "free")   // idle by default
+    }
+
+    func testShellPromptDetection() {
+        XCTAssertTrue(Titles.looksLikeShellPrompt("marcello.alte@PCL2023110901:~/dev"))
+        XCTAssertTrue(Titles.looksLikeShellPrompt("user@host:/path"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("npm run dev"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("Implementiere neues Detail"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("build @scope/pkg"))
     }
 }
 
