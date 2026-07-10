@@ -149,10 +149,14 @@ final class UpdateService: ObservableObject {
 
     private func install(zipURL: URL, checksumURL: URL?) async {
         isInstalling = true
-        defer { isInstalling = false }
+        let panel = InstallProgressPanel()
+        panel.show()
         do {
-            // 1. Download the zip to a temp file.
-            let (downloaded, _) = try await URLSession.shared.download(from: zipURL)
+            // 1. Download the zip, showing a live progress bar.
+            let downloaded = try await Downloader.download(zipURL) { fraction in
+                panel.setDownloading(fraction)
+            }
+            panel.setInstalling()   // switch to an indeterminate spinner
 
             // 2. Verify its SHA-256 against the release's checksum file (defence
             //    in depth on top of HTTPS + the GitHub-only host allowlist). If
@@ -173,6 +177,8 @@ final class UpdateService: ObservableObject {
             try swapAndRelaunch(newApp: newApp.path, dest: Bundle.main.bundlePath)
             NSApp.terminate(nil)
         } catch {
+            panel.close()
+            isInstalling = false
             showError(error.localizedDescription)
         }
     }
@@ -292,4 +298,98 @@ final class UpdateService: ObservableObject {
         alert.informativeText = detail
         alert.runModal()
     }
+}
+
+/// Downloads a file while reporting progress (0…1) on the main queue.
+private final class Downloader: NSObject, URLSessionDownloadDelegate {
+    private var continuation: CheckedContinuation<URL, Error>?
+    private let onProgress: (Double) -> Void
+    private var moved: URL?
+
+    private init(onProgress: @escaping (Double) -> Void) { self.onProgress = onProgress }
+
+    static func download(_ url: URL, onProgress: @escaping (Double) -> Void) async throws -> URL {
+        try await Downloader(onProgress: onProgress).run(url)
+    }
+
+    private func run(_ url: URL) async throws -> URL {
+        let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+        defer { session.finishTasksAndInvalidate() }
+        return try await withCheckedThrowingContinuation { cont in
+            continuation = cont
+            session.downloadTask(with: url).resume()
+        }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
+                    totalBytesExpectedToWrite: Int64) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        let fraction = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        DispatchQueue.main.async { self.onProgress(fraction) }
+    }
+
+    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
+                    didFinishDownloadingTo location: URL) {
+        // The temp file is removed when this returns, so move it synchronously.
+        let dest = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-dl-\(UUID().uuidString).zip")
+        try? FileManager.default.moveItem(at: location, to: dest)
+        moved = dest
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error { continuation?.resume(throwing: error) }
+        else if let moved { continuation?.resume(returning: moved) }
+        else { continuation?.resume(throwing: URLError(.cannotOpenFile)) }
+        continuation = nil
+    }
+}
+
+/// A small floating window showing update download/install progress.
+@MainActor
+private final class InstallProgressPanel {
+    private var window: NSWindow?
+    private let label = NSTextField(labelWithString: "")
+    private let bar = NSProgressIndicator()
+
+    func show() {
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.frame = NSRect(x: 24, y: 60, width: 332, height: 20)
+        label.stringValue = L10n.t(.updateDownloading, 0)
+
+        bar.style = .bar
+        bar.isIndeterminate = false
+        bar.minValue = 0; bar.maxValue = 1
+        bar.frame = NSRect(x: 24, y: 30, width: 332, height: 20)
+
+        let content = NSView(frame: NSRect(x: 0, y: 0, width: 380, height: 104))
+        content.addSubview(label)
+        content.addSubview(bar)
+
+        let w = NSWindow(contentRect: content.frame, styleMask: [.titled],
+                         backing: .buffered, defer: false)
+        w.title = "Planchette"
+        w.isReleasedWhenClosed = false
+        w.contentView = content
+        w.center()
+        w.level = .floating
+        window = w
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func setDownloading(_ fraction: Double) {
+        bar.isIndeterminate = false
+        bar.doubleValue = fraction
+        label.stringValue = L10n.t(.updateDownloading, Int(fraction * 100))
+    }
+
+    func setInstalling() {
+        bar.isIndeterminate = true
+        bar.startAnimation(nil)
+        label.stringValue = L10n.t(.updateInstalling)
+    }
+
+    func close() { window?.close(); window = nil }
 }
