@@ -341,7 +341,8 @@ struct ContentView: View {
 
     private var welcome: some View {
         VStack(spacing: 12) {
-            Text("🔮").font(.system(size: 56))
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable().frame(width: 72, height: 72)
             Text("Planchette").font(.largeTitle.bold())
             Text(L10n.t(.tagline))
                 .foregroundStyle(.secondary)
