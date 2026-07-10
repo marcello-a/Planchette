@@ -452,10 +452,13 @@ enum RestoreCommand {
             commands.append(startup)
         }
         if willResumeClaude, let claudeID = claudeSessionID {
-            // Resume THIS terminal's exact conversation, else start fresh.
-            // Never `claude --continue`: it resumes the most recent conversation
-            // in the folder, which may belong to a different terminal.
-            commands.append("claude --resume \(claudeID) || claude")
+            // Resume THIS terminal's exact conversation; if that fails, fall back
+            // to Claude's interactive session picker so the user can still choose
+            // their conversation, and only then to a fresh session — so a Claude
+            // session is essentially never lost. Never `claude --continue`: it
+            // resumes the folder's most recent conversation, which may belong to
+            // a different terminal.
+            commands.append("claude --resume \(claudeID) || claude --resume || claude")
         }
 
         var script = commands.isEmpty ? "" : commands.joined(separator: "\n") + "\n"
@@ -485,11 +488,19 @@ final class TerminalRegistry {
         if appState.isRestoring {
             let sbPath = AppState.scrollbackURL(for: session.id).path
             let pending = try? String(contentsOf: AppState.pendingInputURL(for: session.id), encoding: .utf8)
+            // Resolve the conversation to resume as robustly as possible — even
+            // if we never captured the id, this finds the folder's transcript.
+            let resumeID = session.resumeClaudeOnRestore
+                ? ClaudeResume.resolveSessionID(
+                    claudeSessionID: session.claudeSessionID,
+                    transcriptPath: session.transcriptPath,
+                    currentDirectory: session.currentDirectory)
+                : nil
             initialInput = RestoreCommand.input(
                 hasScrollback: FileManager.default.fileExists(atPath: sbPath),
                 scrollbackPath: sbPath,
                 startupCommand: session.startupCommand,
-                claudeSessionID: session.claudeSessionID,
+                claudeSessionID: resumeID,
                 resumeClaude: session.resumeClaudeOnRestore,
                 pendingInput: pending)
         }

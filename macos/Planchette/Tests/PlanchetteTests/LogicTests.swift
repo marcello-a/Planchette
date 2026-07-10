@@ -332,6 +332,77 @@ final class RestoreCommandTests: XCTestCase {
     }
 }
 
+final class ClaudeResumeTests: XCTestCase {
+    func testEncodedProjectName() {
+        XCTAssertEqual(
+            ClaudeResume.encodedProjectName("/Users/marcello.alte/development/mp/2nd-designer"),
+            "-Users-marcello-alte-development-mp-2nd-designer")
+    }
+
+    func testSessionIDFromTranscriptPath() {
+        XCTAssertEqual(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/abc-123.jsonl"), "abc-123")
+        XCTAssertNil(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/notes.txt"))
+        XCTAssertNil(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/.jsonl"))
+    }
+
+    private let cwd = "/Users/me/proj"
+
+    private func makeProject() throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("cr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd)),
+            withIntermediateDirectories: true)
+        return root
+    }
+
+    private func writeTranscript(_ root: URL, _ id: String, ageSeconds: TimeInterval) throws {
+        let url = root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd))
+            .appendingPathComponent("\(id).jsonl")
+        try "{}".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-ageSeconds)], ofItemAtPath: url.path)
+    }
+
+    func testPrefersRecordedTranscriptWhenItExists() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "exact-id", ageSeconds: 100)
+        try writeTranscript(root, "newer-other", ageSeconds: 1)
+        let tp = root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd))
+            .appendingPathComponent("exact-id.jsonl").path
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "stale", transcriptPath: tp, currentDirectory: cwd, projectsDir: root), "exact-id")
+    }
+
+    // The datadog case: nothing was captured, but the folder has transcripts.
+    func testRecoversNewestWhenNothingRecorded() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "old", ageSeconds: 100)
+        try writeTranscript(root, "newest", ageSeconds: 1)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root), "newest")
+    }
+
+    func testUsesRecordedIDWhenTranscriptExistsButPathGone() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "known", ageSeconds: 10)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "known", transcriptPath: "/nope/gone.jsonl", currentDirectory: cwd, projectsDir: root), "known")
+    }
+
+    func testStaleIDFallsBackToNewestTranscript() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "actual", ageSeconds: 1)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "stale-no-file", transcriptPath: nil, currentDirectory: cwd, projectsDir: root), "actual")
+    }
+
+    func testNilWhenNoHistoryAtAll() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertNil(ClaudeResume.resolveSessionID(
+            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root))
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.
