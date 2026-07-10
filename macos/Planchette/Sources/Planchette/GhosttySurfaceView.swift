@@ -321,6 +321,41 @@ extension GhosttySurfaceNSView: NSTextInputClient {
     func characterIndex(for point: NSPoint) -> Int { 0 }
 }
 
+/// Builds the shell input replayed into a terminal when a session is restored.
+/// Pure and side-effect free so it can be unit-tested.
+enum RestoreCommand {
+    static func input(
+        hasScrollback: Bool,
+        scrollbackPath: String,
+        startupCommand: String?,
+        claudeSessionID: String?,
+        resumeClaude: Bool
+    ) -> String? {
+        var commands: [String] = []
+        let willResumeClaude = resumeClaude && claudeSessionID != nil
+
+        // Replay the saved scrollback (plain text) so the history is back.
+        // `clear` wipes the injected command line, leaving just the history.
+        // Skip it when we're resuming Claude: `claude --resume` redraws the
+        // conversation itself, and the captured buffer would just be a snapshot
+        // of its full-screen TUI.
+        if hasScrollback && !willResumeClaude {
+            let escaped = scrollbackPath.replacingOccurrences(of: "'", with: "'\\''")
+            commands.append("clear; cat '\(escaped)' 2>/dev/null")
+        }
+        if let startup = startupCommand, !startup.isEmpty {
+            commands.append(startup)
+        }
+        if willResumeClaude, let claudeID = claudeSessionID {
+            // Resume THIS terminal's exact conversation, else start fresh.
+            // Never `claude --continue`: it resumes the most recent conversation
+            // in the folder, which may belong to a different terminal.
+            commands.append("claude --resume \(claudeID) || claude")
+        }
+        return commands.isEmpty ? nil : commands.joined(separator: "\n") + "\n"
+    }
+}
+
 /// Keeps terminal NSViews alive independent of SwiftUI view lifecycles —
 /// switching tabs or view modes must never destroy a running surface.
 @MainActor
@@ -334,25 +369,13 @@ final class TerminalRegistry {
 
         var initialInput: String? = nil
         if appState.isRestoring {
-            var commands: [String] = []
-            // Replay the saved scrollback (plain text) so the history is back.
-            // `clear` wipes the injected command line, leaving just the history.
             let sbPath = AppState.scrollbackURL(for: session.id).path
-            if FileManager.default.fileExists(atPath: sbPath) {
-                let escaped = sbPath.replacingOccurrences(of: "'", with: "'\\''")
-                commands.append("clear; cat '\(escaped)' 2>/dev/null")
-            }
-            if let startup = session.startupCommand, !startup.isEmpty {
-                commands.append(startup)
-            }
-            if session.resumeClaudeOnRestore, let claudeID = session.claudeSessionID {
-                // Resume the exact conversation; if its transcript is gone (the
-                // id went stale after a crash), fall back to continuing the most
-                // recent conversation in this folder, then to a fresh session —
-                // so a restore never dead-ends on "No conversation found".
-                commands.append("claude --resume \(claudeID) || claude --continue || claude")
-            }
-            if !commands.isEmpty { initialInput = commands.joined(separator: "\n") + "\n" }
+            initialInput = RestoreCommand.input(
+                hasScrollback: FileManager.default.fileExists(atPath: sbPath),
+                scrollbackPath: sbPath,
+                startupCommand: session.startupCommand,
+                claudeSessionID: session.claudeSessionID,
+                resumeClaude: session.resumeClaudeOnRestore)
         }
 
         let view = GhosttySurfaceNSView(
@@ -390,14 +413,17 @@ final class TerminalRegistry {
 
     /// Persist each live surface's scrollback (plain text) into `dir`, so the
     /// terminal history survives a restart. Capped per session to stay small.
+    /// Files are user-only (0600) since scrollback can contain secrets.
     func saveScrollback(to dir: URL) {
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
         for (id, view) in views {
             guard let text = view.readScrollback(), !text.isEmpty else { continue }
             let capped = String(text.suffix(200_000))
-            try? capped.write(
-                to: dir.appendingPathComponent("\(id.uuidString).txt"),
-                atomically: true, encoding: .utf8)
+            let url = dir.appendingPathComponent("\(id.uuidString).txt")
+            guard (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil else { continue }
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
         }
     }
 }

@@ -143,6 +143,54 @@ final class SplitLayoutTests: XCTestCase {
     }
 }
 
+final class RestoreCommandTests: XCTestCase {
+    func testResumesExactSessionAndNeverContinues() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true) ?? ""
+        XCTAssertTrue(cmd.contains("claude --resume abc || claude"))
+        // Must NOT hijack another terminal's conversation via --continue.
+        XCTAssertFalse(cmd.contains("--continue"))
+    }
+
+    func testSkipsScrollbackReplayWhenResumingClaude() {
+        // Claude redraws its own conversation, so we don't cat its TUI snapshot.
+        let cmd = RestoreCommand.input(
+            hasScrollback: true, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true) ?? ""
+        XCTAssertFalse(cmd.contains("cat "))
+        XCTAssertTrue(cmd.contains("claude --resume abc"))
+    }
+
+    func testReplaysScrollbackForPlainTerminal() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: true, scrollbackPath: "/tmp/s b.txt",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: true) ?? ""
+        XCTAssertTrue(cmd.contains("clear; cat "))
+        XCTAssertFalse(cmd.contains("claude"))
+    }
+
+    func testEscapesSingleQuotesInPath() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: true, scrollbackPath: "/a'b.txt",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: false) ?? ""
+        XCTAssertTrue(cmd.contains("'/a'\\''b.txt'"))
+    }
+
+    func testNoCommandsWhenNothingToRestore() {
+        XCTAssertNil(RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: true))
+    }
+
+    func testStartupCommandIncluded() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: "npm run dev", claudeSessionID: nil, resumeClaude: false) ?? ""
+        XCTAssertTrue(cmd.contains("npm run dev"))
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.

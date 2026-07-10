@@ -550,6 +550,9 @@ final class AppState: ObservableObject {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             try encoder.encode(state).write(to: Self.stateURL, options: .atomic)
+            // User-only: state carries cwd, titles and Claude session ids.
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: Self.stateURL.path)
         } catch {
             NSLog("save failed: \(error)")
         }
