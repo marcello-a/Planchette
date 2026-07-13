@@ -90,6 +90,16 @@ final class HookServer {
         }
         let event = obj["event"] as? [String: Any] ?? [:]
         let hookEvent = event["hook_event_name"] as? String ?? ""
+
+        // Not a Claude Code event: sent by the PEON_CLICK_COMMAND we inject,
+        // when the user clicks a desktop notification for this session.
+        if hookEvent == "PlanchetteFocus" {
+            DispatchQueue.main.async { [weak self] in
+                self?.appState?.focusSession(sessionID)
+            }
+            return
+        }
+
         let claudeSessionID = event["session_id"] as? String
         let transcriptPath = event["transcript_path"] as? String
         let message = event["message"] as? String

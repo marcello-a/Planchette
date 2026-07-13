@@ -307,6 +307,14 @@ final class AppState: ObservableObject {
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
     }
 
+    /// Clicked desktop notification (PlanchetteFocus via hook socket): bring
+    /// the app forward and jump to the terminal.
+    func focusSession(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        select(session: session)
+    }
+
     /// Jump to the most urgent waiting session (⌘⇧K).
     func jumpToNextWaiting() {
         guard let next = attentionQueue.first else { return }
