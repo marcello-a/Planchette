@@ -1,0 +1,85 @@
+name: Build & Release
+
+# Builds GhosttyKit + the app and runs tests on every push to the default
+# branch. When the VERSION file names a version whose tag doesn't exist yet, it
+# also cuts that release (tag + DMG/zip/checksums) — so a merge to main that
+# bumps VERSION publishes automatically. Releasing locally still works too:
+# `scripts/release.sh` (reads the same VERSION file).
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    # macos-15 ships a recent macOS SDK; ghostty v1.3.1 needs CoreVideo symbols
+    # (e.g. kCVPixelFormatType_30RGB_r210) absent from the older 14.x SDK.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Use latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)/Contents/Developer" || true
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Zig 0.15.2
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache GhosttyKit build
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor/ghostty/.zig-cache
+            vendor/ghostty/zig-out
+            ~/.cache/zig
+          key: ghostty-${{ runner.os }}-${{ hashFiles('.gitmodules') }}-v1.3.1
+
+      - name: Build GhosttyKit
+        run: |
+          set -eu
+          ( cd vendor/ghostty && zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast )
+          cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/Planchette/
+
+      - name: Test
+        run: cd macos/Planchette && swift test
+
+      - name: Release (only if this version isn't published yet)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          VERSION="${{ steps.ver.outputs.version }}"
+          TAG="v$VERSION"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "≡ $TAG already published — build + test only, no release."
+            exit 0
+          fi
+          echo "→ publishing $TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sh scripts/package.sh "$VERSION"
+          git tag -a "$TAG" -m "Planchette $VERSION"
+          git push origin "$TAG"
+          gh release create "$TAG" \
+            dist/Planchette.dmg dist/Planchette.zip dist/SHA256SUMS \
+            --title "Planchette $VERSION" \
+            --notes "Automated release $VERSION. Existing users get this via the in-app updater (Install & Relaunch); new users can download Planchette.dmg."

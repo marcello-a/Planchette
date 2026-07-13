@@ -98,6 +98,10 @@ struct SettingsView: View {
             Section(L10n.t(.aiSection)) {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
+                Text(L10n.t(.aiExplanation))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
@@ -193,6 +197,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let server = HookServer(appState: appState)
         server.start()
         hookServer = server
+
+        // Auto-install the Claude Code hooks so attention events work with no
+        // manual setup (idempotent; merges into ~/.claude/settings.json).
+        DispatchQueue.global(qos: .utility).async { HookInstaller.installIfNeeded() }
 
         MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
     }
@@ -333,7 +341,8 @@ struct ContentView: View {
 
     private var welcome: some View {
         VStack(spacing: 12) {
-            Text("🔮").font(.system(size: 56))
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable().frame(width: 72, height: 72)
             Text("Planchette").font(.largeTitle.bold())
             Text(L10n.t(.tagline))
                 .foregroundStyle(.secondary)

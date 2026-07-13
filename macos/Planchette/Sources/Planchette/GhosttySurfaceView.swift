@@ -40,14 +40,25 @@ final class GhosttySurfaceNSView: NSView {
         // Everything the C call needs must stay alive for its duration.
         let envKey = strdup("PLANCHETTE_SESSION")
         let envValue = strdup(sessionID.uuidString)
+        // Notification tools (e.g. peon-ping/OpenPeon) run this on click so the
+        // right terminal comes to front via our hook socket.
+        let clickKey = strdup("PEON_CLICK_COMMAND")
+        let clickValue = strdup(
+            "printf '{\"planchette_session\":\"\(sessionID.uuidString)\","
+                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}'"
+                + " | nc -U \(HookServer.socketPath)"
+        )
         let cwd = strdup(workingDirectory)
         let input = initialInput.map { strdup($0) }
         defer {
-            free(envKey); free(envValue); free(cwd)
+            free(envKey); free(envValue); free(clickKey); free(clickValue); free(cwd)
             if let input { free(input) }
         }
 
-        var envVars = [ghostty_env_var_s(key: envKey, value: envValue)]
+        var envVars = [
+            ghostty_env_var_s(key: envKey, value: envValue),
+            ghostty_env_var_s(key: clickKey, value: clickValue),
+        ]
         envVars.withUnsafeMutableBufferPointer { buf in
             cfg.env_vars = buf.baseAddress
             cfg.env_var_count = buf.count
@@ -89,6 +100,12 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     @objc private func frameDidChange() { syncSurfaceSize() }
+
+    override func viewDidEndLiveResize() {
+        super.viewDidEndLiveResize()
+        // Authoritative final sync after a live drag settles.
+        syncSurfaceSize()
+    }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
@@ -159,26 +176,59 @@ final class GhosttySurfaceNSView: NSView {
 
     // MARK: Mouse
 
+    /// Tell ghostty the pointer position for this event. Must be sent BEFORE a
+    /// button press/release, otherwise ghostty uses a stale position and a click
+    /// selects from there (e.g. the start of the line) to the release point.
+    private func sendMousePos(_ event: NSEvent) {
+        guard let surface else { return }
+        let pos = convert(event.locationInWindow, from: nil)
+        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        sendMousePos(event)   // position first → click lands where clicked
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
     }
 
     override func mouseUp(with event: NSEvent) {
+        sendMousePos(event)
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        guard let surface else { return }
-        let pos = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
+    override func mouseMoved(with event: NSEvent) { sendMousePos(event) }
+
+    override func mouseDragged(with event: NSEvent) { sendMousePos(event) }
+
+    // Clicking an unfocused terminal should register the click, not just focus.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    // Tracking area so mouseMoved/Entered/Exited fire — ghostty needs the live
+    // pointer position for hover, selection, and mouse reporting. Without this
+    // the position is stale and clicks/selection behave unintuitively.
+    override func updateTrackingAreas() {
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .inVisibleRect, .activeAlways],
+            owner: self, userInfo: nil))
     }
 
-    override func mouseDragged(with event: NSEvent) { mouseMoved(with: event) }
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        sendMousePos(event)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        guard let surface else { return }
+        // Negative position tells ghostty the cursor left the viewport.
+        ghostty_surface_mouse_pos(surface, -1, -1, event.modifierFlags.ghosttyMods)
+    }
 
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
@@ -202,11 +252,50 @@ final class GhosttySurfaceNSView: NSView {
     private var keyTextAccumulator: [String]?
     private var markedTextValue = NSMutableAttributedString()
 
+    // MARK: Pending input (best-effort, for restore)
+    //
+    // Mirrors plain typing at the prompt so a restart can re-type what you'd
+    // entered but not yet sent. It stays *conservative*: the moment anything
+    // ambiguous happens (arrow keys, shortcuts, history recall, paste), we mark
+    // it invalid and simply won't restore — never inject the wrong text.
+    private var pendingInput = ""
+    private var pendingValid = true
+
+    /// The unsent line to restore, or nil if we can't trust it.
+    func capturedPendingInput() -> String? {
+        guard pendingValid, !pendingInput.isEmpty, pendingInput.count <= 4096 else { return nil }
+        return pendingInput
+    }
+
+    private func trackPendingInput(event: NSEvent, produced: [String]) {
+        switch event.keyCode {
+        case 36, 76:                       // Return / Enter → line submitted
+            pendingInput = ""; pendingValid = true; return
+        case 51:                           // Backspace
+            if pendingValid, !pendingInput.isEmpty { pendingInput.removeLast() }
+            return
+        default: break
+        }
+        // Any modifier combo (shortcuts, ⌃-sequences) → can't track.
+        if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+            pendingValid = false; return
+        }
+        let printable = produced.joined().filter {
+            ($0.unicodeScalars.first?.value ?? 0) >= 0x20 && $0 != "\u{7F}"
+        }
+        if printable.isEmpty {             // arrows, tab, esc, fn keys, history…
+            pendingValid = false
+        } else if pendingValid {
+            pendingInput += printable
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         keyTextAccumulator = []
         interpretKeyEvents([event])
         let produced = keyTextAccumulator ?? []
         keyTextAccumulator = nil
+        trackPendingInput(event: event, produced: produced)
         sendKey(event: event, action: GHOSTTY_ACTION_PRESS, texts: produced)
     }
 
@@ -226,13 +315,23 @@ final class GhosttySurfaceNSView: NSView {
         let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
         if appShortcuts.contains(chars) { return false }
 
+        // Font zoom: ⌘+ / ⌘- / ⌘0 (⌘= and ⌘⇧= both map to "+"/"=").
+        switch chars {
+        case "+", "=": increaseFontSize(); return true
+        case "-": decreaseFontSize(); return true
+        case "0": resetFontSize(); return true
+        default: break
+        }
+
         // The embedded runtime has no default clipboard keybindings, so drive
         // ghostty's clipboard actions directly (⌘V respects bracketed paste).
         let plainCommand = event.modifierFlags
             .intersection([.command, .option, .control, .shift]) == .command
         if plainCommand {
             switch chars {
-            case "v": if performBindingAction("paste_from_clipboard") { return true }
+            case "v":
+                pendingValid = false   // can't track pasted text
+                if performBindingAction("paste_from_clipboard") { return true }
             case "c": if performBindingAction("copy_to_clipboard") { return true }
             case "a": if performBindingAction("select_all") { return true }
             default: break
@@ -252,9 +351,14 @@ final class GhosttySurfaceNSView: NSView {
         return action.withCString { ghostty_surface_binding_action(surface, $0, UInt(len - 1)) }
     }
 
+    // Font zoom, driven by the header buttons and ⌘+/⌘-/⌘0.
+    func increaseFontSize() { performBindingAction("increase_font_size:1") }
+    func decreaseFontSize() { performBindingAction("decrease_font_size:1") }
+    func resetFontSize() { performBindingAction("reset_font_size") }
+
     // Standard clipboard responder selectors so the Edit menu items (Paste,
     // Copy, Select All) are enabled and routed to the surface too.
-    @objc func paste(_ sender: Any?) { performBindingAction("paste_from_clipboard") }
+    @objc func paste(_ sender: Any?) { pendingValid = false; performBindingAction("paste_from_clipboard") }
     @objc func copy(_ sender: Any?) { performBindingAction("copy_to_clipboard") }
     @objc override func selectAll(_ sender: Any?) { performBindingAction("select_all") }
 
@@ -264,9 +368,19 @@ final class GhosttySurfaceNSView: NSView {
         var key = ghostty_input_key_s()
         key.action = action
         key.mods = event.modifierFlags.ghosttyMods
-        key.consumed_mods = ghostty_input_mods_e(0)
+        // Control/Command never contribute to text translation (ghostty's own
+        // heuristic); everything else did.
+        key.consumed_mods = event.modifierFlags.subtracting([.control, .command]).ghosttyMods
         key.keycode = UInt32(event.keyCode)
+        // The codepoint with NO modifiers applied. Ghostty needs this to encode
+        // control shortcuts (⌃C → \x03, ⌃U, ⌃A, ⌃E, ⌃W, …) and Alt combos.
+        // Without it, control-key shortcuts silently do nothing.
         key.unshifted_codepoint = 0
+        if event.type == .keyDown || event.type == .keyUp,
+           let chars = event.characters(byApplyingModifiers: []),
+           let scalar = chars.unicodeScalars.first {
+            key.unshifted_codepoint = scalar.value
+        }
         key.composing = markedTextValue.length > 0
 
         let printable = texts.filter { s in
@@ -329,7 +443,8 @@ enum RestoreCommand {
         scrollbackPath: String,
         startupCommand: String?,
         claudeSessionID: String?,
-        resumeClaude: Bool
+        resumeClaude: Bool,
+        pendingInput: String? = nil
     ) -> String? {
         var commands: [String] = []
         let willResumeClaude = resumeClaude && claudeSessionID != nil
@@ -343,16 +458,29 @@ enum RestoreCommand {
             let escaped = scrollbackPath.replacingOccurrences(of: "'", with: "'\\''")
             commands.append("clear; cat '\(escaped)' 2>/dev/null")
         }
-        if let startup = startupCommand, !startup.isEmpty {
+        let hasStartup = !(startupCommand ?? "").isEmpty
+        if let startup = startupCommand, hasStartup {
             commands.append(startup)
         }
         if willResumeClaude, let claudeID = claudeSessionID {
-            // Resume THIS terminal's exact conversation, else start fresh.
-            // Never `claude --continue`: it resumes the most recent conversation
-            // in the folder, which may belong to a different terminal.
-            commands.append("claude --resume \(claudeID) || claude")
+            // Resume THIS terminal's exact conversation; if that fails, fall back
+            // to Claude's interactive session picker so the user can still choose
+            // their conversation, and only then to a fresh session — so a Claude
+            // session is essentially never lost. Never `claude --continue`: it
+            // resumes the folder's most recent conversation, which may belong to
+            // a different terminal.
+            commands.append("claude --resume \(claudeID) || claude --resume || claude")
         }
-        return commands.isEmpty ? nil : commands.joined(separator: "\n") + "\n"
+
+        var script = commands.isEmpty ? "" : commands.joined(separator: "\n") + "\n"
+        // Best-effort: re-type unsent input at the prompt WITHOUT a newline, so
+        // it sits there ready to edit and nothing runs. Only for a plain shell —
+        // if we're launching Claude or a startup command, the input would land
+        // in the wrong place.
+        if !willResumeClaude, !hasStartup, let pending = pendingInput, !pending.isEmpty {
+            script += pending
+        }
+        return script.isEmpty ? nil : script
     }
 }
 
@@ -370,12 +498,22 @@ final class TerminalRegistry {
         var initialInput: String? = nil
         if appState.isRestoring {
             let sbPath = AppState.scrollbackURL(for: session.id).path
+            let pending = try? String(contentsOf: AppState.pendingInputURL(for: session.id), encoding: .utf8)
+            // Resolve the conversation to resume as robustly as possible — even
+            // if we never captured the id, this finds the folder's transcript.
+            let resumeID = session.resumeClaudeOnRestore
+                ? ClaudeResume.resolveSessionID(
+                    claudeSessionID: session.claudeSessionID,
+                    transcriptPath: session.transcriptPath,
+                    currentDirectory: session.currentDirectory)
+                : nil
             initialInput = RestoreCommand.input(
                 hasScrollback: FileManager.default.fileExists(atPath: sbPath),
                 scrollbackPath: sbPath,
                 startupCommand: session.startupCommand,
-                claudeSessionID: session.claudeSessionID,
-                resumeClaude: session.resumeClaudeOnRestore)
+                claudeSessionID: resumeID,
+                resumeClaude: session.resumeClaudeOnRestore,
+                pendingInput: pending)
         }
 
         let view = GhosttySurfaceNSView(
@@ -402,6 +540,9 @@ final class TerminalRegistry {
         views[id] = nil
     }
 
+    /// The live surface view for a session, if it exists (no creation).
+    func existingView(_ id: UUID) -> GhosttySurfaceNSView? { views[id] }
+
     /// Push a rebuilt config (e.g. after a light/dark change) to every surface.
     func updateConfig(_ config: ghostty_config_t) {
         for view in views.values {
@@ -419,11 +560,23 @@ final class TerminalRegistry {
             at: dir, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
         for (id, view) in views {
-            guard let text = view.readScrollback(), !text.isEmpty else { continue }
-            let capped = String(text.suffix(200_000))
-            let url = dir.appendingPathComponent("\(id.uuidString).txt")
-            guard (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil else { continue }
-            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+            // Scrollback (visual history).
+            if let text = view.readScrollback(), !text.isEmpty {
+                let capped = String(text.suffix(200_000))
+                let url = dir.appendingPathComponent("\(id.uuidString).txt")
+                if (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+                }
+            }
+            // Unsent input at the prompt (best-effort) — write, or clear stale.
+            let inputURL = dir.appendingPathComponent("\(id.uuidString).input")
+            if let pending = view.capturedPendingInput() {
+                if (try? pending.write(to: inputURL, atomically: true, encoding: .utf8)) != nil {
+                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: inputURL.path)
+                }
+            } else {
+                try? FileManager.default.removeItem(at: inputURL)
+            }
         }
     }
 }

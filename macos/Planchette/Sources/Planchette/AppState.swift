@@ -12,7 +12,7 @@ final class AppState: ObservableObject {
     /// target decide, during hover, whether a drop would actually rearrange
     /// anything — so it can refuse a no-op instead of showing a phantom highlight.
     @Published var draggingClusterSessionID: UUID?
-    @Published var aiEnabled = false {
+    @Published var aiEnabled = true {
         didSet { scheduleSave() }
     }
     @Published var language: AppLanguage = .system {
@@ -55,6 +55,11 @@ final class AppState: ObservableObject {
 
     static func scrollbackURL(for id: UUID) -> URL {
         scrollbackDir.appendingPathComponent("\(id.uuidString).txt")
+    }
+
+    /// Unsent prompt input captured for restore (best-effort).
+    static func pendingInputURL(for id: UUID) -> URL {
+        scrollbackDir.appendingPathComponent("\(id.uuidString).input")
     }
 
     /// Capture every live terminal's scrollback to disk (called at durability
@@ -230,6 +235,7 @@ final class AppState: ObservableObject {
         guard let session = sessions[id] else { return }
         TerminalRegistry.shared.close(id)
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
+        try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
@@ -251,10 +257,23 @@ final class AppState: ObservableObject {
         for sid in group.sessionIDs {
             TerminalRegistry.shared.close(sid)
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
+            try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
         }
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
+        scheduleSave()
+    }
+
+    /// Reorder terminals within a group: place `dragged` right before `target`.
+    func reorderSession(_ dragged: UUID, before target: UUID, groupID: UUID) {
+        guard dragged != target, let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
+        var ids = groups[gi].sessionIDs
+        guard ids.contains(dragged), ids.contains(target) else { return }
+        ids.removeAll { $0 == dragged }
+        guard let ti = ids.firstIndex(of: target) else { return }
+        ids.insert(dragged, at: ti)
+        groups[gi].sessionIDs = ids
         scheduleSave()
     }
 
@@ -307,6 +326,14 @@ final class AppState: ObservableObject {
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
     }
 
+    /// Clicked desktop notification (PlanchetteFocus via hook socket): bring
+    /// the app forward and jump to the terminal.
+    func focusSession(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        select(session: session)
+    }
+
     /// Jump to the most urgent waiting session (⌘⇧K).
     func jumpToNextWaiting() {
         guard let next = attentionQueue.first else { return }
@@ -325,13 +352,13 @@ final class AppState: ObservableObject {
     }
 
     /// OSC 133: the last shell command finished. Non-zero exit → error (red),
-    /// otherwise ready (green). Exit 130 (Ctrl+C) is a deliberate stop — e.g.
-    /// killing a dev server — not an error. Ignored while an agent turn is
-    /// active so it doesn't stomp running/waiting.
+    /// otherwise ready (green). Ignored while an agent turn is active so it
+    /// doesn't stomp running/waiting.
     func commandFinished(_ id: UUID, exitCode: Int) {
-        guard let session = sessions[id] else { return }
-        if session.state == .running || session.state == .waiting { return }
-        setState(id, exitCode > 0 && exitCode != 130 ? .error : .ready)
+        guard let session = sessions[id],
+              let newState = AttentionState.afterCommandFinish(exitCode: exitCode, current: session.state)
+        else { return }
+        setState(id, newState)
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
@@ -359,20 +386,17 @@ final class AppState: ObservableObject {
                 if let transcriptPath { $0.transcriptPath = transcriptPath }
             }
         }
+        // State transition (pure, tested). Message only carried for `waiting`.
+        if let newState = AttentionState.forHookEvent(hookEvent) {
+            setState(sessionID, newState, message: newState == .waiting ? message : nil)
+        }
+        // Per-event side effects.
         switch hookEvent {
-        case "UserPromptSubmit":
-            setState(sessionID, .running)
         case "Notification", "PermissionRequest":
-            setState(sessionID, .waiting, message: message)
             postUserNotification(sessionID: sessionID, message: message)
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
-            setState(sessionID, .ready)
             aiAssist.sessionUpdated(sessionID)
-        case "SessionEnd":
-            setState(sessionID, .ready)
-        case "SessionStart":
-            break // claudeSessionID captured above
         default:
             break
         }
@@ -583,6 +607,21 @@ final class AppState: ObservableObject {
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
         windowsToOpen = windows.dropFirst().map(\.id)
+
+        // Eagerly create EVERY terminal's surface now (while isRestoring is
+        // true) so they all resume in the background — Claude resume, scrollback
+        // replay, startup commands — not just the visible tab. Lazy creation
+        // would skip background tabs and unselected projects/windows, so those
+        // sessions would never restore. Surfaces are registry-cached, so the
+        // SwiftUI views reuse them when they eventually appear.
+        for group in groups {
+            for id in group.sessionIDs {
+                if let session = sessions[id] {
+                    _ = TerminalRegistry.shared.view(for: session, appState: self)
+                }
+            }
+        }
+
         // After a grace period, new surfaces are ordinary terminals again.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(30))

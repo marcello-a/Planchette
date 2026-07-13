@@ -213,9 +213,31 @@ final class GhosttyRuntime {
             }
             return true
 
+        case GHOSTTY_ACTION_OPEN_URL:
+            // ⌘-click on a detected link (ghostty reconstructs URLs across soft
+            // line wraps). Open it in the default app.
+            let u = action.action.open_url
+            guard let ptr = u.url, u.len > 0,
+                  let str = String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), encoding: .utf8),
+                  let url = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines))
+            else { return false }
+            DispatchQueue.main.async { openExternalURL(url) }
+            return true
+
         default:
             return false
         }
+    }
+
+    /// Open a URL from terminal content, restricted to safe web/mail schemes so
+    /// untrusted output can't trigger arbitrary URL-scheme handlers.
+    private static func openExternalURL(_ url: URL) {
+        let allowed: Set<String> = ["http", "https", "mailto", "ftp", "ftps", "file"]
+        guard let scheme = url.scheme?.lowercased(), allowed.contains(scheme) else {
+            NSLog("blocked opening url with scheme: \(url.scheme ?? "none")")
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     private static func readClipboard(

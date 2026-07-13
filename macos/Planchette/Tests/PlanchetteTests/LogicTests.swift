@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Planchette
 
 final class SemverTests: XCTestCase {
@@ -143,6 +144,116 @@ final class SplitLayoutTests: XCTestCase {
     }
 }
 
+final class StatusColorTests: XCTestCase {
+    // Each state must map to its documented color — this is the whole point of
+    // the app (which terminal is idle / in use / waiting / errored).
+    func testTintPerState() {
+        XCTAssertEqual(AttentionState.ready.tint, Color.green)
+        XCTAssertEqual(AttentionState.running.tint, Color.purple)
+        XCTAssertEqual(AttentionState.waiting.tint, Color.blue)
+        XCTAssertEqual(AttentionState.error.tint, Color.red)
+    }
+
+    func testEveryStateHasADistinctSymbol() {
+        let all: [AttentionState] = [.ready, .running, .waiting, .error]
+        XCTAssertEqual(Set(all.map(\.symbol)).count, all.count)
+    }
+
+    func testInboxContainsOnlyWaitingAndError() {
+        XCTAssertTrue(AttentionState.waiting.needsAttention)
+        XCTAssertTrue(AttentionState.error.needsAttention)
+        XCTAssertFalse(AttentionState.running.needsAttention)
+        XCTAssertFalse(AttentionState.ready.needsAttention)
+    }
+
+    // Hook events → states (the live "in use / waiting / idle" transitions).
+    func testHookEventTransitions() {
+        XCTAssertEqual(AttentionState.forHookEvent("UserPromptSubmit"), .running)
+        XCTAssertEqual(AttentionState.forHookEvent("Notification"), .waiting)
+        XCTAssertEqual(AttentionState.forHookEvent("PermissionRequest"), .waiting)
+        XCTAssertEqual(AttentionState.forHookEvent("Stop"), .ready)
+        XCTAssertEqual(AttentionState.forHookEvent("SubagentStop"), .ready)
+        XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .ready)
+        XCTAssertNil(AttentionState.forHookEvent("SessionStart"))
+        XCTAssertNil(AttentionState.forHookEvent("whatever"))
+    }
+
+    // A shell command result must never stomp an active agent turn, but at the
+    // prompt the exit code decides idle (green) vs error (red).
+    func testCommandFinishHonorsAgentTurn() {
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 0, current: .running))
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .running))
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .waiting))
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .ready), .ready)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 2, current: .ready), .error)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 1, current: .error), .error)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .error), .ready)
+    }
+
+    // Exit 130 (Ctrl+C) is a deliberate stop, not an error.
+    func testCommandFinishTreatsCtrlCAsReady() {
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .ready), .ready)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .error), .ready)
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 130, current: .running))
+    }
+
+    // Inbox ordering: error is most urgent, ready least.
+    func testRankOrdering() {
+        XCTAssertLessThan(AttentionState.error.rank, AttentionState.waiting.rank)
+        XCTAssertLessThan(AttentionState.waiting.rank, AttentionState.running.rank)
+        XCTAssertLessThan(AttentionState.running.rank, AttentionState.ready.rank)
+    }
+}
+
+final class DisplayTitleTests: XCTestCase {
+    private func session(osc: String?, custom: String? = nil) -> TerminalSession {
+        var s = TerminalSession(groupID: UUID(), workingDirectory: "/tmp/proj")
+        s.oscTitle = osc
+        s.customTitle = custom
+        return s
+    }
+
+    func testStripsLeadingStatusGlyph() {
+        XCTAssertEqual(session(osc: "✳ Building app").displayTitle, "Building app")
+        XCTAssertEqual(session(osc: "● Deploy").displayTitle, "Deploy")
+        XCTAssertFalse(session(osc: "✳ Claude Code").displayTitle.hasPrefix("✳"))
+    }
+
+    func testKeepsNormalTitles() {
+        XCTAssertEqual(session(osc: "npm run dev").displayTitle, "npm run dev")
+    }
+
+    func testCustomTitleWins() {
+        XCTAssertEqual(session(osc: "✳ x", custom: "My Title").displayTitle, "My Title")
+    }
+
+    func testIdleShellPromptShowsFree() {
+        L10n.current = .en
+        var s = session(osc: "marcello.alte@PCL2023110901:~/development/mp/x")
+        s.state = .ready
+        XCTAssertEqual(s.displayTitle, "free")
+    }
+
+    func testRunningWithoutTitleShowsFolderNotFree() {
+        var s = session(osc: "marcello.alte@host:~/x")
+        s.state = .running
+        XCTAssertEqual(s.displayTitle, "proj")   // not idle → folder, not "free"
+    }
+
+    func testGlyphOnlyIdleShowsFree() {
+        L10n.current = .en
+        XCTAssertEqual(session(osc: "✳").displayTitle, "free")   // idle by default
+    }
+
+    func testShellPromptDetection() {
+        XCTAssertTrue(Titles.looksLikeShellPrompt("marcello.alte@PCL2023110901:~/dev"))
+        XCTAssertTrue(Titles.looksLikeShellPrompt("user@host:/path"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("npm run dev"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("Implementiere neues Detail"))
+        XCTAssertFalse(Titles.looksLikeShellPrompt("build @scope/pkg"))
+    }
+}
+
 final class RestoreCommandTests: XCTestCase {
     func testResumesExactSessionAndNeverContinues() {
         let cmd = RestoreCommand.input(
@@ -188,6 +299,114 @@ final class RestoreCommandTests: XCTestCase {
             hasScrollback: false, scrollbackPath: "/x",
             startupCommand: "npm run dev", claudeSessionID: nil, resumeClaude: false) ?? ""
         XCTAssertTrue(cmd.contains("npm run dev"))
+    }
+
+    // Pending input is re-typed at the prompt WITHOUT a trailing newline (so it
+    // never auto-runs), and only for a plain shell.
+    func testPendingInputTypedButNotSent() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "git push") ?? ""
+        XCTAssertEqual(cmd, "git push")          // no trailing newline
+        XCTAssertFalse(cmd.hasSuffix("\n"))
+    }
+
+    func testPendingInputAfterScrollbackReplay() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: true, scrollbackPath: "/tmp/s.txt",
+            startupCommand: nil, claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "make test") ?? ""
+        XCTAssertTrue(cmd.contains("clear; cat "))
+        XCTAssertTrue(cmd.hasSuffix("make test"))  // sits at the prompt after replay
+    }
+
+    func testPendingInputSkippedWhenResumingClaude() {
+        // Would land in Claude's TUI, not the shell — so we don't inject it.
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true,
+            pendingInput: "secret") ?? ""
+        XCTAssertFalse(cmd.contains("secret"))
+    }
+
+    func testPendingInputSkippedWithStartupCommand() {
+        let cmd = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "/x",
+            startupCommand: "npm run dev", claudeSessionID: nil, resumeClaude: false,
+            pendingInput: "ls") ?? ""
+        XCTAssertFalse(cmd.hasSuffix("ls"))
+    }
+}
+
+final class ClaudeResumeTests: XCTestCase {
+    func testEncodedProjectName() {
+        XCTAssertEqual(
+            ClaudeResume.encodedProjectName("/Users/marcello.alte/development/mp/2nd-designer"),
+            "-Users-marcello-alte-development-mp-2nd-designer")
+    }
+
+    func testSessionIDFromTranscriptPath() {
+        XCTAssertEqual(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/abc-123.jsonl"), "abc-123")
+        XCTAssertNil(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/notes.txt"))
+        XCTAssertNil(ClaudeResume.sessionID(fromTranscriptPath: "/a/b/.jsonl"))
+    }
+
+    private let cwd = "/Users/me/proj"
+
+    private func makeProject() throws -> URL {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("cr-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd)),
+            withIntermediateDirectories: true)
+        return root
+    }
+
+    private func writeTranscript(_ root: URL, _ id: String, ageSeconds: TimeInterval) throws {
+        let url = root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd))
+            .appendingPathComponent("\(id).jsonl")
+        try "{}".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(-ageSeconds)], ofItemAtPath: url.path)
+    }
+
+    func testPrefersRecordedTranscriptWhenItExists() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "exact-id", ageSeconds: 100)
+        try writeTranscript(root, "newer-other", ageSeconds: 1)
+        let tp = root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd))
+            .appendingPathComponent("exact-id.jsonl").path
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "stale", transcriptPath: tp, currentDirectory: cwd, projectsDir: root), "exact-id")
+    }
+
+    // The datadog case: nothing was captured, but the folder has transcripts.
+    func testRecoversNewestWhenNothingRecorded() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "old", ageSeconds: 100)
+        try writeTranscript(root, "newest", ageSeconds: 1)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root), "newest")
+    }
+
+    func testUsesRecordedIDWhenTranscriptExistsButPathGone() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "known", ageSeconds: 10)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "known", transcriptPath: "/nope/gone.jsonl", currentDirectory: cwd, projectsDir: root), "known")
+    }
+
+    func testStaleIDFallsBackToNewestTranscript() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "actual", ageSeconds: 1)
+        XCTAssertEqual(ClaudeResume.resolveSessionID(
+            claudeSessionID: "stale-no-file", transcriptPath: nil, currentDirectory: cwd, projectsDir: root), "actual")
+    }
+
+    func testNilWhenNoHistoryAtAll() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertNil(ClaudeResume.resolveSessionID(
+            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root))
     }
 }
 

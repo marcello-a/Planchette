@@ -16,10 +16,13 @@
 # Requires: gh (authenticated), a clean master.
 set -eu
 
-VERSION="${1:-}"
-[ -n "$VERSION" ] || { echo "usage: scripts/release.sh X.Y.Z" >&2; exit 1; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
+# Version comes from the argument, else the VERSION file (same source CI uses).
+VERSION="${1:-}"
+[ -n "$VERSION" ] || VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null)"
+[ -n "$VERSION" ] || { echo "usage: scripts/release.sh [X.Y.Z]  (or set VERSION file)" >&2; exit 1; }
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [ "$BRANCH" = "master" ] || [ "$BRANCH" = "main" ] || {
