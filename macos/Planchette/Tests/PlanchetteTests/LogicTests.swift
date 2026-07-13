@@ -190,6 +190,13 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .error), .ready)
     }
 
+    // Exit 130 (Ctrl+C) is a deliberate stop, not an error.
+    func testCommandFinishTreatsCtrlCAsReady() {
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .ready), .ready)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .error), .ready)
+        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 130, current: .running))
+    }
+
     // Inbox ordering: error is most urgent, ready least.
     func testRankOrdering() {
         XCTAssertLessThan(AttentionState.error.rank, AttentionState.waiting.rank)

@@ -66,10 +66,11 @@ enum AttentionState: String, Codable {
 
     /// The state after a shell command finishes (OSC 133). Returns nil to keep
     /// the current state — an active agent turn (running/waiting) owns the
-    /// indicator and a plain command result must not stomp it.
+    /// indicator and a plain command result must not stomp it. Exit 130
+    /// (Ctrl+C) is a deliberate stop — e.g. killing a dev server — not an error.
     static func afterCommandFinish(exitCode: Int, current: AttentionState) -> AttentionState? {
         if current == .running || current == .waiting { return nil }
-        return exitCode > 0 ? .error : .ready
+        return exitCode > 0 && exitCode != 130 ? .error : .ready
     }
 }
 
