@@ -325,12 +325,13 @@ final class AppState: ObservableObject {
     }
 
     /// OSC 133: the last shell command finished. Non-zero exit → error (red),
-    /// otherwise ready (green). Ignored while an agent turn is active so it
-    /// doesn't stomp running/waiting.
+    /// otherwise ready (green). Exit 130 (Ctrl+C) is a deliberate stop — e.g.
+    /// killing a dev server — not an error. Ignored while an agent turn is
+    /// active so it doesn't stomp running/waiting.
     func commandFinished(_ id: UUID, exitCode: Int) {
         guard let session = sessions[id] else { return }
         if session.state == .running || session.state == .waiting { return }
-        setState(id, exitCode > 0 ? .error : .ready)
+        setState(id, exitCode > 0 && exitCode != 130 ? .error : .ready)
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
