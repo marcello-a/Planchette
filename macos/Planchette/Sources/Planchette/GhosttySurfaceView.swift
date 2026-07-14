@@ -499,14 +499,11 @@ final class TerminalRegistry {
         if appState.isRestoring {
             let sbPath = AppState.scrollbackURL(for: session.id).path
             let pending = try? String(contentsOf: AppState.pendingInputURL(for: session.id), encoding: .utf8)
-            // Resolve the conversation to resume as robustly as possible — even
-            // if we never captured the id, this finds the folder's transcript.
-            let resumeID = session.resumeClaudeOnRestore
-                ? ClaudeResume.resolveSessionID(
-                    claudeSessionID: session.claudeSessionID,
-                    transcriptPath: session.transcriptPath,
-                    currentDirectory: session.currentDirectory)
-                : nil
+            // The conversation to resume, resolved as one batch over ALL
+            // terminals in applyRestore — never per-terminal here, so tabs of
+            // the same project can't converge on the same conversation. Only
+            // sessions with resumeClaudeOnRestore are in the map.
+            let resumeID = appState.restoreResumeIDs[session.id]
             initialInput = RestoreCommand.input(
                 hasScrollback: FileManager.default.fileExists(atPath: sbPath),
                 scrollbackPath: sbPath,

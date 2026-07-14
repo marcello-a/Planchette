@@ -408,6 +408,92 @@ final class ClaudeResumeTests: XCTestCase {
         XCTAssertNil(ClaudeResume.resolveSessionID(
             claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root))
     }
+
+    // MARK: resolveAll — several tabs of one project must never share a conversation
+
+    private func transcriptPath(_ root: URL, _ id: String) -> String {
+        root.appendingPathComponent(ClaudeResume.encodedProjectName(cwd))
+            .appendingPathComponent("\(id).jsonl").path
+    }
+
+    private func terminal(_ id: String? = nil, _ tp: String? = nil) -> ClaudeResume.Terminal {
+        ClaudeResume.Terminal(
+            id: UUID(), claudeSessionID: id, transcriptPath: tp, currentDirectory: cwd)
+    }
+
+    func testEachTabKeepsItsOwnConversation() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "conv-a", ageSeconds: 100)
+        try writeTranscript(root, "conv-b", ageSeconds: 1)
+        let a = terminal("conv-a", transcriptPath(root, "conv-a"))
+        let b = terminal("conv-b", transcriptPath(root, "conv-b"))
+        let resolved = ClaudeResume.resolveAll([a, b], projectsDir: root)
+        XCTAssertEqual(resolved[a.id], "conv-a")
+        XCTAssertEqual(resolved[b.id], "conv-b")
+    }
+
+    // The reported bug's poisoned state: several tabs recorded the SAME id
+    // (a past restore converged them). They must come back with DISTINCT
+    // conversations — first keeps the shared one, the rest spread onto the
+    // project's remaining transcripts, newest first.
+    func testTabsPoisonedWithSameIDSpreadOntoDistinctTranscripts() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "shared", ageSeconds: 1)
+        try writeTranscript(root, "other-1", ageSeconds: 100)
+        try writeTranscript(root, "other-2", ageSeconds: 200)
+        let tabs = (0..<3).map { _ in terminal("shared", transcriptPath(root, "shared")) }
+        let resolved = ClaudeResume.resolveAll(tabs, projectsDir: root)
+        XCTAssertEqual(resolved[tabs[0].id], "shared")
+        XCTAssertEqual(resolved[tabs[1].id], "other-1")
+        XCTAssertEqual(resolved[tabs[2].id], "other-2")
+    }
+
+    // A later tab's exact record must beat an earlier tab's weak fallback —
+    // the earlier tab must not steal the later one's conversation.
+    func testExactRecordBeatsEarlierTabsFallback() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "newest", ageSeconds: 1)
+        try writeTranscript(root, "older", ageSeconds: 100)
+        let stale = terminal("gone-id", nil)                              // falls back
+        let exact = terminal("newest", transcriptPath(root, "newest"))    // exact match
+        let resolved = ClaudeResume.resolveAll([stale, exact], projectsDir: root)
+        XCTAssertEqual(resolved[exact.id], "newest")
+        XCTAssertEqual(resolved[stale.id], "older")
+    }
+
+    // A plain-shell tab (no Claude evidence) next to a Claude tab must not
+    // hijack a conversation on restore.
+    func testPlainShellTabDoesNotHijackAConversation() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "conv-a", ageSeconds: 1)
+        try writeTranscript(root, "conv-old", ageSeconds: 100)
+        let claudeTab = terminal("conv-a", transcriptPath(root, "conv-a"))
+        let shellTab = terminal()
+        let resolved = ClaudeResume.resolveAll([claudeTab, shellTab], projectsDir: root)
+        XCTAssertEqual(resolved[claudeTab.id], "conv-a")
+        XCTAssertNil(resolved[shellTab.id])
+    }
+
+    // A project's SOLE tab without records still recovers the newest
+    // transcript (hooks may not have been installed when it was captured).
+    func testSoleTabWithoutRecordsStillRecoversNewest() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "only", ageSeconds: 1)
+        let tab = terminal()
+        let resolved = ClaudeResume.resolveAll([tab], projectsDir: root)
+        XCTAssertEqual(resolved[tab.id], "only")
+    }
+
+    // More poisoned tabs than transcripts: the leftover tab restores as a
+    // plain shell rather than duplicating a conversation another tab owns.
+    func testLeftoverPoisonedTabGetsNoConversation() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "shared", ageSeconds: 1)
+        let tabs = (0..<2).map { _ in terminal("shared", transcriptPath(root, "shared")) }
+        let resolved = ClaudeResume.resolveAll(tabs, projectsDir: root)
+        XCTAssertEqual(resolved[tabs[0].id], "shared")
+        XCTAssertNil(resolved[tabs[1].id])
+    }
 }
 
 final class LocalizationTests: XCTestCase {

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Fixed
+- **Tabs of one project no longer restore into the same Claude conversation.**
+  Resume ids are now resolved as one batch across all terminals — every
+  conversation can be claimed by exactly one tab; tabs whose records collide
+  (e.g. poisoned by an earlier restore) spread onto the project's remaining
+  transcripts, newest first. Plain-shell tabs next to a Claude tab no longer
+  hijack a conversation on restore.
+
 ## [0.2.5] — 2026-07-13
 
 ### Added

@@ -40,6 +40,11 @@ final class AppState: ObservableObject {
     /// uses this to decide whether to replay startup/resume commands.
     private(set) var isRestoring = false
 
+    /// Claude conversation each restored terminal resumes — resolved as one
+    /// batch in `applyRestore` so no two terminals claim the same conversation.
+    /// Only meaningful while `isRestoring` is true.
+    private(set) var restoreResumeIDs: [UUID: String] = [:]
+
     private var saveTask: Task<Void, Never>?
 
     static let stateURL: URL = {
@@ -608,6 +613,22 @@ final class AppState: ObservableObject {
         autoUpdateCheck = state.autoUpdateCheck
         windowsToOpen = windows.dropFirst().map(\.id)
 
+        // Resolve which Claude conversation each terminal resumes as ONE batch
+        // over all terminals — so two tabs of the same project can never claim
+        // the same conversation (per-terminal fallbacks used to converge them
+        // all onto the project's newest transcript).
+        restoreResumeIDs = ClaudeResume.resolveAll(
+            groups.flatMap(\.sessionIDs)
+                .compactMap { sessions[$0] }
+                .filter(\.resumeClaudeOnRestore)
+                .map {
+                    ClaudeResume.Terminal(
+                        id: $0.id,
+                        claudeSessionID: $0.claudeSessionID,
+                        transcriptPath: $0.transcriptPath,
+                        currentDirectory: $0.currentDirectory)
+                })
+
         // Eagerly create EVERY terminal's surface now (while isRestoring is
         // true) so they all resume in the background — Claude resume, scrollback
         // replay, startup commands — not just the visible tab. Lazy creation
@@ -626,6 +647,7 @@ final class AppState: ObservableObject {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(30))
             self.isRestoring = false
+            self.restoreResumeIDs = [:]
         }
     }
 
