@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
-## [Unreleased]
+## [0.2.6] — 2026-07-14
 
 ### Added
 - **Right-click context menu** on the terminal (Copy / Paste / Select All),
