@@ -3,7 +3,10 @@ import Foundation
 /// Unix-domain-socket server receiving one JSON payload per connection from
 /// `planchette-hook`, which Claude Code invokes on hook events.
 final class HookServer {
-    static let socketPath = "/tmp/planchette.sock"
+    /// Per-instance path: a fixed path lets a second instance (e.g. a dev
+    /// build) unlink+rebind it and silently cut off the running app's hooks.
+    /// The hook finds us via the PLANCHETTE_SOCKET env var in each terminal.
+    static let socketPath = "/tmp/planchette-\(getpid()).sock"
 
     private var fd: Int32 = -1
     private var acceptSource: DispatchSourceRead?
