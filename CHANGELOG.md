@@ -8,6 +8,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Right-click context menu** on the terminal (Copy / Paste / Select All),
+  wired to ghostty's native clipboard actions and localized. Right clicks are
+  first offered to the running terminal app, exactly like Ghostty itself, so
+  TUIs with mouse reporting still receive them.
+
 ### Fixed
 - **Terminals resize correctly when the window moves to another display**
   (e.g. external monitor → MacBook screen). The surface now tracks screen

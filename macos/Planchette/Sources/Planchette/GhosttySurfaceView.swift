@@ -236,6 +236,46 @@ final class GhosttySurfaceNSView: NSView {
 
     override func mouseDragged(with event: NSEvent) { sendMousePos(event) }
 
+    // Right click, exactly like Ghostty's own app: offer it to the surface
+    // first (apps with mouse reporting, e.g. TUIs, may consume it); only when
+    // unconsumed does super trigger `menu(for:)` — the context menu.
+    override func rightMouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        sendMousePos(event)
+        guard let surface else { return super.rightMouseDown(with: event) }
+        if ghostty_surface_mouse_button(
+            surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, event.modifierFlags.ghosttyMods) {
+            return   // consumed by the terminal app
+        }
+        super.rightMouseDown(with: event)
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        sendMousePos(event)
+        guard let surface else { return super.rightMouseUp(with: event) }
+        if ghostty_surface_mouse_button(
+            surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, event.modifierFlags.ghosttyMods) {
+            return
+        }
+        super.rightMouseUp(with: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
+
+    /// Native terminal context menu (Copy / Paste / Select All), driven by
+    /// ghostty's own clipboard binding actions.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        guard event.type == .rightMouseDown, let surface else { return nil }
+        let menu = NSMenu()
+        if ghostty_surface_has_selection(surface) {
+            menu.addItem(withTitle: L10n.t(.menuCopy), action: #selector(copy(_:)), keyEquivalent: "")
+        }
+        menu.addItem(withTitle: L10n.t(.menuPaste), action: #selector(paste(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: L10n.t(.menuSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
+        return menu
+    }
+
     // Clicking an unfocused terminal should register the click, not just focus.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
