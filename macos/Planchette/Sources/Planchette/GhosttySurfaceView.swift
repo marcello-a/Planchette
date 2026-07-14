@@ -28,6 +28,15 @@ final class GhosttySurfaceNSView: NSView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(frameDidChange),
             name: NSView.frameDidChangeNotification, object: self)
+        // AppKit does NOT reliably call viewDidChangeBackingProperties when a
+        // window moves to a screen with a different scale (e.g. external
+        // monitor → MacBook display), leaving the surface at the old pixel
+        // size. Observe the screen change directly, as Ghostty's own app does
+        // (ghostty#2731). Registered for ALL windows (object: nil) because the
+        // view moves between windows; the handler filters for its own.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidChangeScreen(_:)),
+            name: NSWindow.didChangeScreenNotification, object: nil)
 
         var cfg = ghostty_surface_config_new()
         cfg.platform_tag = GHOSTTY_PLATFORM_MACOS
@@ -107,10 +116,33 @@ final class GhosttySurfaceNSView: NSView {
         syncSurfaceSize()
     }
 
+    @objc private func windowDidChangeScreen(_ notification: Notification) {
+        guard let window, let object = notification.object as? NSWindow,
+              window == object else { return }
+        if let surface, let screen = window.screen,
+           let number = screen.deviceDescription[
+               NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 {
+            // Keep vsync on the new display's refresh rate.
+            ghostty_surface_set_display_id(surface, number)
+        }
+        // The scale may have changed with the screen; AppKit doesn't always
+        // deliver viewDidChangeBackingProperties for that, so trigger it. Async
+        // because the window's backingScaleFactor settles after the move.
+        DispatchQueue.main.async { [weak self] in
+            self?.viewDidChangeBackingProperties()
+        }
+    }
+
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
         guard let surface, let window else { return }
         let scale = window.backingScaleFactor
+        // Keep the compositor from scaling our Metal layer's contents itself —
+        // we re-render at the new scale below (see Ghostty's own surface view).
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.contentsScale = scale
+        CATransaction.commit()
         ghostty_surface_set_content_scale(surface, scale, scale)
         syncSurfaceSize()
     }

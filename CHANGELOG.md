@@ -9,6 +9,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Fixed
+- **Terminals resize correctly when the window moves to another display**
+  (e.g. external monitor → MacBook screen). The surface now tracks screen
+  changes directly — AppKit doesn't reliably report the scale change — and
+  tells libghostty the new display for correct vsync.
 - **Tabs of one project no longer restore into the same Claude conversation.**
   Resume ids are now resolved as one batch across all terminals — every
   conversation can be claimed by exactly one tab; tabs whose records collide
