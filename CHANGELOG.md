@@ -171,6 +171,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.6]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.6
 [0.2.5]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.5
 [0.2.4]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.4
 [0.2.3]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.3
