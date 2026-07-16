@@ -49,6 +49,8 @@ final class GhosttySurfaceNSView: NSView {
         // Everything the C call needs must stay alive for its duration.
         let envKey = strdup("PLANCHETTE_SESSION")
         let envValue = strdup(sessionID.uuidString)
+        let sockKey = strdup("PLANCHETTE_SOCKET")
+        let sockValue = strdup(HookServer.socketPath)
         // Notification tools (e.g. peon-ping/OpenPeon) run this on click so the
         // right terminal comes to front via our hook socket.
         let clickKey = strdup("PEON_CLICK_COMMAND")
@@ -60,12 +62,14 @@ final class GhosttySurfaceNSView: NSView {
         let cwd = strdup(workingDirectory)
         let input = initialInput.map { strdup($0) }
         defer {
-            free(envKey); free(envValue); free(clickKey); free(clickValue); free(cwd)
+            free(envKey); free(envValue); free(sockKey); free(sockValue)
+            free(clickKey); free(clickValue); free(cwd)
             if let input { free(input) }
         }
 
         var envVars = [
             ghostty_env_var_s(key: envKey, value: envValue),
+            ghostty_env_var_s(key: sockKey, value: sockValue),
             ghostty_env_var_s(key: clickKey, value: clickValue),
         ]
         envVars.withUnsafeMutableBufferPointer { buf in

@@ -79,7 +79,8 @@ SessionEnd → free
 
 Flow: Claude fires a hook → `planchette-hook` reads the event JSON on stdin plus
 `$PLANCHETTE_SESSION` from its environment → sends it to the unix socket
-(`/tmp/planchette.sock`) → `HookServer` decodes it and calls
+(`$PLANCHETTE_SOCKET`, per app instance: `/tmp/planchette-<pid>.sock`) →
+`HookServer` decodes it and calls
 `AppState.applyHookEvent`, which routes by `PLANCHETTE_SESSION` to the exact
 session. The inbox, menu-bar badge, and quick switcher are all just sorted views
 over these states (favorites first, `asking` before `done`, longest-waiting
