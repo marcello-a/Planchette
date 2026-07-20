@@ -27,7 +27,7 @@ struct AttentionPanel: View {
     /// The tabs shown for a project — tab order, optionally only active ones.
     private func visibleTabs(_ group: SessionGroup) -> [TerminalSession] {
         let tabs = appState.sessions(in: group)
-        return onlyActive ? tabs.filter { $0.state != .ready } : tabs
+        return onlyActive ? tabs.filter(\.state.isActive) : tabs
     }
 
     var body: some View {
@@ -58,6 +58,7 @@ struct AttentionPanel: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        triageBlock
                         ForEach(sections, id: \.group.id) { section in
                             projectHeader(section.group)
                             ForEach(section.tabs) { session in
@@ -71,6 +72,50 @@ struct AttentionPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+    }
+
+    // MARK: Triage — what needs me RIGHT NOW, across all projects
+
+    /// Compact "Needs you" block above the project mirror: errors before
+    /// questions, favorites first, longest-waiting on top (`attentionQueue`).
+    @ViewBuilder
+    private var triageBlock: some View {
+        let queue = appState.attentionQueue
+        if !queue.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("\(L10n.t(.needsYou).uppercased()) (\(queue.count))")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8).padding(.bottom, 2)
+                ForEach(queue) { session in
+                    triageRow(session)
+                }
+            }
+            .background(Color.primary.opacity(0.04))
+            Divider()
+        }
+    }
+
+    private func triageRow(_ session: TerminalSession) -> some View {
+        Button {
+            appState.select(session: session)
+        } label: {
+            HStack(spacing: 7) {
+                Circle().fill(session.state.tint).frame(width: 8, height: 8)
+                Text(session.displayTitle)
+                    .font(.caption.weight(.semibold)).lineLimit(1)
+                    .layoutPriority(1)
+                Text(session.lastMessage ?? session.currentTask ?? session.state.label)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 4)
+                WaitingTimeText(since: session.stateSince)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(hoverDetail(session))
     }
 
     // MARK: Project section header
@@ -111,13 +156,26 @@ struct AttentionPanel: View {
 
     // MARK: Tab row
 
+    /// Full context for a hover tooltip: the whole question/error (rows clip
+    /// it to 2 lines), the task it belongs to, and the path.
+    private func hoverDetail(_ session: TerminalSession) -> String {
+        var lines: [String] = []
+        if let message = session.lastMessage { lines.append(message) }
+        if let task = session.currentTask { lines.append("→ \(task)") }
+        lines.append(session.currentDirectory)
+        return lines.joined(separator: "\n\n")
+    }
+
     private func tabRow(_ session: TerminalSession) -> some View {
-        // The tab's current notification (what's happening / what the error
-        // is). Nil when there's no real message — the state chip below already
-        // names the state, no need to repeat it.
-        let detail = session.state == .waiting
-            ? session.lastMessage
-            : (session.aiSummary ?? session.lastMessage)
+        // The tab's current notification: for waiting the question itself; for
+        // running/done what it works on / worked on — the submitted prompt
+        // (currentTask), refined by the AI summary when available. Nil when
+        // there's nothing real to say — the state chip already names the state.
+        let detail: String? = switch session.state {
+        case .waiting, .error: session.lastMessage ?? session.currentTask
+        case .free: nil
+        case .running, .ready: session.aiSummary ?? session.currentTask ?? session.lastMessage
+        }
 
         return Button {
             appState.select(session: session)
@@ -155,6 +213,7 @@ struct AttentionPanel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(hoverDetail(session))
         .contextMenu {
             if session.state.needsAttention {
                 Button(L10n.t(.markReady)) { appState.markReady(session.id) }
@@ -173,6 +232,7 @@ extension AttentionState {
         case .waiting: 1
         case .running: 2
         case .ready: 3
+        case .free: 4
         }
     }
 }

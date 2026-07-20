@@ -87,10 +87,10 @@ final class AttentionStateTests: XCTestCase {
         XCTAssertEqual(try decode("working"), .running)
         XCTAssertEqual(try decode("asking"), .waiting)
         XCTAssertEqual(try decode("done"), .ready)
-        XCTAssertEqual(try decode("free"), .ready)
-        // New values round-trip; unknown falls back to ready.
+        XCTAssertEqual(try decode("free"), .free)
+        // New values round-trip; unknown falls back to free (idle).
         XCTAssertEqual(try decode("error"), .error)
-        XCTAssertEqual(try decode("bogus"), .ready)
+        XCTAssertEqual(try decode("bogus"), .free)
     }
 }
 
@@ -152,10 +152,11 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.running.tint, Color.purple)
         XCTAssertEqual(AttentionState.waiting.tint, Color.blue)
         XCTAssertEqual(AttentionState.error.tint, Color.red)
+        XCTAssertEqual(AttentionState.free.tint, Color.gray)
     }
 
     func testEveryStateHasADistinctSymbol() {
-        let all: [AttentionState] = [.ready, .running, .waiting, .error]
+        let all: [AttentionState] = [.ready, .running, .waiting, .error, .free]
         XCTAssertEqual(Set(all.map(\.symbol)).count, all.count)
     }
 
@@ -164,6 +165,7 @@ final class StatusColorTests: XCTestCase {
         XCTAssertTrue(AttentionState.error.needsAttention)
         XCTAssertFalse(AttentionState.running.needsAttention)
         XCTAssertFalse(AttentionState.ready.needsAttention)
+        XCTAssertFalse(AttentionState.free.needsAttention)
     }
 
     // Hook events → states (the live "in use / waiting / idle" transitions).
@@ -173,7 +175,8 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.forHookEvent("PermissionRequest"), .waiting)
         XCTAssertEqual(AttentionState.forHookEvent("Stop"), .ready)
         XCTAssertEqual(AttentionState.forHookEvent("SubagentStop"), .ready)
-        XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .ready)
+        // Claude exited entirely: nothing to review, the terminal is free.
+        XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .free)
         XCTAssertNil(AttentionState.forHookEvent("SessionStart"))
         XCTAssertNil(AttentionState.forHookEvent("whatever"))
     }
@@ -190,18 +193,49 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .error), .ready)
     }
 
-    // Exit 130 (Ctrl+C) is a deliberate stop, not an error.
-    func testCommandFinishTreatsCtrlCAsReady() {
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .ready), .ready)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .error), .ready)
+    // Exit 130 (Ctrl+C) is a deliberate stop — not an error, nothing to
+    // review: the terminal is free.
+    func testCommandFinishTreatsCtrlCAsFree() {
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .ready), .free)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .error), .free)
         XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 130, current: .running))
     }
 
-    // Inbox ordering: error is most urgent, ready least.
+    // A command finishing in a free terminal produced a result to look at.
+    func testCommandFinishInFreeTerminal() {
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .free), .ready)
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 3, current: .free), .error)
+    }
+
+    // Inbox ordering: error is most urgent, free least.
     func testRankOrdering() {
         XCTAssertLessThan(AttentionState.error.rank, AttentionState.waiting.rank)
         XCTAssertLessThan(AttentionState.waiting.rank, AttentionState.running.rank)
         XCTAssertLessThan(AttentionState.running.rank, AttentionState.ready.rank)
+        XCTAssertLessThan(AttentionState.ready.rank, AttentionState.free.rank)
+    }
+
+    // Old persisted raw values must land on the right modern state.
+    func testRawValueMigration() throws {
+        func decode(_ raw: String) throws -> AttentionState {
+            try JSONDecoder().decode([AttentionState].self, from: Data("[\"\(raw)\"]".utf8))[0]
+        }
+        XCTAssertEqual(try decode("working"), .running)
+        XCTAssertEqual(try decode("asking"), .waiting)
+        XCTAssertEqual(try decode("done"), .ready)
+        XCTAssertEqual(try decode("ready"), .ready)
+        XCTAssertEqual(try decode("free"), .free)
+        XCTAssertEqual(try decode("banana"), .free)
+    }
+
+    // The one-line "working on…" label from a submitted prompt.
+    func testTaskLineFromPrompt() {
+        XCTAssertEqual(TerminalSession.taskLine(fromPrompt: "fix the tests\nand more"), "fix the tests")
+        XCTAssertEqual(TerminalSession.taskLine(fromPrompt: "  padded  "), "padded")
+        XCTAssertNil(TerminalSession.taskLine(fromPrompt: "\n\n"))
+        XCTAssertNil(TerminalSession.taskLine(fromPrompt: ""))
+        let long = String(repeating: "x", count: 300)
+        XCTAssertEqual(TerminalSession.taskLine(fromPrompt: long)?.count, 120)
     }
 }
 
@@ -230,8 +264,14 @@ final class DisplayTitleTests: XCTestCase {
     func testIdleShellPromptShowsFree() {
         L10n.current = .en
         var s = session(osc: "marcello.alte@PCL2023110901:~/development/mp/x")
-        s.state = .ready
+        s.state = .free
         XCTAssertEqual(s.displayTitle, "free")
+    }
+
+    func testDoneShowsFolderNotFree() {
+        var s = session(osc: "marcello.alte@host:~/x")
+        s.state = .ready   // finished = result to review, not a free terminal
+        XCTAssertEqual(s.displayTitle, "proj")
     }
 
     func testRunningWithoutTitleShowsFolderNotFree() {

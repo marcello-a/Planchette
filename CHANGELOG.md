@@ -9,6 +9,19 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Notifications 2.0** (see docs/NOTIFICATIONS.md):
+  - Every session now shows **what it works on** — the submitted prompt is
+    captured as its task line (instant, no AI needed; AI summaries refine it).
+  - **"Needs you" triage block** on top of the notifications panel: errors
+    before questions, favorites first, longest-waiting on top.
+  - **New "free" state (gray)**: green now means *done — result awaits your
+    review*; gray means *truly free*. Claude exiting or Ctrl+C frees the
+    terminal; "mark as free" does what it says.
+  - Hovering a notification row shows the **full question/error**, the task,
+    and the path.
+  - **Gentle escalation**: a session waiting >10 min triggers one reminder
+    notification (favorite projects only) — never more. Dock badge shows the
+    needs-attention count.
 - **Rename a tab from its right-click menu** (also in the notifications
   panel). The name syncs everywhere a terminal is shown — tabs, sidebar,
   notifications, quick switcher.

@@ -122,7 +122,7 @@ struct SettingsView: View {
 
 /// Settings → Information: explains the status-color system.
 struct InfoTab: View {
-    private let states: [AttentionState] = [.ready, .running, .waiting, .error]
+    private let states: [AttentionState] = [.ready, .running, .waiting, .error, .free]
 
     var body: some View {
         Form {
@@ -150,6 +150,7 @@ struct InfoTab: View {
         case .running: L10n.t(.runningDesc)
         case .waiting: L10n.t(.waitingDesc)
         case .error: L10n.t(.errorDesc)
+        case .free: L10n.t(.freeDesc)
         }
     }
 }

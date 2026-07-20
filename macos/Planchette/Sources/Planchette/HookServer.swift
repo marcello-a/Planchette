@@ -106,6 +106,9 @@ final class HookServer {
         let claudeSessionID = event["session_id"] as? String
         let transcriptPath = event["transcript_path"] as? String
         let message = event["message"] as? String
+        // UserPromptSubmit carries the submitted prompt itself — the direct
+        // answer to "what is this agent working on?".
+        let prompt = event["prompt"] as? String
 
         DispatchQueue.main.async { [weak self] in
             self?.appState?.applyHookEvent(
@@ -113,7 +116,8 @@ final class HookServer {
                 hookEvent: hookEvent,
                 claudeSessionID: claudeSessionID,
                 transcriptPath: transcriptPath,
-                message: message
+                message: message,
+                prompt: prompt
             )
         }
     }

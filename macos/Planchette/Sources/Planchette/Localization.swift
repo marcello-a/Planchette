@@ -130,9 +130,10 @@ enum LKey: String, CaseIterable {
     case updateInstallRelaunch, updateInstallBody, updateInstalling, updateLater, updateNoReleases, updateDownloading
 
     // Status colors / states
-    case stateReady, stateRunning, stateWaiting, stateError, errorOccurred, free
+    case stateReady, stateRunning, stateWaiting, stateError, stateFree, errorOccurred, free
     case generalTab, infoTab, colorLegendTitle, colorLegendIntro
-    case readyDesc, runningDesc, waitingDesc, errorDesc
+    case readyDesc, runningDesc, waitingDesc, errorDesc, freeDesc
+    case needsYou, waitingSince
 
     // Projects / terminals / sidebar
     case newProject, newProjectHelp, addTerminalHelp
@@ -232,9 +233,9 @@ enum L10n {
         .updateAvailable: "Version %@ is available", .updateAvailableBody: "Download the new version and drag it into Applications.", .updateDownload: "Download",
         .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
         .updateInstallRelaunch: "Install & Relaunch", .updateInstallBody: "Planchette will download the new version, install it, and relaunch itself.", .updateInstalling: "Installing update…", .updateLater: "Later", .updateNoReleases: "Couldn't find any releases yet.", .updateDownloading: "Downloading update… %d%%",
-        .stateReady: "Ready", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .errorOccurred: "An error occurred", .free: "free",
+        .stateReady: "Done", .stateFree: "Free", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .errorOccurred: "An error occurred", .free: "free",
         .generalTab: "General", .infoTab: "Information", .colorLegendTitle: "Status colors", .colorLegendIntro: "Each terminal shows a colored status dot:",
-        .readyDesc: "idle at the prompt or finished — ready for your input", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
+        .readyDesc: "the turn or command finished — a result awaits your review", .freeDesc: "empty prompt, nothing to review — this terminal is up for grabs", .needsYou: "Needs you", .waitingSince: "waiting for %d min", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
         .newProject: "New project…", .newProjectHelp: "Add a project from a folder", .addTerminalHelp: "Add a terminal in this project's folder",
         .fontSmaller: "Smaller font (⌘-)", .fontLarger: "Larger font (⌘+)", .fontReset: "Reset font size (⌘0)",
         .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .clearReady: "Hide idle", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All",
@@ -302,9 +303,9 @@ enum L10n {
         .updateAvailable: "Version %@ ist verfügbar", .updateAvailableBody: "Lade die neue Version herunter und ziehe sie in „Programme“.", .updateDownload: "Herunterladen",
         .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
         .updateInstallRelaunch: "Installieren & Neustart", .updateInstallBody: "Planchette lädt die neue Version herunter, installiert sie und startet sich neu.", .updateInstalling: "Update wird installiert…", .updateLater: "Später", .updateNoReleases: "Noch keine Releases gefunden.", .updateDownloading: "Update wird geladen… %d%%",
-        .stateReady: "Bereit", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .errorOccurred: "Ein Fehler ist aufgetreten", .free: "frei",
+        .stateReady: "Fertig", .stateFree: "Frei", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .errorOccurred: "Ein Fehler ist aufgetreten", .free: "frei",
         .generalTab: "Allgemein", .infoTab: "Information", .colorLegendTitle: "Status-Farben", .colorLegendIntro: "Jedes Terminal zeigt einen farbigen Statuspunkt:",
-        .readyDesc: "am Prompt oder fertig — bereit für deine Eingabe", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
+        .readyDesc: "Turn oder Befehl beendet — ein Ergebnis wartet auf deinen Blick", .freeDesc: "leerer Prompt, nichts zu reviewen — dieses Terminal ist zu haben", .needsYou: "Braucht dich", .waitingSince: "wartet seit %d min", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
         .newProject: "Neues Projekt…", .newProjectHelp: "Projekt aus einem Ordner hinzufügen", .addTerminalHelp: "Terminal im Ordner dieses Projekts hinzufügen",
         .fontSmaller: "Kleinere Schrift (⌘-)", .fontLarger: "Größere Schrift (⌘+)", .fontReset: "Schriftgröße zurücksetzen (⌘0)",
         .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .clearReady: "Ruhige ausblenden", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen",
@@ -372,9 +373,9 @@ enum L10n {
         .updateAvailable: "La version %@ est disponible", .updateAvailableBody: "Téléchargez la nouvelle version et glissez-la dans Applications.", .updateDownload: "Télécharger",
         .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
         .updateInstallRelaunch: "Installer et relancer", .updateInstallBody: "Planchette va télécharger la nouvelle version, l'installer et se relancer.", .updateInstalling: "Installation de la mise à jour…", .updateLater: "Plus tard", .updateNoReleases: "Aucune version trouvée pour l'instant.", .updateDownloading: "Téléchargement… %d%%",
-        .stateReady: "Prêt", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .errorOccurred: "Une erreur s'est produite", .free: "libre",
+        .stateReady: "Terminé", .stateFree: "Libre", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .errorOccurred: "Une erreur s'est produite", .free: "libre",
         .generalTab: "Général", .infoTab: "Informations", .colorLegendTitle: "Couleurs d'état", .colorLegendIntro: "Chaque terminal affiche une pastille d'état colorée :",
-        .readyDesc: "au prompt ou terminé — prêt pour votre saisie", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
+        .readyDesc: "le tour ou la commande est terminé — un résultat attend votre regard", .freeDesc: "prompt vide, rien à relire — ce terminal est disponible", .needsYou: "Besoin de vous", .waitingSince: "en attente depuis %d min", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
         .newProject: "Nouveau projet…", .newProjectHelp: "Ajouter un projet depuis un dossier", .addTerminalHelp: "Ajouter un terminal dans le dossier de ce projet",
         .fontSmaller: "Police plus petite (⌘-)", .fontLarger: "Police plus grande (⌘+)", .fontReset: "Réinitialiser la police (⌘0)",
         .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .clearReady: "Masquer les inactifs", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner",
@@ -442,9 +443,9 @@ enum L10n {
         .updateAvailable: "La versión %@ está disponible", .updateAvailableBody: "Descarga la nueva versión y arrástrala a Aplicaciones.", .updateDownload: "Descargar",
         .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
         .updateInstallRelaunch: "Instalar y reiniciar", .updateInstallBody: "Planchette descargará la nueva versión, la instalará y se reiniciará.", .updateInstalling: "Instalando actualización…", .updateLater: "Más tarde", .updateNoReleases: "Aún no se encontraron versiones.", .updateDownloading: "Descargando… %d%%",
-        .stateReady: "Listo", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .errorOccurred: "Ocurrió un error", .free: "libre",
+        .stateReady: "Hecho", .stateFree: "Libre", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .errorOccurred: "Ocurrió un error", .free: "libre",
         .generalTab: "General", .infoTab: "Información", .colorLegendTitle: "Colores de estado", .colorLegendIntro: "Cada terminal muestra un punto de estado de color:",
-        .readyDesc: "en el prompt o terminado — listo para tu entrada", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
+        .readyDesc: "el turno o comando terminó — un resultado espera tu revisión", .freeDesc: "prompt vacío, nada que revisar — este terminal está disponible", .needsYou: "Te necesita", .waitingSince: "esperando desde hace %d min", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
         .newProject: "Nuevo proyecto…", .newProjectHelp: "Añadir un proyecto desde una carpeta", .addTerminalHelp: "Añadir un terminal en la carpeta de este proyecto",
         .fontSmaller: "Fuente más pequeña (⌘-)", .fontLarger: "Fuente más grande (⌘+)", .fontReset: "Restablecer tamaño (⌘0)",
         .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .clearReady: "Ocultar inactivos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo",
@@ -512,9 +513,9 @@ enum L10n {
         .updateAvailable: "La versione %@ è disponibile", .updateAvailableBody: "Scarica la nuova versione e trascinala in Applicazioni.", .updateDownload: "Scarica",
         .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
         .updateInstallRelaunch: "Installa e riavvia", .updateInstallBody: "Planchette scaricherà la nuova versione, la installerà e si riavvierà.", .updateInstalling: "Installazione dell'aggiornamento…", .updateLater: "Più tardi", .updateNoReleases: "Nessuna versione trovata per ora.", .updateDownloading: "Download… %d%%",
-        .stateReady: "Pronto", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .errorOccurred: "Si è verificato un errore", .free: "libero",
+        .stateReady: "Fatto", .stateFree: "Libero", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .errorOccurred: "Si è verificato un errore", .free: "libero",
         .generalTab: "Generale", .infoTab: "Informazioni", .colorLegendTitle: "Colori di stato", .colorLegendIntro: "Ogni terminale mostra un pallino di stato colorato:",
-        .readyDesc: "al prompt o terminato — pronto per il tuo input", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
+        .readyDesc: "il turno o comando è terminato — un risultato attende la tua revisione", .freeDesc: "prompt vuoto, niente da rivedere — questo terminale è disponibile", .needsYou: "Ha bisogno di te", .waitingSince: "in attesa da %d min", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
         .newProject: "Nuovo progetto…", .newProjectHelp: "Aggiungi un progetto da una cartella", .addTerminalHelp: "Aggiungi un terminale nella cartella di questo progetto",
         .fontSmaller: "Carattere più piccolo (⌘-)", .fontLarger: "Carattere più grande (⌘+)", .fontReset: "Reimposta dimensione (⌘0)",
         .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .clearReady: "Nascondi inattivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto",
@@ -582,9 +583,9 @@ enum L10n {
         .updateAvailable: "Versie %@ is beschikbaar", .updateAvailableBody: "Download de nieuwe versie en sleep die naar Programma's.", .updateDownload: "Downloaden",
         .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
         .updateInstallRelaunch: "Installeren en herstarten", .updateInstallBody: "Planchette downloadt de nieuwe versie, installeert die en start opnieuw op.", .updateInstalling: "Update installeren…", .updateLater: "Later", .updateNoReleases: "Nog geen releases gevonden.", .updateDownloading: "Update downloaden… %d%%",
-        .stateReady: "Gereed", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .errorOccurred: "Er is een fout opgetreden", .free: "vrij",
+        .stateReady: "Klaar", .stateFree: "Vrij", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .errorOccurred: "Er is een fout opgetreden", .free: "vrij",
         .generalTab: "Algemeen", .infoTab: "Informatie", .colorLegendTitle: "Statuskleuren", .colorLegendIntro: "Elk terminal toont een gekleurde statusstip:",
-        .readyDesc: "bij de prompt of klaar — gereed voor je invoer", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
+        .readyDesc: "de beurt of opdracht is klaar — een resultaat wacht op je blik", .freeDesc: "lege prompt, niets te reviewen — deze terminal is beschikbaar", .needsYou: "Heeft je nodig", .waitingSince: "wacht al %d min", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
         .newProject: "Nieuw project…", .newProjectHelp: "Een project vanuit een map toevoegen", .addTerminalHelp: "Een terminal in de map van dit project toevoegen",
         .fontSmaller: "Kleiner lettertype (⌘-)", .fontLarger: "Groter lettertype (⌘+)", .fontReset: "Lettergrootte herstellen (⌘0)",
         .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .clearReady: "Rustige verbergen", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren",
@@ -652,9 +653,9 @@ enum L10n {
         .updateAvailable: "A versão %@ está disponível", .updateAvailableBody: "Descarrega a nova versão e arrasta-a para Aplicações.", .updateDownload: "Descarregar",
         .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
         .updateInstallRelaunch: "Instalar e reiniciar", .updateInstallBody: "O Planchette vai descarregar a nova versão, instalá-la e reiniciar.", .updateInstalling: "A instalar atualização…", .updateLater: "Mais tarde", .updateNoReleases: "Ainda não foram encontradas versões.", .updateDownloading: "A descarregar… %d%%",
-        .stateReady: "Pronto", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .errorOccurred: "Ocorreu um erro", .free: "livre",
+        .stateReady: "Concluído", .stateFree: "Livre", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .errorOccurred: "Ocorreu um erro", .free: "livre",
         .generalTab: "Geral", .infoTab: "Informação", .colorLegendTitle: "Cores de estado", .colorLegendIntro: "Cada terminal mostra um ponto de estado colorido:",
-        .readyDesc: "no prompt ou terminado — pronto para a tua entrada", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
+        .readyDesc: "o turno ou comando terminou — um resultado aguarda a tua revisão", .freeDesc: "prompt vazio, nada para rever — este terminal está disponível", .needsYou: "Precisa de ti", .waitingSince: "à espera há %d min", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
         .newProject: "Novo projeto…", .newProjectHelp: "Adicionar um projeto a partir de uma pasta", .addTerminalHelp: "Adicionar um terminal na pasta deste projeto",
         .fontSmaller: "Fonte menor (⌘-)", .fontLarger: "Fonte maior (⌘+)", .fontReset: "Repor tamanho da fonte (⌘0)",
         .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .clearReady: "Ocultar inativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo",

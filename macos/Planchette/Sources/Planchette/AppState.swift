@@ -83,6 +83,49 @@ final class AppState: ObservableObject {
             autoUpdateCheck = saved.autoUpdateCheck
         }
         observeSurfaceNotifications()
+        startAttentionHousekeeping()
+    }
+
+    // MARK: Attention housekeeping (dock badge + gentle escalation)
+
+    /// Sessions already reminded about — one reminder per waiting spell.
+    private var escalatedIDs: Set<UUID> = []
+    /// How long waiting/error may sit unanswered before the one reminder.
+    static let escalationThreshold: TimeInterval = 10 * 60
+    private var housekeepingTimer: Timer?
+
+    private func startAttentionHousekeeping() {
+        let timer = Timer(timeInterval: 60, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.attentionHousekeeping() }
+        }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        housekeepingTimer = timer
+    }
+
+    /// The dock badge mirrors the menu-bar counters: sessions that need you.
+    func refreshDockBadge() {
+        let count = sessions.values.filter { $0.state.needsAttention }.count
+        NSApp?.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
+    }
+
+    /// Waiting/error longer than the threshold escalates exactly once per
+    /// spell: favorites get a reminder notification, everything else only
+    /// counts on in the badges. State changes reset the spell (see setState).
+    private func attentionHousekeeping() {
+        refreshDockBadge()
+        for session in sessions.values
+        where session.state.needsAttention
+            && Date().timeIntervalSince(session.stateSince) >= Self.escalationThreshold
+            && !escalatedIDs.contains(session.id) {
+            escalatedIDs.insert(session.id)
+            guard group(of: session)?.favorite == true else { continue }
+            let minutes = Int(Date().timeIntervalSince(session.stateSince) / 60)
+            NotificationService.post(
+                title: "\(session.displayTitle) — \(L10n.t(.waitingSince, minutes))",
+                body: session.lastMessage ?? session.state.label
+            )
+        }
     }
 
     // MARK: Windows
@@ -252,6 +295,7 @@ final class AppState: ObservableObject {
                 sanitizeWindows()
             }
         }
+        refreshDockBadge()
         scheduleSave()
     }
 
@@ -362,9 +406,10 @@ final class AppState: ObservableObject {
 
     /// Focusing a terminal does NOT clear its attention state — a glance isn't
     /// an answer. `waiting`/`error` persist until the agent moves on (a hook or
-    /// command result) or the user explicitly marks it ready.
+    /// command result) or the user explicitly marks it free ("nothing for me
+    /// here") — which is what the context-menu action means.
     func markReady(_ id: UUID) {
-        setState(id, .ready)
+        setState(id, .free)
     }
 
     /// OSC 133: the last shell command finished. Non-zero exit → error (red),
@@ -384,6 +429,9 @@ final class AppState: ObservableObject {
             $0.stateSince = Date()
             $0.lastMessage = message
         }
+        // A new waiting spell may escalate again; badges follow every change.
+        escalatedIDs.remove(id)
+        refreshDockBadge()
     }
 
     // MARK: Hook events (from HookServer)
@@ -393,7 +441,8 @@ final class AppState: ObservableObject {
         hookEvent: String,
         claudeSessionID: String?,
         transcriptPath: String?,
-        message: String?
+        message: String?,
+        prompt: String? = nil
     ) {
         guard sessions[sessionID] != nil else { return }
         if claudeSessionID != nil || transcriptPath != nil {
@@ -401,6 +450,15 @@ final class AppState: ObservableObject {
                 if let claudeSessionID { $0.claudeSessionID = claudeSessionID }
                 if let transcriptPath { $0.transcriptPath = transcriptPath }
             }
+        }
+        // The submitted prompt is the task this terminal works on from now on.
+        if hookEvent == "UserPromptSubmit",
+           let task = prompt.flatMap(TerminalSession.taskLine(fromPrompt:)) {
+            update(sessionID) { $0.currentTask = task }
+        }
+        // Claude is gone — its task is too.
+        if hookEvent == "SessionEnd" {
+            update(sessionID) { $0.currentTask = nil }
         }
         // State transition (pure, tested). Message only carried for `waiting`.
         if let newState = AttentionState.forHookEvent(hookEvent) {
@@ -623,6 +681,8 @@ final class AppState: ObservableObject {
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
         windowsToOpen = windows.dropFirst().map(\.id)
+
+        refreshDockBadge()
 
         // Resolve which Claude conversation each terminal resumes as ONE batch
         // over all terminals — so two tabs of the same project can never claim

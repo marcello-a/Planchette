@@ -1,13 +1,14 @@
 import SwiftUI
 
 /// Attention state of a terminal session — the heart of Planchette.
-/// Color system: green = ready for input, purple = running,
-/// blue = waiting for your input, red = error.
+/// Color system: green = done (result ready for review), purple = running,
+/// blue = waiting for your input, red = error, gray = free (nothing to do).
 enum AttentionState: String, Codable {
-    case ready    // green  — idle at the prompt / finished, ready for input
+    case ready    // green  — turn/command finished, result awaits your review
     case running  // purple — an agent or command is running
     case waiting  // blue   — waiting for YOUR input (question / permission)
     case error    // red    — the last command or agent exited with an error
+    case free     // gray   — empty prompt, nothing to review, take me
 
     var symbol: String {
         switch self {
@@ -15,6 +16,7 @@ enum AttentionState: String, Codable {
         case .running: "circle.dotted"
         case .waiting: "questionmark.bubble.fill"
         case .error: "exclamationmark.triangle.fill"
+        case .free: "circle"
         }
     }
 
@@ -24,6 +26,7 @@ enum AttentionState: String, Codable {
         case .running: .purple
         case .waiting: .blue
         case .error: .red
+        case .free: .gray
         }
     }
 
@@ -34,32 +37,40 @@ enum AttentionState: String, Codable {
         case .running: L10n.t(.stateRunning)
         case .waiting: L10n.t(.stateWaiting)
         case .error: L10n.t(.stateError)
+        case .free: L10n.t(.stateFree)
         }
     }
 
     /// Does this state belong in the attention inbox?
     var needsAttention: Bool { self == .waiting || self == .error }
 
-    /// Migrate v0.1.x raw values ("working/asking/done/free") to the new set.
+    /// Is this terminal actively doing / holding something (not idle)?
+    var isActive: Bool { self != .ready && self != .free }
+
+    /// Migrate old raw values: v0.1.x used "working/asking/done/free"; until
+    /// v0.2.x "free" was folded into ready — now it's a state of its own.
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
         switch raw {
         case "running", "working": self = .running
         case "waiting", "asking": self = .waiting
         case "error": self = .error
-        default: self = .ready   // "ready", "done", "free", or anything unknown
+        case "ready", "done": self = .ready
+        default: self = .free   // "free" or anything unknown → idle
         }
     }
 
     // MARK: State machine (pure + unit-tested so the colors stay reliable)
 
     /// The state a Claude Code hook event transitions to (nil = no change).
-    /// running = an agent turn is working, waiting = it needs you, ready = idle.
+    /// running = an agent turn is working, waiting = it needs you, ready = the
+    /// turn finished (result to review), free = Claude exited entirely.
     static func forHookEvent(_ event: String) -> AttentionState? {
         switch event {
         case "UserPromptSubmit": .running
         case "Notification", "PermissionRequest": .waiting
-        case "Stop", "SubagentStop", "SessionEnd": .ready
+        case "Stop", "SubagentStop": .ready
+        case "SessionEnd": .free
         default: nil
         }
     }
@@ -67,10 +78,12 @@ enum AttentionState: String, Codable {
     /// The state after a shell command finishes (OSC 133). Returns nil to keep
     /// the current state — an active agent turn (running/waiting) owns the
     /// indicator and a plain command result must not stomp it. Exit 130
-    /// (Ctrl+C) is a deliberate stop — e.g. killing a dev server — not an error.
+    /// (Ctrl+C) is a deliberate stop — e.g. killing a dev server — not an
+    /// error and nothing to review: the terminal is free again.
     static func afterCommandFinish(exitCode: Int, current: AttentionState) -> AttentionState? {
         if current == .running || current == .waiting { return nil }
-        return exitCode > 0 && exitCode != 130 ? .error : .ready
+        if exitCode == 130 { return .free }
+        return exitCode > 0 ? .error : .ready
     }
 }
 
@@ -129,9 +142,12 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var resumeClaudeOnRestore: Bool = true
 
     // Attention (persisted so a restart doesn't lose the inbox)
-    var state: AttentionState = .ready
+    var state: AttentionState = .free
     var stateSince: Date = .init()
     var lastMessage: String?
+    /// What I asked the agent to do — first line of the last submitted prompt.
+    /// The instant, deterministic answer to "working on WHAT?".
+    var currentTask: String?
 
     // Tags: what should happen with this terminal ("to test", "review", …)
     var tags: [String] = []
@@ -164,9 +180,10 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
-        state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .ready
+        state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .free
         stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
+        currentTask = try c.decodeIfPresent(String.self, forKey: .currentTask)
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
@@ -186,13 +203,21 @@ struct TerminalSession: Identifiable, Codable, Equatable {
             // Skip the shell's default prompt (user@host:path) — it's not a name.
             if !cleaned.isEmpty && !Titles.looksLikeShellPrompt(cleaned) { return cleaned }
         }
-        // Nothing meaningful running: an idle terminal is "free", otherwise the
+        // Nothing meaningful running: a free terminal says so, otherwise the
         // folder name.
-        return state == .ready ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
+        return state == .free ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
     }
 
     /// Last two path components, full path shown on hover.
     var shortPath: String { Titles.shortPath(currentDirectory) }
+
+    /// Condense a submitted prompt to a one-line task label ("working on …").
+    static func taskLine(fromPrompt prompt: String) -> String? {
+        let line = prompt.split(whereSeparator: \.isNewline).first.map(String.init)?
+            .trimmingCharacters(in: .whitespaces) ?? ""
+        guard !line.isEmpty else { return nil }
+        return line.count > 120 ? String(line.prefix(119)) + "…" : line
+    }
 }
 
 /// Where a dragged terminal is dropped relative to a target pane.
