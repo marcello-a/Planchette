@@ -28,6 +28,10 @@ final class GhosttySurfaceNSView: NSView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(frameDidChange),
             name: NSView.frameDidChangeNotification, object: self)
+        // Accept files (e.g. images for Claude), URLs, and text dropped onto
+        // the terminal — their escaped path/content is typed at the prompt.
+        registerForDraggedTypes([.fileURL, .URL, .string])
+
         // AppKit does NOT reliably call viewDidChangeBackingProperties when a
         // window moves to a screen with a different scale (e.g. external
         // monitor → MacBook display), leaving the surface at the old pixel
@@ -431,6 +435,51 @@ final class GhosttySurfaceNSView: NSView {
     func increaseFontSize() { performBindingAction("increase_font_size:1") }
     func decreaseFontSize() { performBindingAction("decrease_font_size:1") }
     func resetFontSize() { performBindingAction("reset_font_size") }
+
+    // MARK: Drag & drop (files → escaped path at the prompt, like Ghostty)
+
+    /// Send text straight into the terminal as if typed (used for drops —
+    /// unlike `insertText`, which only feeds the keyDown pipeline).
+    func sendText(_ text: String) {
+        guard let surface, !text.isEmpty else { return }
+        pendingValid = false   // injected text isn't tracked prompt typing
+        let bytes = Array(text.utf8)
+        bytes.withUnsafeBufferPointer { buf in
+            buf.baseAddress?.withMemoryRebound(to: CChar.self, capacity: buf.count) { ptr in
+                ghostty_surface_text(surface, ptr, UInt(buf.count))
+            }
+        }
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        guard let types = sender.draggingPasteboard.types,
+              !Set(types).isDisjoint(with: [.fileURL, .URL, .string])
+        else { return [] }
+        return .copy
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        let pb = sender.draggingPasteboard
+        let content: String?
+        if let url = pb.string(forType: .URL) {
+            // URLs first, escaped as-is.
+            content = Shell.escape(url)
+        } else if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL],
+                  !urls.isEmpty {
+            // Files (images, folders, …): escape each path, join with spaces —
+            // exactly what a running `claude` expects to read a file.
+            content = urls.map { Shell.escape($0.path) }.joined(separator: " ")
+        } else if let str = pb.string(forType: .string) {
+            // Plain strings stay unescaped — they may be a command to run.
+            content = str
+        } else {
+            content = nil
+        }
+        guard let content else { return false }
+        window?.makeFirstResponder(self)
+        sendText(content)
+        return true
+    }
 
     // Standard clipboard responder selectors so the Edit menu items (Paste,
     // Copy, Select All) are enabled and routed to the surface too.

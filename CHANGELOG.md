@@ -9,6 +9,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Drop files onto a terminal** — dragging an image (or any file/URL) into a
+  terminal types its shell-escaped path at the prompt, so a running `claude`
+  can read it directly. Same behavior as Ghostty itself.
 - **Notifications 2.0** (see docs/NOTIFICATIONS.md):
   - Every session now shows **what it works on** — the submitted prompt is
     captured as its task line (instant, no AI needed; AI summaries refine it).

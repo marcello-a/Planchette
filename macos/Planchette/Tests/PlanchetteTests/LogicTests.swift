@@ -144,6 +144,16 @@ final class SplitLayoutTests: XCTestCase {
     }
 }
 
+final class ShellEscapeTests: XCTestCase {
+    // Dropped file paths must arrive at the prompt in one piece.
+    func testEscapesShellSensitiveCharacters() {
+        XCTAssertEqual(Shell.escape("/tmp/my file.png"), "/tmp/my\\ file.png")
+        XCTAssertEqual(Shell.escape("/a/(b)/c'd\"e"), "/a/\\(b\\)/c\\'d\\\"e")
+        XCTAssertEqual(Shell.escape("plain/path.png"), "plain/path.png")
+        XCTAssertEqual(Shell.escape("a$b`c!d"), "a\\$b\\`c\\!d")
+    }
+}
+
 final class StatusColorTests: XCTestCase {
     // Each state must map to its documented color — this is the whole point of
     // the app (which terminal is idle / in use / waiting / errored).
