@@ -530,6 +530,41 @@ extension AppState {
         select(session: session)
     }
 
+    /// Modal one-line text prompt (rename, startup command, …) shared by the
+    /// sidebar, tab bar, and notifications panel context menus.
+    func promptText(title: String, value: String, apply: @escaping (String) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = value
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        if alert.runModal() == .alertFirstButtonReturn {
+            apply(field.stringValue.trimmingCharacters(in: .whitespaces))
+        }
+    }
+
+    /// Rename a terminal (empty input restores the automatic title). The name
+    /// is the session's `customTitle`, which `displayTitle` prefers — so tabs,
+    /// sidebar, notifications panel, and quick switcher all pick it up.
+    func promptRename(session: TerminalSession) {
+        promptText(title: L10n.t(.renameTerminal), value: session.customTitle ?? "") { name in
+            self.update(session.id) { $0.customTitle = name.isEmpty ? nil : name }
+        }
+    }
+
+    /// Edit the command re-run when this terminal is restored.
+    func promptStartupCommand(session: TerminalSession) {
+        promptText(
+            title: L10n.t(.startupCommandPrompt),
+            value: session.startupCommand ?? ""
+        ) { command in
+            self.update(session.id) { $0.startupCommand = command.isEmpty ? nil : command }
+        }
+    }
+
     /// Add a terminal to an existing group, in that group's folder.
     func addTerminalToGroup(_ groupID: UUID) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }

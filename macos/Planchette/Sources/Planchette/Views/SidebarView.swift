@@ -339,11 +339,11 @@ struct SidebarView: View {
             }
             TagMenu(session: session)
             Divider()
-            Button(L10n.t(.rename)) { rename(session: session) }
+            Button(L10n.t(.rename)) { appState.promptRename(session: session) }
             colorPicker(current: session.color) { color in
                 appState.update(session.id) { $0.color = color }
             }
-            Button(L10n.t(.startupCommand)) { editStartupCommand(session: session) }
+            Button(L10n.t(.startupCommand)) { appState.promptStartupCommand(session: session) }
                 .help(L10n.t(.startupCommandHelp))
             Divider()
             Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
@@ -362,14 +362,8 @@ struct SidebarView: View {
         let waiting = sessions.filter { $0.state == .waiting }.count
         let errors = sessions.filter { $0.state == .error }.count
         return HStack(spacing: 4) {
-            if errors > 0 {
-                Text("\(errors)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.red.opacity(0.85), in: Capsule()).foregroundStyle(.white)
-            }
-            if waiting > 0 {
-                Text("\(waiting)").font(.caption2).padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(.blue.opacity(0.85), in: Capsule()).foregroundStyle(.white)
-            }
+            if errors > 0 { StateCountBadge(state: .error, count: errors) }
+            if waiting > 0 { StateCountBadge(state: .waiting, count: waiting) }
         }
     }
 
@@ -391,36 +385,8 @@ struct SidebarView: View {
     }
 
     private func rename(group: SessionGroup) {
-        prompt(title: L10n.t(.renameGroup), value: group.name) { name in
+        appState.promptText(title: L10n.t(.renameGroup), value: group.name) { name in
             appState.updateGroup(group.id) { $0.name = name }
-        }
-    }
-
-    private func rename(session: TerminalSession) {
-        prompt(title: L10n.t(.renameTerminal), value: session.customTitle ?? "") { name in
-            appState.update(session.id) { $0.customTitle = name.isEmpty ? nil : name }
-        }
-    }
-
-    private func editStartupCommand(session: TerminalSession) {
-        prompt(
-            title: L10n.t(.startupCommandPrompt),
-            value: session.startupCommand ?? ""
-        ) { command in
-            appState.update(session.id) { $0.startupCommand = command.isEmpty ? nil : command }
-        }
-    }
-
-    private func prompt(title: String, value: String, apply: @escaping (String) -> Void) {
-        let alert = NSAlert()
-        alert.messageText = title
-        alert.addButton(withTitle: L10n.t(.ok))
-        alert.addButton(withTitle: L10n.t(.cancel))
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.stringValue = value
-        alert.accessoryView = field
-        if alert.runModal() == .alertFirstButtonReturn {
-            apply(field.stringValue.trimmingCharacters(in: .whitespaces))
         }
     }
 }

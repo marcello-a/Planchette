@@ -74,6 +74,22 @@ enum AttentionState: String, Codable {
     }
 }
 
+/// "n sessions in this state" count badge — THE one way such a count is
+/// rendered (project sidebar, notifications panel), so the state colors are
+/// identical everywhere. Colors come solely from `AttentionState.tint`.
+struct StateCountBadge: View {
+    let state: AttentionState
+    let count: Int
+
+    var body: some View {
+        Text("\(count)")
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 5).padding(.vertical, 1)
+            .background(state.tint.opacity(0.18), in: Capsule())
+            .foregroundStyle(state.tint)
+    }
+}
+
 /// Named palette so colors persist as stable strings.
 enum SessionColor: String, Codable, CaseIterable, Identifiable {
     case none, red, orange, yellow, green, teal, blue, purple, pink

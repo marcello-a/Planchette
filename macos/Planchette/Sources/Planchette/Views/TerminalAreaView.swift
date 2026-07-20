@@ -153,6 +153,8 @@ struct TerminalAreaView: View {
         }
         .help(session.aiSummary.map { "\(session.currentDirectory)\n🔮 \($0)" } ?? session.currentDirectory)
         .contextMenu {
+            Button(L10n.t(.rename)) { appState.promptRename(session: session) }
+            Divider()
             TagMenu(session: session)
             Divider()
             Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }

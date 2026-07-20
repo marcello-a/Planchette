@@ -8,7 +8,15 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Rename a tab from its right-click menu** (also in the notifications
+  panel). The name syncs everywhere a terminal is shown — tabs, sidebar,
+  notifications, quick switcher.
+
 ### Changed
+- State colors come from a single source everywhere: the sidebar's project
+  badges now use the same attention palette (and badge style) as the
+  notifications panel instead of their own red/blue.
 - **Notifications panel mirrors projects and tabs**: one section per project
   (sidebar order, favorites first), one row per tab with its state, current
   notification and waiting time. Click a tab row to jump straight to that tab,

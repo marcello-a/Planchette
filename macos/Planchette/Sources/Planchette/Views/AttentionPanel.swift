@@ -98,11 +98,7 @@ struct AttentionPanel: View {
                 }
                 Spacer(minLength: 4)
                 if let urgent {
-                    Text("\(attention.count)")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(urgent.tint.opacity(0.18), in: Capsule())
-                        .foregroundStyle(urgent.tint)
+                    StateCountBadge(state: urgent, count: attention.count)
                 }
             }
             .padding(.horizontal, 12)
@@ -162,7 +158,9 @@ struct AttentionPanel: View {
         .contextMenu {
             if session.state.needsAttention {
                 Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+                Divider()
             }
+            Button(L10n.t(.rename)) { appState.promptRename(session: session) }
         }
     }
 }
