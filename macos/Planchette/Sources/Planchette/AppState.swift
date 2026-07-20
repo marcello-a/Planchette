@@ -331,6 +331,17 @@ final class AppState: ObservableObject {
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
     }
 
+    /// Jump to a project: its window, its group, its active (or first) tab.
+    func select(group: SessionGroup) {
+        if let id = group.activeSessionID ?? group.sessionIDs.first,
+           let session = sessions[id] {
+            select(session: session)
+        } else if let window = windowContaining(groupID: group.id) {
+            updateWindow(window.id) { $0.selectedGroupID = group.id }
+            WindowRegistry.shared.raise(window.id)
+        }
+    }
+
     /// Clicked desktop notification (PlanchetteFocus via hook socket): bring
     /// the app forward and jump to the terminal.
     func focusSession(_ id: UUID) {

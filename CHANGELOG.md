@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Changed
+- **Notifications panel mirrors projects and tabs**: one section per project
+  (sidebar order, favorites first), one row per tab with its state, current
+  notification and waiting time. Click a tab row to jump straight to that tab,
+  or a project header to jump to the project. Project headers carry an
+  attention badge colored by the most urgent tab.
+
 ## [0.2.6] — 2026-07-14
 
 ### Added

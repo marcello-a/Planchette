@@ -284,7 +284,7 @@ struct ContentView: View {
 
                     if inboxShown {
                         // Persistent, drag-resizable notification sidebar.
-                        AttentionPanel()
+                        AttentionPanel(windowID: window.id)
                             .frame(minWidth: 240, idealWidth: 300, maxWidth: 520,
                                    maxHeight: .infinity)
                     }

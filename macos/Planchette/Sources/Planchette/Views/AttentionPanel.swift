@@ -1,22 +1,40 @@
 import SwiftUI
 
-/// Persistent right-hand notification sidebar: shows every session across all
-/// projects with its status and timestamp, most urgent first. Click to jump.
+/// Persistent right-hand notification sidebar, mirroring the projects and
+/// tabs structure: one section per project (same order as the sidebar), one
+/// row per tab with its current state and notification. Click a row to jump
+/// straight to that tab; click a project header to jump to the project.
 /// Resizable via the enclosing HSplitView.
 struct AttentionPanel: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("inboxOnlyActive") private var onlyActive = false
+    let windowID: UUID
 
-    private var rows: [TerminalSession] {
-        let all = Array(appState.sessions.values)
-        let filtered = onlyActive ? all.filter { $0.state != .ready } : all
-        return filtered.sorted { a, b in
-            if a.state.rank != b.state.rank { return a.state.rank < b.state.rank }
-            return a.stateSince > b.stateSince
+    /// Projects in display order: this window's groups first (favorites
+    /// before normal, exactly like its sidebar), then the other windows'
+    /// groups so nothing happening elsewhere is invisible.
+    private var orderedGroups: [SessionGroup] {
+        var ordered: [SessionGroup] = []
+        let windows = appState.windows.sorted { a, _ in a.id == windowID }
+        for window in windows {
+            let groups = appState.groups(inWindow: window)
+            ordered.append(contentsOf: groups.filter(\.favorite))
+            ordered.append(contentsOf: groups.filter { !$0.favorite })
         }
+        return ordered
+    }
+
+    /// The tabs shown for a project — tab order, optionally only active ones.
+    private func visibleTabs(_ group: SessionGroup) -> [TerminalSession] {
+        let tabs = appState.sessions(in: group)
+        return onlyActive ? tabs.filter { $0.state != .ready } : tabs
     }
 
     var body: some View {
+        let sections = orderedGroups
+            .map { (group: $0, tabs: visibleTabs($0)) }
+            .filter { !$0.tabs.isEmpty }
+
         VStack(spacing: 0) {
             HStack {
                 Text(L10n.t(.notificationsPanel)).font(.headline)
@@ -30,7 +48,7 @@ struct AttentionPanel: View {
             .padding(.bottom, 6)
             Divider()
 
-            if rows.isEmpty {
+            if sections.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "moon.zzz").font(.title2)
                     Text(L10n.t(.allQuiet)).font(.callout)
@@ -40,8 +58,11 @@ struct AttentionPanel: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(rows) { session in
-                            row(session)
+                        ForEach(sections, id: \.group.id) { section in
+                            projectHeader(section.group)
+                            ForEach(section.tabs) { session in
+                                tabRow(session)
+                            }
                             Divider()
                         }
                     }
@@ -52,15 +73,55 @@ struct AttentionPanel: View {
         .background(.background)
     }
 
-    private func row(_ session: TerminalSession) -> some View {
-        let group = appState.group(of: session)
-        let folder = group?.name ?? (session.currentDirectory as NSString).lastPathComponent
-        // What I'm working on: the git ticket, else the running program.
-        let context = Titles.ticket(forDirectory: session.currentDirectory) ?? runningProgram(session)
-        // What's happening / what the error is.
+    // MARK: Project section header
+
+    private func projectHeader(_ group: SessionGroup) -> some View {
+        // Most urgent tab state colors the attention badge.
+        let tabs = appState.sessions(in: group)
+        let attention = tabs.filter { $0.state.needsAttention }
+        let urgent = attention.min { $0.state.rank < $1.state.rank }?.state
+
+        return Button {
+            appState.select(group: group)
+        } label: {
+            HStack(spacing: 6) {
+                if let color = group.color.color {
+                    Circle().fill(color).frame(width: 7, height: 7)
+                }
+                Text(group.name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if group.favorite {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 8)).foregroundStyle(.yellow)
+                }
+                Spacer(minLength: 4)
+                if let urgent {
+                    Text("\(attention.count)")
+                        .font(.caption2.weight(.bold))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(urgent.tint.opacity(0.18), in: Capsule())
+                        .foregroundStyle(urgent.tint)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Tab row
+
+    private func tabRow(_ session: TerminalSession) -> some View {
+        // The tab's current notification (what's happening / what the error
+        // is). Nil when there's no real message — the state chip below already
+        // names the state, no need to repeat it.
         let detail = session.state == .waiting
-            ? (session.lastMessage ?? session.state.label)
-            : (session.aiSummary ?? session.lastMessage ?? session.state.label)
+            ? session.lastMessage
+            : (session.aiSummary ?? session.lastMessage)
 
         return Button {
             appState.select(session: session)
@@ -68,40 +129,33 @@ struct AttentionPanel: View {
             HStack(alignment: .top, spacing: 9) {
                 Circle().fill(session.state.tint)
                     .frame(width: 9, height: 9)
-                    .padding(.top, 5)
-                VStack(alignment: .leading, spacing: 4) {
-                    // Folder name (small) + time.
+                    .padding(.top, 4)
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
-                        Text(folder)
-                            .font(.caption).fontWeight(.medium)
-                            .foregroundStyle(.secondary).lineLimit(1)
-                        if group?.favorite == true {
-                            Image(systemName: "star.fill").font(.system(size: 8)).foregroundStyle(.yellow)
-                        }
+                        Text(session.displayTitle)
+                            .font(.subheadline).fontWeight(.medium)
+                            .foregroundStyle(.primary).lineLimit(1)
                         Spacer(minLength: 4)
                         Text(session.stateSince, style: .time)
                             .font(.caption2).foregroundStyle(.tertiary)
                     }
-                    // What the error / status is.
-                    Text(detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary).lineLimit(2)
-                    // Ticket / working context (bottom-left) + time-ago.
+                    if let detail, !detail.isEmpty {
+                        Text(detail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary).lineLimit(2)
+                    }
                     HStack(spacing: 6) {
-                        if let context, !context.isEmpty {
-                            Text(context)
-                                .font(.caption2.weight(.semibold))
-                                .lineLimit(1)
-                                .padding(.horizontal, 6).padding(.vertical, 2)
-                                .background(session.state.tint.opacity(0.16), in: Capsule())
-                                .foregroundStyle(session.state.tint)
-                        }
+                        Text(session.state.label)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6).padding(.vertical, 1)
+                            .background(session.state.tint.opacity(0.16), in: Capsule())
+                            .foregroundStyle(session.state.tint)
                         Spacer(minLength: 0)
                         WaitingTimeText(since: session.stateSince)
                     }
                 }
             }
-            .padding(.horizontal, 12).padding(.vertical, 9)
+            .padding(.leading, 18).padding(.trailing, 12).padding(.vertical, 6)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -110,15 +164,6 @@ struct AttentionPanel: View {
                 Button(L10n.t(.markReady)) { appState.markReady(session.id) }
             }
         }
-    }
-
-    /// The running program from the OSC title, stripped of any leading status
-    /// glyph (Claude Code prefixes "✳ ", which reads as a stray dot).
-    private func runningProgram(_ session: TerminalSession) -> String? {
-        guard let osc = session.oscTitle else { return nil }
-        let cleaned = String(osc.drop(while: { !$0.isLetter && !$0.isNumber }))
-            .trimmingCharacters(in: .whitespaces)
-        return cleaned.isEmpty ? nil : cleaned
     }
 }
 
