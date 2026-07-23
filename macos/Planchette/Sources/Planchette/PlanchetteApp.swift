@@ -379,8 +379,10 @@ struct WindowAccessor: NSViewRepresentable {
         WindowRegistry.shared.register(windowID, window: window)
         // After the launch modal + window restoration the app can end up with
         // no key window, which drops all keyboard input. Claim key status for a
-        // real content window when none exists.
-        if NSApp.keyWindow == nil, window.canBecomeKey {
+        // real content window when none exists. Only while active: keyWindow is
+        // always nil when the app is in the background, and ordering front from
+        // there would raise/deminiaturize the window on every view update.
+        if NSApp.isActive, NSApp.keyWindow == nil, window.canBecomeKey, !window.isMiniaturized {
             window.makeKeyAndOrderFront(nil)
         }
     }

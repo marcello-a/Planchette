@@ -745,8 +745,10 @@ private struct TerminalSurfaceRepresentable: NSViewRepresentable {
             guard let window = surfaceView.window, surfaceView.isActive() else { return }
             // Ensure a key window exists so keystrokes are delivered at all
             // (after the launch modal + window restoration the app can end up
-            // with no key window).
-            if NSApp.keyWindow == nil, window.canBecomeKey {
+            // with no key window). Only while active: keyWindow is always nil
+            // when the app is in the background, and ordering front from there
+            // would raise/deminiaturize the window on every state update.
+            if NSApp.isActive, NSApp.keyWindow == nil, window.canBecomeKey, !window.isMiniaturized {
                 window.makeKeyAndOrderFront(nil)
             }
             if window.firstResponder !== surfaceView {
