@@ -109,6 +109,9 @@ final class HookServer {
         // UserPromptSubmit carries the submitted prompt itself — the direct
         // answer to "what is this agent working on?".
         let prompt = event["prompt"] as? String
+        // SessionStart tells us *why* a conversation began (startup / clear /
+        // resume / compact / fork) — which decides whether it starts out free.
+        let source = event["source"] as? String
 
         DispatchQueue.main.async { [weak self] in
             self?.appState?.applyHookEvent(
@@ -117,7 +120,8 @@ final class HookServer {
                 claudeSessionID: claudeSessionID,
                 transcriptPath: transcriptPath,
                 message: message,
-                prompt: prompt
+                prompt: prompt,
+                source: source
             )
         }
     }

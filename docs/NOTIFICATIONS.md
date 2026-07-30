@@ -101,7 +101,12 @@ braucht die Unterscheidung:
 | Zustand | Bedeutung | Signal | Darstellung |
 |---|---|---|---|
 | **done** | Turn beendet, Ergebnis wartet auf Abnahme | `Stop`-Hook | 🟢 gefüllt, „fertig: <task>" |
-| **free** | Prompt leer, nichts zu reviewen | `SessionEnd` / OSC 133 ohne aktiven Claude | ⚪ hohl/grau, „frei" |
+| **free** | Prompt leer, nichts zu reviewen | `SessionEnd`, `SessionStart` einer frischen Unterhaltung (`startup`/`clear`/`resume`) / OSC 133 ohne aktiven Claude | ⚪ hohl/grau, „frei" |
+
+`/clear` sendet `SessionEnd(clear)` **und** `SessionStart(clear)` — beide führen
+auf „frei", damit ein verlorenes Event den Zustand nicht hängen lässt. Nur
+`SessionStart(compact)` und `SessionStart(fork)` ändern nichts: sie passieren
+mitten im Turn, `running`/`waiting` muss sie überleben.
 
 `done → free` beim nächsten `UserPromptSubmit` oder manuell („als frei
 markieren", existiert). Kein neuer Persistenz-Bruch: `AttentionState` bekommt

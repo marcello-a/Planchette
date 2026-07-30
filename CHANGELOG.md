@@ -20,6 +20,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   its project, its tab. Banners now also appear while Planchette itself is
   frontmost, since the whole point is that *another* terminal needs you.
 
+### Fixed
+- **`/clear` now frees the terminal.** A fresh conversation
+  (`SessionStart` with source `startup`, `clear` or `resume`) is gray on its own
+  evidence, so `/clear` no longer leaves the old green/blue state behind when the
+  paired `SessionEnd` doesn't land. Its task line is dropped too. `compact` and
+  `fork` still keep the state — they happen mid-turn.
+
 ## [0.2.7] — 2026-07-20
 
 ### Added

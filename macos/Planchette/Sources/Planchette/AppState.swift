@@ -471,7 +471,8 @@ final class AppState: ObservableObject {
         claudeSessionID: String?,
         transcriptPath: String?,
         message: String?,
-        prompt: String? = nil
+        prompt: String? = nil,
+        source: String? = nil
     ) {
         guard sessions[sessionID] != nil else { return }
         // A hook firing at all proves Claude is alive in this terminal;
@@ -492,12 +493,14 @@ final class AppState: ObservableObject {
            let task = prompt.flatMap(TerminalSession.taskLine(fromPrompt:)) {
             update(sessionID) { $0.currentTask = task }
         }
-        // Claude is gone — its task is too.
-        if hookEvent == "SessionEnd" {
+        // Claude is gone — its task is too. So is a `/clear`: the conversation
+        // that carried the task no longer exists. A resumed or compacted
+        // session keeps working on the same thing, so its task survives.
+        if hookEvent == "SessionEnd" || (hookEvent == "SessionStart" && source == "clear") {
             update(sessionID) { $0.currentTask = nil }
         }
         // State transition (pure, tested). Message only carried for `waiting`.
-        if let newState = AttentionState.forHookEvent(hookEvent) {
+        if let newState = AttentionState.forHookEvent(hookEvent, source: source) {
             setState(sessionID, newState, message: newState == .waiting ? message : nil)
         }
         // Per-event side effects.

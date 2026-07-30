@@ -64,13 +64,21 @@ enum AttentionState: String, Codable {
 
     /// The state a Claude Code hook event transitions to (nil = no change).
     /// running = an agent turn is working, waiting = it needs you, ready = the
-    /// turn finished (result to review), free = Claude exited entirely.
-    static func forHookEvent(_ event: String) -> AttentionState? {
+    /// turn finished (result to review), free = nothing pending for you.
+    ///
+    /// `source` is the SessionStart source (`startup`, `clear`, `resume`,
+    /// `compact`, `fork`). A conversation that just began has nothing to review
+    /// and nothing to answer, so it is free on its own evidence — `/clear`
+    /// (SessionEnd `clear` + SessionStart `clear`) must land on gray even if one
+    /// of the two events is lost. `compact` and `fork` are the exception: they
+    /// happen *mid-turn*, so the running/waiting state must survive them.
+    static func forHookEvent(_ event: String, source: String? = nil) -> AttentionState? {
         switch event {
         case "UserPromptSubmit": .running
         case "Notification", "PermissionRequest": .waiting
         case "Stop", "SubagentStop": .ready
         case "SessionEnd": .free
+        case "SessionStart": (source == "compact" || source == "fork") ? nil : .free
         default: nil
         }
     }

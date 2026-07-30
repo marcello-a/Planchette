@@ -231,8 +231,23 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.forHookEvent("SubagentStop"), .ready)
         // Claude exited entirely: nothing to review, the terminal is free.
         XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .free)
-        XCTAssertNil(AttentionState.forHookEvent("SessionStart"))
         XCTAssertNil(AttentionState.forHookEvent("whatever"))
+    }
+
+    // A conversation that just began has nothing to review and nothing to
+    // answer. `/clear` sends SessionEnd(clear) + SessionStart(clear): landing on
+    // gray must not depend on both arriving.
+    func testFreshSessionStartIsFree() {
+        XCTAssertEqual(AttentionState.forHookEvent("SessionStart", source: "clear"), .free)
+        XCTAssertEqual(AttentionState.forHookEvent("SessionStart", source: "startup"), .free)
+        XCTAssertEqual(AttentionState.forHookEvent("SessionStart", source: "resume"), .free)
+    }
+
+    // Compaction and forking happen mid-turn — they must not clear a running
+    // or waiting agent.
+    func testMidTurnSessionStartKeepsState() {
+        XCTAssertNil(AttentionState.forHookEvent("SessionStart", source: "compact"))
+        XCTAssertNil(AttentionState.forHookEvent("SessionStart", source: "fork"))
     }
 
     // A shell command result must never stomp an active agent turn, but at the
