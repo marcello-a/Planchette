@@ -123,7 +123,8 @@ final class AppState: ObservableObject {
             let minutes = Int(Date().timeIntervalSince(session.stateSince) / 60)
             NotificationService.post(
                 title: "\(session.displayTitle) — \(L10n.t(.waitingSince, minutes))",
-                body: session.lastMessage ?? session.state.label
+                body: session.lastMessage ?? session.state.label,
+                sessionID: session.id
             )
         }
     }
@@ -285,6 +286,7 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
+        liveClaudeIDs.remove(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
             if groups[idx].activeSessionID == id {
@@ -308,6 +310,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
+            liveClaudeIDs.remove(sid)
         }
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
@@ -386,12 +389,30 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Clicked desktop notification (PlanchetteFocus via hook socket): bring
-    /// the app forward and jump to the terminal.
+    /// Clicked desktop notification (our own banner, or PlanchetteFocus via the
+    /// hook socket): bring the app forward and jump to the terminal — its
+    /// window, its project, its tab.
     func focusSession(_ id: UUID) {
-        guard let session = sessions[id] else { return }
+        guard let session = sessions[id] else {
+            // The click launched the app and arrived before the workspace was
+            // restored — jump as soon as the terminals exist.
+            pendingFocusID = id
+            return
+        }
+        pendingFocusID = nil
         NSApp.activate(ignoringOtherApps: true)
         select(session: session)
+    }
+
+    /// A notification click that had no session to jump to yet (see focusSession).
+    private var pendingFocusID: UUID?
+
+    /// Apply a click that arrived before restore finished. Called once the
+    /// workspace is up.
+    func flushPendingFocus() {
+        guard let id = pendingFocusID else { return }
+        pendingFocusID = nil
+        focusSession(id)
     }
 
     /// Jump to the most urgent waiting session (⌘⇧K).
@@ -436,6 +457,14 @@ final class AppState: ObservableObject {
 
     // MARK: Hook events (from HookServer)
 
+    /// Terminals currently running Claude Code, from its first hook until
+    /// SessionEnd. Deliberately NOT persisted: right after a restart nothing is
+    /// running yet — a resumed Claude re-announces itself with its first hook.
+    /// Used to decide whether a dropped image can be pasted with ⌃V.
+    private var liveClaudeIDs: Set<UUID> = []
+
+    func hasLiveClaude(_ id: UUID) -> Bool { liveClaudeIDs.contains(id) }
+
     func applyHookEvent(
         sessionID: UUID,
         hookEvent: String,
@@ -445,6 +474,13 @@ final class AppState: ObservableObject {
         prompt: String? = nil
     ) {
         guard sessions[sessionID] != nil else { return }
+        // A hook firing at all proves Claude is alive in this terminal;
+        // SessionEnd is the only event that ends it.
+        if hookEvent == "SessionEnd" {
+            liveClaudeIDs.remove(sessionID)
+        } else {
+            liveClaudeIDs.insert(sessionID)
+        }
         if claudeSessionID != nil || transcriptPath != nil {
             update(sessionID) {
                 if let claudeSessionID { $0.claudeSessionID = claudeSessionID }
@@ -482,7 +518,8 @@ final class AppState: ObservableObject {
         guard group(of: session)?.favorite == true else { return }
         NotificationService.post(
             title: "\(session.displayTitle) \(L10n.t(.asks))",
-            body: message ?? ""
+            body: message ?? "",
+            sessionID: session.id
         )
     }
 

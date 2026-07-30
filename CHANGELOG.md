@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Added
+- **Drop a screenshot to paste it** — dropping an image onto a terminal that is
+  running Claude Code now behaves like copy/paste: the image goes on the
+  clipboard and ⌃V is sent, so Claude attaches it (`[Image #1]`) instead of
+  receiving a long `~/Desktop/Screen Shot ….png` path. Works for image files and
+  for images dragged straight out of another app (Preview, a browser). Anything
+  else — other file types, URLs, text, or a terminal with no live Claude — still
+  types the shell-escaped path as before.
+- **Clicking a notification jumps to the terminal** that posted it: its window,
+  its project, its tab. Banners now also appear while Planchette itself is
+  frontmost, since the whole point is that *another* terminal needs you.
+
 ## [0.2.7] — 2026-07-20
 
 ### Added

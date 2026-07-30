@@ -154,6 +154,50 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class DropActionTests: XCTestCase {
+    private let shot = URL(fileURLWithPath: "/Users/me/Desktop/Screen Shot.png")
+    private let doc = URL(fileURLWithPath: "/Users/me/notes.md")
+
+    // The whole point: a screenshot dropped on a live Claude is pasted, not typed.
+    func testImagesOnLiveClaudeArePasted() {
+        XCTAssertEqual(
+            Drop.action(urlString: nil, urls: [shot], string: nil, canPasteImages: true),
+            .pasteImages([shot]))
+    }
+
+    // No Claude running → ⌃V would be quoted-insert in the shell, so type the path.
+    func testImagesWithoutClaudeFallBackToPath() {
+        XCTAssertEqual(
+            Drop.action(urlString: nil, urls: [shot], string: nil, canPasteImages: false),
+            .typeText("/Users/me/Desktop/Screen\\ Shot.png"))
+    }
+
+    // A mixed drop stays one consistent line of paths.
+    func testMixedDropTypesPaths() {
+        XCTAssertEqual(
+            Drop.action(urlString: nil, urls: [shot, doc], string: nil, canPasteImages: true),
+            .typeText("/Users/me/Desktop/Screen\\ Shot.png /Users/me/notes.md"))
+    }
+
+    // Ghostty's precedence for everything that isn't an image drop.
+    func testURLBeatsFilesAndStringsStayUnescaped() {
+        XCTAssertEqual(
+            Drop.action(urlString: "https://a.dev/x y", urls: [doc], string: "s", canPasteImages: true),
+            .typeText("https://a.dev/x\\ y"))
+        XCTAssertEqual(
+            Drop.action(urlString: nil, urls: [], string: "git status", canPasteImages: true),
+            .typeText("git status"))
+        XCTAssertNil(Drop.action(urlString: nil, urls: [], string: nil, canPasteImages: true))
+    }
+
+    func testImageDetectionIsExtensionBasedAndCaseInsensitive() {
+        XCTAssertTrue(Drop.isImage(URL(fileURLWithPath: "/a/b.JPEG")))
+        XCTAssertTrue(Drop.isImage(URL(fileURLWithPath: "/a/b.webp")))
+        XCTAssertFalse(Drop.isImage(URL(fileURLWithPath: "/a/b.pdf")))
+        XCTAssertFalse(Drop.isImage(URL(string: "https://a.dev/b.png")!))
+    }
+}
+
 final class StatusColorTests: XCTestCase {
     // Each state must map to its documented color — this is the whole point of
     // the app (which terminal is idle / in use / waiting / errored).

@@ -11,6 +11,10 @@ final class GhosttySurfaceNSView: NSView {
     /// Whether this session is the visible/active one — used to reclaim the
     /// first-responder after SwiftUI re-attaches the view.
     var isActive: () -> Bool = { false }
+    /// Whether a Claude Code session is live in this terminal (hook-driven).
+    /// Dropped images are only pasted with ⌃V when it is — in a plain shell ⌃V
+    /// is quoted-insert, so there we type the escaped path instead.
+    var hasLiveClaude: () -> Bool = { false }
 
     init(
         app: ghostty_app_t,
@@ -30,7 +34,9 @@ final class GhosttySurfaceNSView: NSView {
             name: NSView.frameDidChangeNotification, object: self)
         // Accept files (e.g. images for Claude), URLs, and text dropped onto
         // the terminal — their escaped path/content is typed at the prompt.
-        registerForDraggedTypes([.fileURL, .URL, .string])
+        // .png/.tiff cover images dragged straight out of another app (Preview,
+        // a browser), which carry pixels instead of a file.
+        registerForDraggedTypes([.fileURL, .URL, .string, .png, .tiff])
 
         // AppKit does NOT reliably call viewDidChangeBackingProperties when a
         // window moves to a screen with a different scale (e.g. external
@@ -436,7 +442,13 @@ final class GhosttySurfaceNSView: NSView {
     func decreaseFontSize() { performBindingAction("decrease_font_size:1") }
     func resetFontSize() { performBindingAction("reset_font_size") }
 
-    // MARK: Drag & drop (files → escaped path at the prompt, like Ghostty)
+    // MARK: Drag & drop
+    //
+    // Images dropped onto a live Claude Code session behave like copy/paste:
+    // they go on the clipboard and we send ⌃V, so Claude attaches the image
+    // instead of receiving a long screenshot path. Everything else (and any
+    // terminal without a live Claude) keeps Ghostty's behavior — the
+    // shell-escaped path is typed at the prompt.
 
     /// Send text straight into the terminal as if typed (used for drops —
     /// unlike `insertText`, which only feeds the keyDown pipeline).
@@ -453,32 +465,114 @@ final class GhosttySurfaceNSView: NSView {
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
         guard let types = sender.draggingPasteboard.types,
-              !Set(types).isDisjoint(with: [.fileURL, .URL, .string])
+              !Set(types).isDisjoint(with: [.fileURL, .URL, .string, .png, .tiff])
         else { return [] }
         return .copy
     }
 
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         let pb = sender.draggingPasteboard
-        let content: String?
-        if let url = pb.string(forType: .URL) {
-            // URLs first, escaped as-is.
-            content = Shell.escape(url)
-        } else if let urls = pb.readObjects(forClasses: [NSURL.self]) as? [URL],
-                  !urls.isEmpty {
-            // Files (images, folders, …): escape each path, join with spaces —
-            // exactly what a running `claude` expects to read a file.
-            content = urls.map { Shell.escape($0.path) }.joined(separator: " ")
-        } else if let str = pb.string(forType: .string) {
-            // Plain strings stay unescaped — they may be a command to run.
-            content = str
-        } else {
-            content = nil
+        let action = Drop.action(
+            urlString: pb.string(forType: .URL),
+            urls: pb.readObjects(forClasses: [NSURL.self]) as? [URL] ?? [],
+            string: pb.string(forType: .string),
+            canPasteImages: hasLiveClaude())
+        guard let action else {
+            // Nothing path- or text-shaped: an image dragged out of another app
+            // (Preview, a browser) carries pixels, not a file. Paste those
+            // directly; without a live Claude there is nothing sensible a
+            // terminal could do with them.
+            guard hasLiveClaude(), let png = Self.pngData(from: pb) else { return false }
+            window?.makeFirstResponder(self)
+            pasteImage(png)
+            return true
         }
-        guard let content else { return false }
         window?.makeFirstResponder(self)
-        sendText(content)
+        switch action {
+        case .typeText(let text):
+            sendText(text)
+            return true
+        case .pasteImages(let urls):
+            // Unreadable image (corrupt file, exotic encoder) → don't swallow
+            // the drop, fall back to typing the path.
+            if !pasteImages(urls) {
+                sendText(urls.map { Shell.escape($0.path) }.joined(separator: " "))
+            }
+            return true
+        }
+    }
+
+    /// Put each image on the clipboard and paste it, so Claude Code picks it up
+    /// as an attachment. Claude reads the pasteboard when it receives the ⌃V, so
+    /// the writes must not overlap — one image per turn of the delay.
+    /// Returns false if none of the files could be read as an image.
+    private func pasteImages(_ urls: [URL]) -> Bool {
+        let images = urls.compactMap { Self.pngData(at: $0) }
+        guard !images.isEmpty else { return false }
+        for (index, png) in images.enumerated() {
+            if index == 0 {
+                pasteImage(png)
+            } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35 * Double(index)) {
+                    [weak self] in self?.pasteImage(png)
+                }
+            }
+        }
         return true
+    }
+
+    /// Put one image on the clipboard and paste it. The clipboard is
+    /// deliberately left holding it — the drop *is* a copy, and restoring the
+    /// previous contents would race Claude's own read of the pasteboard.
+    private func pasteImage(_ png: Data) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setData(png, forType: .png)
+        sendControlV()
+    }
+
+    /// PNG bytes for an image file — the file itself when it's already a PNG
+    /// (the screenshot case: no re-encode), converted via NSImage otherwise.
+    private static func pngData(at url: URL) -> Data? {
+        if url.pathExtension.lowercased() == "png", let data = try? Data(contentsOf: url) {
+            return data
+        }
+        return NSImage(contentsOf: url).flatMap(pngData(from:))
+    }
+
+    /// PNG bytes for an image carried on a pasteboard as pixels rather than a
+    /// file (dragged out of Preview, a browser).
+    private static func pngData(from pasteboard: NSPasteboard) -> Data? {
+        if let png = pasteboard.data(forType: .png) { return png }
+        guard pasteboard.data(forType: .tiff) != nil,
+              let image = NSImage(pasteboard: pasteboard)
+        else { return nil }
+        return pngData(from: image)
+    }
+
+    private static func pngData(from image: NSImage) -> Data? {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff)
+        else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// Synthesize ⌃V for the surface. Injected input has no NSEvent, so the key
+    /// is built by hand the way `sendKey` would (keycode + unshifted codepoint
+    /// are what ghostty needs to encode a control shortcut).
+    private func sendControlV() {
+        guard let surface else { return }
+        pendingValid = false   // injected input isn't tracked prompt typing
+        var key = ghostty_input_key_s()
+        key.mods = GHOSTTY_MODS_CTRL
+        key.consumed_mods = GHOSTTY_MODS_NONE
+        key.keycode = 9        // kVK_ANSI_V
+        key.text = nil
+        key.unshifted_codepoint = UnicodeScalar("v").value
+        key.composing = false
+        key.action = GHOSTTY_ACTION_PRESS
+        _ = ghostty_surface_key(surface, key)
+        key.action = GHOSTTY_ACTION_RELEASE
+        _ = ghostty_surface_key(surface, key)
     }
 
     // Standard clipboard responder selectors so the Edit menu items (Paste,
@@ -653,6 +747,7 @@ final class TerminalRegistry {
             return window?.selectedGroupID == session.groupID
                 && appState.groups.first { $0.id == session.groupID }?.activeSessionID == id
         }
+        view.hasLiveClaude = { [weak appState] in appState?.hasLiveClaude(id) ?? false }
         views[id] = view
         return view
     }

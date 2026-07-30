@@ -166,6 +166,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.appState = state
         self.updater = MainActor.assumeIsolated { UpdateService(appState: state) }
         super.init()
+        // Wired here, not in applicationDidFinishLaunching: the restore dialog
+        // runs a nested modal loop, and a click that launched the app would be
+        // delivered (and lost) before the delegate existed.
+        NotificationService.handleClicks { [weak state] id in
+            MainActor.assumeIsolated { state?.focusSession(id) }
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -191,6 +197,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 appState.startFresh(archiving: nil)
             }
+            // A banner click may have launched us — jump now that the
+            // terminals exist.
+            appState.flushPendingFocus()
         }
 
         NotificationService.requestAuthorization()

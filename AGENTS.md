@@ -48,7 +48,7 @@ groups terminals by project. See [README.md](README.md) and
 | `MigrationService.swift` | Import cwds from iTerm2/Terminal.app (AppleScript → `lsof`) |
 | `UpdateService.swift` | GitHub-releases update check |
 | `NotificationService.swift` | `UserNotifications` wrapper |
-| `Semver.swift`, `Titles.swift` | Pure helpers (unit-tested) |
+| `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
 | `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `InboxView`, `QuickSwitcherView`, `TagViews` |
 
