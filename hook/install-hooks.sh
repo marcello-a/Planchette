@@ -14,7 +14,7 @@ import json, shutil, sys, time
 from pathlib import Path
 
 settings_path = Path(sys.argv[1])
-hook_bin = sys.argv[2]
+hook_bin = sys.argv[2] + " claude"   # agent label, see planchette-hook
 events = ["SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest", "Stop", "SessionEnd"]
 
 settings = {}

@@ -93,6 +93,8 @@ final class HookServer {
         }
         let event = obj["event"] as? [String: Any] ?? [:]
         let hookEvent = event["hook_event_name"] as? String ?? ""
+        // Which agent spoke — the hook script passes its own label.
+        let agent = AgentKind(hookLabel: obj["agent"] as? String)
 
         // Not a Claude Code event: sent by the PEON_CLICK_COMMAND we inject,
         // when the user clicks a desktop notification for this session.
@@ -121,7 +123,8 @@ final class HookServer {
                 transcriptPath: transcriptPath,
                 message: message,
                 prompt: prompt,
-                source: source
+                source: source,
+                agent: agent
             )
         }
     }

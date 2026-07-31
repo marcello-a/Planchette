@@ -137,6 +137,35 @@ enum GroupViewMode: String, Codable {
     case cluster
 }
 
+/// Which coding agent a terminal is running. Claude Code reports its whole
+/// lifecycle through hooks; other agents report less (or nothing) and lean on
+/// screen detection, so the kind decides how much a hook event is worth.
+enum AgentKind: String, Codable, CaseIterable {
+    case claude
+    case codex
+    /// A plain shell, or an agent we don't recognize.
+    case none
+
+    /// Display name — a proper noun, so deliberately not localized.
+    var label: String {
+        switch self {
+        case .claude: "Claude Code"
+        case .codex: "Codex"
+        case .none: "—"
+        }
+    }
+
+    /// Whether this agent tells us about *every* state change (prompt
+    /// submitted, question asked, turn finished, session ended). Only then are
+    /// hooks the sole authority; otherwise the screen fills the gaps.
+    var reportsFullLifecycle: Bool { self == .claude }
+
+    /// Parse the label a hook script sends us.
+    init(hookLabel: String?) {
+        self = AgentKind(rawValue: (hookLabel ?? "").lowercased()) ?? .none
+    }
+}
+
 struct TerminalSession: Identifiable, Codable, Equatable {
     let id: UUID
     var groupID: UUID
@@ -145,6 +174,9 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var customTitle: String?
     var oscTitle: String?         // title reported by the shell/program
     var color: SessionColor = .none
+    /// The agent last seen in this terminal. Persisted so the inbox still knows
+    /// what a restored terminal runs before its first hook arrives.
+    var agentKind: AgentKind = .none
     var claudeSessionID: String?
     var startupCommand: String?   // re-run after restore (e.g. `npm run dev`)
     var resumeClaudeOnRestore: Bool = true
@@ -185,6 +217,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         customTitle = try c.decodeIfPresent(String.self, forKey: .customTitle)
         oscTitle = try c.decodeIfPresent(String.self, forKey: .oscTitle)
         color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
+        agentKind = try c.decodeIfPresent(AgentKind.self, forKey: .agentKind) ?? .none
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true

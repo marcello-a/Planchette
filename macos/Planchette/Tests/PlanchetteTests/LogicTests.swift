@@ -154,6 +154,65 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class AgentIntegrationTests: XCTestCase {
+    // One script serves every agent, so the command must carry the label and
+    // still be recognizable as ours inside a foreign config.
+    func testHookCommandCarriesAgentLabel() {
+        let cmd = HookInstaller.hookCommand(for: .codex)
+        XCTAssertTrue(cmd.hasSuffix(" codex"))
+        XCTAssertTrue(HookInstaller.isPlanchetteCommand(cmd))
+        XCTAssertEqual(
+            HookInstaller.scriptPath(ofCommand: cmd), HookInstaller.hookScriptURL.path)
+        // A foreign hook that merely lives in a similar place is not ours.
+        XCTAssertFalse(HookInstaller.isPlanchetteCommand("/opt/other/peon.sh claude"))
+        // The pre-label form stays recognizable, so upgrades replace it.
+        XCTAssertTrue(HookInstaller.isPlanchetteCommand(HookInstaller.hookScriptURL.path))
+    }
+
+    func testAgentKindParsesHookLabel() {
+        XCTAssertEqual(AgentKind(hookLabel: "claude"), .claude)
+        XCTAssertEqual(AgentKind(hookLabel: "Codex"), .codex)
+        XCTAssertEqual(AgentKind(hookLabel: "gemini"), .none)
+        XCTAssertEqual(AgentKind(hookLabel: nil), .none)
+    }
+
+    // Only Claude Code reports every transition; anything else needs the screen
+    // to fill the gaps, which is what the fallback layer keys off.
+    func testOnlyClaudeReportsFullLifecycle() {
+        XCTAssertTrue(AgentKind.claude.reportsFullLifecycle)
+        XCTAssertFalse(AgentKind.codex.reportsFullLifecycle)
+        XCTAssertFalse(AgentKind.none.reportsFullLifecycle)
+    }
+
+    // Codex runs hooks only when the feature is enabled, and its config.toml is
+    // the user's file — we edit the one line and touch nothing else.
+    func testCodexConfigEnablesHooksFeature() {
+        // Fresh file → append the section.
+        XCTAssertEqual(
+            HookInstaller.codexConfigEnablingHooks(""), "[features]\nhooks = true\n")
+        // Existing [features] → insert the key, keep the rest verbatim.
+        let existing = "model = \"gpt-5\"\n\n[features]\nweb_search = true\n"
+        XCTAssertEqual(
+            HookInstaller.codexConfigEnablingHooks(existing),
+            "model = \"gpt-5\"\n\n[features]\nhooks = true\nweb_search = true\n")
+        // Explicit false → flipped.
+        XCTAssertEqual(
+            HookInstaller.codexConfigEnablingHooks("[features]\nhooks = false\n"),
+            "[features]\nhooks = true\n")
+        // Already on → nothing to write.
+        XCTAssertNil(HookInstaller.codexConfigEnablingHooks("[features]\nhooks = true\n"))
+        // A `hooks` key in someone else's table must not count.
+        XCTAssertNotNil(HookInstaller.codexConfigEnablingHooks("[mcp]\nhooks = true\n"))
+    }
+
+    // Codex only gets a session claim: a `working` event with no matching
+    // `finished` event would leave a terminal purple forever.
+    func testCodexInstallsSessionClaimOnly() {
+        XCTAssertEqual(HookInstaller.codexEvents, ["SessionStart"])
+        XCTAssertTrue(HookInstaller.events.count > HookInstaller.codexEvents.count)
+    }
+}
+
 final class DropActionTests: XCTestCase {
     private let shot = URL(fileURLWithPath: "/Users/me/Desktop/Screen Shot.png")
     private let doc = URL(fileURLWithPath: "/Users/me/notes.md")

@@ -286,7 +286,7 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
-        liveClaudeIDs.remove(id)
+        liveAgentIDs.remove(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
             if groups[idx].activeSessionID == id {
@@ -310,7 +310,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
-            liveClaudeIDs.remove(sid)
+            liveAgentIDs.remove(sid)
         }
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
@@ -457,13 +457,20 @@ final class AppState: ObservableObject {
 
     // MARK: Hook events (from HookServer)
 
-    /// Terminals currently running Claude Code, from its first hook until
+    /// Terminals currently running an agent, from its first hook until
     /// SessionEnd. Deliberately NOT persisted: right after a restart nothing is
-    /// running yet — a resumed Claude re-announces itself with its first hook.
-    /// Used to decide whether a dropped image can be pasted with ⌃V.
-    private var liveClaudeIDs: Set<UUID> = []
+    /// running yet — a resumed agent re-announces itself with its first hook.
+    private var liveAgentIDs: Set<UUID> = []
 
-    func hasLiveClaude(_ id: UUID) -> Bool { liveClaudeIDs.contains(id) }
+    /// Whether a live **Claude Code** session owns this terminal. Both halves
+    /// matter for the ⌃V image paste: the agent must be running *and* be the one
+    /// that reads images off the clipboard. Codex gets the path instead.
+    func hasLiveClaude(_ id: UUID) -> Bool {
+        liveAgentIDs.contains(id) && sessions[id]?.agentKind == .claude
+    }
+
+    /// Whether any recognized agent is live in this terminal.
+    func hasLiveAgent(_ id: UUID) -> Bool { liveAgentIDs.contains(id) }
 
     func applyHookEvent(
         sessionID: UUID,
@@ -472,15 +479,21 @@ final class AppState: ObservableObject {
         transcriptPath: String?,
         message: String?,
         prompt: String? = nil,
-        source: String? = nil
+        source: String? = nil,
+        agent: AgentKind = .claude
     ) {
         guard sessions[sessionID] != nil else { return }
-        // A hook firing at all proves Claude is alive in this terminal;
+        // A hook firing at all proves the agent is alive in this terminal;
         // SessionEnd is the only event that ends it.
         if hookEvent == "SessionEnd" {
-            liveClaudeIDs.remove(sessionID)
+            liveAgentIDs.remove(sessionID)
         } else {
-            liveClaudeIDs.insert(sessionID)
+            liveAgentIDs.insert(sessionID)
+        }
+        // The hook claims the terminal for its agent: from here on the app knows
+        // what runs here, which decides how much a later screen reading may say.
+        if agent != .none, sessions[sessionID]?.agentKind != agent {
+            update(sessionID) { $0.agentKind = agent }
         }
         if claudeSessionID != nil || transcriptPath != nil {
             update(sessionID) {

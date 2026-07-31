@@ -1,26 +1,35 @@
 #!/bin/sh
-# planchette-hook — forwards a Claude Code hook event to the Planchette app.
+# planchette-hook — forwards a coding agent's hook event to the Planchette app.
 #
-# Claude Code invokes this with the event JSON on stdin (fields like
-# hook_event_name, session_id, transcript_path, cwd, message). We wrap it
-# with the terminal identity from $PLANCHETTE_SESSION (injected into every
-# Planchette terminal, inherited by claude and thus by this hook) and send
-# it to the app's unix socket. Spike version — production will be a static
-# binary with proper JSON handling.
+# The agent invokes this with the event JSON on stdin (fields like
+# hook_event_name, session_id, transcript_path, cwd, message) and the agent
+# label as $1 ("claude", "codex", …). We wrap it with the terminal identity
+# from $PLANCHETTE_SESSION (injected into every Planchette terminal, inherited
+# by the agent and thus by this hook) and send it to the app's unix socket.
+# Spike version — production will be a static binary with proper JSON handling.
 #
-# Always exit 0: a missing/busy app must never block Claude.
+# Always exit 0: a missing/busy app must never block the agent.
 
 # Not inside a Planchette terminal → nothing to do (keeps the hook a no-op
-# for every other Claude session on this machine).
+# for every other agent session on this machine).
 [ -n "$PLANCHETTE_SESSION" ] || exit 0
 
 SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette.sock}"
 [ -S "$SOCKET" ] || exit 0
 
+# Agent label. Older installs passed no argument at all; those events are
+# Claude's, because it was the only integration back then.
+agent="${1:-claude}"
+case "$agent" in
+    claude|codex) ;;
+    *) agent="claude" ;;
+esac
+
 payload=$(cat)
 [ -n "$payload" ] || payload='{}'
 
-printf '{"planchette_session":"%s","event":%s}' "${PLANCHETTE_SESSION:-}" "$payload" \
+printf '{"planchette_session":"%s","agent":"%s","event":%s}' \
+    "${PLANCHETTE_SESSION:-}" "$agent" "$payload" \
     | nc -U "$SOCKET" >/dev/null 2>&1 || true
 
 exit 0
