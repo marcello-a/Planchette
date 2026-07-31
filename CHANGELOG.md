@@ -9,6 +9,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Durable terminals** (Settings → Durable terminals, off by default, needs
+  tmux). A durable terminal runs its shell inside tmux, so the agent belongs to
+  tmux's process tree instead of ours: quitting Planchette, installing an update
+  or even crashing leaves it working. Reopening re-attaches to the live session —
+  the running turn, its output and its scrollback are simply still there — rather
+  than replaying `claude --resume` against a conversation that lost its work. A
+  reboot still ends everything, and the setting only applies to terminals created
+  after it is switched on. Closing a terminal on purpose ends its agent, and
+  sessions whose terminal is gone are reaped at the next launch — only ones no
+  client is attached to, so a second Planchette keeps its own agents.
+- **Hooks find the app again after it restarts.** The running instance publishes
+  its socket to `~/.planchette/socket`, and both the hook and the `planchette`
+  CLI fall back to it when `$PLANCHETTE_SOCKET` points at a dead one — which is
+  exactly the case for an agent that outlived the app that started it.
 - **Detection rules update live** (see docs/LIVE-UPDATE.md). `screen-rules.json`
   is re-read whenever it changes — by hand or from a release — so a pattern fix
   takes effect on the next 1.5s tick with no restart. Rules now ship as their own
@@ -24,6 +38,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - `rules/screen-rules.json` is generated from `ScreenDetector.builtIn`, with a
   test that fails when the two drift, so detection rules have one
   hand-maintained source.
+- The "agents are still working" quit warning ignores durable terminals: their
+  work survives the quit, so counting them would train you to click through the
+  one dialog that still matters.
 
 ## [0.2.9] — 2026-07-31
 

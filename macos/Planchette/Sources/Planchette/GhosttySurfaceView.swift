@@ -20,7 +20,8 @@ final class GhosttySurfaceNSView: NSView {
         app: ghostty_app_t,
         sessionID: UUID,
         workingDirectory: String,
-        initialInput: String? = nil
+        initialInput: String? = nil,
+        command: String? = nil
     ) {
         self.sessionID = sessionID
         super.init(frame: .zero)
@@ -64,20 +65,33 @@ final class GhosttySurfaceNSView: NSView {
         // Notification tools (e.g. peon-ping/OpenPeon) run this on click so the
         // right terminal comes to front via our hook socket.
         let clickKey = strdup("PEON_CLICK_COMMAND")
+        // Resolves the socket at click time, not at terminal creation: in a
+        // durable terminal this env var outlives the app instance that set it
+        // (see Durable.swift), so a stale path must fall back to the pointer.
+        // Tries our own socket first and only then the pointer, and treats a
+        // failed send — not a missing file — as the signal to move on, because a
+        // killed instance leaves its socket file behind.
         let clickValue = strdup(
-            "printf '{\"planchette_session\":\"\(sessionID.uuidString)\","
-                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}'"
-                + " | nc -U \(HookServer.socketPath)"
+            "E='{\"planchette_session\":\"\(sessionID.uuidString)\","
+                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}';"
+                + " for T in \(HookServer.socketPath)"
+                + " \"$(cat \(HookServer.socketPointerURL.path) 2>/dev/null)\";"
+                + " do [ -S \"$T\" ] || continue;"
+                + " printf '%s' \"$E\" | nc -U \"$T\" >/dev/null 2>&1 && break; done"
         )
         // So an agent in this terminal can drive Planchette (see skills/planchette).
         let cliKey = strdup("PLANCHETTE_CLI")
         let cliValue = strdup(HookInstaller.cliURL.path)
         let cwd = strdup(workingDirectory)
         let input = initialInput.map { strdup($0) }
+        // Durable terminals run tmux here instead of the login shell, so the
+        // agent's process tree belongs to tmux's server and survives us.
+        let cmd = command.map { strdup($0) }
         defer {
             free(envKey); free(envValue); free(sockKey); free(sockValue)
             free(clickKey); free(clickValue); free(cliKey); free(cliValue); free(cwd)
             if let input { free(input) }
+            if let cmd { free(cmd) }
         }
 
         var envVars = [
@@ -91,6 +105,7 @@ final class GhosttySurfaceNSView: NSView {
             cfg.env_var_count = buf.count
             cfg.working_directory = UnsafePointer(cwd)
             if let input { cfg.initial_input = UnsafePointer(input) }
+            if let cmd { cfg.command = UnsafePointer(cmd) }
             self.surface = ghostty_surface_new(app, &cfg)
         }
         if surface == nil { NSLog("ghostty_surface_new failed") }
@@ -737,8 +752,23 @@ final class TerminalRegistry {
         if let existing = views[session.id] { return existing }
         guard let app = GhosttyRuntime.shared.app else { return nil }
 
+        // A durable terminal runs tmux instead of a shell: `new-session -A`
+        // attaches when the agent is still there and creates the session when it
+        // is not, so the same command covers first launch and re-attach.
+        var command: String? = nil
+        var reattachingToLiveAgent = false
+        if session.durable, let tmux = Durable.tmuxPath() {
+            let name = Durable.sessionName(for: session.id)
+            reattachingToLiveAgent = Durable.hasSession(name, tmux: tmux)
+            command = Durable.attachCommand(tmux: tmux, session: name)
+        }
+
         var initialInput: String? = nil
-        if appState.isRestoring {
+        // Nothing to replay when the agent survived: tmux hands back the live
+        // screen, scrollback and all. Replaying here would `cat` a stale
+        // snapshot over a running TUI and start a *second* Claude next to the
+        // one already in the session.
+        if appState.isRestoring && !reattachingToLiveAgent {
             let sbPath = AppState.scrollbackURL(for: session.id).path
             let pending = try? String(contentsOf: AppState.pendingInputURL(for: session.id), encoding: .utf8)
             // The conversation to resume, resolved as one batch over ALL
@@ -759,7 +789,8 @@ final class TerminalRegistry {
             app: app,
             sessionID: session.id,
             workingDirectory: session.currentDirectory,
-            initialInput: initialInput
+            initialInput: initialInput,
+            command: command
         )
         let id = session.id
         // Focusing must not clear attention *state* (a glance isn't an answer),

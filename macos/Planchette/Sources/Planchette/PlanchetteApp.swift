@@ -105,6 +105,15 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.t(.durableSection)) {
+                Toggle(L10n.t(.durableActive), isOn: $appState.durableTerminals)
+                    .disabled(!Durable.isAvailable)
+                    .help(L10n.t(.durableHelp))
+                Text(L10n.t(Durable.isAvailable ? .durableExplanation : .durableMissingTmux))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))
@@ -255,9 +264,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Quitting kills the PTYs: a running turn is lost, and restore can only
-        // resume the conversation, not the work in flight. Ask first.
+        // resume the conversation, not the work in flight. Ask first — except
+        // for durable terminals, whose agents live in tmux and are still there
+        // when we come back. Warning about those would be a lie in the other
+        // direction, and would train the user to click through the dialog.
         let reply: NSApplication.TerminateReply = MainActor.assumeIsolated {
-            let running = appState.sessions.values.filter { $0.state == .running }.count
+            let running = appState.sessions.values
+                .filter { $0.state == .running && !$0.durable }.count
             guard running > 0 else { return .terminateNow }
             let alert = NSAlert()
             alert.messageText = L10n.t(.quitWhileRunningTitle)

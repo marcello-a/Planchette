@@ -31,14 +31,40 @@ COMMANDS = {
 }
 
 
+def socket_candidates():
+    """Where the app might be listening, best guess first.
+
+    $PLANCHETTE_SOCKET carries the pid of the app that opened this terminal. A
+    durable terminal (tmux-backed) outlives that app, so after a restart the env
+    var names a socket nobody is listening on while the new instance listens
+    elsewhere; the running app publishes its current path to ~/.planchette/socket.
+
+    The env var is tried first and only falls through when it cannot be reached —
+    never merely because the pointer disagrees. Two instances can run at once,
+    and each terminal belongs to the one that opened it; preferring the pointer
+    would let the second instance steal the first's terminals. An app that was
+    killed leaves its socket *file* behind, so existence proves nothing here and
+    only a failed connection does.
+    """
+    out = []
+    env_path = os.environ.get("PLANCHETTE_SOCKET")
+    if env_path:
+        out.append(env_path)
+    try:
+        with open(os.path.expanduser("~/.planchette/socket")) as handle:
+            pointed = handle.read().strip()
+        if pointed and pointed not in out:
+            out.append(pointed)
+    except OSError:
+        pass
+    return out
+
+
 def request(payload, timeout):
-    sock_path = os.environ.get("PLANCHETTE_SOCKET")
-    if not sock_path:
+    candidates = socket_candidates()
+    if not candidates:
         sys.stderr.write(
             "not inside a Planchette terminal ($PLANCHETTE_SOCKET is unset)\n")
-        return 2
-    if not os.path.exists(sock_path):
-        sys.stderr.write(f"Planchette is not listening at {sock_path}\n")
         return 2
 
     # The caller's own terminal, so commands can default to "here".
@@ -46,23 +72,32 @@ def request(payload, timeout):
     if session:
         payload.setdefault("session", session)
 
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(timeout)
-    try:
-        client.connect(sock_path)
-        client.sendall(json.dumps(payload).encode())
-        client.shutdown(socket.SHUT_WR)  # the app answers on EOF
-        chunks = []
-        while True:
-            chunk = client.recv(65536)
-            if not chunk:
-                break
-            chunks.append(chunk)
-    except OSError as err:
-        sys.stderr.write(f"socket error: {err}\n")
+    chunks, last_error = None, None
+    for sock_path in candidates:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(timeout)
+        try:
+            client.connect(sock_path)
+            client.sendall(json.dumps(payload).encode())
+            client.shutdown(socket.SHUT_WR)  # the app answers on EOF
+            received = []
+            while True:
+                chunk = client.recv(65536)
+                if not chunk:
+                    break
+                received.append(chunk)
+            chunks = received
+            break
+        except OSError as err:
+            # Unreachable, so try the next candidate. Only report the failure
+            # once every candidate is exhausted.
+            last_error = f"{sock_path}: {err}"
+        finally:
+            client.close()
+
+    if chunks is None:
+        sys.stderr.write(f"Planchette is not reachable ({last_error})\n")
         return 2
-    finally:
-        client.close()
 
     raw = b"".join(chunks).decode(errors="replace").strip()
     if not raw:

@@ -249,6 +249,174 @@ final class SeenTrackingTests: XCTestCase {
     }
 }
 
+final class DurableTests: XCTestCase {
+    // A GUI app's PATH has no Homebrew, so tmux is looked up by absolute path.
+    // Order matters: the first hit wins, Homebrew before a system tmux.
+    func testPicksFirstExecutableCandidate() {
+        let found = Durable.tmuxPath(
+            searching: ["/opt/homebrew/bin/tmux", "/usr/bin/tmux"],
+            isExecutable: { $0 == "/usr/bin/tmux" })
+        XCTAssertEqual(found, "/usr/bin/tmux")
+
+        let both = Durable.tmuxPath(
+            searching: ["/opt/homebrew/bin/tmux", "/usr/bin/tmux"],
+            isExecutable: { _ in true })
+        XCTAssertEqual(both, "/opt/homebrew/bin/tmux")
+    }
+
+    func testNoTmuxAnywhereIsNotAnError() {
+        XCTAssertNil(Durable.tmuxPath(searching: ["/nope"], isExecutable: { _ in false }))
+    }
+
+    // Re-attach only works because the name is derived from the persisted id:
+    // same terminal, same name, across any number of app restarts.
+    func testSessionNameIsStableAndTmuxSafe() {
+        let id = UUID(uuidString: "6C3E1F2A-9B4D-4E7A-8F10-2D5C7B9E1A34")!
+        let name = Durable.sessionName(for: id)
+        XCTAssertEqual(name, "planchette-6c3e1f2a-9b4d-4e7a-8f10-2d5c7b9e1a34")
+        XCTAssertEqual(name, Durable.sessionName(for: id), "must not vary between calls")
+        // `.` and `:` separate window/pane in a tmux target — neither may appear.
+        XCTAssertFalse(name.contains("."))
+        XCTAssertFalse(name.contains(":"))
+    }
+
+    func testDifferentTerminalsGetDifferentSessions() {
+        XCTAssertNotEqual(Durable.sessionName(for: UUID()), Durable.sessionName(for: UUID()))
+    }
+
+    // -A creates-or-attaches (one command for first launch and re-attach),
+    // -D evicts the stale client a crashed Planchette left behind.
+    func testAttachCommandCreatesOrAttachesAndEvicts() {
+        let cmd = Durable.attachCommand(tmux: "/opt/homebrew/bin/tmux", session: "planchette-x")
+        XCTAssertEqual(cmd, "/opt/homebrew/bin/tmux new-session -A -D -s planchette-x")
+    }
+
+    // The user's own tmux sessions are none of our business — reaping must
+    // never kill them.
+    func testParsesOnlyOurSessions() {
+        let id = UUID()
+        let output = """
+            planchette-\(id.uuidString.lowercased()) 0
+            work 1
+            planchette-not-a-uuid 0
+            0 1
+
+            """
+        let parsed = Durable.parseSessionList(output)
+        XCTAssertEqual(parsed.map(\.id), [id])
+        XCTAssertEqual(parsed.map(\.attached), [false])
+    }
+
+    func testParsesEmptyOutput() {
+        XCTAssertTrue(Durable.parseSessionList("").isEmpty)
+    }
+
+    // Attachment is what separates "another Planchette is using this" from
+    // "nobody is coming back for this".
+    func testReadsTheAttachedFlag() {
+        let live = UUID(), orphan = UUID()
+        let output = """
+            planchette-\(live.uuidString.lowercased()) 1
+            planchette-\(orphan.uuidString.lowercased()) 0
+            """
+        let parsed = Durable.parseSessionList(output)
+        XCTAssertEqual(parsed.first(where: { $0.id == live })?.attached, true)
+        XCTAssertEqual(parsed.first(where: { $0.id == orphan })?.attached, false)
+    }
+
+    // A line we cannot fully read must not be treated as reapable: killing a
+    // session we misparsed would destroy work, keeping it only leaks one.
+    func testUnreadableAttachedCountCountsAsAttached() {
+        let id = UUID()
+        let parsed = Durable.parseSessionList("planchette-\(id.uuidString.lowercased())")
+        XCTAssertEqual(parsed.map(\.attached), [true])
+    }
+
+    // Durability is decided at creation and persisted: a terminal that came
+    // back must know to re-attach rather than start a fresh shell.
+    func testDurableRoundTrips() throws {
+        var session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        XCTAssertFalse(session.durable, "ordinary terminals stay ordinary")
+        session.durable = true
+        let data = try JSONEncoder().encode(session)
+        XCTAssertTrue(try JSONDecoder().decode(TerminalSession.self, from: data).durable)
+    }
+
+    // State written before this feature existed must not claim a tmux session
+    // that was never created.
+    func testOlderStateIsNotDurable() throws {
+        let json = """
+            {"id":"\(UUID().uuidString)","groupID":"\(UUID().uuidString)",
+             "workingDirectory":"/tmp"}
+            """
+        let session = try JSONDecoder().decode(TerminalSession.self, from: Data(json.utf8))
+        XCTAssertFalse(session.durable)
+    }
+
+    func testSettingDefaultsOffInOlderState() throws {
+        let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
+        XCTAssertFalse(state.durableTerminals, "opt-in: it needs tmux installed")
+    }
+}
+
+final class HookSocketTests: XCTestCase {
+    func testRecognizesOurOwnSocketNames() {
+        XCTAssertEqual(HookServer.pidOfSocketFile(named: "planchette-4321.sock"), 4321)
+    }
+
+    // Anything else in /tmp must survive the sweep untouched.
+    func testIgnoresForeignAndMalformedNames() {
+        for name in [
+            "planchette.sock",              // the pre-per-instance name
+            "planchette-.sock",             // no pid
+            "planchette-abc.sock",          // not a number
+            "planchette-12ab.sock",         // partly a number
+            "planchette-0.sock",            // pid 0 is not a real target
+            "planchette-4321.sock.bak",     // not our suffix
+            "other-4321.sock",
+            "planchette-4321",
+        ] {
+            XCTAssertNil(HookServer.pidOfSocketFile(named: name), "must ignore \(name)")
+        }
+    }
+
+    // The sweep decides what to delete from this, so a negative pid — which
+    // kill(2) reads as a process *group* — must never get through.
+    func testRejectsNegativePid() {
+        XCTAssertNil(HookServer.pidOfSocketFile(named: "planchette--1.sock"))
+    }
+
+    // Our own socket is live by definition; deleting it would unlink the socket
+    // we are about to listen on.
+    func testSweepKeepsOurOwnLiveSocket() throws {
+        let own = HookServer.socketPath
+        FileManager.default.createFile(atPath: own, contents: nil)
+        defer { unlink(own) }
+        HookServer.removeSocketsOfDeadInstances()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: own))
+    }
+
+    // The case that actually bit: an instance killed rather than quit leaves its
+    // socket file behind, which makes every `-S` test lie.
+    func testSweepRemovesADeadInstancesSocket() throws {
+        // A pid that cannot be running: allocate one, then let it exit.
+        let doomed = Process()
+        doomed.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+        try doomed.run()
+        doomed.waitUntilExit()
+        let deadPID = doomed.processIdentifier
+
+        let stale = "/tmp/planchette-\(deadPID).sock"
+        FileManager.default.createFile(atPath: stale, contents: nil)
+        defer { unlink(stale) }
+
+        HookServer.removeSocketsOfDeadInstances()
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: stale),
+            "a socket whose process is gone must not keep answering -S")
+    }
+}
+
 final class WorktreeTests: XCTestCase {
     // A branch name is not a path: slashes and spaces must not create nested
     // directories or break the shell.

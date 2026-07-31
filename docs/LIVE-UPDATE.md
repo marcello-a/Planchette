@@ -69,7 +69,54 @@ at the next quit — one the user was going to perform anyway.
 The update stops costing a restart. It does not stop a restart from costing the
 running agents — that is Tier C.
 
-## Tier C — nothing is lost, ever (design only)
+## Tier C — nothing is lost, ever
+
+Tiers A and B stop the *update* from costing a restart. They do nothing about
+what a restart costs: our own PTYs. This tier is about surviving that, and it has
+two designs — one shipped, one still on paper.
+
+### C1 — durable terminals via tmux (implemented)
+
+The cheap version of the daemon, and it needs no daemon of ours at all. The
+insight is that we do not have to make the *PTY* survive; we have to make the
+*agent* survive. libghostty forks the shell in our process and holds the PTY
+master, and it cannot adopt an existing PTY (there is no fd field in
+`ghostty_surface_config_s`) — so instead of owning the agent's process tree, we
+hand it to a multiplexer that already outlives us:
+
+```
+Planchette.app                tmux server (long-lived)
+  libghostty surface   -->      planchette-<session-uuid>
+  runs `tmux new-session -A -D`   owns the agent's process tree
+```
+
+- **One command for both paths.** `new-session -A` attaches when the session is
+  there and creates it when it is not, so first launch and re-attach are the same
+  code path. `-D` detaches whatever stale client a crashed Planchette left
+  behind, instead of fighting it over the terminal size.
+- **The session name is the terminal's persisted id**, which is what makes
+  re-attach possible at all: same terminal, same name, across any restart.
+- **Restore does nothing when the agent is alive.** `TerminalRegistry` probes
+  `has-session` before building the surface; if the agent is still there, no
+  scrollback replay and no `claude --resume` — tmux hands back the live screen.
+  Replaying would `cat` a stale snapshot over a running TUI and start a *second*
+  Claude beside the first.
+- **Hooks still reach us.** The surviving agent's environment names the dead
+  app's socket, so `HookServer` publishes the live path to `~/.planchette/socket`
+  and the hook, the CLI and the click command fall back to it.
+- **It ends when you mean it.** Closing a terminal kills its tmux session;
+  sessions whose terminal no longer exists are reaped at the next launch. Two
+  guards keep reaping from destroying work: only `planchette-<uuid>` names are
+  considered (the user's own tmux sessions are never touched), and only sessions
+  **no client is attached to** — an attached session belongs to a second
+  Planchette that is running right now, and starting this one fresh must not kill
+  its agents.
+
+Covers quit, Install & Relaunch and a crash. Does **not** cover a reboot or a
+logout, which end tmux's server too. Off by default: it needs tmux installed, and
+it changes what a terminal is.
+
+### C2 — our own daemon (design only)
 
 Move the PTYs out of the UI process:
 
@@ -100,17 +147,21 @@ Why it is not in this change:
 - It is weeks of work with no partial credit: a half-migrated daemon is worse than
   none, because the user believes their work is safe when it is not.
 
-The honest sequencing is: Tier A and B now (they remove most of the pain for a
-few hundred lines), Tier C as its own project when the app's shape is settled.
-The fd-passing variant is the cheaper of the two — it keeps rendering, fonts and
-Metal where they are — and is the one to prototype first.
+What C1 buys over C2, honestly: everything except a reboot, for ~200 lines
+instead of weeks, using a multiplexer that is already better tested than anything
+we would write. What C2 still buys over C1: no tmux dependency, no second key
+binding layer inside the terminal, attaching from another machine, and surviving
+a reboot. The fd-passing variant is the cheaper of the two — it keeps rendering,
+fonts and Metal where they are — and is the one to prototype first, if C1 turns
+out not to be enough in daily use.
 
 ## What "no restart" means in the UI
 
-Three different promises, and they should read differently in the interface:
+Four different promises, and they should read differently in the interface:
 
 | Change | User experience |
 |---|---|
 | Detection rules, helper scripts | applied silently, no interruption at all |
 | App binary, staged | "will be installed when you quit" |
-| App binary, now | "Install & Relaunch" — ends running turns, and says so |
+| App binary, now, durable terminals | "Install & Relaunch" — the agents keep working |
+| App binary, now, ordinary terminals | "Install & Relaunch" — ends running turns, and says so |

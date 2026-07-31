@@ -30,6 +30,12 @@ final class AppState: ObservableObject {
     @Published var autoUpdateCheck = true {
         didSet { scheduleSave() }
     }
+    /// New terminals run inside tmux, so their agents outlive the app (see
+    /// Durable.swift). Only takes effect for terminals created from now on —
+    /// existing ones keep whatever they were created as.
+    @Published var durableTerminals = false {
+        didSet { scheduleSave() }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -81,6 +87,7 @@ final class AppState: ObservableObject {
             L10n.current = saved.language
             appearance = saved.appearance
             autoUpdateCheck = saved.autoUpdateCheck
+            durableTerminals = saved.durableTerminals
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
@@ -361,7 +368,11 @@ final class AppState: ObservableObject {
 
     @discardableResult
     func addSession(directory: String, groupID: UUID) -> TerminalSession {
-        let session = TerminalSession(groupID: groupID, workingDirectory: directory)
+        var session = TerminalSession(groupID: groupID, workingDirectory: directory)
+        // Decided once, here: the multiplexer has to own the process tree from
+        // the very first process. Without tmux installed the terminal is simply
+        // an ordinary one — the feature degrades, it never fails.
+        session.durable = durableTerminals && Durable.isAvailable
         sessions[session.id] = session
         if let idx = groups.firstIndex(where: { $0.id == groupID }) {
             groups[idx].sessionIDs.append(session.id)
@@ -374,6 +385,13 @@ final class AppState: ObservableObject {
     func closeSession(_ id: UUID) {
         guard let session = sessions[id] else { return }
         TerminalRegistry.shared.close(id)
+        // Closing a terminal on purpose ends its agent — durability is about
+        // surviving *our* restarts, not about outliving the terminal itself.
+        // Detaching the client is not enough: tmux would keep the session alive
+        // forever with nothing to reattach it to.
+        if session.durable {
+            Task.detached { Durable.killSession(for: id) }
+        }
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
@@ -895,7 +913,8 @@ final class AppState: ObservableObject {
             aiEnabled: aiEnabled,
             language: language,
             appearance: appearance,
-            autoUpdateCheck: autoUpdateCheck
+            autoUpdateCheck: autoUpdateCheck,
+            durableTerminals: durableTerminals
         )
         do {
             let encoder = JSONEncoder()
@@ -932,6 +951,7 @@ final class AppState: ObservableObject {
         language = state.language
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
+        durableTerminals = state.durableTerminals
         windowsToOpen = windows.dropFirst().map(\.id)
 
         refreshDockBadge()
@@ -972,6 +992,24 @@ final class AppState: ObservableObject {
             self.isRestoring = false
             self.restoreResumeIDs = [:]
         }
+
+        reapOrphanedDurableSessions(keeping: Set(sessions.keys))
+    }
+
+    /// Kill the tmux sessions of terminals that no longer exist. A durable
+    /// session outliving its terminal is the whole point *while the terminal is
+    /// coming back* — but a terminal closed in a previous run, or lost with a
+    /// discarded state, would otherwise leave its agent running forever with
+    /// nothing attached to it. Runs off-main: it shells out to tmux.
+    ///
+    /// Only unattached sessions are considered, so a second Planchette running
+    /// at the same time keeps its agents even when this one starts fresh.
+    func reapOrphanedDurableSessions(keeping live: Set<UUID>) {
+        Task.detached {
+            for id in Durable.unattachedSessionIDs() where !live.contains(id) {
+                Durable.killSession(for: id)
+            }
+        }
     }
 
     /// Start fresh ("Neu") — the previous state is archived, not deleted.
@@ -985,6 +1023,9 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.stateURL)
         // Drop stale scrollback dumps so a fresh start shows no old history.
         try? FileManager.default.removeItem(at: Self.scrollbackDir)
+        // "Start fresh" means fresh: no durable session from the discarded state
+        // may keep running, since nothing will ever attach to it again.
+        reapOrphanedDurableSessions(keeping: [])
         groups = []
         sessions = [:]
         windows = [WindowModel(id: Self.mainWindowID)]
@@ -993,6 +1034,7 @@ final class AppState: ObservableObject {
         language = previous?.language ?? language
         appearance = previous?.appearance ?? appearance
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
+        durableTerminals = previous?.durableTerminals ?? durableTerminals
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

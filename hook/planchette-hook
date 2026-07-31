@@ -15,7 +15,15 @@
 [ -n "$PLANCHETTE_SESSION" ] || exit 0
 
 SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette.sock}"
-[ -S "$SOCKET" ] || exit 0
+# A durable terminal's agent outlives the app that started it (see
+# Durable.swift), so its $PLANCHETTE_SOCKET names the *old* pid's socket. The
+# running app publishes where it actually listens, and we fall back to that —
+# otherwise the attention engine goes deaf for exactly the sessions that
+# survived. The env var is still tried first: two instances can run at once and
+# this terminal belongs to whichever opened it, so the pointer must never
+# override a socket that answers.
+POINTER=""
+[ -r "$HOME/.planchette/socket" ] && POINTER=$(cat "$HOME/.planchette/socket" 2>/dev/null)
 
 # Agent label, passed through unchanged: the app maps an unknown label to "no
 # recognized agent", which is the safe answer. Guessing "claude" here would hand
@@ -27,8 +35,18 @@ agent="${1:-claude}"
 payload=$(cat)
 [ -n "$payload" ] || payload='{}'
 
-printf '{"planchette_session":"%s","agent":"%s","event":%s}' \
-    "${PLANCHETTE_SESSION:-}" "$agent" "$payload" \
-    | nc -U "$SOCKET" >/dev/null 2>&1 || true
+event=$(printf '{"planchette_session":"%s","agent":"%s","event":%s}' \
+    "${PLANCHETTE_SESSION:-}" "$agent" "$payload")
+
+# An app that was killed rather than quit leaves its socket file behind, so
+# `-S` proves nothing about whether anyone is listening — only a failed send
+# does. Try each candidate in turn and stop at the first that accepts.
+for target in "$SOCKET" "$POINTER"; do
+    [ -n "$target" ] || continue
+    [ -S "$target" ] || continue
+    if printf '%s' "$event" | nc -U "$target" >/dev/null 2>&1; then
+        break
+    fi
+done
 
 exit 0

@@ -49,6 +49,7 @@ groups terminals by project. See [README.md](README.md) and
 | `UpdateService.swift` | GitHub-releases update check |
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
+| `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
 | `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `InboxView`, `QuickSwitcherView`, `TagViews` |
@@ -79,6 +80,17 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
 - **Persistence is restore-based, no daemon.** Processes don't survive a reboot;
   Claude sessions come back via `claude --resume <id>`, dev servers via a
   per-session startup command.
+- **A durable terminal must not be "restored".** With `session.durable` the shell
+  runs inside tmux (`Durable.swift`), so after a restart the agent is still there
+  and `TerminalRegistry` re-attaches instead of replaying anything. Adding a new
+  restore step means guarding it with the same `has-session` probe — replaying
+  scrollback or `claude --resume` into a live session `cat`s a stale snapshot over
+  a running TUI and starts a *second* agent beside the first.
+- **Never assume `$PLANCHETTE_SOCKET` is live.** A durable terminal's environment
+  is frozen at the moment its tmux session was created, so it names the socket of
+  an app instance that may be long dead. Anything talking to us from inside a
+  terminal (hook, CLI, click command) must fall back to `~/.planchette/socket`,
+  which the running instance publishes.
 
 ## Verifying a change
 

@@ -15,7 +15,7 @@ runs inside whatever terminal you already use.
 | Size | 6.2k LOC Swift, 69 tests | 202k LOC Rust, 17k LOC integration tests, ~3.1k unit tests |
 | Agents recognized | Claude Code only | 19 (claude, codex, gemini, cursor, copilot, amp, droid, opencode, …) |
 | State signal | Claude Code hooks only | hooks **and** screen detection, arbitrated |
-| Survives app quit | no (layout persists, work does not) | yes — client/server, detach + reattach, over SSH |
+| Survives app quit | yes for durable terminals (tmux), not a reboot | yes — client/server, detach + reattach, over SSH |
 | Agents can drive it | no | yes — socket API + `herdr` CLI + agent skill |
 | Extensibility | none | plugins + marketplace |
 | Platforms | macOS only | macOS, Linux, Windows (beta) |
@@ -46,8 +46,12 @@ runs inside whatever terminal you already use.
    `HERDR_ENV=1` guard. We inject `PLANCHETTE_SESSION` already and have a socket — but
    ours is inbound-only, so agents are objects in Planchette, never actors.
 4. **Work survives everything.** A server owns the PTYs; clients attach and detach
-   (`server/headless.rs`, `server/handoff.rs`, `tests/detach_reattach.rs`). We kill every
-   terminal on quit and replay `claude --resume` on restore, which loses the running turn.
+   (`server/headless.rs`, `server/handoff.rs`, `tests/detach_reattach.rs`). We killed every
+   terminal on quit and replayed `claude --resume` on restore, which loses the running turn.
+   *Largely closed since:* durable terminals run the shell inside tmux, so the agent
+   survives quit, crash and Install & Relaunch and we re-attach instead of replaying
+   (docs/LIVE-UPDATE.md § Tier C1). herdr is still ahead on the parts that need a daemon
+   of one's own: surviving a reboot, and attaching from another machine.
 5. **Sharper done/idle semantics.** `idle` = ready *and* its tab was seen in the focused
    UI; `done` = the same underlying state reached while unseen. Focus marks it seen; CLI
    reads deliberately do not. Our `ready` has no seen-tracking, so green means "finished
@@ -155,7 +159,10 @@ caught. Every hook event × every source × every current state, as data.
   directory; it does not — that was an untracked local artifact.)
 - **Detach/daemon architecture.** The honest assessment: correct, and too expensive for
   now. Do the cheap 80%: warn on quit while any session is `running`, and make the
-  restore dialog say plainly what it cannot bring back.
+  restore dialog say plainly what it cannot bring back. *Since revised:* the cheap 80%
+  turned out to be cheaper still — tmux already is the daemon, so durable terminals get
+  agent survival without us writing a server (docs/LIVE-UPDATE.md § Tier C1). Writing
+  our *own* daemon remains out of scope.
 
 ## Plan
 

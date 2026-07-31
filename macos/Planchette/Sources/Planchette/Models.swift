@@ -180,6 +180,11 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var claudeSessionID: String?
     var startupCommand: String?   // re-run after restore (e.g. `npm run dev`)
     var resumeClaudeOnRestore: Bool = true
+    /// This terminal runs its shell inside tmux, so the agent survives a quit,
+    /// a crash and Install & Relaunch (see Durable.swift). Fixed at creation:
+    /// the multiplexer has to be there from the first process, so flipping it
+    /// on a live terminal would do nothing until it is closed and reopened.
+    var durable: Bool = false
 
     // Attention (persisted so a restart doesn't lose the inbox)
     var state: AttentionState = .free
@@ -227,6 +232,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
+        durable = try c.decodeIfPresent(Bool.self, forKey: .durable) ?? false
         state = try c.decodeIfPresent(AttentionState.self, forKey: .state) ?? .free
         stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
@@ -406,6 +412,9 @@ struct PersistedState: Codable {
     var language: AppLanguage = .system
     var appearance: AppAppearance = .system
     var autoUpdateCheck: Bool = true
+    /// Whether new terminals are created durable (tmux-backed). Off by default:
+    /// it needs tmux installed, and it changes what a terminal *is*.
+    var durableTerminals: Bool = false
 
     init(
         groups: [SessionGroup],
@@ -414,7 +423,8 @@ struct PersistedState: Codable {
         aiEnabled: Bool,
         language: AppLanguage,
         appearance: AppAppearance,
-        autoUpdateCheck: Bool
+        autoUpdateCheck: Bool,
+        durableTerminals: Bool
     ) {
         self.groups = groups
         self.sessions = sessions
@@ -423,6 +433,7 @@ struct PersistedState: Codable {
         self.language = language
         self.appearance = appearance
         self.autoUpdateCheck = autoUpdateCheck
+        self.durableTerminals = durableTerminals
     }
 
     init(from decoder: Decoder) throws {
@@ -435,5 +446,6 @@ struct PersistedState: Codable {
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
+        durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? false
     }
 }

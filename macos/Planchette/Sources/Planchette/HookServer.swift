@@ -8,6 +8,17 @@ final class HookServer {
     /// The hook finds us via the PLANCHETTE_SOCKET env var in each terminal.
     static let socketPath = "/tmp/planchette-\(getpid()).sock"
 
+    /// Stable pointer to the live socket, for callers whose environment is stale.
+    /// A durable terminal's agent survives our restart (see Durable.swift) with
+    /// the *old* pid's socket path baked into its environment — the hook and the
+    /// CLI fall back to reading this file, so the attention engine keeps working
+    /// for an agent that outlived the app that started it.
+    static var socketPointerURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".planchette", isDirectory: true)
+            .appendingPathComponent("socket")
+    }
+
     private var fd: Int32 = -1
     private var acceptSource: DispatchSourceRead?
     private let queue = DispatchQueue(label: "planchette.hook-server")
@@ -20,6 +31,7 @@ final class HookServer {
 
     func start() {
         unlink(Self.socketPath)
+        Self.removeSocketsOfDeadInstances()
 
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { NSLog("hook-server: socket() failed"); return }
@@ -44,6 +56,8 @@ final class HookServer {
         // drive UI state, so keep other local users/processes out.
         chmod(Self.socketPath, 0o600)
 
+        publishSocketPointer()
+
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
         source.setEventHandler { [weak self] in self?.acceptOne() }
         source.resume()
@@ -55,6 +69,59 @@ final class HookServer {
         acceptSource?.cancel()
         if fd >= 0 { close(fd) }
         unlink(Self.socketPath)
+        // Only clear the pointer if it still names *our* socket: a second
+        // instance may have taken over in the meantime.
+        if (try? String(contentsOf: Self.socketPointerURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) == Self.socketPath {
+            try? FileManager.default.removeItem(at: Self.socketPointerURL)
+        }
+    }
+
+    /// Delete `/tmp/planchette-<pid>.sock` files whose process is gone.
+    ///
+    /// An app killed rather than quit never runs `stop()`, so its socket file
+    /// outlives it. That matters beyond tidiness: a caller inside a durable
+    /// terminal tests `-S $PLANCHETTE_SOCKET` to decide whether it still has a
+    /// live app, and a leftover file makes that test lie — the caller then talks
+    /// to nothing instead of falling back to the published pointer.
+    ///
+    /// Only files whose pid is dead are touched, so a second running instance
+    /// keeps its own socket (that separation is the point of the per-pid name).
+    static func removeSocketsOfDeadInstances() {
+        let dir = "/tmp"
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir) else { return }
+        for name in names {
+            guard let pid = pidOfSocketFile(named: name), pid != getpid() else { continue }
+            // ESRCH = no such process. EPERM would mean it exists but is not
+            // ours, which is reason to leave it alone.
+            if kill(pid, 0) != 0, errno == ESRCH {
+                unlink("\(dir)/\(name)")
+            }
+        }
+    }
+
+    /// Pure: the pid encoded in a `planchette-<pid>.sock` filename, if it is one.
+    static func pidOfSocketFile(named name: String) -> pid_t? {
+        let prefix = "planchette-", suffix = ".sock"
+        guard name.hasPrefix(prefix), name.hasSuffix(suffix) else { return nil }
+        let digits = name.dropFirst(prefix.count).dropLast(suffix.count)
+        guard !digits.isEmpty, digits.allSatisfy(\.isNumber),
+              let pid = pid_t(digits), pid > 0
+        else { return nil }
+        return pid
+    }
+
+    private func publishSocketPointer() {
+        let url = Self.socketPointerURL
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try (Self.socketPath + "\n").write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600], ofItemAtPath: url.path)
+        } catch {
+            NSLog("hook-server: could not publish socket pointer: \(error)")
+        }
     }
 
     private func acceptOne() {
