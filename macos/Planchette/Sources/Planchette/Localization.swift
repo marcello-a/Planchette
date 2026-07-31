@@ -85,6 +85,10 @@ enum LKey: String, CaseIterable {
     // Inbox
     case attention, allQuiet, waitingForAnswer, doneSeeResult
 
+    // Worktrees
+    case newWorktree, newWorktreeHelp, worktreeBranchPrompt, worktreeBasePrompt
+    case worktreeFailed, removeWorktreeTitle, removeWorktreeBody, removeWorktree, keepWorktree
+
     // Quick switcher
     case switcherPlaceholder
 
@@ -239,6 +243,7 @@ enum L10n {
         .newProject: "New project…", .newProjectHelp: "Add a project from a folder", .addTerminalHelp: "Add a terminal in this project's folder",
         .fontSmaller: "Smaller font (⌘-)", .fontLarger: "Larger font (⌘+)", .fontReset: "Reset font size (⌘0)",
         .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .clearReady: "Hide idle", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All",
+        .newWorktree: "New worktree…", .newWorktreeHelp: "Create a git worktree and open it as a project", .worktreeBranchPrompt: "Branch for the new worktree", .worktreeBasePrompt: "Base (empty = current HEAD)", .worktreeFailed: "Could not create the worktree", .removeWorktreeTitle: "Remove the checkout?", .removeWorktreeBody: "Delete the worktree at \"%@\"? Git refuses while it still has uncommitted changes.", .removeWorktree: "Remove", .keepWorktree: "Keep",
     ]
 
     // MARK: German
@@ -309,6 +314,7 @@ enum L10n {
         .newProject: "Neues Projekt…", .newProjectHelp: "Projekt aus einem Ordner hinzufügen", .addTerminalHelp: "Terminal im Ordner dieses Projekts hinzufügen",
         .fontSmaller: "Kleinere Schrift (⌘-)", .fontLarger: "Größere Schrift (⌘+)", .fontReset: "Schriftgröße zurücksetzen (⌘0)",
         .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .clearReady: "Ruhige ausblenden", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen",
+        .newWorktree: "Neuer Worktree…", .newWorktreeHelp: "Git-Worktree anlegen und als Projekt öffnen", .worktreeBranchPrompt: "Branch für den neuen Worktree", .worktreeBasePrompt: "Basis (leer = aktueller HEAD)", .worktreeFailed: "Worktree konnte nicht angelegt werden", .removeWorktreeTitle: "Arbeitskopie entfernen?", .removeWorktreeBody: "Worktree unter \"%@\" löschen? Git verweigert das, solange dort uncommittete Änderungen liegen.", .removeWorktree: "Entfernen", .keepWorktree: "Behalten",
     ]
 
     // MARK: French
@@ -379,6 +385,7 @@ enum L10n {
         .newProject: "Nouveau projet…", .newProjectHelp: "Ajouter un projet depuis un dossier", .addTerminalHelp: "Ajouter un terminal dans le dossier de ce projet",
         .fontSmaller: "Police plus petite (⌘-)", .fontLarger: "Police plus grande (⌘+)", .fontReset: "Réinitialiser la police (⌘0)",
         .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .clearReady: "Masquer les inactifs", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner",
+        .newWorktree: "Nouveau worktree…", .newWorktreeHelp: "Créer un worktree git et l'ouvrir comme projet", .worktreeBranchPrompt: "Branche du nouveau worktree", .worktreeBasePrompt: "Base (vide = HEAD actuel)", .worktreeFailed: "Impossible de créer le worktree", .removeWorktreeTitle: "Supprimer la copie de travail ?", .removeWorktreeBody: "Supprimer le worktree dans « %@ » ? Git refuse tant qu'il reste des modifications non validées.", .removeWorktree: "Supprimer", .keepWorktree: "Conserver",
     ]
 
     // MARK: Spanish
@@ -449,6 +456,7 @@ enum L10n {
         .newProject: "Nuevo proyecto…", .newProjectHelp: "Añadir un proyecto desde una carpeta", .addTerminalHelp: "Añadir un terminal en la carpeta de este proyecto",
         .fontSmaller: "Fuente más pequeña (⌘-)", .fontLarger: "Fuente más grande (⌘+)", .fontReset: "Restablecer tamaño (⌘0)",
         .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .clearReady: "Ocultar inactivos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo",
+        .newWorktree: "Nuevo worktree…", .newWorktreeHelp: "Crear un worktree de git y abrirlo como proyecto", .worktreeBranchPrompt: "Rama para el nuevo worktree", .worktreeBasePrompt: "Base (vacío = HEAD actual)", .worktreeFailed: "No se pudo crear el worktree", .removeWorktreeTitle: "¿Eliminar la copia de trabajo?", .removeWorktreeBody: "¿Borrar el worktree en «%@»? Git se niega mientras haya cambios sin confirmar.", .removeWorktree: "Eliminar", .keepWorktree: "Conservar",
     ]
 
     // MARK: Italian
@@ -519,6 +527,7 @@ enum L10n {
         .newProject: "Nuovo progetto…", .newProjectHelp: "Aggiungi un progetto da una cartella", .addTerminalHelp: "Aggiungi un terminale nella cartella di questo progetto",
         .fontSmaller: "Carattere più piccolo (⌘-)", .fontLarger: "Carattere più grande (⌘+)", .fontReset: "Reimposta dimensione (⌘0)",
         .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .clearReady: "Nascondi inattivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto",
+        .newWorktree: "Nuovo worktree…", .newWorktreeHelp: "Crea un worktree git e aprilo come progetto", .worktreeBranchPrompt: "Branch per il nuovo worktree", .worktreeBasePrompt: "Base (vuoto = HEAD attuale)", .worktreeFailed: "Impossibile creare il worktree", .removeWorktreeTitle: "Rimuovere la copia di lavoro?", .removeWorktreeBody: "Eliminare il worktree in «%@»? Git rifiuta finché contiene modifiche non committate.", .removeWorktree: "Rimuovi", .keepWorktree: "Mantieni",
     ]
 
     // MARK: Dutch
@@ -589,6 +598,7 @@ enum L10n {
         .newProject: "Nieuw project…", .newProjectHelp: "Een project vanuit een map toevoegen", .addTerminalHelp: "Een terminal in de map van dit project toevoegen",
         .fontSmaller: "Kleiner lettertype (⌘-)", .fontLarger: "Groter lettertype (⌘+)", .fontReset: "Lettergrootte herstellen (⌘0)",
         .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .clearReady: "Rustige verbergen", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren",
+        .newWorktree: "Nieuwe worktree…", .newWorktreeHelp: "Een git-worktree maken en als project openen", .worktreeBranchPrompt: "Branch voor de nieuwe worktree", .worktreeBasePrompt: "Basis (leeg = huidige HEAD)", .worktreeFailed: "Kon de worktree niet aanmaken", .removeWorktreeTitle: "Werkkopie verwijderen?", .removeWorktreeBody: "De worktree in \"%@\" verwijderen? Git weigert zolang er niet-vastgelegde wijzigingen zijn.", .removeWorktree: "Verwijderen", .keepWorktree: "Bewaren",
     ]
 
     // MARK: Portuguese
@@ -659,5 +669,6 @@ enum L10n {
         .newProject: "Novo projeto…", .newProjectHelp: "Adicionar um projeto a partir de uma pasta", .addTerminalHelp: "Adicionar um terminal na pasta deste projeto",
         .fontSmaller: "Fonte menor (⌘-)", .fontLarger: "Fonte maior (⌘+)", .fontReset: "Repor tamanho da fonte (⌘0)",
         .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .clearReady: "Ocultar inativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo",
+        .newWorktree: "Novo worktree…", .newWorktreeHelp: "Criar um worktree do git e abri-lo como projeto", .worktreeBranchPrompt: "Branch para o novo worktree", .worktreeBasePrompt: "Base (vazio = HEAD atual)", .worktreeFailed: "Não foi possível criar o worktree", .removeWorktreeTitle: "Remover a cópia de trabalho?", .removeWorktreeBody: "Apagar o worktree em \"%@\"? O git recusa enquanto houver alterações não submetidas.", .removeWorktree: "Remover", .keepWorktree: "Manter",
     ]
 }

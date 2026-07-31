@@ -25,6 +25,8 @@ struct PlanchetteApp: App {
             CommandMenu(L10n.t(.sessionMenu)) {
                 Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
                     .keyboardShortcut("t")
+                Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
+                    .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button(L10n.t(.quickSwitcher)) { delegate.appState.showQuickSwitcher() }
                     .keyboardShortcut("k")
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
@@ -540,6 +542,27 @@ extension AppState {
         let group = addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
+    }
+
+    /// Ask for a branch and open a git worktree of the *current* project as a
+    /// project of its own. The repo comes from the focused terminal, so this is
+    /// "another branch of what I'm looking at" — the way several agents end up
+    /// working on one repo at once.
+    func promptNewWorktree() {
+        let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
+        guard let windowID,
+              let window = window(for: windowID),
+              let groupID = window.selectedGroupID,
+              let group = groups.first(where: { $0.id == groupID }),
+              let sessionID = group.activeSessionID ?? group.sessionIDs.first,
+              let session = sessions[sessionID]
+        else { return }
+        let directory = session.currentDirectory
+        promptText(title: L10n.t(.worktreeBranchPrompt), value: "") { [weak self] branch in
+            let branch = branch.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !branch.isEmpty else { return }
+            self?.newWorktreeProject(fromDirectory: directory, branch: branch, base: nil)
+        }
     }
 
     /// Modal one-line text prompt (rename, startup command, …) shared by the

@@ -154,6 +154,123 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class WorktreeTests: XCTestCase {
+    // A branch name is not a path: slashes and spaces must not create nested
+    // directories or break the shell.
+    func testSlugFlattensBranchNames() {
+        XCTAssertEqual(Worktrees.slug(forBranch: "marcello/feat/NIE-123-x"), "marcello-feat-NIE-123-x")
+        XCTAssertEqual(Worktrees.slug(forBranch: "fix bug"), "fix-bug")
+        XCTAssertEqual(Worktrees.slug(forBranch: "release/1.2.0"), "release-1.2.0")
+        XCTAssertEqual(Worktrees.slug(forBranch: "  spaced  "), "spaced")
+        // Nothing usable left → still a valid single segment.
+        XCTAssertEqual(Worktrees.slug(forBranch: "///"), "worktree")
+        XCTAssertFalse(Worktrees.slug(forBranch: "a/b").contains("/"))
+    }
+
+    // Checkouts live beside the repo, never inside it: a nested checkout would
+    // show up in git status, ripgrep, build globs and Planchette's own scans.
+    func testCheckoutLivesBesideTheRepo() {
+        let path = Worktrees.defaultPath(repoRoot: "/Users/me/dev/planchette", branch: "feat/x")
+        XCTAssertEqual(path, "/Users/me/dev/planchette.worktrees/feat-x")
+        XCTAssertFalse(path.hasPrefix("/Users/me/dev/planchette/"))
+    }
+
+    // The project name should read like the ticket you're working on.
+    func testGroupNameUsesTheTicketWhenThereIsOne() {
+        XCTAssertEqual(
+            Worktrees.groupName(repoName: "planchette", branch: "marcello/feat/NIE-123-drop"),
+            "planchette · NIE-123")
+        XCTAssertEqual(
+            Worktrees.groupName(repoName: "planchette", branch: "spike"), "planchette · spike")
+    }
+
+    func testParsesWorktreeList() {
+        let output = """
+            worktree /Users/me/dev/planchette
+            HEAD abc123
+            branch refs/heads/main
+
+            worktree /Users/me/dev/planchette.worktrees/feat-x
+            HEAD def456
+            branch refs/heads/feat/x
+            """
+        XCTAssertEqual(
+            Worktrees.parseWorktreeList(output),
+            ["/Users/me/dev/planchette", "/Users/me/dev/planchette.worktrees/feat-x"])
+        XCTAssertTrue(Worktrees.parseWorktreeList("").isEmpty)
+    }
+}
+
+/// Exercises the real `git worktree` plumbing in a throwaway repo — the part
+/// that pure tests cannot cover, and the part that actually breaks.
+final class WorktreeGitTests: XCTestCase {
+    private var repo: String!
+
+    override func setUpWithError() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-wt-\(UUID().uuidString)/repo")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        repo = dir.path
+        try Worktrees.git(["init", "-q", "-b", "main"], in: repo)
+        try Worktrees.git(["config", "user.email", "test@example.com"], in: repo)
+        try Worktrees.git(["config", "user.name", "Test"], in: repo)
+        try "hello".write(
+            to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try Worktrees.git(["add", "."], in: repo)
+        try Worktrees.git(["commit", "-qm", "init"], in: repo)
+    }
+
+    override func tearDownWithError() throws {
+        // The whole sandbox, including any checkout beside the repo.
+        try? FileManager.default.removeItem(
+            at: URL(fileURLWithPath: repo).deletingLastPathComponent())
+    }
+
+    func testCreateOpensACheckoutOnANewBranch() throws {
+        let path = try Worktrees.create(repoRoot: repo, branch: "feat/drop", base: nil)
+        // The returned path is git's own, so it is comparable with worktree list
+        // even where Foundation cannot resolve the symlink (/var vs /private/var).
+        XCTAssertTrue(path.hasSuffix("repo.worktrees/feat-drop"), path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path + "/README.md"))
+        // The checkout is on the new branch, and the repo knows about it.
+        XCTAssertEqual(
+            try Worktrees.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "feat/drop")
+        XCTAssertTrue(Worktrees.list(repoRoot: repo).contains(path))
+        XCTAssertEqual(Worktrees.repoRoot(of: path), path)
+    }
+
+    func testCreateChecksOutAnExistingBranch() throws {
+        try Worktrees.git(["branch", "existing"], in: repo)
+        let path = try Worktrees.create(repoRoot: repo, branch: "existing", base: nil)
+        XCTAssertEqual(
+            try Worktrees.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "existing")
+    }
+
+    func testCreateRefusesToOverwriteAnExistingPath() throws {
+        _ = try Worktrees.create(repoRoot: repo, branch: "twice", base: nil)
+        XCTAssertThrowsError(try Worktrees.create(repoRoot: repo, branch: "twice", base: nil))
+    }
+
+    // The guard: git itself refuses to remove a dirty checkout, and we surface
+    // that instead of forcing it. Losing uncommitted agent work is unacceptable.
+    func testRemoveRefusesWhileThereAreUncommittedChanges() throws {
+        let path = try Worktrees.create(repoRoot: repo, branch: "dirty", base: nil)
+        try "scratch".write(
+            to: URL(fileURLWithPath: path).appendingPathComponent("wip.txt"),
+            atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try Worktrees.remove(path: path, repoRoot: repo))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path), "checkout must survive")
+        // Clean → removable.
+        try FileManager.default.removeItem(at: URL(fileURLWithPath: path + "/wip.txt"))
+        try Worktrees.remove(path: path, repoRoot: repo)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+    }
+
+    func testRepoRootIsNilOutsideARepo() {
+        XCTAssertNil(Worktrees.repoRoot(of: "/tmp"))
+    }
+}
+
 final class ScreenDetectionTests: XCTestCase {
     private var claudeRules: [ScreenRule] { ScreenDetector.builtIn.rules(for: .claude) }
 

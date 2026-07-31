@@ -364,6 +364,12 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     var sessionIDs: [UUID] = []
     var activeSessionID: UUID?
     var clusterLayout: SplitLayout?   // custom split arrangement (cluster mode)
+    /// Set when this project is a git worktree Planchette created: the checkout
+    /// path, so closing the project can offer to remove it again. Optional, so
+    /// older state decodes unchanged.
+    var worktreePath: String?
+    /// The repo the worktree belongs to — `git worktree remove` has to run there.
+    var worktreeRepoRoot: String?
 
     init(id: UUID = UUID(), name: String) {
         self.id = id

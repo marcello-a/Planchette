@@ -352,6 +352,80 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
+    // MARK: Worktrees
+
+    /// Create a git worktree for `branch` and open it as its own project.
+    /// Running several agents on one repo means running them on several
+    /// branches; without this, each checkout is an unrelated-looking folder.
+    ///
+    /// Git runs off-main (rule 5) and the group is only created once the
+    /// checkout exists, so a failure leaves no half-project behind.
+    func newWorktreeProject(fromDirectory directory: String, branch: String, base: String?) {
+        Task { [weak self] in
+            let result: Result<(path: String, repoRoot: String), Error> = await Task.detached {
+                guard let repoRoot = Worktrees.repoRoot(of: directory) else {
+                    return .failure(Worktrees.GitError(message: "\(directory) is not a git repository"))
+                }
+                do {
+                    let path = try Worktrees.create(repoRoot: repoRoot, branch: branch, base: base)
+                    return .success((path, repoRoot))
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+
+            guard let self else { return }
+            switch result {
+            case .success(let created):
+                let repoName = URL(fileURLWithPath: created.repoRoot).lastPathComponent
+                let group = self.addGroup(
+                    name: Worktrees.groupName(repoName: repoName, branch: branch))
+                self.updateGroup(group.id) {
+                    $0.worktreePath = created.path
+                    $0.worktreeRepoRoot = created.repoRoot
+                }
+                self.addSession(directory: created.path, groupID: group.id)
+                if let stored = self.groups.first(where: { $0.id == group.id }) {
+                    self.select(group: stored)
+                }
+            case .failure(let error):
+                self.presentWorktreeFailure(error)
+            }
+        }
+    }
+
+    private func presentWorktreeFailure(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.t(.worktreeFailed)
+        alert.informativeText = error.localizedDescription
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.runModal()
+    }
+
+    /// Offer to delete the checkout of a closed worktree project. Git itself
+    /// refuses while there are uncommitted changes — that refusal is the guard,
+    /// so it is reported rather than forced away.
+    private func offerWorktreeRemoval(path: String, repoRoot: String) {
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.removeWorktreeTitle)
+        alert.informativeText = L10n.t(.removeWorktreeBody, path)
+        alert.addButton(withTitle: L10n.t(.removeWorktree))
+        alert.addButton(withTitle: L10n.t(.keepWorktree))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        Task { [weak self] in
+            let error: Error? = await Task.detached {
+                do {
+                    try Worktrees.remove(path: path, repoRoot: repoRoot)
+                    return nil
+                } catch {
+                    return error
+                }
+            }.value
+            if let error { self?.presentWorktreeFailure(error) }
+        }
+    }
+
     /// Close a whole project: free its terminals' surfaces, drop its sessions,
     /// remove the group, and repair window group lists and selection.
     func closeGroup(_ groupID: UUID) {
@@ -366,6 +440,10 @@ final class AppState: ObservableObject {
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
         scheduleSave()
+        // The checkout outlives the project unless the user says otherwise.
+        if let path = group.worktreePath, let root = group.worktreeRepoRoot {
+            offerWorktreeRemoval(path: path, repoRoot: root)
+        }
     }
 
     /// Reorder terminals within a group: place `dragged` right before `target`.

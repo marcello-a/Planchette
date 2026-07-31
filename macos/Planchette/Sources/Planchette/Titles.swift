@@ -5,6 +5,11 @@ enum Titles {
     /// Reads .git/HEAD directly — no subprocess, cheap enough to call from UI.
     static func ticket(forDirectory dir: String) -> String? {
         guard let branch = gitBranch(forDirectory: dir) else { return nil }
+        return ticket(inBranch: branch)
+    }
+
+    /// The ticket key inside a branch name (`marcello/feat/NIE-123-x` → `NIE-123`).
+    static func ticket(inBranch branch: String) -> String? {
         guard let range = branch.range(of: #"[A-Z]{2,10}-\d+"#, options: .regularExpression) else {
             return nil
         }
