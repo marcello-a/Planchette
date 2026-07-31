@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Added
+- **More than one agent.** Terminals now carry an agent kind, reported by the
+  hook script itself. Codex is wired up (`~/.codex/hooks.json` + the `hooks`
+  feature flag) with a session claim; Claude Code keeps its full lifecycle.
+- **Screen detection as a fallback signal.** The viewport is read every 1.5s and
+  arbitrated against the hooks: while Claude Code is live the screen may only
+  escalate to `waiting` on a visible permission prompt, and without hook
+  authority it drives every state. Rules are data — override them in
+  `screen-rules.json` instead of waiting for a release.
+- **Git worktrees as projects** (Session → New worktree, ⌘⇧T). The checkout is
+  created beside the repo, opened as its own project named after repo and
+  ticket, and offered for removal when the project closes — git refuses while it
+  is dirty and that refusal is reported, not forced.
+- **Agents can drive Planchette**: a socket control API (`session list/get/new/
+  prompt/read/wait`, `project list`) plus a `planchette` CLI handed to every
+  terminal as `$PLANCHETTE_CLI`, and a skill documenting it.
+- **Unreviewed work is distinguishable.** A turn that finishes while you are
+  looking elsewhere is unseen; the sidebar's green badge counts only that, and
+  focusing the tab clears it. `waiting`/`error` still persist — a glance isn't
+  an answer.
+- **⌘Q asks before killing a running turn**, and says what a restore can and
+  cannot bring back.
+
+### Changed
+- The no-scraping rule in AGENTS.md is replaced by the arbitration boundary:
+  hooks are the authority, the screen is a bounded fallback that may never
+  overrule a hook that is talking to us.
+
 ## [0.2.8] — 2026-07-30
 
 ### Added

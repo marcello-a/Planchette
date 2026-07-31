@@ -21,8 +21,28 @@ architecture and roadmap.
 
 **Working today (macOS, `macos/Planchette`):**
 - Multiple libghostty terminals in groups: tab view or cluster grid per group
-- Attention engine driven by Claude Code hooks: working / asking / done / free,
+- Attention engine driven by agent hooks: running / waiting / done / free,
   inbox, menu-bar badge, per-session idle timers
+- **Screen fallback**: where hooks stay silent, the terminal viewport is read
+  every 1.5s — a visible permission prompt lights the terminal up even if its
+  hook never fired. Hooks stay the authority; the rules live in editable JSON,
+  not in the binary
+- **More than one agent**: Claude Code (full lifecycle via hooks) and Codex
+  (session claim + screen). Each terminal shows which agent it runs
+- **Drop a screenshot onto a terminal** — with Claude Code running it is pasted
+  as an image (`[Image #1]`), not as a long `~/Desktop/Screen Shot ….png` path.
+  Anything else still types the shell-escaped path
+- **Git worktrees as projects** (⌘⇧T): create a branch's checkout beside the
+  repo and open it as its own project, named after the repo and ticket. Closing
+  it offers to remove the checkout — and refuses while it is dirty
+- **Agents can drive Planchette** — a socket API plus a `planchette` CLI handed
+  to every terminal: list sessions, open one, send a prompt, wait for a state,
+  read the output. So an agent can put a reviewer to work beside itself and
+  block on its verdict ([skill](skills/planchette/SKILL.md))
+- **Unreviewed work is visible**: green counts only what finished while you were
+  looking elsewhere; looking at the tab clears it. ⌘Q asks before killing a
+  running turn
+- Clicking a notification jumps straight to that window, project and tab
 - Favorites (Hauptprojekte) — prioritized in inbox, notifications, switcher
 - Quick switcher ⌘K (fuzzy over title/path/branch/tags) and ⌘⇧K (jump to the
   most urgent waiting session)
