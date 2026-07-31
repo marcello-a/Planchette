@@ -154,6 +154,74 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class ControlAPITests: XCTestCase {
+    // Hook events and control requests share one socket: a hook payload must
+    // never be mistaken for a command.
+    func testHookPayloadsAreNotRequests() {
+        XCTAssertNil(ControlAPI.parse(["planchette_session": "x", "event": [:]]))
+        XCTAssertNil(ControlAPI.parse([:]))
+    }
+
+    func testParsesKnownCommandAndKeepsArguments() throws {
+        let parsed = ControlAPI.parse([
+            "planchette_request": "session.prompt",
+            "id": "11111111-2222-3333-4444-555555555555",
+            "text": "go",
+            "submit": false,
+        ])
+        guard case .success(let request) = try XCTUnwrap(parsed) else {
+            return XCTFail("expected a parsed request")
+        }
+        XCTAssertEqual(request.command, .sessionPrompt)
+        XCTAssertEqual(request.string("text"), "go")
+        XCTAssertEqual(request.bool("submit"), false)
+        XCTAssertNotNil(request.uuid("id"))
+        // The command name itself is not an argument.
+        XCTAssertNil(request.string("planchette_request"))
+    }
+
+    // An unknown command must say what *is* known: the caller is a shell script.
+    func testUnknownCommandListsTheSurface() throws {
+        guard case .failure(let failure) = try XCTUnwrap(
+            ControlAPI.parse(["planchette_request": "session.frobnicate"]))
+        else { return XCTFail("expected a failure") }
+        XCTAssertTrue(failure.message.contains("session.frobnicate"))
+        for command in ControlAPI.Command.allCases {
+            XCTAssertTrue(
+                failure.message.contains(command.rawValue), "should list \(command.rawValue)")
+        }
+    }
+
+    func testResponsesAreAlwaysDecodableJSONWithOK() throws {
+        for data in [
+            ControlAPI.encode(ok: true, result: ["sessions": []]),
+            ControlAPI.encode(ok: false, error: "nope"),
+        ] {
+            let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            XCTAssertNotNil(object?["ok"] as? Bool)
+        }
+        let failure = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: ControlAPI.encode(ok: false, error: "nope"))
+                as? [String: Any])
+        XCTAssertEqual(failure["error"] as? String, "nope")
+        XCTAssertEqual(failure["ok"] as? Bool, false)
+    }
+
+    // Values JSONSerialization would choke on must not produce invalid output.
+    func testUnencodableResultStillYieldsValidJSON() throws {
+        let data = ControlAPI.encode(ok: true, result: ["bad": Double.nan])
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        XCTAssertEqual(object?["ok"] as? Bool, false)
+    }
+
+    func testUUIDArgumentsRejectGarbage() {
+        guard case .success(let request)? = ControlAPI.parse([
+            "planchette_request": "session.get", "id": "not-a-uuid",
+        ]) else { return XCTFail("expected a parsed request") }
+        XCTAssertNil(request.uuid("id"))
+    }
+}
+
 final class SeenTrackingTests: XCTestCase {
     // "ready" means a turn ended at some point; unseen ready is the honest
     // answer to "what is waiting for my review?".

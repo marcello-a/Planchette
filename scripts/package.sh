@@ -54,6 +54,9 @@ fi
 # Bundle the Claude Code hook script so the app can auto-install it on launch.
 cp "$ROOT/hook/planchette-hook" "$APP/Contents/Resources/planchette-hook"
 chmod +x "$APP/Contents/Resources/planchette-hook"
+# The control CLI agents use to drive Planchette (see skills/planchette).
+cp "$ROOT/hook/planchette" "$APP/Contents/Resources/planchette"
+chmod +x "$APP/Contents/Resources/planchette"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

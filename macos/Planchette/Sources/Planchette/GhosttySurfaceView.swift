@@ -69,11 +69,14 @@ final class GhosttySurfaceNSView: NSView {
                 + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}'"
                 + " | nc -U \(HookServer.socketPath)"
         )
+        // So an agent in this terminal can drive Planchette (see skills/planchette).
+        let cliKey = strdup("PLANCHETTE_CLI")
+        let cliValue = strdup(HookInstaller.cliURL.path)
         let cwd = strdup(workingDirectory)
         let input = initialInput.map { strdup($0) }
         defer {
             free(envKey); free(envValue); free(sockKey); free(sockValue)
-            free(clickKey); free(clickValue); free(cwd)
+            free(clickKey); free(clickValue); free(cliKey); free(cliValue); free(cwd)
             if let input { free(input) }
         }
 
@@ -81,6 +84,7 @@ final class GhosttySurfaceNSView: NSView {
             ghostty_env_var_s(key: envKey, value: envValue),
             ghostty_env_var_s(key: sockKey, value: sockValue),
             ghostty_env_var_s(key: clickKey, value: clickValue),
+            ghostty_env_var_s(key: cliKey, value: cliValue),
         ]
         envVars.withUnsafeMutableBufferPointer { buf in
             cfg.env_vars = buf.baseAddress

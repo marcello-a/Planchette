@@ -68,7 +68,8 @@ final class HookServer {
         setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
 
         readQueue.async { [weak self] in
-            defer { close(client) }
+            var replied = false
+            defer { if !replied { close(client) } }
             var data = Data()
             var buf = [UInt8](repeating: 0, count: 65536)
             // Cap total payload so a flood can't grow memory unbounded.
@@ -78,18 +79,60 @@ final class HookServer {
                 guard n > 0 else { break }
                 data.append(buf, count: n)
             }
-            self?.handle(data: data)
+            // A control request answers on the same connection and owns the fd
+            // from here on; a hook event is fire-and-forget.
+            replied = self?.handle(data: data, client: client) ?? false
         }
     }
 
-    private func handle(data: Data) {
+    /// Write a response and close. Errors are ignored: a client that walked away
+    /// is normal and must never take the server down.
+    private func reply(_ data: Data, to client: Int32) {
+        var payload = data
+        payload.append(0x0A)
+        payload.withUnsafeBytes { buffer in
+            var offset = 0
+            while offset < buffer.count {
+                let written = write(client, buffer.baseAddress!.advanced(by: offset), buffer.count - offset)
+                if written <= 0 { break }
+                offset += written
+            }
+        }
+        close(client)
+    }
+
+    /// Returns true when the connection has been answered (and closed) here.
+    private func handle(data: Data, client: Int32) -> Bool {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            NSLog("hook-server: unparseable payload, ignored")
+            return false
+        }
+
+        // Control requests (agents driving Planchette) answer on this connection.
+        if let parsed = ControlAPI.parse(obj) {
+            switch parsed {
+            case .failure(let failure):
+                reply(ControlAPI.encode(ok: false, error: failure.message), to: client)
+            case .success(let request):
+                Task { @MainActor [weak self] in
+                    guard let appState = self?.appState else {
+                        self?.reply(
+                            ControlAPI.encode(ok: false, error: "app not ready"), to: client)
+                        return
+                    }
+                    let response = await ControlAPI.handle(request, state: appState)
+                    self?.reply(response, to: client)
+                }
+            }
+            return true
+        }
+
         guard
-            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let sessionString = obj["planchette_session"] as? String,
             let sessionID = UUID(uuidString: sessionString)
         else {
             NSLog("hook-server: payload without valid planchette_session, ignored")
-            return
+            return false
         }
         let event = obj["event"] as? [String: Any] ?? [:]
         let hookEvent = event["hook_event_name"] as? String ?? ""
@@ -102,7 +145,7 @@ final class HookServer {
             DispatchQueue.main.async { [weak self] in
                 self?.appState?.focusSession(sessionID)
             }
-            return
+            return false
         }
 
         let claudeSessionID = event["session_id"] as? String
@@ -127,5 +170,6 @@ final class HookServer {
                 agent: agent
             )
         }
+        return false
     }
 }

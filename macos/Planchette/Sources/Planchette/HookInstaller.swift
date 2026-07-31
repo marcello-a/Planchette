@@ -30,9 +30,19 @@ enum HookInstaller {
     /// ~/.planchette: agents run the hook command through the shell, and a
     /// space (e.g. "Application Support") would break the unquoted path.
     static var hookScriptURL: URL {
+        planchetteDirectory.appendingPathComponent("planchette-hook")
+    }
+
+    /// The control CLI agents call to drive Planchette. Deployed next to the
+    /// hook and handed to every terminal as $PLANCHETTE_CLI, so an agent never
+    /// has to guess a path and we never touch the user's PATH.
+    static var cliURL: URL {
+        planchetteDirectory.appendingPathComponent("planchette")
+    }
+
+    static var planchetteDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".planchette", isDirectory: true)
-            .appendingPathComponent("planchette-hook")
     }
 
     /// The command an agent's config invokes: the script plus the agent label,
@@ -54,6 +64,7 @@ enum HookInstaller {
     static func installIfNeeded() {
         do {
             try deployScript()
+            try deployCLI()
         } catch {
             NSLog("hook install failed: \(error)")
             return
@@ -72,6 +83,21 @@ enum HookInstaller {
         let dest = hookScriptURL
         let fm = FileManager.default
         try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
+            try? fm.removeItem(at: dest)
+            try fm.copyItem(at: bundled, to: dest)
+        }
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+    }
+
+    /// Same refresh-every-launch deal as the hook script.
+    private static func deployCLI() throws {
+        guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("planchette"),
+              FileManager.default.fileExists(atPath: bundled.path)
+        else { return }   // dev run (unbundled)
+        let dest = cliURL
+        let fm = FileManager.default
+        try fm.createDirectory(at: planchetteDirectory, withIntermediateDirectories: true)
         if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
             try? fm.removeItem(at: dest)
             try fm.copyItem(at: bundled, to: dest)

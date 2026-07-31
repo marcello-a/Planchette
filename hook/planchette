@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""planchette — drive Planchette from inside one of its terminals.
+
+Agents are objects in Planchette (it watches them); this makes them actors
+(they can ask it for things). It talks to the same unix socket the hooks use,
+one JSON request per connection, one JSON response back.
+
+    planchette session list
+    planchette session new --cwd "$PWD"
+    planchette session prompt --id <uuid> --text "review the diff"
+    planchette session wait --id <uuid> --until ready --timeout-ms 120000
+    planchette session read --id <uuid> --lines 80
+
+Only works inside a Planchette terminal: the socket path and the calling
+terminal's own id arrive as env vars ($PLANCHETTE_SOCKET, $PLANCHETTE_SESSION).
+Prints the JSON response; exits 1 when the app reports a failure, 2 on a usage
+error — the same shape the hook uses, so it is safe to script against.
+
+python3 rather than nc: macOS nc cannot half-close a unix socket, so it can
+never read a reply (see hook/planchette-hook, which is fire-and-forget).
+"""
+import argparse
+import json
+import os
+import socket
+import sys
+
+COMMANDS = {
+    "session": ["list", "get", "new", "prompt", "read", "wait"],
+    "project": ["list"],
+}
+
+
+def request(payload, timeout):
+    sock_path = os.environ.get("PLANCHETTE_SOCKET")
+    if not sock_path:
+        sys.stderr.write(
+            "not inside a Planchette terminal ($PLANCHETTE_SOCKET is unset)\n")
+        return 2
+    if not os.path.exists(sock_path):
+        sys.stderr.write(f"Planchette is not listening at {sock_path}\n")
+        return 2
+
+    # The caller's own terminal, so commands can default to "here".
+    session = os.environ.get("PLANCHETTE_SESSION")
+    if session:
+        payload.setdefault("session", session)
+
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    client.settimeout(timeout)
+    try:
+        client.connect(sock_path)
+        client.sendall(json.dumps(payload).encode())
+        client.shutdown(socket.SHUT_WR)  # the app answers on EOF
+        chunks = []
+        while True:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    except OSError as err:
+        sys.stderr.write(f"socket error: {err}\n")
+        return 2
+    finally:
+        client.close()
+
+    raw = b"".join(chunks).decode(errors="replace").strip()
+    if not raw:
+        sys.stderr.write("no response from Planchette\n")
+        return 2
+    try:
+        response = json.loads(raw)
+    except json.JSONDecodeError:
+        sys.stderr.write(f"unreadable response: {raw[:400]}\n")
+        return 2
+
+    print(json.dumps(response, indent=2, sort_keys=True))
+    if not response.get("ok"):
+        return 1
+    return 0
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="planchette", add_help=True)
+    parser.add_argument("group", choices=sorted(COMMANDS), nargs="?")
+    parser.add_argument("action", nargs="?")
+    parser.add_argument("--id", help="target terminal (default: the calling one)")
+    parser.add_argument("--project-id", help="project for session new")
+    parser.add_argument("--cwd", help="working directory for session new")
+    parser.add_argument("--text", help="text to send for session prompt")
+    parser.add_argument(
+        "--no-submit", action="store_true", help="type the text without pressing Enter")
+    parser.add_argument("--lines", type=int, help="lines to return for session read")
+    parser.add_argument(
+        "--scrollback", action="store_true", help="read history, not just the viewport")
+    parser.add_argument(
+        "--until", action="append",
+        help="state(s) to wait for: ready, waiting, error, free, running")
+    parser.add_argument("--timeout-ms", type=int, help="wait timeout (default 120000)")
+    parser.add_argument("--focus", action="store_true", help="switch to the new terminal")
+    args = parser.parse_args(argv)
+
+    if not args.group or not args.action:
+        # Print the surface instead of guessing: the app is the authority, but a
+        # bare invocation should still be useful.
+        for group, actions in sorted(COMMANDS.items()):
+            print(f"{group}: {' '.join(actions)}")
+        return 2
+    if args.action not in COMMANDS[args.group]:
+        sys.stderr.write(
+            f"unknown action \"{args.action}\" for {args.group}: "
+            f"{' '.join(COMMANDS[args.group])}\n")
+        return 2
+
+    payload = {"planchette_request": f"{args.group}.{args.action}"}
+    if args.id:
+        payload["id"] = args.id
+    if args.project_id:
+        payload["project_id"] = args.project_id
+    if args.cwd:
+        payload["cwd"] = os.path.abspath(args.cwd)
+    if args.text is not None:
+        payload["text"] = args.text
+    if args.no_submit:
+        payload["submit"] = False
+    if args.lines is not None:
+        payload["lines"] = args.lines
+    if args.scrollback:
+        payload["scrollback"] = True
+    if args.until:
+        payload["until"] = args.until
+    if args.timeout_ms is not None:
+        payload["timeout_ms"] = args.timeout_ms
+    if args.focus:
+        payload["focus"] = True
+
+    # A wait blocks in the app, so the socket timeout must outlive it.
+    wait_ms = args.timeout_ms or (120000 if args.action == "wait" else 10000)
+    return request(payload, timeout=wait_ms / 1000 + 5)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
