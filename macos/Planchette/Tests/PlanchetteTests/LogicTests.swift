@@ -154,6 +154,33 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class SeenTrackingTests: XCTestCase {
+    // "ready" means a turn ended at some point; unseen ready is the honest
+    // answer to "what is waiting for my review?".
+    func testSessionsStartSeen() {
+        let session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        XCTAssertTrue(session.seen, "a fresh terminal has nothing unreviewed")
+    }
+
+    // Older state has no flag: it must not all show up as unreviewed work.
+    func testDecodingOlderStateDefaultsToSeen() throws {
+        let json = """
+            {"id":"\(UUID().uuidString)","groupID":"\(UUID().uuidString)",
+             "workingDirectory":"/tmp","state":"ready"}
+            """
+        let session = try JSONDecoder().decode(TerminalSession.self, from: Data(json.utf8))
+        XCTAssertTrue(session.seen)
+        XCTAssertEqual(session.state, .ready)
+    }
+
+    func testSeenRoundTrips() throws {
+        var session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        session.seen = false
+        let data = try JSONEncoder().encode(session)
+        XCTAssertFalse(try JSONDecoder().decode(TerminalSession.self, from: data).seen)
+    }
+}
+
 final class WorktreeTests: XCTestCase {
     // A branch name is not a path: slashes and spaces must not create nested
     // directories or break the shell.

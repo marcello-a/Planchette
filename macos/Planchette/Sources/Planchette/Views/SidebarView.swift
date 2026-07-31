@@ -361,9 +361,13 @@ struct SidebarView: View {
         let sessions = appState.sessions(in: group)
         let waiting = sessions.filter { $0.state == .waiting }.count
         let errors = sessions.filter { $0.state == .error }.count
+        // Only work you haven't looked at yet: a green badge that never clears
+        // would just be "this project has terminals".
+        let done = sessions.filter { $0.state == .ready && !$0.seen }.count
         return HStack(spacing: 4) {
             if errors > 0 { StateCountBadge(state: .error, count: errors) }
             if waiting > 0 { StateCountBadge(state: .waiting, count: waiting) }
+            if done > 0 { StateCountBadge(state: .ready, count: done) }
         }
     }
 

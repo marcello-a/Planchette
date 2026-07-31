@@ -499,7 +499,33 @@ final class AppState: ObservableObject {
         updateGroup(groupID) { $0.clusterLayout = result }
     }
 
+    /// Whether this terminal is the one on screen: the active tab of the
+    /// selected project, in a window that is actually visible.
+    func isVisible(_ id: UUID) -> Bool {
+        guard let session = sessions[id],
+              let group = groups.first(where: { $0.id == session.groupID }),
+              group.activeSessionID == id,
+              let window = windowContaining(groupID: session.groupID),
+              window.selectedGroupID == session.groupID
+        else { return false }
+        return NSApp?.isActive ?? false
+    }
+
+    /// Terminals that finished something nobody has looked at yet.
+    var unseenReadyCount: Int {
+        sessions.values.filter { $0.state == .ready && !$0.seen }.count
+    }
+
+    /// Looking at a terminal marks its finished work as seen. Deliberately only
+    /// `ready`: `waiting` and `error` persist until the agent moves on or you
+    /// mark them free — a glance isn't an answer.
+    func markSeen(_ id: UUID) {
+        guard sessions[id]?.seen == false else { return }
+        update(id) { $0.seen = true }
+    }
+
     func select(session: TerminalSession) {
+        markSeen(session.id)
         if let window = windowContaining(groupID: session.groupID) {
             updateWindow(window.id) { $0.selectedGroupID = session.groupID }
             WindowRegistry.shared.raise(window.id)
@@ -573,11 +599,15 @@ final class AppState: ObservableObject {
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
+        // A turn that ended while you were looking at something else is unseen
+        // work; one that ended in front of you is not.
+        let unseen = state == .ready && !isVisible(id)
         update(id) {
             guard $0.state != state else { return }
             $0.state = state
             $0.stateSince = Date()
             $0.lastMessage = message
+            if unseen { $0.seen = false }
         }
         // A new waiting spell may escalate again; badges follow every change.
         escalatedIDs.remove(id)

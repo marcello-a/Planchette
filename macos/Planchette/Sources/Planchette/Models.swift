@@ -188,6 +188,12 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// What I asked the agent to do — first line of the last submitted prompt.
     /// The instant, deterministic answer to "working on WHAT?".
     var currentTask: String?
+    /// False when this terminal finished something you have not looked at yet.
+    /// `ready` alone means "a turn ended at some point"; unseen `ready` is the
+    /// honest answer to "what is waiting for my review?" (herdr calls it `done`
+    /// as opposed to `idle`). Only set for work that finished in the background —
+    /// watching a turn finish counts as having seen it.
+    var seen: Bool = true
 
     // Tags: what should happen with this terminal ("to test", "review", …)
     var tags: [String] = []
@@ -225,6 +231,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
         currentTask = try c.decodeIfPresent(String.self, forKey: .currentTask)
+        seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? true
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)

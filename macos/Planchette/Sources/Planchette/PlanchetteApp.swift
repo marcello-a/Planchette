@@ -242,6 +242,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Quitting kills the PTYs: a running turn is lost, and restore can only
+        // resume the conversation, not the work in flight. Ask first.
+        let reply: NSApplication.TerminateReply = MainActor.assumeIsolated {
+            let running = appState.sessions.values.filter { $0.state == .running }.count
+            guard running > 0 else { return .terminateNow }
+            let alert = NSAlert()
+            alert.messageText = L10n.t(.quitWhileRunningTitle)
+            alert.informativeText = L10n.t(.quitWhileRunningBody, running)
+            alert.addButton(withTitle: L10n.t(.quitAnyway))
+            alert.addButton(withTitle: L10n.t(.cancel))
+            return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        }
+        guard reply == .terminateNow else { return reply }
         isTerminating = true
         MainActor.assumeIsolated { appState.saveNow(); appState.saveScrollbacks() }
         return .terminateNow

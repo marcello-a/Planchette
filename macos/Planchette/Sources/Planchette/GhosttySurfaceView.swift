@@ -758,8 +758,9 @@ final class TerminalRegistry {
             initialInput: initialInput
         )
         let id = session.id
-        // Focusing must not clear attention state (a glance isn't an answer).
-        view.onFocus = nil
+        // Focusing must not clear attention *state* (a glance isn't an answer),
+        // but it does mean you have now seen whatever finished here.
+        view.onFocus = { [weak appState] in appState?.markSeen(id) }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }
             let window = appState.windowContaining(groupID: session.groupID)
