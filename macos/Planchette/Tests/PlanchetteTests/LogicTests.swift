@@ -250,6 +250,68 @@ final class StatusColorTests: XCTestCase {
         XCTAssertNil(AttentionState.forHookEvent("SessionStart", source: "fork"))
     }
 
+    // The whole hook surface as one table, so a new event or source can't be
+    // wired up without a decision being recorded here. Every event Planchette
+    // installs (see HookInstaller.events) must appear, and `nil` must be a
+    // deliberate "keep the current state", never an oversight.
+    func testHookEventTable() {
+        let table: [(event: String, source: String?, expected: AttentionState?)] = [
+            ("UserPromptSubmit", nil, .running),
+            ("Notification", nil, .waiting),
+            ("PermissionRequest", nil, .waiting),
+            ("Stop", nil, .ready),
+            ("SubagentStop", nil, .ready),
+            ("SessionEnd", nil, .free),
+            // SessionEnd frees the terminal whatever the reason.
+            ("SessionEnd", "clear", .free),
+            ("SessionStart", "startup", .free),
+            ("SessionStart", "clear", .free),
+            ("SessionStart", "resume", .free),
+            ("SessionStart", "fork", nil),
+            ("SessionStart", "compact", nil),
+            // An unknown source is a *new* Claude Code source: treat a fresh
+            // conversation as free rather than leaving a stale state behind.
+            ("SessionStart", "brand-new-source", .free),
+            ("SessionStart", nil, .free),
+            // Events we don't install must never move the indicator.
+            ("PreToolUse", nil, nil),
+            ("PostToolUse", nil, nil),
+            ("PreCompact", nil, nil),
+            ("", nil, nil),
+        ]
+        for row in table {
+            XCTAssertEqual(
+                AttentionState.forHookEvent(row.event, source: row.source), row.expected,
+                "\(row.event)/\(row.source ?? "-")")
+        }
+        // Every installed event is covered by the table above.
+        let covered = Set(table.map(\.event))
+        for event in HookInstaller.events {
+            XCTAssertTrue(covered.contains(event), "installed hook \(event) is untested")
+        }
+    }
+
+    // The command-finish matrix in full: exit code × current state. An agent
+    // turn always wins; at the prompt the exit code decides.
+    func testCommandFinishTable() {
+        let all: [AttentionState] = [.ready, .running, .waiting, .error, .free]
+        for current in all {
+            for code in [0, 1, 2, 130] {
+                let result = AttentionState.afterCommandFinish(exitCode: code, current: current)
+                switch (current, code) {
+                case (.running, _), (.waiting, _):
+                    XCTAssertNil(result, "agent turn must own the indicator (\(current), \(code))")
+                case (_, 130):
+                    XCTAssertEqual(result, .free, "⌃C is a deliberate stop (\(current))")
+                case (_, 0):
+                    XCTAssertEqual(result, .ready, "clean exit leaves a result (\(current))")
+                default:
+                    XCTAssertEqual(result, .error, "non-zero exit is an error (\(current))")
+                }
+            }
+        }
+    }
+
     // A shell command result must never stomp an active agent turn, but at the
     // prompt the exit code decides idle (green) vs error (red).
     func testCommandFinishHonorsAgentTurn() {
