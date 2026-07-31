@@ -772,6 +772,11 @@ final class TerminalRegistry {
                 && appState.groups.first { $0.id == session.groupID }?.activeSessionID == id
         }
         view.hasLiveClaude = { [weak appState] in appState?.hasLiveClaude(id) ?? false }
+        // A plausible size before the first layout. SwiftUI corrects this the
+        // moment it renders the view, but a surface created outside the view tree
+        // (the control API) would otherwise start its PTY at 1x1 and every TUI
+        // agent in it would render into a single cell.
+        view.updateSize(CGSize(width: 800, height: 480))
         views[id] = view
         return view
     }

@@ -112,13 +112,15 @@ enum ControlAPI {
 
         case .projectList:
             let projects = state.groups.map { group -> [String: Any] in
-                [
+                var dict: [String: Any] = [
                     "id": group.id.uuidString,
                     "name": group.name,
                     "favorite": group.favorite,
                     "sessions": group.sessionIDs.map(\.uuidString),
-                    "worktree": group.worktreePath ?? "",
                 ]
+                // Absent rather than empty: a caller checks for the key.
+                if let worktree = group.worktreePath { dict["worktree"] = worktree }
+                return dict
             }
             return encode(ok: true, result: ["projects": projects])
 
@@ -131,6 +133,12 @@ enum ControlAPI {
         case .sessionNew:
             guard let directory = request.string("cwd") else {
                 return encode(ok: false, error: "cwd is required")
+            }
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: directory, isDirectory: &isDirectory),
+                  isDirectory.boolValue
+            else {
+                return encode(ok: false, error: "cwd is not a directory: \(directory)")
             }
             // Default to the caller's own project, so "another terminal here"
             // does not scatter projects.
@@ -146,6 +154,12 @@ enum ControlAPI {
                     name: (directory as NSString).lastPathComponent).id
             }
             let session = state.addSession(directory: directory, groupID: groupID)
+            // Start the terminal now. SwiftUI only builds a surface for what it
+            // renders, so a session created into a background project would have
+            // no PTY — and the very next `session.prompt` would fail.
+            guard liveView(for: session, state: state) != nil else {
+                return encode(ok: false, error: "terminal could not be started")
+            }
             if request.bool("focus") == true { state.select(session: session) }
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
@@ -156,19 +170,27 @@ enum ControlAPI {
             guard let text = request.string("text") else {
                 return encode(ok: false, error: "text is required")
             }
-            guard let view = TerminalRegistry.shared.existingView(session.id) else {
+            // Typing into a turn in flight interrupts it — and whatever the agent
+            // was doing is the user's work, not the caller's to discard.
+            if session.state == .running, request.bool("force") != true {
+                return encode(
+                    ok: false,
+                    error: "session is running; wait for it or pass force")
+            }
+            guard let view = liveView(for: session, state: state) else {
                 return encode(ok: false, error: "session has no live terminal")
             }
-            view.sendText(text)
-            // Submit unless explicitly told not to, so the common case is one call.
-            if request.bool("submit") != false { view.sendText("\r") }
+            // One write: text and the newline must not arrive as two separate
+            // reads, or a TUI can submit an empty line and then type the prompt.
+            let submit = request.bool("submit") != false
+            view.sendText(submit ? text + "\r" : text)
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
         case .sessionRead:
             guard let session = resolve(request, state: state) else {
                 return encode(ok: false, error: "no such session")
             }
-            guard let view = TerminalRegistry.shared.existingView(session.id) else {
+            guard let view = liveView(for: session, state: state) else {
                 return encode(ok: false, error: "session has no live terminal")
             }
             let full = request.bool("scrollback") == true
@@ -196,6 +218,17 @@ enum ControlAPI {
                 return encode(ok: false, error: "timed out waiting for \(wanted.sorted().joined(separator: "/"))")
             }
         }
+    }
+
+    /// The live terminal for a session, creating it if SwiftUI has not rendered
+    /// that session yet. The registry owns surfaces independently of the view
+    /// tree, so this is the same object SwiftUI will pick up when it does.
+    @MainActor
+    private static func liveView(
+        for session: TerminalSession, state: AppState
+    ) -> GhosttySurfaceNSView? {
+        TerminalRegistry.shared.existingView(session.id)
+            ?? TerminalRegistry.shared.view(for: session, appState: state)
     }
 
     /// A session by id, or the caller's own terminal when none is given.

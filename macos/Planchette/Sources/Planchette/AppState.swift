@@ -169,7 +169,9 @@ final class AppState: ObservableObject {
                 hookAuthority: hasHookAuthority(id),
                 current: session.state)
             else { continue }
-            setState(id, newState, message: session.lastMessage)
+            // No message: the screen knows a prompt is up, not what it asks.
+            // Carrying the previous one over would show a stale question.
+            setState(id, newState)
         }
     }
 

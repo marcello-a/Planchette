@@ -54,7 +54,7 @@ agent in it, hand it a task, then wait:
 new=$("$PLANCHETTE_CLI" session new --cwd "$PWD")
 id=$(printf '%s' "$new" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["session"]["id"])')
 
-"$PLANCHETTE_CLI" session prompt --id "$id" --text 'codex'
+"$PLANCHETTE_CLI" session prompt --id "$id" --text 'claude'
 "$PLANCHETTE_CLI" session wait   --id "$id" --until free --timeout-ms 60000
 
 "$PLANCHETTE_CLI" session prompt --id "$id" --text 'Review the staged diff. Report only actionable findings.'
@@ -69,6 +69,11 @@ Notes that matter:
   `--focus`. Leave the user where they are.
 - `session prompt` types the text and presses Enter. `--no-submit` types without
   submitting, for when the user should review it first.
+- **`wait` only works for an agent whose state Planchette can see.** Claude Code
+  reports every transition through hooks. Codex currently only claims its
+  session — until its screen patterns are verified, its terminal will not change
+  state, so a `wait` on it times out. For those, `session read` and judge the
+  output yourself.
 - `session wait` returns as soon as the state is one of the `--until` values, and
   fails with `timed_out` otherwise. Always pass a timeout you can defend; the
   default is 120 s. Waiting for `ready` alone will hang through a permission
@@ -81,7 +86,8 @@ Notes that matter:
 
 - Do not close terminals or projects you did not create.
 - Do not prompt a terminal that is `running`: you would interrupt a turn in
-  flight. Wait first.
+  flight. The API refuses this — `--force` overrides it, and you should only pass
+  it when the user explicitly asked to interrupt.
 - One task per terminal. Re-using a terminal for unrelated work makes the
   attention state meaningless for the human watching it.
 - Report what you did in terms the user sees in the UI: project name and

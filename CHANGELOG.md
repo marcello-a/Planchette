@@ -31,6 +31,23 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **⌘Q asks before killing a running turn**, and says what a restore can and
   cannot bring back.
 
+### Fixed
+- `session.new` now actually starts a terminal. A session created into a
+  background project had no PTY (SwiftUI only builds surfaces for what it
+  renders), so the very next `session.prompt` failed — which is exactly the flow
+  the skill documents. Surfaces also start at a plausible size instead of 1×1.
+- `session.prompt` refuses a terminal whose turn is still running (`force`
+  overrides), and sends the text and its newline as one write so a TUI cannot
+  submit an empty line first.
+- Screen-driven states no longer carry the previous notification's text, which
+  showed a stale question next to a new prompt.
+- API responses are written off the main thread: a `session.read --scrollback`
+  reply can exceed the socket buffer, and `write` would block the UI until the
+  client drained it.
+- The hook script passes an unrecognized agent label through instead of calling
+  it Claude, which would have handed a foreign agent Claude's authority over the
+  terminal's state.
+
 ### Changed
 - The no-scraping rule in AGENTS.md is replaced by the arbitration boundary:
   hooks are the authority, the screen is a bounded fallback that may never

@@ -17,13 +17,12 @@
 SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette.sock}"
 [ -S "$SOCKET" ] || exit 0
 
-# Agent label. Older installs passed no argument at all; those events are
-# Claude's, because it was the only integration back then.
+# Agent label, passed through unchanged: the app maps an unknown label to "no
+# recognized agent", which is the safe answer. Guessing "claude" here would hand
+# a foreign agent Claude's authority over this terminal's state. Older installs
+# passed no argument at all; those events are Claude's, because it was the only
+# integration back then.
 agent="${1:-claude}"
-case "$agent" in
-    claude|codex) ;;
-    *) agent="claude" ;;
-esac
 
 payload=$(cat)
 [ -n "$payload" ] || payload='{}'

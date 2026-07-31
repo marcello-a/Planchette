@@ -81,7 +81,7 @@ enum ScreenDetector {
             }
             if !rule.lineRegex.isEmpty {
                 let matched = rule.lineRegex.contains { pattern in
-                    guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+                    guard let regex = compiled(pattern) else { return false }
                     return region.contains { line in
                         let range = NSRange(line.startIndex..<line.endIndex, in: line)
                         return regex.firstMatch(in: line, range: range) != nil
@@ -95,6 +95,29 @@ enum ScreenDetector {
                 skipStateUpdate: rule.skipStateUpdate)
         }
         return nil
+    }
+
+    /// Regexes compiled once. Detection runs every 1.5s per terminal, and
+    /// NSRegularExpression compilation is the expensive part — an override file
+    /// full of patterns would otherwise recompile all of them on every tick.
+    private static let regexCache = RegexCache()
+
+    private final class RegexCache: @unchecked Sendable {
+        private var cache: [String: NSRegularExpression?] = [:]
+        private let lock = NSLock()
+
+        func regex(_ pattern: String) -> NSRegularExpression? {
+            lock.lock()
+            defer { lock.unlock() }
+            if let cached = cache[pattern] { return cached }
+            let compiled = try? NSRegularExpression(pattern: pattern)
+            cache[pattern] = compiled
+            return compiled
+        }
+    }
+
+    private static func compiled(_ pattern: String) -> NSRegularExpression? {
+        regexCache.regex(pattern)
     }
 
     /// Where a user-supplied ruleset overrides the built-in one. Editing this

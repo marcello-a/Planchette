@@ -438,6 +438,28 @@ final class ScreenDetectionTests: XCTestCase {
             ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules))
     }
 
+    // Regex rules are what an override file will mostly use, and they run on a
+    // 1.5s timer — the pattern is compiled once and cached, so matching must
+    // stay correct across repeated calls.
+    func testLineRegexRulesMatchAndAreReusable() {
+        let rule = ScreenRule(
+            id: "prompt_caret", state: .idle, priority: 10, tailLines: 4,
+            lineRegex: ["^\\s*❯\\s*$"])
+        for _ in 0..<3 {
+            XCTAssertEqual(
+                ScreenDetector.detect(lines: ["building…", "  ❯  "], rules: [rule])?.state, .idle)
+            XCTAssertNil(ScreenDetector.detect(lines: ["❯ run this"], rules: [rule]))
+        }
+    }
+
+    // A malformed pattern in an override file must not match everything (or
+    // crash) — it simply never matches.
+    func testInvalidRegexNeverMatches() {
+        let rule = ScreenRule(
+            id: "broken", state: .blocked, priority: 10, lineRegex: ["([unclosed"])
+        XCTAssertNil(ScreenDetector.detect(lines: ["([unclosed"], rules: [rule]))
+    }
+
     // Rules are data: an override file has to survive a round-trip.
     func testRuleSetIsCodable() throws {
         let data = try JSONEncoder().encode(ScreenDetector.builtIn)

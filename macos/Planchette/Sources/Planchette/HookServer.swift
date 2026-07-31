@@ -87,7 +87,15 @@ final class HookServer {
 
     /// Write a response and close. Errors are ignored: a client that walked away
     /// is normal and must never take the server down.
+    ///
+    /// Always off the main thread: a `session.read --scrollback` response can be
+    /// far larger than the socket buffer, and then `write` blocks until the
+    /// client drains it (AGENTS.md rule 5).
     private func reply(_ data: Data, to client: Int32) {
+        readQueue.async { Self.writeAndClose(data, to: client) }
+    }
+
+    private static func writeAndClose(_ data: Data, to client: Int32) {
         var payload = data
         payload.append(0x0A)
         payload.withUnsafeBytes { buffer in
