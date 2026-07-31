@@ -32,8 +32,10 @@ final class UpdateService: ObservableObject {
         case onQuit
     }
 
-    /// A verified bundle waiting for the next quit, if any.
-    private(set) var stagedUpdate: StagedUpdate?
+    /// A verified bundle waiting for the next quit, if any. Published so
+    /// Settings can say so — a pending update the user cannot see is a surprise
+    /// the next time they quit.
+    @Published private(set) var stagedUpdate: StagedUpdate?
 
     struct StagedUpdate: Equatable {
         let version: String

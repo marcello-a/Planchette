@@ -18,7 +18,7 @@ runs inside whatever terminal you already use.
 | Survives app quit | no (layout persists, work does not) | yes — client/server, detach + reattach, over SSH |
 | Agents can drive it | no | yes — socket API + `herdr` CLI + agent skill |
 | Extensibility | none | plugins + marketplace |
-| Platforms | macOS (the `linux/` dir is empty) | macOS, Linux, Windows (beta) |
+| Platforms | macOS only | macOS, Linux, Windows (beta) |
 | Git worktrees | none | first-class (`herdr worktree create/open/remove`) |
 
 ## Where herdr is genuinely ahead
@@ -149,8 +149,10 @@ caught. Every hook event × every source × every current state, as data.
 
 - **Going terminal-native.** Being a real macOS app is the differentiator, not a defect.
 - **Plugins/marketplace.** No user base to extend yet; it would cost the whole quarter.
-- **Windows/Linux/SSH.** `linux/` has been empty since day one — either delete the
-  directory or stop implying a port exists.
+- **Windows/Linux/SSH.** The Linux port is an unchecked roadmap item
+  (docs/CONCEPT.md Spike B) and should stay one until there is a machine to build
+  it on. (An earlier draft of this doc claimed the repo carried an empty `linux/`
+  directory; it does not — that was an untracked local artifact.)
 - **Detach/daemon architecture.** The honest assessment: correct, and too expensive for
   now. Do the cheap 80%: warn on quit while any session is `running`, and make the
   restore dialog say plainly what it cannot bring back.

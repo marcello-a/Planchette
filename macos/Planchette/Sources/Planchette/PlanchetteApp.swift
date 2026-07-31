@@ -116,6 +116,13 @@ struct SettingsView: View {
                         Text(L10n.t(.updateInstalling)).foregroundStyle(.secondary)
                     }
                 }
+                if let staged = updater.stagedUpdate {
+                    Label(
+                        "\(L10n.t(.updatePendingQuit)) (\(staged.version))",
+                        systemImage: "arrow.down.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .formStyle(.grouped)
