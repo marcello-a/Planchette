@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
-## [Unreleased]
+## [0.2.10] — 2026-07-31
 
 ### Added
 - **Durable terminals** (Settings → Durable terminals, off by default, needs
@@ -308,6 +308,9 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.10]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.10
+[0.2.9]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.9
+[0.2.8]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.8
 [0.2.7]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.7
 [0.2.6]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.6
 [0.2.5]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.5
