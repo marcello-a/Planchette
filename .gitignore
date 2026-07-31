@@ -23,3 +23,6 @@ macos/*/.build/
 
 # Packaging output
 dist/
+
+# Local agent state (Claude Code worktrees, settings)
+.claude/
