@@ -1,0 +1,89 @@
+{
+  "agents": {
+    "claude": [
+      {
+        "any": [],
+        "contains": [
+          "showing detailed transcript"
+        ],
+        "id": "claude_transcript_viewer",
+        "lineRegex": [],
+        "none": [],
+        "priority": 1000,
+        "skipStateUpdate": true,
+        "state": "unknown",
+        "tailLines": 4,
+        "visibleBlocker": false
+      },
+      {
+        "any": [
+          [
+            "do you want to proceed"
+          ],
+          [
+            "do you want to allow"
+          ],
+          [
+            "do you want to continue"
+          ],
+          [
+            "do you want to use this"
+          ],
+          [
+            "no, and tell claude"
+          ]
+        ],
+        "contains": [],
+        "id": "claude_permission_prompt",
+        "lineRegex": [],
+        "none": [],
+        "priority": 900,
+        "skipStateUpdate": false,
+        "state": "blocked",
+        "tailLines": 12,
+        "visibleBlocker": true
+      },
+      {
+        "any": [
+          [
+            "enter to select"
+          ],
+          [
+            "to navigate"
+          ]
+        ],
+        "contains": [
+          "esc to cancel"
+        ],
+        "id": "claude_selection_prompt",
+        "lineRegex": [],
+        "none": [],
+        "priority": 880,
+        "skipStateUpdate": false,
+        "state": "blocked",
+        "tailLines": 8,
+        "visibleBlocker": true
+      },
+      {
+        "any": [],
+        "contains": [
+          "? for shortcuts"
+        ],
+        "id": "claude_idle_footer",
+        "lineRegex": [],
+        "none": [
+          "esc to cancel",
+          "do you want to"
+        ],
+        "priority": 700,
+        "skipStateUpdate": false,
+        "state": "idle",
+        "tailLines": 6,
+        "visibleBlocker": false
+      }
+    ],
+    "codex": []
+  },
+  "engine": 1,
+  "version": 1
+}

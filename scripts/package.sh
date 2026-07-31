@@ -57,6 +57,9 @@ chmod +x "$APP/Contents/Resources/planchette-hook"
 # The control CLI agents use to drive Planchette (see skills/planchette).
 cp "$ROOT/hook/planchette" "$APP/Contents/Resources/planchette"
 chmod +x "$APP/Contents/Resources/planchette"
+# Detection rules are bundled AND published as their own release asset, so a
+# pattern fix reaches users without a new binary (see docs/LIVE-UPDATE.md).
+cp "$ROOT/rules/screen-rules.json" "$APP/Contents/Resources/screen-rules.json"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -104,7 +107,9 @@ rm -f "$ZIP"
 echo "→ built $ZIP"
 
 # 6. Checksums the updater verifies the download against.
-( cd "$DIST" && shasum -a 256 "Planchette.zip" "Planchette.dmg" > "SHA256SUMS" )
+cp "$ROOT/rules/screen-rules.json" "$DIST/screen-rules.json"
+echo "→ built $DIST/screen-rules.json"
+( cd "$DIST" && shasum -a 256 "Planchette.zip" "Planchette.dmg" "screen-rules.json" > "SHA256SUMS" )
 echo "→ built $DIST/SHA256SUMS"
 echo
 echo "Install: open dist/Planchette.dmg and drag Planchette to Applications."

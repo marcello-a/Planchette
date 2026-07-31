@@ -85,6 +85,9 @@ enum LKey: String, CaseIterable {
     // Inbox
     case attention, allQuiet, waitingForAnswer, doneSeeResult
 
+    // Staged ("install on quit") updates
+    case updateInstallOnQuit, updateStagedTitle, updateStagedBody, updatePendingQuit
+
     // Quitting while agents work
     case quitWhileRunningTitle, quitWhileRunningBody, quitAnyway
 
@@ -248,6 +251,7 @@ enum L10n {
         .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .clearReady: "Hide idle", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All",
         .newWorktree: "New worktree…", .newWorktreeHelp: "Create a git worktree and open it as a project", .worktreeBranchPrompt: "Branch for the new worktree", .worktreeBasePrompt: "Base (empty = current HEAD)", .worktreeFailed: "Could not create the worktree", .removeWorktreeTitle: "Remove the checkout?", .removeWorktreeBody: "Delete the worktree at \"%@\"? Git refuses while it still has uncommitted changes.", .removeWorktree: "Remove", .keepWorktree: "Keep",
         .quitWhileRunningTitle: "Quit while agents are working?", .quitWhileRunningBody: "%d terminal(s) are still running. Quitting ends them — a restore can bring the conversation back, but not the work in flight.", .quitAnyway: "Quit anyway",
+        .updateInstallOnQuit: "Install on quit", .updateStagedTitle: "Version %@ is ready", .updateStagedBody: "It is downloaded and verified. Nothing changes until you quit Planchette — the next launch runs the new version, and your running agents are left alone.", .updatePendingQuit: "An update will be installed when you quit.",
     ]
 
     // MARK: German
@@ -320,6 +324,7 @@ enum L10n {
         .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .clearReady: "Ruhige ausblenden", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen",
         .newWorktree: "Neuer Worktree…", .newWorktreeHelp: "Git-Worktree anlegen und als Projekt öffnen", .worktreeBranchPrompt: "Branch für den neuen Worktree", .worktreeBasePrompt: "Basis (leer = aktueller HEAD)", .worktreeFailed: "Worktree konnte nicht angelegt werden", .removeWorktreeTitle: "Arbeitskopie entfernen?", .removeWorktreeBody: "Worktree unter \"%@\" löschen? Git verweigert das, solange dort uncommittete Änderungen liegen.", .removeWorktree: "Entfernen", .keepWorktree: "Behalten",
         .quitWhileRunningTitle: "Beenden, während Agents arbeiten?", .quitWhileRunningBody: "%d Terminal(s) laufen noch. Beim Beenden werden sie abgebrochen — eine Wiederherstellung bringt die Unterhaltung zurück, nicht aber die laufende Arbeit.", .quitAnyway: "Trotzdem beenden",
+        .updateInstallOnQuit: "Beim Beenden installieren", .updateStagedTitle: "Version %@ ist bereit", .updateStagedBody: "Sie ist geladen und geprüft. Bis du Planchette beendest, ändert sich nichts — der nächste Start läuft mit der neuen Version, laufende Agents bleiben unberührt.", .updatePendingQuit: "Ein Update wird beim Beenden installiert.",
     ]
 
     // MARK: French
@@ -392,6 +397,7 @@ enum L10n {
         .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .clearReady: "Masquer les inactifs", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner",
         .newWorktree: "Nouveau worktree…", .newWorktreeHelp: "Créer un worktree git et l'ouvrir comme projet", .worktreeBranchPrompt: "Branche du nouveau worktree", .worktreeBasePrompt: "Base (vide = HEAD actuel)", .worktreeFailed: "Impossible de créer le worktree", .removeWorktreeTitle: "Supprimer la copie de travail ?", .removeWorktreeBody: "Supprimer le worktree dans « %@ » ? Git refuse tant qu'il reste des modifications non validées.", .removeWorktree: "Supprimer", .keepWorktree: "Conserver",
         .quitWhileRunningTitle: "Quitter pendant que les agents travaillent ?", .quitWhileRunningBody: "%d terminal(aux) sont encore en cours. Quitter les interrompt — une restauration récupère la conversation, pas le travail en cours.", .quitAnyway: "Quitter quand même",
+        .updateInstallOnQuit: "Installer en quittant", .updateStagedTitle: "La version %@ est prête", .updateStagedBody: "Elle est téléchargée et vérifiée. Rien ne change avant que vous quittiez Planchette — le prochain lancement utilisera la nouvelle version, et vos agents en cours ne sont pas touchés.", .updatePendingQuit: "Une mise à jour sera installée en quittant.",
     ]
 
     // MARK: Spanish
@@ -464,6 +470,7 @@ enum L10n {
         .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .clearReady: "Ocultar inactivos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo",
         .newWorktree: "Nuevo worktree…", .newWorktreeHelp: "Crear un worktree de git y abrirlo como proyecto", .worktreeBranchPrompt: "Rama para el nuevo worktree", .worktreeBasePrompt: "Base (vacío = HEAD actual)", .worktreeFailed: "No se pudo crear el worktree", .removeWorktreeTitle: "¿Eliminar la copia de trabajo?", .removeWorktreeBody: "¿Borrar el worktree en «%@»? Git se niega mientras haya cambios sin confirmar.", .removeWorktree: "Eliminar", .keepWorktree: "Conservar",
         .quitWhileRunningTitle: "¿Salir mientras los agentes trabajan?", .quitWhileRunningBody: "%d terminal(es) siguen en marcha. Al salir se interrumpen — una restauración recupera la conversación, pero no el trabajo en curso.", .quitAnyway: "Salir de todos modos",
+        .updateInstallOnQuit: "Instalar al salir", .updateStagedTitle: "La versión %@ está lista", .updateStagedBody: "Está descargada y verificada. Nada cambia hasta que salgas de Planchette — el próximo inicio usará la nueva versión y tus agentes en marcha no se tocan.", .updatePendingQuit: "Se instalará una actualización al salir.",
     ]
 
     // MARK: Italian
@@ -536,6 +543,7 @@ enum L10n {
         .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .clearReady: "Nascondi inattivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto",
         .newWorktree: "Nuovo worktree…", .newWorktreeHelp: "Crea un worktree git e aprilo come progetto", .worktreeBranchPrompt: "Branch per il nuovo worktree", .worktreeBasePrompt: "Base (vuoto = HEAD attuale)", .worktreeFailed: "Impossibile creare il worktree", .removeWorktreeTitle: "Rimuovere la copia di lavoro?", .removeWorktreeBody: "Eliminare il worktree in «%@»? Git rifiuta finché contiene modifiche non committate.", .removeWorktree: "Rimuovi", .keepWorktree: "Mantieni",
         .quitWhileRunningTitle: "Uscire mentre gli agent lavorano?", .quitWhileRunningBody: "%d terminale/i sono ancora in esecuzione. Uscendo vengono interrotti — un ripristino recupera la conversazione, non il lavoro in corso.", .quitAnyway: "Esci comunque",
+        .updateInstallOnQuit: "Installa all'uscita", .updateStagedTitle: "La versione %@ è pronta", .updateStagedBody: "È scaricata e verificata. Nulla cambia finché non esci da Planchette — al prossimo avvio parte la nuova versione e gli agent in esecuzione restano intatti.", .updatePendingQuit: "Un aggiornamento verrà installato all'uscita.",
     ]
 
     // MARK: Dutch
@@ -608,6 +616,7 @@ enum L10n {
         .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .clearReady: "Rustige verbergen", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren",
         .newWorktree: "Nieuwe worktree…", .newWorktreeHelp: "Een git-worktree maken en als project openen", .worktreeBranchPrompt: "Branch voor de nieuwe worktree", .worktreeBasePrompt: "Basis (leeg = huidige HEAD)", .worktreeFailed: "Kon de worktree niet aanmaken", .removeWorktreeTitle: "Werkkopie verwijderen?", .removeWorktreeBody: "De worktree in \"%@\" verwijderen? Git weigert zolang er niet-vastgelegde wijzigingen zijn.", .removeWorktree: "Verwijderen", .keepWorktree: "Bewaren",
         .quitWhileRunningTitle: "Afsluiten terwijl agents werken?", .quitWhileRunningBody: "%d terminal(s) zijn nog bezig. Afsluiten breekt ze af — een herstel brengt het gesprek terug, maar niet het lopende werk.", .quitAnyway: "Toch afsluiten",
+        .updateInstallOnQuit: "Installeren bij afsluiten", .updateStagedTitle: "Versie %@ is klaar", .updateStagedBody: "Hij is gedownload en gecontroleerd. Er verandert niets tot je Planchette afsluit — de volgende start gebruikt de nieuwe versie en je lopende agents blijven ongemoeid.", .updatePendingQuit: "Een update wordt geïnstalleerd bij afsluiten.",
     ]
 
     // MARK: Portuguese
@@ -680,5 +689,6 @@ enum L10n {
         .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .clearReady: "Ocultar inativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo",
         .newWorktree: "Novo worktree…", .newWorktreeHelp: "Criar um worktree do git e abri-lo como projeto", .worktreeBranchPrompt: "Branch para o novo worktree", .worktreeBasePrompt: "Base (vazio = HEAD atual)", .worktreeFailed: "Não foi possível criar o worktree", .removeWorktreeTitle: "Remover a cópia de trabalho?", .removeWorktreeBody: "Apagar o worktree em \"%@\"? O git recusa enquanto houver alterações não submetidas.", .removeWorktree: "Remover", .keepWorktree: "Manter",
         .quitWhileRunningTitle: "Sair enquanto os agentes trabalham?", .quitWhileRunningBody: "%d terminal(is) ainda estão a correr. Sair interrompe-os — um restauro traz a conversa de volta, mas não o trabalho em curso.", .quitAnyway: "Sair mesmo assim",
+        .updateInstallOnQuit: "Instalar ao sair", .updateStagedTitle: "A versão %@ está pronta", .updateStagedBody: "Está descarregada e verificada. Nada muda até sair do Planchette — o próximo arranque usa a nova versão e os agentes em execução ficam intactos.", .updatePendingQuit: "Uma atualização será instalada ao sair.",
     ]
 }

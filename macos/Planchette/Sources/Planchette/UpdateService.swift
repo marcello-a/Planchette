@@ -22,6 +22,32 @@ final class UpdateService: ObservableObject {
     private weak var appState: AppState?
     private var didAutoCheck = false
 
+    /// When an update is applied. The binary cannot be swapped under a running
+    /// process (see docs/LIVE-UPDATE.md), but nothing forces that swap to happen
+    /// the moment the update lands.
+    enum InstallMode {
+        /// Swap now and relaunch — ends every running turn.
+        case now
+        /// Verify and stage now, swap at the next quit. No interruption.
+        case onQuit
+    }
+
+    /// A verified bundle waiting for the next quit, if any.
+    private(set) var stagedUpdate: StagedUpdate?
+
+    struct StagedUpdate: Equatable {
+        let version: String
+        /// The extracted `.app` to move into place.
+        let bundlePath: String
+    }
+
+    /// Where a staged update is remembered across launches, so an app that was
+    /// killed rather than quit still picks it up.
+    static var stagingRecordURL: URL {
+        AppState.stateURL.deletingLastPathComponent()
+            .appendingPathComponent("staged-update.json")
+    }
+
     init(appState: AppState) {
         self.appState = appState
     }
@@ -95,6 +121,10 @@ final class UpdateService: ObservableObject {
                 return
             }
             let release = try JSONDecoder().decode(Release.self, from: data)
+            // Rules first, and regardless of the binary version: a rule fix is
+            // the one kind of update that needs no restart at all, so it should
+            // not wait for the user to accept an app update.
+            await refreshDetectionRules(from: release)
             let latest = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
             if Semver.isNewer(latest, than: currentVersion) {
                 offerUpdate(version: latest, release: release)
@@ -103,6 +133,39 @@ final class UpdateService: ObservableObject {
             }
         } catch {
             if userInitiated { showError(error.localizedDescription) }
+        }
+    }
+
+    // MARK: - Live rule updates
+
+    /// Detection rules ship as their own release asset so they can be fixed
+    /// without a new binary — agent TUIs change far faster than we release.
+    /// Applied live: the detection poll picks the file up on its next tick.
+    /// Failure is silent by design; this runs on every check and must never
+    /// interrupt anyone.
+    private func refreshDetectionRules(from release: Release) async {
+        guard let asset = release.asset(named: "screen-rules.json"),
+              let url = trusted(asset.browserDownloadURL)
+        else { return }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+            // Same defence in depth as the binary: verify against the release
+            // checksum file when it lists this asset.
+            if let checksumURL = release.asset(named: "SHA256SUMS")
+                .flatMap({ trusted($0.browserDownloadURL) }),
+               let expected = try? await expectedSHA(checksumURL, for: "screen-rules.json") {
+                let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+                guard actual == expected else {
+                    NSLog("screen rules: checksum mismatch, ignored")
+                    return
+                }
+            }
+            if appState?.applyFetchedScreenRules(data) == true {
+                NSLog("screen rules: updated from release \(release.tagName)")
+            }
+        } catch {
+            NSLog("screen rules: fetch failed: \(error.localizedDescription)")
         }
     }
 
@@ -117,10 +180,26 @@ final class UpdateService: ObservableObject {
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
             alert.informativeText = L10n.t(.updateInstallBody)
+            // Staging first: it is the choice that costs the user nothing, and
+            // relaunching now ends every running turn.
+            alert.addButton(withTitle: L10n.t(.updateInstallOnQuit))
             alert.addButton(withTitle: L10n.t(.updateInstallRelaunch))
             alert.addButton(withTitle: L10n.t(.updateLater))
-            if alert.runModal() == .alertFirstButtonReturn {
-                Task { await install(zipURL: zipURL, checksumURL: checksumURL) }
+            switch alert.runModal() {
+            case .alertFirstButtonReturn:
+                Task {
+                    await install(
+                        zipURL: zipURL, checksumURL: checksumURL,
+                        version: version, mode: .onQuit)
+                }
+            case .alertSecondButtonReturn:
+                Task {
+                    await install(
+                        zipURL: zipURL, checksumURL: checksumURL,
+                        version: version, mode: .now)
+                }
+            default:
+                break
             }
         } else {
             let dmg = release.asset(named: ".dmg").flatMap { trusted($0.browserDownloadURL) }
@@ -147,7 +226,9 @@ final class UpdateService: ObservableObject {
         return FileManager.default.isWritableFile(atPath: (path as NSString).deletingLastPathComponent)
     }
 
-    private func install(zipURL: URL, checksumURL: URL?) async {
+    private func install(
+        zipURL: URL, checksumURL: URL?, version: String, mode: InstallMode
+    ) async {
         isInstalling = true
         let panel = InstallProgressPanel()
         panel.show()
@@ -172,14 +253,74 @@ final class UpdateService: ObservableObject {
             try runTool("/usr/bin/ditto", ["-x", "-k", downloaded.path, workDir.path])
             guard let newApp = firstAppBundle(in: workDir) else { throw UpdateError.noAppInArchive }
 
-            // 4. Hand the swap to a detached helper (we can't overwrite our own
-            //    running bundle), then quit so it can proceed.
-            try swapAndRelaunch(newApp: newApp.path, dest: Bundle.main.bundlePath)
-            NSApp.terminate(nil)
+            switch mode {
+            case .now:
+                // 4a. Hand the swap to a detached helper (we can't overwrite our
+                //     own running bundle), then quit so it can proceed.
+                try swap(newApp: newApp.path, dest: Bundle.main.bundlePath, relaunch: true)
+                NSApp.terminate(nil)
+            case .onQuit:
+                // 4b. Keep the verified bundle and swap it at the next quit —
+                //     a process boundary the user was going to cross anyway.
+                stage(StagedUpdate(version: version, bundlePath: newApp.path))
+                panel.close()
+                isInstalling = false
+                showStaged(version: version)
+            }
         } catch {
             panel.close()
             isInstalling = false
             showError(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Staging (install on quit)
+
+    private func stage(_ update: StagedUpdate) {
+        stagedUpdate = update
+        let record = ["version": update.version, "bundlePath": update.bundlePath]
+        if let data = try? JSONSerialization.data(withJSONObject: record) {
+            try? data.write(to: Self.stagingRecordURL, options: .atomic)
+        }
+    }
+
+    /// Re-adopt a staged update recorded by a previous run — the app may have
+    /// been killed rather than quit. The extracted bundle lives in a temp
+    /// directory, so it may be gone; then the record is simply dropped.
+    func adoptStagedUpdateIfAny() {
+        guard let data = try? Data(contentsOf: Self.stagingRecordURL),
+              let record = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              let version = record["version"], let path = record["bundlePath"]
+        else { return }
+        guard FileManager.default.fileExists(atPath: path) else {
+            discardStagedUpdate()
+            return
+        }
+        // Already running it (the swap happened) → nothing staged any more.
+        if !Semver.isNewer(version, than: currentVersion) {
+            discardStagedUpdate()
+            return
+        }
+        stagedUpdate = StagedUpdate(version: version, bundlePath: path)
+    }
+
+    func discardStagedUpdate() {
+        stagedUpdate = nil
+        try? FileManager.default.removeItem(at: Self.stagingRecordURL)
+    }
+
+    /// Called from `applicationShouldTerminate` once the user has committed to
+    /// quitting: run the swap helper *without* relaunching, so the next manual
+    /// launch is the new version. Best-effort — a failed swap must never block
+    /// the quit the user asked for.
+    func applyStagedUpdateOnQuit() {
+        guard let staged = stagedUpdate else { return }
+        defer { discardStagedUpdate() }
+        do {
+            try swap(newApp: staged.bundlePath, dest: Bundle.main.bundlePath, relaunch: false)
+            NSLog("update: swapping to \(staged.version) on quit")
+        } catch {
+            NSLog("update: staged swap could not start: \(error)")
         }
     }
 
@@ -208,12 +349,15 @@ final class UpdateService: ObservableObject {
     }
 
     /// Writes a helper script that waits for us to fully quit, then swaps the
-    /// installed bundle for the new one and relaunches. The child survives our
+    /// installed bundle for the new one — and relaunches only when asked, so a
+    /// staged update applied at quit does not drag the app back up. The child
+    /// survives our
     /// termination. The new build is staged next to the destination and only
     /// swapped in once the copy fully succeeds, so a failed copy can never leave
     /// the app missing. All output is logged for diagnosis.
-    /// Args: $1 = new .app (extracted), $2 = installed .app, $3 = log file.
-    private func swapAndRelaunch(newApp: String, dest: String) throws {
+    /// Args: $1 = new .app (extracted), $2 = installed .app, $3 = log file,
+    /// $4 = "1" to relaunch afterwards.
+    private func swap(newApp: String, dest: String, relaunch: Bool) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
         let logURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("planchette-update.log")
@@ -237,7 +381,8 @@ final class UpdateService: ObservableObject {
             echo "ERROR: ditto to staging failed; app left untouched"
             rm -rf "$STAGING"
         fi
-        open "$2"
+        [ "$4" = "1" ] && open "$2"
+        exit 0
         """#
         let scriptURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("planchette-swap-\(UUID().uuidString).sh")
@@ -245,7 +390,7 @@ final class UpdateService: ObservableObject {
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = [scriptURL.path, newApp, dest, logURL.path]
+        task.arguments = [scriptURL.path, newApp, dest, logURL.path, relaunch ? "1" : "0"]
         try task.run()   // detached; keeps running after we terminate
     }
 
@@ -277,6 +422,14 @@ final class UpdateService: ObservableObject {
     }
 
     // MARK: - Alerts
+
+    private func showStaged(version: String) {
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.updateStagedTitle, version)
+        alert.informativeText = L10n.t(.updateStagedBody)
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.runModal()
+    }
 
     private func showUpToDate() {
         let alert = NSAlert()

@@ -460,12 +460,90 @@ final class ScreenDetectionTests: XCTestCase {
         XCTAssertNil(ScreenDetector.detect(lines: ["([unclosed"], rules: [rule]))
     }
 
+    /// `rules/screen-rules.json` is what a release publishes and what the app
+    /// fetches; `ScreenDetector.builtIn` is the compiled floor. To keep exactly
+    /// one hand-maintained source of rules, the file is *generated* from the
+    /// floor — and this test fails (with the fresh contents) when it drifts.
+    func testShippedRulesFileMatchesTheBuiltInFloor() throws {
+        let repo = URL(fileURLWithPath: #filePath)          // …/Tests/PlanchetteTests/LogicTests.swift
+            .deletingLastPathComponent()                     // …/Tests/PlanchetteTests
+            .deletingLastPathComponent()                     // …/Tests
+            .deletingLastPathComponent()                     // …/Planchette
+            .deletingLastPathComponent()                     // …/macos
+            .deletingLastPathComponent()                     // repo root
+        let shipped = repo.appendingPathComponent("rules/screen-rules.json")
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        let expected = try encoder.encode(ScreenDetector.builtIn)
+
+        guard let onDisk = try? Data(contentsOf: shipped) else {
+            XCTFail("""
+                rules/screen-rules.json is missing. Regenerate it with:
+                \(String(decoding: expected, as: UTF8.self))
+                """)
+            return
+        }
+        // Compare decoded values, not bytes: formatting must not fail the build.
+        let a = try JSONDecoder().decode(ScreenRuleSet.self, from: onDisk)
+        let b = try JSONDecoder().decode(ScreenRuleSet.self, from: expected)
+        XCTAssertEqual(a.engine, b.engine, "shipped rules target a different engine")
+        XCTAssertEqual(a.version, b.version, "shipped rules are a different version")
+        XCTAssertEqual(
+            a.agents.mapValues { $0.map(\.id) }, b.agents.mapValues { $0.map(\.id) },
+            "shipped rules drifted from ScreenDetector.builtIn — regenerate rules/screen-rules.json")
+    }
+
     // Rules are data: an override file has to survive a round-trip.
     func testRuleSetIsCodable() throws {
         let data = try JSONEncoder().encode(ScreenDetector.builtIn)
         let decoded = try JSONDecoder().decode(ScreenRuleSet.self, from: data)
         XCTAssertEqual(decoded.engine, ScreenRuleSet.engineVersion)
         XCTAssertEqual(decoded.rules(for: .claude).count, claudeRules.count)
+    }
+}
+
+final class LiveRuleUpdateTests: XCTestCase {
+    private func encoded(_ set: ScreenRuleSet) throws -> Data {
+        try JSONEncoder().encode(set)
+    }
+
+    private func ruleSet(version: Int, engine: Int = ScreenRuleSet.engineVersion) -> ScreenRuleSet {
+        ScreenRuleSet(
+            version: version, engine: engine,
+            agents: ["claude": [ScreenRule(id: "r", state: .idle, priority: 1)]])
+    }
+
+    // A downloaded or edited file is only accepted if it can actually drive
+    // detection. Everything else must leave the running rules alone.
+    func testValidationAcceptsOnlyUsableRuleSets() throws {
+        XCTAssertNotNil(ScreenDetector.validated(try encoded(ruleSet(version: 2))))
+        // Garbage.
+        XCTAssertNil(ScreenDetector.validated(Data("not json".utf8)))
+        XCTAssertNil(ScreenDetector.validated(Data()))
+        // Built for a different engine — its rule shape may not match ours.
+        XCTAssertNil(ScreenDetector.validated(
+            try encoded(ruleSet(version: 9, engine: ScreenRuleSet.engineVersion + 1))))
+        // Structurally fine but empty: accepting it would silently stop detection.
+        XCTAssertNil(ScreenDetector.validated(try encoded(
+            ScreenRuleSet(version: 3, engine: ScreenRuleSet.engineVersion, agents: ["claude": []]))))
+    }
+
+    // Only forward, and only within one engine: a re-download or a rolled-back
+    // release must not downgrade the rules that are working.
+    func testOnlyNewerSameEngineRulesReplaceCurrent() {
+        let current = ruleSet(version: 5)
+        XCTAssertTrue(ScreenDetector.isNewer(ruleSet(version: 6), than: current))
+        XCTAssertFalse(ScreenDetector.isNewer(ruleSet(version: 5), than: current))
+        XCTAssertFalse(ScreenDetector.isNewer(ruleSet(version: 4), than: current))
+        XCTAssertFalse(ScreenDetector.isNewer(
+            ruleSet(version: 99, engine: ScreenRuleSet.engineVersion + 1), than: current))
+    }
+
+    // The built-in floor must itself be a valid ruleset — it is what every
+    // failure path falls back to.
+    func testBuiltInFloorIsValid() throws {
+        XCTAssertNotNil(ScreenDetector.validated(try encoded(ScreenDetector.builtIn)))
     }
 }
 

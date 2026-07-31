@@ -38,6 +38,7 @@ sh scripts/package.sh "$VERSION"
 gh release create "$TAG" \
     "dist/Planchette.dmg" \
     "dist/Planchette.zip" \
+    "dist/screen-rules.json" \
     "dist/SHA256SUMS" \
     --title "Planchette $VERSION" \
     --notes "Stable release $VERSION. Existing users get this automatically via the in-app updater (Install & Relaunch). New users: download Planchette.dmg and drag it into Applications." \

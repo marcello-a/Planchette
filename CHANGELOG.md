@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Added
+- **Detection rules update live** (see docs/LIVE-UPDATE.md). `screen-rules.json`
+  is re-read whenever it changes — by hand or from a release — so a pattern fix
+  takes effect on the next 1.5s tick with no restart. Rules now ship as their own
+  release asset, checksum-verified, and only replace the running set when they
+  are newer for the same engine version. A rejected file leaves the working rules
+  in place; `ScreenDetector.builtIn` stays the compiled floor.
+- **"Install on quit"** next to "Install & Relaunch". The update is downloaded
+  and verified immediately but swapped in at the next quit — one you were going
+  to do anyway — so updating never ends a running turn. A staged update survives
+  the app being killed instead of quit, and is applied at the following quit.
+
+### Changed
+- `rules/screen-rules.json` is generated from `ScreenDetector.builtIn`, with a
+  test that fails when the two drift, so detection rules have one
+  hand-maintained source.
+
 ## [0.2.9] — 2026-07-31
 
 ### Added

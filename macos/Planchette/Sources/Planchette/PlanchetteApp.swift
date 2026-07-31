@@ -214,7 +214,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // manual setup (idempotent; merges into ~/.claude/settings.json).
         DispatchQueue.global(qos: .utility).async { HookInstaller.installIfNeeded() }
 
-        MainActor.assumeIsolated { updater.autoCheckIfEnabled() }
+        MainActor.assumeIsolated {
+            // A run that was killed rather than quit may have left a verified
+            // bundle behind; apply it at the *next* quit instead of losing it.
+            updater.adoptStagedUpdateIfAny()
+            updater.autoCheckIfEnabled()
+        }
     }
 
     // Clicking the dock icon with no open window reopens one.
@@ -256,7 +261,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard reply == .terminateNow else { return reply }
         isTerminating = true
-        MainActor.assumeIsolated { appState.saveNow(); appState.saveScrollbacks() }
+        MainActor.assumeIsolated {
+            appState.saveNow()
+            appState.saveScrollbacks()
+            // State is on disk first: the swap helper starts the moment we exit,
+            // and the next launch must read the state this run wrote.
+            updater.applyStagedUpdateOnQuit()
+        }
         return .terminateNow
     }
 

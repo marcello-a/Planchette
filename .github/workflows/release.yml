@@ -80,6 +80,6 @@ jobs:
           git tag -a "$TAG" -m "Planchette $VERSION"
           git push origin "$TAG"
           gh release create "$TAG" \
-            dist/Planchette.dmg dist/Planchette.zip dist/SHA256SUMS \
+            dist/Planchette.dmg dist/Planchette.zip dist/screen-rules.json dist/SHA256SUMS \
             --title "Planchette $VERSION" \
             --notes "Automated release $VERSION. Existing users get this via the in-app updater (Install & Relaunch); new users can download Planchette.dmg."

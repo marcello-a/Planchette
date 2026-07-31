@@ -132,9 +132,11 @@ final class AppState: ObservableObject {
 
     // MARK: Screen detection (fallback signal)
 
-    /// Rules for reading agent state off the terminal. Loaded once; a user can
-    /// override them (see ScreenDetector.overrideURL) without a release.
+    /// Rules for reading agent state off the terminal. Reloaded whenever the
+    /// override file changes (see ScreenDetector.overrideURL), so fixing a
+    /// pattern — by hand or by a fetched update — never needs a restart.
     private lazy var screenRules: ScreenRuleSet = ScreenDetector.loadRuleSet()
+    private var screenRulesStamp: Date? = ScreenDetector.overrideModified()
     private var screenTimer: Timer?
     /// How often a terminal's viewport is read. Slow enough to be free, fast
     /// enough that a permission prompt lights up while you're still looking.
@@ -153,6 +155,7 @@ final class AppState: ObservableObject {
     /// hooks leave. Hooks stay the authority wherever they are live — see
     /// `AttentionState.fromScreen`.
     private func pollScreens() {
+        reloadScreenRulesIfChanged()
         for (id, session) in sessions {
             let rules = screenRules.rules(for: session.agentKind)
             // Nothing to match against (e.g. a plain shell, or an agent whose
@@ -172,6 +175,41 @@ final class AppState: ObservableObject {
             // No message: the screen knows a prompt is up, not what it asks.
             // Carrying the previous one over would show a stale question.
             setState(id, newState)
+        }
+    }
+
+    /// Pick up an edited or freshly downloaded ruleset. One stat per tick; the
+    /// file is only parsed when its mtime moved.
+    private func reloadScreenRulesIfChanged() {
+        let stamp = ScreenDetector.overrideModified()
+        guard stamp != screenRulesStamp else { return }
+        screenRulesStamp = stamp
+        // No file (deleted) → back to the compiled floor.
+        guard let stamp else {
+            screenRules = ScreenDetector.builtIn
+            NSLog("screen rules: override removed, using built-in rules")
+            return
+        }
+        guard let data = try? Data(contentsOf: ScreenDetector.overrideURL),
+              let set = ScreenDetector.validated(data)
+        else { return }   // validated() logged why; keep the rules we have
+        screenRules = set
+        NSLog("screen rules: reloaded version \(set.version) (mtime \(stamp))")
+    }
+
+    /// Install a fetched ruleset: written to the override path, which the poll
+    /// picks up on its next tick. Returns false when it is not an improvement.
+    @discardableResult
+    func applyFetchedScreenRules(_ data: Data) -> Bool {
+        guard let candidate = ScreenDetector.validated(data),
+              ScreenDetector.isNewer(candidate, than: screenRules)
+        else { return false }
+        do {
+            try data.write(to: ScreenDetector.overrideURL, options: .atomic)
+            return true
+        } catch {
+            NSLog("screen rules: could not write \(ScreenDetector.overrideURL.path): \(error)")
+            return false
         }
     }
 

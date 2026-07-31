@@ -133,15 +133,41 @@ enum ScreenDetector {
     @MainActor
     static func loadRuleSet() -> ScreenRuleSet {
         guard let data = try? Data(contentsOf: overrideURL) else { return builtIn }
+        return validated(data) ?? builtIn
+    }
+
+    /// Pure: accept a ruleset only if it parses, targets this engine, and has at
+    /// least one rule. Returns nil for anything else — a bad file must degrade to
+    /// "keep the rules we have", never to "stop detecting".
+    static func validated(_ data: Data) -> ScreenRuleSet? {
         guard let set = try? JSONDecoder().decode(ScreenRuleSet.self, from: data) else {
-            NSLog("screen-rules.json unparseable — using built-in rules")
-            return builtIn
+            NSLog("screen rules: unparseable, keeping current rules")
+            return nil
         }
         guard set.engine == ScreenRuleSet.engineVersion else {
-            NSLog("screen-rules.json targets engine \(set.engine), we are \(ScreenRuleSet.engineVersion) — using built-in rules")
-            return builtIn
+            NSLog("screen rules: target engine \(set.engine), we are \(ScreenRuleSet.engineVersion) — ignored")
+            return nil
+        }
+        guard set.agents.values.contains(where: { !$0.isEmpty }) else {
+            NSLog("screen rules: no rules in file, ignored")
+            return nil
         }
         return set
+    }
+
+    /// Pure: should `candidate` replace `current`? Only a newer version for the
+    /// same engine — so a re-download, or an older asset on a rolled-back
+    /// release, is a no-op rather than a downgrade.
+    static func isNewer(_ candidate: ScreenRuleSet, than current: ScreenRuleSet) -> Bool {
+        candidate.engine == current.engine && candidate.version > current.version
+    }
+
+    /// mtime of the override file, or nil when there is none. The detection poll
+    /// compares this to decide whether to re-read — one stat per tick, which is
+    /// what makes an edit take effect without a restart.
+    @MainActor
+    static func overrideModified() -> Date? {
+        try? FileManager.default.attributesOfItem(atPath: overrideURL.path)[.modificationDate] as? Date
     }
 
     /// Built-in rules.
