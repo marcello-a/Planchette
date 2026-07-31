@@ -48,6 +48,7 @@ groups terminals by project. See [README.md](README.md) and
 | `MigrationService.swift` | Import cwds from iTerm2/Terminal.app (AppleScript → `lsof`) |
 | `UpdateService.swift` | GitHub-releases update check |
 | `NotificationService.swift` | `UserNotifications` wrapper |
+| `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
 | `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `InboxView`, `QuickSwitcherView`, `TagViews` |
@@ -57,10 +58,16 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
 
 ## Non-obvious things that will bite you
 
-- **Attention signal is hook-driven, not output-parsed.** State transitions
-  (`working/asking/done/free`) come from Claude Code hooks routed by the
-  `PLANCHETTE_SESSION` env var injected into each terminal. Don't try to scrape
-  the terminal buffer.
+- **Hooks are the authority; the screen is a bounded fallback.** State
+  transitions come from agent hooks routed by the `PLANCHETTE_SESSION` env var
+  injected into each terminal. `ScreenDetection.swift` adds a second, weaker
+  signal read off the viewport every 1.5s, and `AttentionState.fromScreen`
+  decides who wins: while a full-lifecycle agent (Claude Code) is live, the
+  screen may **only** escalate to `waiting` on a visible blocker — a hook can
+  miss a permission prompt, the screen cannot. Without hook authority (no
+  integration, or an agent that only claims its session) the screen drives every
+  state. Never widen that: a scraped pattern must not be able to overrule a hook
+  that is talking to us.
 - **SwiftUI steals the NSView first responder** on structural updates.
   `GhosttySurfaceView.viewDidMoveToWindow` reclaims it for the active session.
   If keyboard input silently stops working, look there.

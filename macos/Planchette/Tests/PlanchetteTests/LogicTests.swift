@@ -154,6 +154,153 @@ final class ShellEscapeTests: XCTestCase {
     }
 }
 
+final class ScreenDetectionTests: XCTestCase {
+    private var claudeRules: [ScreenRule] { ScreenDetector.builtIn.rules(for: .claude) }
+
+    // A permission prompt is the one thing only the screen can know when a hook
+    // misses it. These are the strings Claude Code actually renders.
+    func testPermissionPromptIsABlocker() {
+        let screen = """
+            ● Bash(rm -rf build)
+              Do you want to proceed?
+              ❯ 1. Yes
+                2. No, and tell Claude what to do differently (esc)
+            """
+        let detection = ScreenDetector.detect(
+            lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+        XCTAssertEqual(detection?.state, .blocked)
+        XCTAssertTrue(detection?.visibleBlocker == true)
+    }
+
+    func testIdleFooterDetectsAQuietPrompt() {
+        let screen = """
+            ╭───────────────────────────────╮
+            │ >                             │
+            ╰───────────────────────────────╯
+              ? for shortcuts
+            """
+        XCTAssertEqual(
+            ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules)?
+                .state, .idle)
+    }
+
+    // The footer is also on screen *behind* an open prompt — the blocker must
+    // win, which is what the priority ordering is for.
+    func testBlockerOutranksIdleFooter() {
+        let screen = """
+            Do you want to proceed?
+            ❯ 1. Yes
+              2. No
+            ? for shortcuts
+            """
+        let detection = ScreenDetector.detect(
+            lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+        XCTAssertEqual(detection?.state, .blocked)
+    }
+
+    // Scrolled-back history must never be read as the live state.
+    func testTranscriptViewerSuppressesTheReading() {
+        let screen = """
+            Do you want to proceed?
+            Showing detailed transcript · ctrl+o to toggle
+            """
+        let detection = ScreenDetector.detect(
+            lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+        XCTAssertTrue(detection?.skipStateUpdate == true)
+        XCTAssertNil(
+            AttentionState.fromScreen(
+                detection, agent: .claude, hookAuthority: false, current: .running))
+    }
+
+    func testUnrelatedOutputMatchesNothing() {
+        let screen = "$ ls -la\ntotal 42\ndrwxr-xr-x  5 me  staff  160 Jul 31 12:00 ."
+        XCTAssertNil(
+            ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules))
+    }
+
+    func testRegionIsBoundedToTheTail() {
+        // The prompt is far above the rule's tail window → not a live blocker.
+        let noise = Array(repeating: "building…", count: 30).joined(separator: "\n")
+        let screen = "Do you want to proceed?\n" + noise
+        XCTAssertNil(
+            ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules))
+    }
+
+    // Rules are data: an override file has to survive a round-trip.
+    func testRuleSetIsCodable() throws {
+        let data = try JSONEncoder().encode(ScreenDetector.builtIn)
+        let decoded = try JSONDecoder().decode(ScreenRuleSet.self, from: data)
+        XCTAssertEqual(decoded.engine, ScreenRuleSet.engineVersion)
+        XCTAssertEqual(decoded.rules(for: .claude).count, claudeRules.count)
+    }
+}
+
+final class StateArbitrationTests: XCTestCase {
+    private let blocker = ScreenDetection(
+        state: .blocked, ruleID: "t", visibleBlocker: true)
+    private let idle = ScreenDetection(state: .idle, ruleID: "t")
+    private let working = ScreenDetection(state: .working, ruleID: "t")
+
+    // While hooks are authoritative the screen may do exactly one thing:
+    // escalate to waiting when something is visibly blocked.
+    func testHookAuthorityOnlyAllowsBlockerEscalation() {
+        XCTAssertEqual(
+            AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: true, current: .running),
+            .waiting)
+        // Everything else is the hooks' business.
+        for screen in [idle, working] {
+            for current in [AttentionState.running, .ready, .free, .waiting, .error] {
+                XCTAssertNil(
+                    AttentionState.fromScreen(
+                        screen, agent: .claude, hookAuthority: true, current: current),
+                    "screen must not move \(current) while hooks are live")
+            }
+        }
+    }
+
+    // Already asking (or errored) → nothing to escalate, and no churn.
+    func testBlockerDoesNotRestateAnExistingAlert() {
+        XCTAssertNil(
+            AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: true, current: .waiting))
+        XCTAssertNil(
+            AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: true, current: .error))
+    }
+
+    // No hook authority (no integration, or an agent that only claims its
+    // session): the screen is all we have, so it drives every state.
+    func testWithoutHookAuthorityScreenDrivesEverything() {
+        XCTAssertEqual(
+            AttentionState.fromScreen(working, agent: .codex, hookAuthority: false, current: .free),
+            .running)
+        XCTAssertEqual(
+            AttentionState.fromScreen(blocker, agent: .codex, hookAuthority: false, current: .running),
+            .waiting)
+        // A finished turn left a result to review.
+        XCTAssertEqual(
+            AttentionState.fromScreen(idle, agent: .codex, hookAuthority: false, current: .running),
+            .ready)
+        // An already-quiet terminal stays put — idle is not news.
+        XCTAssertNil(
+            AttentionState.fromScreen(idle, agent: .codex, hookAuthority: false, current: .free))
+        XCTAssertNil(
+            AttentionState.fromScreen(idle, agent: .codex, hookAuthority: false, current: .ready))
+    }
+
+    // Repeated identical readings must not thrash the state (every change
+    // resets stateSince and the escalation timer).
+    func testRepeatedReadingsAreStable() {
+        XCTAssertNil(
+            AttentionState.fromScreen(working, agent: .codex, hookAuthority: false, current: .running))
+        XCTAssertNil(
+            AttentionState.fromScreen(blocker, agent: .codex, hookAuthority: false, current: .waiting))
+    }
+
+    func testNoDetectionChangesNothing() {
+        XCTAssertNil(
+            AttentionState.fromScreen(nil, agent: .claude, hookAuthority: false, current: .running))
+    }
+}
+
 final class AgentIntegrationTests: XCTestCase {
     // One script serves every agent, so the command must carry the label and
     // still be recognizable as ours inside a foreign config.

@@ -84,6 +84,7 @@ final class AppState: ObservableObject {
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
+        startScreenDetection()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -127,6 +128,56 @@ final class AppState: ObservableObject {
                 sessionID: session.id
             )
         }
+    }
+
+    // MARK: Screen detection (fallback signal)
+
+    /// Rules for reading agent state off the terminal. Loaded once; a user can
+    /// override them (see ScreenDetector.overrideURL) without a release.
+    private lazy var screenRules: ScreenRuleSet = ScreenDetector.loadRuleSet()
+    private var screenTimer: Timer?
+    /// How often a terminal's viewport is read. Slow enough to be free, fast
+    /// enough that a permission prompt lights up while you're still looking.
+    static let screenPollInterval: TimeInterval = 1.5
+
+    private func startScreenDetection() {
+        let timer = Timer(timeInterval: Self.screenPollInterval, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.pollScreens() }
+        }
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        screenTimer = timer
+    }
+
+    /// Read every live terminal's viewport and let the screen fill the gaps the
+    /// hooks leave. Hooks stay the authority wherever they are live — see
+    /// `AttentionState.fromScreen`.
+    private func pollScreens() {
+        for (id, session) in sessions {
+            let rules = screenRules.rules(for: session.agentKind)
+            // Nothing to match against (e.g. a plain shell, or an agent whose
+            // patterns aren't verified yet) → don't even read the surface.
+            guard !rules.isEmpty else { continue }
+            guard let view = TerminalRegistry.shared.existingView(id),
+                  let text = view.readViewport()
+            else { continue }
+            let detection = ScreenDetector.detect(
+                lines: text.components(separatedBy: "\n"), rules: rules)
+            guard let newState = AttentionState.fromScreen(
+                detection,
+                agent: session.agentKind,
+                hookAuthority: hasHookAuthority(id),
+                current: session.state)
+            else { continue }
+            setState(id, newState, message: session.lastMessage)
+        }
+    }
+
+    /// True when this terminal's state is owned by hooks: the agent reports its
+    /// whole lifecycle *and* is currently live here.
+    func hasHookAuthority(_ id: UUID) -> Bool {
+        guard let session = sessions[id] else { return false }
+        return session.agentKind.reportsFullLifecycle && liveAgentIDs.contains(id)
     }
 
     // MARK: Windows

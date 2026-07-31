@@ -180,6 +180,25 @@ final class GhosttySurfaceNSView: NSView {
         return String(cString: ptr)
     }
 
+    /// The visible viewport as plain text, for screen-based state detection.
+    /// Deliberately the viewport and not the whole buffer: it is what the user
+    /// sees, it is what an agent's live chrome occupies, and it stays cheap
+    /// enough to read on a timer.
+    func readViewport() -> String? {
+        guard let surface else { return nil }
+        var text = ghostty_text_s()
+        let sel = ghostty_selection_s(
+            top_left: ghostty_point_s(
+                tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(
+                tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            rectangle: false)
+        guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
+        defer { ghostty_surface_free_text(surface, &text) }
+        guard let ptr = text.text else { return nil }
+        return String(cString: ptr)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         viewDidChangeBackingProperties()
