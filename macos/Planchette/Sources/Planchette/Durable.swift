@@ -49,8 +49,32 @@ enum Durable {
     /// otherwise — one command for both first launch and re-attach. `-D` detaches
     /// any other client, which is how the *stale* client left behind by a crashed
     /// Planchette gets evicted instead of fighting us for the terminal size.
-    static func attachCommand(tmux: String, session: String) -> String {
-        "\(tmux) new-session -A -D -s \(session)"
+    ///
+    /// `-e` is not a convenience: a pane does **not** inherit the client's
+    /// environment. One tmux server serves every session and keeps the
+    /// environment of the client that happened to start it, so without `-e` the
+    /// second durable terminal would run with the *first* one's
+    /// `PLANCHETTE_SESSION` and report every hook event as that terminal.
+    /// Values are only applied when the session is created; re-attaching leaves
+    /// the existing session's environment alone, which is correct — its processes
+    /// already hold those values, and the session id is stable across restarts.
+    static func attachCommand(
+        tmux: String,
+        session: String,
+        environment: [(key: String, value: String)] = []
+    ) -> String {
+        var parts = [tmux, "new-session", "-A", "-D", "-s", session]
+        for (key, value) in environment {
+            parts.append("-e")
+            parts.append(singleQuoted("\(key)=\(value)"))
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// Pure: POSIX single-quoting, so a value carrying quotes, `$` or `|` — the
+    /// click command carries all three — survives the shell that runs this.
+    static func singleQuoted(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     // MARK: Talking to tmux

@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [0.2.11] — 2026-08-01
+
+### Fixed
+- **A second durable terminal reported as the first one.** tmux runs one server
+  for every session and keeps the environment of whichever client happened to
+  start it; `update-environment` only refreshes a fixed list that
+  `PLANCHETTE_SESSION` is not on. So from the second durable terminal onwards,
+  every hook event, task line, notification and "this terminal" CLI default named
+  the wrong tab — the attention engine's whole job, done against the wrong
+  session. The identity is now passed per session (`new-session -e`), which is
+  the only place tmux takes it. Re-attaching leaves an existing session's
+  environment alone, as it must: its processes already hold those values.
+
 ## [0.2.10] — 2026-07-31
 
 ### Added
@@ -308,6 +321,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.11]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.11
 [0.2.10]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.10
 [0.2.9]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.9
 [0.2.8]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.8

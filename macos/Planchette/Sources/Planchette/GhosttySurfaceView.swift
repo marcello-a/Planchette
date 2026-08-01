@@ -58,48 +58,21 @@ final class GhosttySurfaceNSView: NSView {
         cfg.scale_factor = Double(NSScreen.main?.backingScaleFactor ?? 2.0)
 
         // Everything the C call needs must stay alive for its duration.
-        let envKey = strdup("PLANCHETTE_SESSION")
-        let envValue = strdup(sessionID.uuidString)
-        let sockKey = strdup("PLANCHETTE_SOCKET")
-        let sockValue = strdup(HookServer.socketPath)
-        // Notification tools (e.g. peon-ping/OpenPeon) run this on click so the
-        // right terminal comes to front via our hook socket.
-        let clickKey = strdup("PEON_CLICK_COMMAND")
-        // Resolves the socket at click time, not at terminal creation: in a
-        // durable terminal this env var outlives the app instance that set it
-        // (see Durable.swift), so a stale path must fall back to the pointer.
-        // Tries our own socket first and only then the pointer, and treats a
-        // failed send — not a missing file — as the signal to move on, because a
-        // killed instance leaves its socket file behind.
-        let clickValue = strdup(
-            "E='{\"planchette_session\":\"\(sessionID.uuidString)\","
-                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}';"
-                + " for T in \(HookServer.socketPath)"
-                + " \"$(cat \(HookServer.socketPointerURL.path) 2>/dev/null)\";"
-                + " do [ -S \"$T\" ] || continue;"
-                + " printf '%s' \"$E\" | nc -U \"$T\" >/dev/null 2>&1 && break; done"
-        )
-        // So an agent in this terminal can drive Planchette (see skills/planchette).
-        let cliKey = strdup("PLANCHETTE_CLI")
-        let cliValue = strdup(HookInstaller.cliURL.path)
+        let environment = Self.planchetteEnvironment(sessionID: sessionID)
+        let envStrings = environment.map { (strdup($0.key), strdup($0.value)) }
         let cwd = strdup(workingDirectory)
         let input = initialInput.map { strdup($0) }
         // Durable terminals run tmux here instead of the login shell, so the
         // agent's process tree belongs to tmux's server and survives us.
         let cmd = command.map { strdup($0) }
         defer {
-            free(envKey); free(envValue); free(sockKey); free(sockValue)
-            free(clickKey); free(clickValue); free(cliKey); free(cliValue); free(cwd)
+            for (key, value) in envStrings { free(key); free(value) }
+            free(cwd)
             if let input { free(input) }
             if let cmd { free(cmd) }
         }
 
-        var envVars = [
-            ghostty_env_var_s(key: envKey, value: envValue),
-            ghostty_env_var_s(key: sockKey, value: sockValue),
-            ghostty_env_var_s(key: clickKey, value: clickValue),
-            ghostty_env_var_s(key: cliKey, value: cliValue),
-        ]
+        var envVars = envStrings.map { ghostty_env_var_s(key: $0.0, value: $0.1) }
         envVars.withUnsafeMutableBufferPointer { buf in
             cfg.env_vars = buf.baseAddress
             cfg.env_var_count = buf.count
@@ -112,6 +85,38 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("unsupported") }
+
+    /// The identity every Planchette terminal carries into its processes.
+    ///
+    /// Shared with `Durable`: a tmux pane does **not** inherit these from the
+    /// client that created its session. tmux starts one server for all sessions,
+    /// the server keeps the environment of whichever client started it, and
+    /// `update-environment` only refreshes a fixed list that ours are not on — so
+    /// without passing them per session (`new-session -e`), every durable
+    /// terminal would report as the *first* one: its hook events, its task line,
+    /// its notifications and the CLI's "this terminal" default.
+    static func planchetteEnvironment(sessionID: UUID) -> [(key: String, value: String)] {
+        [
+            ("PLANCHETTE_SESSION", sessionID.uuidString),
+            ("PLANCHETTE_SOCKET", HookServer.socketPath),
+            // Notification tools (e.g. peon-ping/OpenPeon) run this on click so
+            // the right terminal comes to front via our hook socket. Resolves the
+            // socket at click time, not at terminal creation: in a durable
+            // terminal this outlives the app instance that set it, so a stale
+            // path must fall back to the pointer. A failed send — not a missing
+            // file — is the signal to move on, because a killed instance leaves
+            // its socket file behind.
+            ("PEON_CLICK_COMMAND",
+             "E='{\"planchette_session\":\"\(sessionID.uuidString)\","
+                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}';"
+                + " for T in \(HookServer.socketPath)"
+                + " \"$(cat \(HookServer.socketPointerURL.path) 2>/dev/null)\";"
+                + " do [ -S \"$T\" ] || continue;"
+                + " printf '%s' \"$E\" | nc -U \"$T\" >/dev/null 2>&1 && break; done"),
+            // So an agent in this terminal can drive Planchette (see skills/planchette).
+            ("PLANCHETTE_CLI", HookInstaller.cliURL.path),
+        ]
+    }
 
     func destroySurface() {
         if let surface { ghostty_surface_free(surface) }
@@ -760,7 +765,9 @@ final class TerminalRegistry {
         if session.durable, let tmux = Durable.tmuxPath() {
             let name = Durable.sessionName(for: session.id)
             reattachingToLiveAgent = Durable.hasSession(name, tmux: tmux)
-            command = Durable.attachCommand(tmux: tmux, session: name)
+            command = Durable.attachCommand(
+                tmux: tmux, session: name,
+                environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id))
         }
 
         var initialInput: String? = nil

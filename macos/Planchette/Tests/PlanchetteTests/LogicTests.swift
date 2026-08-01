@@ -291,6 +291,35 @@ final class DurableTests: XCTestCase {
         XCTAssertEqual(cmd, "/opt/homebrew/bin/tmux new-session -A -D -s planchette-x")
     }
 
+    // Without -e the second durable terminal runs with the FIRST one's identity:
+    // one tmux server serves every session and keeps the environment of the
+    // client that started it. Every hook event would name the wrong terminal.
+    func testAttachCommandCarriesTheEnvironmentPerSession() {
+        let cmd = Durable.attachCommand(
+            tmux: "/usr/bin/tmux", session: "planchette-x",
+            environment: [("PLANCHETTE_SESSION", "ABC"), ("PLANCHETTE_SOCKET", "/tmp/p.sock")])
+        XCTAssertEqual(
+            cmd,
+            "/usr/bin/tmux new-session -A -D -s planchette-x"
+                + " -e 'PLANCHETTE_SESSION=ABC' -e 'PLANCHETTE_SOCKET=/tmp/p.sock'")
+    }
+
+    // The click command carries quotes, $ and | — it must survive the shell
+    // that runs the tmux line, or the terminal fails to start at all.
+    func testQuotesValuesContainingShellMetacharacters() {
+        let nasty = "printf '%s' \"$E\" | nc -U \"$T\" && break"
+        let cmd = Durable.attachCommand(
+            tmux: "/usr/bin/tmux", session: "s", environment: [("K", nasty)])
+        XCTAssertTrue(cmd.hasSuffix(
+            "-e 'K=printf '\\''%s'\\'' \"$E\" | nc -U \"$T\" && break'"))
+    }
+
+    func testSingleQuotingIsShellCorrect() {
+        XCTAssertEqual(Durable.singleQuoted("plain"), "'plain'")
+        XCTAssertEqual(Durable.singleQuoted("it's"), "'it'\\''s'")
+        XCTAssertEqual(Durable.singleQuoted(""), "''")
+    }
+
     // The user's own tmux sessions are none of our business — reaping must
     // never kill them.
     func testParsesOnlyOurSessions() {
