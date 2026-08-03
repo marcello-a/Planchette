@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [0.2.13] — 2026-08-03
+
+### Changed
+- **Durable terminals are on by default**, and tmux no longer shows through.
+  Each session is created with `status off` and `prefix None`, so there is no
+  status bar taking the bottom row and no prefix swallowing `C-b` — which is
+  backward-char in every emacs-mode shell, and bound by agent TUIs. Both are
+  scoped to our own sessions; your own tmux keeps its settings. Where tmux is not
+  installed nothing changes: the terminal is simply an ordinary one. One trade
+  remains, and switching the setting off undoes it — the shell now lives on
+  tmux's alternate screen, so the terminal's own scrollback holds repaints rather
+  than a linear history. Installs that still carry the old opt-in `false` get the
+  new default once; switching it off after that sticks.
+- **Updates are checked while the app runs**, not only once at launch. Planchette
+  is meant to stay open for days — durable terminals exist so it can — so a
+  launch-only check meant a long-lived instance never learned an update existed.
+  It now re-checks every 6 hours, which also refreshes detection rules on the
+  same schedule. A background check never interrupts twice: declining a version
+  silences it until the next launch, and a check is skipped entirely while one is
+  already running, installing, or staged.
+
 ## [0.2.12] — 2026-08-03
 
 ### Fixed
@@ -338,6 +359,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.13]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.13
 [0.2.12]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.12
 [0.2.11]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.11
 [0.2.10]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.10

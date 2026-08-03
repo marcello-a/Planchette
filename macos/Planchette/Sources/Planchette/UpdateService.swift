@@ -58,10 +58,40 @@ final class UpdateService: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     }
 
-    /// Run once shortly after launch if the user enabled auto-check.
-    func autoCheckIfEnabled() {
-        guard appState?.autoUpdateCheck == true, !didAutoCheck else { return }
-        didAutoCheck = true
+    /// How often a running app re-checks. Planchette is meant to stay open for
+    /// days — durable terminals exist precisely so it can — so a launch-only
+    /// check means a long-lived instance never learns an update exists.
+    static let autoCheckInterval: TimeInterval = 6 * 3600
+
+    /// The version the user said no to, so a background check never asks twice.
+    /// Deliberately not persisted: a relaunch is a fair moment to offer again.
+    private var declinedVersion: String?
+    private var autoCheckTimer: Timer?
+
+    /// Check shortly after launch, then keep checking while the app runs.
+    func startAutoChecks() {
+        autoCheckIfEnabled()
+        let timer = Timer(timeInterval: Self.autoCheckInterval, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.autoCheckIfEnabled(repeating: true) }
+        }
+        timer.tolerance = 300  // nothing here is time-critical; let macOS coalesce
+        RunLoop.main.add(timer, forMode: .common)
+        autoCheckTimer = timer
+    }
+
+    /// Run if the user enabled auto-check. Once shortly after launch, and then
+    /// on `autoCheckInterval` — a repeat check also refreshes detection rules,
+    /// which is worth doing on its own since they update independently.
+    func autoCheckIfEnabled(repeating: Bool = false) {
+        guard appState?.autoUpdateCheck == true else { return }
+        if repeating {
+            // Never interrupt work in progress, and never re-open a dialog the
+            // user is already dealing with or has answered.
+            guard !isChecking, !isInstalling, stagedUpdate == nil else { return }
+        } else {
+            guard !didAutoCheck else { return }
+            didAutoCheck = true
+        }
         Task { await check(userInitiated: false) }
     }
 
@@ -129,6 +159,11 @@ final class UpdateService: ObservableObject {
             await refreshDetectionRules(from: release)
             let latest = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
             if Semver.isNewer(latest, than: currentVersion) {
+                // A background check must not re-open a dialog the user already
+                // dismissed — checks now repeat while the app runs, so without
+                // this the same version would interrupt them every few hours.
+                // Asking again is always fine when they asked us to look.
+                guard userInitiated || latest != declinedVersion else { return }
                 offerUpdate(version: latest, release: release)
             } else if userInitiated {
                 showUpToDate()
@@ -201,7 +236,8 @@ final class UpdateService: ObservableObject {
                         version: version, mode: .now)
                 }
             default:
-                break
+                // "Later" means later, not "in six hours".
+                declinedVersion = version
             }
         } else {
             let dmg = release.asset(named: ".dmg").flatMap { trusted($0.browserDownloadURL) }
@@ -214,6 +250,8 @@ final class UpdateService: ObservableObject {
             if alert.runModal() == .alertFirstButtonReturn, let target,
                Self.isTrustedDownload(target) {
                 NSWorkspace.shared.open(target)
+            } else {
+                declinedVersion = version
             }
         }
     }

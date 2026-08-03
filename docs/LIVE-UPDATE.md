@@ -104,17 +104,28 @@ Planchette.app                tmux server (long-lived)
 - **Hooks still reach us.** The surviving agent's environment names the dead
   app's socket, so `HookServer` publishes the live path to `~/.planchette/socket`
   and the hook, the CLI and the click command fall back to it.
-- **It ends when you mean it.** Closing a terminal kills its tmux session;
-  sessions whose terminal no longer exists are reaped at the next launch. Two
-  guards keep reaping from destroying work: only `planchette-<uuid>` names are
-  considered (the user's own tmux sessions are never touched), and only sessions
-  **no client is attached to** — an attached session belongs to a second
-  Planchette that is running right now, and starting this one fresh must not kill
-  its agents.
+- **It ends when you mean it.** Closing a terminal — or a whole project — kills
+  its tmux session; sessions whose terminal no longer exists are reaped at the
+  next launch. Two guards keep reaping from destroying work: only
+  `planchette-<uuid>` names are considered (the user's own tmux sessions are
+  never touched), and only sessions **no client is attached to** — an attached
+  session belongs to a second Planchette that is running right now, and starting
+  this one fresh must not kill its agents.
+- **tmux does not show through.** Durability is plumbing, not a feature anyone
+  asked for, so each session is created with `status off` (no status bar taking
+  the bottom row) and `prefix None` (no key stealing — the default `C-b` is
+  backward-char in every emacs-mode shell, and agent TUIs bind it too). Both are
+  set with `-t` on our own session; the user's tmux keeps its own settings.
 
 Covers quit, Install & Relaunch and a crash. Does **not** cover a reboot or a
-logout, which end tmux's server too. Off by default: it needs tmux installed, and
-it changes what a terminal is.
+logout, which end tmux's server too.
+
+On by default. It costs nothing where tmux is missing — the terminal is simply
+an ordinary one — and because tmux is invisible, the only effect anyone should
+notice is that agents stop dying with the app. The trade it does make: the shell
+lives on tmux's alternate screen, so the terminal's own scrollback holds tmux's
+repaints rather than a linear history. Switch the setting off if you want the
+plain terminal back; terminals already created keep what they were created as.
 
 ### C2 — our own daemon (design only)
 

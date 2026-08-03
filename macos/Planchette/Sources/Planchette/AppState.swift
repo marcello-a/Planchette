@@ -33,7 +33,7 @@ final class AppState: ObservableObject {
     /// New terminals run inside tmux, so their agents outlive the app (see
     /// Durable.swift). Only takes effect for terminals created from now on —
     /// existing ones keep whatever they were created as.
-    @Published var durableTerminals = false {
+    @Published var durableTerminals = true {
         didSet { scheduleSave() }
     }
     /// Windows (beyond the main one) that still need to be opened after a

@@ -68,6 +68,16 @@ enum Durable {
             parts.append("-e")
             parts.append(singleQuoted("\(key)=\(value)"))
         }
+        // Durability is plumbing, not a feature the user asked for, so tmux must
+        // not show through: no status bar eating the bottom row, and no prefix
+        // swallowing keystrokes (the default C-b is backward-char in every
+        // emacs-mode shell, and agent TUIs bind it too). Set per session with
+        // `-t`, never globally — the user's own tmux sessions are not ours to
+        // reconfigure. Re-running these on re-attach is harmless.
+        for option in ["status off", "prefix None"] {
+            parts.append("\\;")
+            parts.append("set-option -t \(session) \(option)")
+        }
         return parts.joined(separator: " ")
     }
 
