@@ -114,33 +114,44 @@ enum Durable {
         }
     }
 
-    /// Whether a session is already running — i.e. whether an agent is waiting
-    /// there for us to re-attach. Decides whether restore replays anything.
-    static func hasSession(_ name: String, tmux: String) -> Bool {
-        run(tmux, ["has-session", "-t", "=\(name)"]) == 0
-    }
-
-    /// End a session and everything in it. Called when a terminal is closed on
-    /// purpose — without this, durable sessions would pile up in tmux forever.
+    /// End a session and everything in it. Called when a terminal or a whole
+    /// project is closed on purpose — without this, durable sessions would pile
+    /// up in tmux forever.
     static func killSession(for id: UUID) {
         guard let tmux = tmuxPath() else { return }
         run(tmux, ["kill-session", "-t", "=\(sessionName(for: id))"])
     }
 
-    /// The terminal ids of our sessions that **no client is attached to**.
-    ///
-    /// Only these are safe to reap. An attached session belongs to a Planchette
-    /// that is running right now: a second instance starting fresh must not kill
-    /// the first one's agents, and "is anyone attached" is the question that
-    /// actually distinguishes the two. An orphan — the terminal was closed, or
-    /// its app died — has no client, because the client dies with the app.
-    static func unattachedSessionIDs() -> Set<UUID> {
+    /// Everything the app needs to know about our sessions, in **one** call.
+    /// Both questions asked of tmux — "is this terminal's agent still alive?"
+    /// and "which sessions are orphans?" — are answered from this list, so a
+    /// restore costs one subprocess rather than one per terminal.
+    static func listSessions() -> [(id: UUID, attached: Bool)] {
         guard let tmux = tmuxPath(),
               let out = output(
                 tmux, ["list-sessions", "-F", "#{session_name} #{session_attached}"])
         else { return [] }
-        return Set(parseSessionList(out).filter { !$0.attached }.map(\.id))
+        return parseSessionList(out)
     }
+
+    /// Pure: every terminal tmux still holds a session for — i.e. whose agent
+    /// survived and must be re-attached to rather than replayed into.
+    static func liveIDs(in sessions: [(id: UUID, attached: Bool)]) -> Set<UUID> {
+        Set(sessions.map(\.id))
+    }
+
+    /// Pure: the sessions safe to reap.
+    ///
+    /// An attached session belongs to a Planchette that is running right now: a
+    /// second instance starting fresh must not kill the first one's agents, and
+    /// "is anyone attached" is the question that actually distinguishes the two.
+    /// An orphan — the terminal was closed, or its app died — has no client,
+    /// because the client dies with the app.
+    static func unattachedIDs(in sessions: [(id: UUID, attached: Bool)]) -> Set<UUID> {
+        Set(sessions.filter { !$0.attached }.map(\.id))
+    }
+
+    static func unattachedSessionIDs() -> Set<UUID> { unattachedIDs(in: listSessions()) }
 
     /// Pure: parse `tmux list-sessions -F '#{session_name} #{session_attached}'`.
     /// Anything that is not one of ours is ignored — the user's own tmux sessions

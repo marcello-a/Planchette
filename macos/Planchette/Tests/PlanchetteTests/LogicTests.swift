@@ -340,6 +340,22 @@ final class DurableTests: XCTestCase {
         XCTAssertTrue(Durable.parseSessionList("").isEmpty)
     }
 
+    // Both questions a restore asks tmux are derived from one listing, so the
+    // main thread never spawns a probe per terminal.
+    func testLiveAndUnattachedComeFromTheSameListing() {
+        let attached = UUID(), orphan = UUID()
+        let listed = [(id: attached, attached: true), (id: orphan, attached: false)]
+        XCTAssertEqual(Durable.liveIDs(in: listed), [attached, orphan],
+                       "a live agent is live whether or not we are attached to it")
+        XCTAssertEqual(Durable.unattachedIDs(in: listed), [orphan],
+                       "only the orphan may be reaped")
+    }
+
+    func testEmptyListingYieldsNothing() {
+        XCTAssertTrue(Durable.liveIDs(in: []).isEmpty)
+        XCTAssertTrue(Durable.unattachedIDs(in: []).isEmpty)
+    }
+
     // Attachment is what separates "another Planchette is using this" from
     // "nobody is coming back for this".
     func testReadsTheAttachedFlag() {

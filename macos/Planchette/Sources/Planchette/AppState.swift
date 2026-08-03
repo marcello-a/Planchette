@@ -51,6 +51,11 @@ final class AppState: ObservableObject {
     /// Only meaningful while `isRestoring` is true.
     private(set) var restoreResumeIDs: [UUID: String] = [:]
 
+    /// Durable terminals whose agent is still alive in tmux, so restore must
+    /// re-attach instead of replaying anything into them. Resolved once per
+    /// restore, off-main; only meaningful while `isRestoring` is true.
+    private(set) var restoreLiveDurableIDs: Set<UUID> = []
+
     private var saveTask: Task<Void, Never>?
 
     static let stateURL: URL = {
@@ -490,6 +495,12 @@ final class AppState: ObservableObject {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
         for sid in group.sessionIDs {
             TerminalRegistry.shared.close(sid)
+            // Closing a project ends its agents, exactly as closing a single
+            // terminal does. Without this a durable session would keep running
+            // with nothing attached to it until some later launch reaped it.
+            if sessions[sid]?.durable == true {
+                Task.detached { Durable.killSession(for: sid) }
+            }
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
@@ -972,18 +983,21 @@ final class AppState: ObservableObject {
                         currentDirectory: $0.currentDirectory)
                 })
 
-        // Eagerly create EVERY terminal's surface now (while isRestoring is
-        // true) so they all resume in the background — Claude resume, scrollback
-        // replay, startup commands — not just the visible tab. Lazy creation
-        // would skip background tabs and unselected projects/windows, so those
-        // sessions would never restore. Surfaces are registry-cached, so the
-        // SwiftUI views reuse them when they eventually appear.
-        for group in groups {
-            for id in group.sessionIDs {
-                if let session = sessions[id] {
-                    _ = TerminalRegistry.shared.view(for: session, appState: self)
-                }
+        // Which durable terminals still have a live agent, resolved as one batch
+        // like the Claude conversations above. Asking tmux per terminal meant a
+        // subprocess each, on the main thread, at exactly the moment the UI
+        // should be coming up — so it happens once, off-main, and only when
+        // there is a durable terminal to ask about. Everything else keeps the
+        // synchronous path it always had.
+        if sessions.values.contains(where: \.durable) {
+            Task { @MainActor in
+                self.restoreLiveDurableIDs = await Task.detached {
+                    Durable.liveIDs(in: Durable.listSessions())
+                }.value
+                self.createRestoredSurfaces()
             }
+        } else {
+            createRestoredSurfaces()
         }
 
         // After a grace period, new surfaces are ordinary terminals again.
@@ -991,9 +1005,26 @@ final class AppState: ObservableObject {
             try? await Task.sleep(for: .seconds(30))
             self.isRestoring = false
             self.restoreResumeIDs = [:]
+            self.restoreLiveDurableIDs = []
         }
 
         reapOrphanedDurableSessions(keeping: Set(sessions.keys))
+    }
+
+    /// Eagerly create EVERY terminal's surface (while `isRestoring` is true) so
+    /// they all resume in the background — Claude resume, scrollback replay,
+    /// startup commands — not just the visible tab. Lazy creation would skip
+    /// background tabs and unselected projects/windows, so those sessions would
+    /// never restore. Surfaces are registry-cached, so the SwiftUI views reuse
+    /// them when they eventually appear.
+    private func createRestoredSurfaces() {
+        for group in groups {
+            for id in group.sessionIDs {
+                if let session = sessions[id] {
+                    _ = TerminalRegistry.shared.view(for: session, appState: self)
+                }
+            }
+        }
     }
 
     /// Kill the tmux sessions of terminals that no longer exist. A durable

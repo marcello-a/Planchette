@@ -764,7 +764,13 @@ final class TerminalRegistry {
         var reattachingToLiveAgent = false
         if session.durable, let tmux = Durable.tmuxPath() {
             let name = Durable.sessionName(for: session.id)
-            reattachingToLiveAgent = Durable.hasSession(name, tmux: tmux)
+            // Answered from the batch `applyRestore` resolved off-main, never by
+            // asking tmux here: this runs on the main thread, once per terminal,
+            // while the UI is coming up. Outside a restore the answer is unused
+            // anyway — there is nothing to replay — and a terminal being created
+            // now has a fresh id no tmux session can match.
+            reattachingToLiveAgent =
+                appState.isRestoring && appState.restoreLiveDurableIDs.contains(session.id)
             command = Durable.attachCommand(
                 tmux: tmux, session: name,
                 environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id))

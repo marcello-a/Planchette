@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [0.2.12] — 2026-08-03
+
+### Fixed
+- **Closing a project left its durable agents running.** Closing a single
+  terminal ended its agent, but closing a whole project only freed the surfaces —
+  every durable session in it kept running headless until some later launch
+  reaped it. It now ends them, exactly as closing a tab does.
+
+### Changed
+- **Restore no longer asks tmux once per terminal on the main thread.** Deciding
+  whether a durable terminal's agent survived used a `has-session` probe per
+  terminal — a subprocess each, on the main thread, while the UI was coming up.
+  It is now one `list-sessions` call, off-main, resolved as a batch before any
+  surface is built (the same shape the Claude conversations already used), and
+  only when there is a durable terminal to ask about. Terminals without
+  durability keep the synchronous path unchanged.
+
 ## [0.2.11] — 2026-08-01
 
 ### Fixed
@@ -321,6 +338,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.12]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.12
 [0.2.11]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.11
 [0.2.10]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.10
 [0.2.9]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.9
