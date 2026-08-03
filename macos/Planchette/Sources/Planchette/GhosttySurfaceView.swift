@@ -763,6 +763,9 @@ final class TerminalRegistry {
         var command: String? = nil
         var reattachingToLiveAgent = false
         if session.durable, let tmux = Durable.tmuxPath() {
+            // Before the first attach: the server picks this up when it starts,
+            // and an app update's settings need it on disk by then.
+            Durable.writeConfigIfNeeded()
             let name = Durable.sessionName(for: session.id)
             // Answered from the batch `applyRestore` resolved off-main, never by
             // asking tmux here: this runs on the main thread, once per terminal,

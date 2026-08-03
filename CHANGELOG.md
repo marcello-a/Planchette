@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [0.2.14] — 2026-08-03
+
+### Fixed
+- **Durable terminals are opt-in again, and say what they cost.** 0.2.13 made them
+  the default; that was wrong. tmux is a terminal emulator, not a transparent
+  pipe, and it does not pass the keyboard protocol through: `Shift+Enter` reaches
+  an agent as a plain `Enter`, so it submits instead of adding a line. Measured
+  against tmux 3.7b with a probe that enables the protocol the way an agent does,
+  ghostty sends `ESC [ 1 3 ; 2 u` while tmux delivers `\r` — at both
+  `extended-keys on` and `extended-keys always`. `extended-keys` only chooses how
+  modified keys are *encoded*; it cannot recover a distinction tmux never made, so
+  there is no fix on our side. The setting now states this, and nothing flips it
+  in either direction behind you.
+
+### Changed
+- **Durable terminals run on their own tmux server** (`-L planchette`) with their
+  own config, instead of sharing yours. This is what makes the fidelity settings
+  possible at all: `extended-keys`, `set-clipboard` and `escape-time` are *server*
+  options, so setting them on a shared server would silently reconfigure your own
+  tmux. On our server they are ours alone, and your sessions keep their prefix,
+  status bar and theme. The config also declares what ghostty can actually do —
+  truecolor, OSC 52 clipboard, focus reporting, cursor shape and colour, underline
+  styles, hyperlinks, synchronised output — since tmux otherwise assumes far less,
+  and turns off the status bar and prefix key so tmux stays invisible.
+  Your `~/.tmux.conf` is deliberately not loaded: it would reintroduce exactly the
+  visible behaviour we are trying to avoid.
+
 ## [0.2.13] — 2026-08-03
 
 ### Changed
@@ -359,6 +386,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.14]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.14
 [0.2.13]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.13
 [0.2.12]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.12
 [0.2.11]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.11

@@ -412,15 +412,15 @@ struct PersistedState: Codable {
     var language: AppLanguage = .system
     var appearance: AppAppearance = .system
     var autoUpdateCheck: Bool = true
-    /// Whether new terminals are created durable (tmux-backed). On by default —
-    /// it costs nothing where tmux is missing (the terminal is simply ordinary)
-    /// and tmux itself is made invisible, so the only visible effect is that
-    /// agents stop dying with the app.
-    var durableTerminals: Bool = true
-    /// False in states written while durable terminals were still opt-in. Those
-    /// carry an explicit `durableTerminals: false` that means "the default at the
-    /// time", not "the user said no", so the new default is applied once. After
-    /// that this stays true and an explicit choice is never overridden again.
+    /// Whether new terminals are created durable (tmux-backed). Opt-in, and it
+    /// has to stay that way: tmux cannot pass the terminal's keyboard protocol
+    /// through, so `Shift+Enter` and friends reach an agent as a plain `Enter`
+    /// (verified against tmux 3.7b at both `extended-keys on` and `always`).
+    /// Durability is worth that trade for a long-running agent; it is not worth
+    /// imposing on every terminal.
+    var durableTerminals: Bool = false
+    /// Kept only so states written by 0.2.13 still decode. That version briefly
+    /// forced the setting on; nothing acts on this now.
     var durableDefaultApplied: Bool = true
 
     init(
@@ -455,14 +455,8 @@ struct PersistedState: Codable {
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
-        durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? true
+        durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? false
         durableDefaultApplied =
-            try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? false
-        if !durableDefaultApplied {
-            // Written before durable terminals became the default: its `false`
-            // records the old default, not a decision. Apply the new one once.
-            durableTerminals = true
-            durableDefaultApplied = true
-        }
+            try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
     }
 }

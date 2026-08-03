@@ -120,12 +120,40 @@ Planchette.app                tmux server (long-lived)
 Covers quit, Install & Relaunch and a crash. Does **not** cover a reboot or a
 logout, which end tmux's server too.
 
-On by default. It costs nothing where tmux is missing — the terminal is simply
-an ordinary one — and because tmux is invisible, the only effect anyone should
-notice is that agents stop dying with the app. The trade it does make: the shell
-lives on tmux's alternate screen, so the terminal's own scrollback holds tmux's
-repaints rather than a linear history. Switch the setting off if you want the
-plain terminal back; terminals already created keep what they were created as.
+### Why C1 has to stay opt-in
+
+tmux is not a transparent pipe — it is a terminal emulator, and a durable
+terminal is therefore *two* emulators deep. Most of that can be papered over
+(the config above does), but one thing cannot:
+
+**tmux does not pass the keyboard protocol through.** Ghostty implements the
+kitty keyboard protocol, which is how `Shift+Enter` is distinguishable from
+`Enter` at all — it is what lets an agent insert a newline instead of submitting.
+Inside tmux the distinction is gone: the key arrives as a plain `\r`. Measured
+against tmux 3.7b, with a probe that enables the protocol exactly as an agent TUI
+does:
+
+| | bytes delivered for `Shift+Enter` |
+|---|---|
+| ghostty directly | `ESC [ 1 3 ; 2 u` |
+| inside tmux, `extended-keys on` | `\r` |
+| inside tmux, `extended-keys always` | `\r` |
+
+`extended-keys` governs how tmux *encodes* modified keys once it has them; it
+cannot recover a distinction tmux never made. tmux implements xterm's
+`modifyOtherKeys`, not the kitty protocol, so there is no setting that fixes
+this from our side. Secondary costs are smaller but real: the shell lives on
+tmux's alternate screen, so the terminal's own scrollback holds repaints rather
+than a linear history.
+
+So durability is a deliberate trade, not a free upgrade: worth it for an agent
+that must outlive the app, wrong as a default for every terminal. 0.2.13 shipped
+it on by default and 0.2.14 reverted that.
+
+The way to get durability *without* the trade is either a proxy that does no
+terminal emulation at all (`dtach`/`abduco` forward a PTY rather than emulating
+it, so the protocol passes through untouched) or § C2 below. Both are their own
+change.
 
 ### C2 — our own daemon (design only)
 

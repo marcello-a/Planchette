@@ -288,21 +288,46 @@ final class DurableTests: XCTestCase {
     // -D evicts the stale client a crashed Planchette left behind.
     func testAttachCommandCreatesOrAttachesAndEvicts() {
         let cmd = Durable.attachCommand(tmux: "/opt/homebrew/bin/tmux", session: "planchette-x")
-        XCTAssertEqual(
-            cmd,
-            "/opt/homebrew/bin/tmux new-session -A -D -s planchette-x"
-                + " \\; set-option -t planchette-x status off"
-                + " \\; set-option -t planchette-x prefix None")
+        XCTAssertTrue(cmd.hasPrefix("/opt/homebrew/bin/tmux -L planchette -f "))
+        XCTAssertTrue(cmd.hasSuffix("new-session -A -D -s planchette-x"))
     }
 
-    // Durable is the default now, so tmux must not show through: no status bar
-    // taking the bottom row, and no prefix eating C-b (backward-char in every
-    // emacs-mode shell). Scoped with -t so the user's own sessions keep theirs.
-    func testMakesTmuxInvisibleForOurSessionOnly() {
+    // Our own server is what makes the fidelity options safe: extended-keys,
+    // set-clipboard and escape-time are SERVER options, so on a shared server
+    // setting them would silently reconfigure the user's own tmux.
+    func testRunsOnItsOwnServerWithItsOwnConfig() {
         let cmd = Durable.attachCommand(tmux: "/usr/bin/tmux", session: "planchette-x")
-        XCTAssertTrue(cmd.contains("set-option -t planchette-x status off"))
-        XCTAssertTrue(cmd.contains("set-option -t planchette-x prefix None"))
-        XCTAssertFalse(cmd.contains("-g "), "must never touch global tmux options")
+        XCTAssertTrue(cmd.contains("-L planchette"))
+        XCTAssertTrue(cmd.contains("-f '\(Durable.configURL.path)'"))
+    }
+
+    // tmux must not show through: no status bar, no prefix eating C-b
+    // (backward-char in every emacs-mode shell, and bound by agent TUIs).
+    func testConfigHidesTmux() {
+        let c = Durable.configContents
+        XCTAssertTrue(c.contains("set -g status off"))
+        XCTAssertTrue(c.contains("set -g prefix None"))
+        XCTAssertTrue(c.contains("set -g history-limit"), "tmux's 2000 lines would cap scrollback")
+    }
+
+    // The regression that made this necessary: with extended-keys off (tmux's
+    // default) Shift+Enter arrives as a plain Enter, so an agent submits the
+    // prompt instead of inserting a newline.
+    func testConfigPassesModifiedKeysThrough() {
+        let c = Durable.configContents
+        XCTAssertTrue(c.contains("set -s extended-keys on"))
+        XCTAssertTrue(c.contains("extended-keys-format csi-u"))
+        XCTAssertTrue(c.contains("extkeys"), "tmux must be told the terminal supports them")
+    }
+
+    // Everything else ghostty can do that tmux assumes it cannot.
+    func testConfigDeclaresTheTerminalsRealCapabilities() {
+        let c = Durable.configContents
+        for feature in ["RGB", "clipboard", "focus", "cstyle", "hyperlinks", "sync"] {
+            XCTAssertTrue(c.contains(feature), "terminal-features must include \(feature)")
+        }
+        XCTAssertTrue(c.contains("set -s set-clipboard on"))
+        XCTAssertTrue(c.contains("set -g allow-passthrough on"))
     }
 
     // Without -e the second durable terminal runs with the FIRST one's identity:
@@ -312,8 +337,8 @@ final class DurableTests: XCTestCase {
         let cmd = Durable.attachCommand(
             tmux: "/usr/bin/tmux", session: "planchette-x",
             environment: [("PLANCHETTE_SESSION", "ABC"), ("PLANCHETTE_SOCKET", "/tmp/p.sock")])
-        XCTAssertTrue(cmd.hasPrefix(
-            "/usr/bin/tmux new-session -A -D -s planchette-x"
+        XCTAssertTrue(cmd.hasSuffix(
+            "new-session -A -D -s planchette-x"
                 + " -e 'PLANCHETTE_SESSION=ABC' -e 'PLANCHETTE_SOCKET=/tmp/p.sock'"))
     }
 
@@ -411,27 +436,22 @@ final class DurableTests: XCTestCase {
         XCTAssertFalse(session.durable)
     }
 
-    func testSettingDefaultsOnForAFreshState() throws {
+    // Opt-in, and it must stay that way: tmux cannot pass Shift+Enter through.
+    func testSettingDefaultsOffForAFreshState() throws {
         let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
-        XCTAssertTrue(state.durableTerminals, "durable is the default now")
-        XCTAssertTrue(state.durableDefaultApplied)
+        XCTAssertFalse(state.durableTerminals, "durability costs keyboard fidelity")
     }
 
-    // A `false` written while the feature was still opt-in records the old
-    // default, not a decision, so the new default is applied once.
-    func testOptInEraStateGetsTheNewDefault() throws {
-        let json = #"{"durableTerminals":false}"#
-        let state = try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
-        XCTAssertTrue(state.durableTerminals)
-        XCTAssertTrue(state.durableDefaultApplied, "and is never re-applied")
+    // 0.2.13 briefly forced it on. Whatever a state says now is respected —
+    // nothing flips it in either direction behind the user's back.
+    func testPersistedChoiceIsRespectedBothWays() throws {
+        for value in [true, false] {
+            let json = "{\"durableTerminals\":\(value)}"
+            let state = try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
+            XCTAssertEqual(state.durableTerminals, value)
+        }
     }
 
-    // Once the migration has run, switching it off must stick.
-    func testExplicitOffIsRespectedAfterMigration() throws {
-        let json = #"{"durableTerminals":false,"durableDefaultApplied":true}"#
-        let state = try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
-        XCTAssertFalse(state.durableTerminals, "a real choice must survive a relaunch")
-    }
 }
 
 final class HookSocketTests: XCTestCase {

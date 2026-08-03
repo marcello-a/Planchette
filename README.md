@@ -55,10 +55,12 @@ architecture and roadmap.
 - Persistence across restart & reboot: layout, colors, titles, cwd, tags,
   Claude session — resumed via `claude --resume`, plus per-session startup
   commands
-- **Durable terminals (on by default where tmux is installed)**: the agent runs inside tmux, so
+- **Durable terminals (opt-in, needs tmux)**: the agent runs inside tmux, so
   quitting, updating or crashing leaves it working — reopening re-attaches to the
   live session instead of resuming a conversation that lost its turn. A reboot
-  still ends everything
+  still ends everything. Opt-in because it costs keyboard fidelity: tmux cannot
+  pass the terminal's keyboard protocol through, so `Shift+Enter` reaches an agent
+  as a plain `Enter` (see docs/LIVE-UPDATE.md § Tier C1)
 
 Current phase: **Phase 0/1 done, hardening**
 
