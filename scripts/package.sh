@@ -97,7 +97,17 @@ mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 rm -f "$DMG"
-hdiutil create -volname "Planchette" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+# `create -srcfolder` attaches a device to lay the volume out, which not every
+# environment allows (it fails with "Resource busy" where disk-image attachment
+# is restricted). `makehybrid` writes the filesystem directly, no attach — so it
+# is the fallback rather than the default, keeping the well-trodden path first.
+if ! hdiutil create -volname "Planchette" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null 2>&1; then
+    echo "  (hdiutil create could not attach a device — building via makehybrid)"
+    RAW="$(mktemp -d)/raw.dmg"
+    hdiutil makehybrid -hfs -hfs-volume-name "Planchette" -o "$RAW" "$STAGE" >/dev/null
+    hdiutil convert "$RAW" -format UDZO -o "$DMG" >/dev/null
+    rm -f "$RAW"
+fi
 echo "→ built $DMG"
 
 # 5. Zip the .app for the in-app updater (ditto preserves the bundle + signature).
