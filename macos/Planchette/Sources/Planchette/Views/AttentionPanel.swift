@@ -123,7 +123,9 @@ struct AttentionPanel: View {
     private func projectHeader(_ group: SessionGroup) -> some View {
         // Most urgent tab state colors the attention badge.
         let tabs = appState.sessions(in: group)
-        let attention = tabs.filter { $0.state.needsAttention }
+        // Snoozed tabs keep their color in the list but stop counting here —
+        // the badge is "what is asking for you", and they aren't.
+        let attention = tabs.filter { $0.state.needsAttention && !appState.isSnoozed($0) }
         let urgent = attention.min { $0.state.rank < $1.state.rank }?.state
 
         return Button {
@@ -141,6 +143,9 @@ struct AttentionPanel: View {
                     Image(systemName: "star.fill")
                         .font(.system(size: 8)).foregroundStyle(.yellow)
                 }
+                if let until = group.snoozedUntil, until > Date() {
+                    SnoozeBadge(until: until)
+                }
                 Spacer(minLength: 4)
                 if let urgent {
                     StateCountBadge(state: urgent, count: attention.count)
@@ -152,6 +157,7 @@ struct AttentionPanel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .contextMenu { GroupAttentionMenu(group: group) }
     }
 
     // MARK: Tab row
@@ -205,7 +211,11 @@ struct AttentionPanel: View {
                             .background(session.state.tint.opacity(0.16), in: Capsule())
                             .foregroundStyle(session.state.tint)
                         Spacer(minLength: 0)
-                        WaitingTimeText(since: session.stateSince)
+                        if let until = appState.snoozeEnd(for: session), until > Date() {
+                            SnoozeBadge(until: until)
+                        } else {
+                            WaitingTimeText(since: session.stateSince)
+                        }
                     }
                 }
             }
@@ -215,10 +225,8 @@ struct AttentionPanel: View {
         .buttonStyle(.plain)
         .help(hoverDetail(session))
         .contextMenu {
-            if session.state.needsAttention {
-                Button(L10n.t(.markReady)) { appState.markReady(session.id) }
-                Divider()
-            }
+            SessionAttentionMenu(session: session)
+            Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
         }
     }

@@ -50,7 +50,8 @@ groups terminals by project. See [README.md](README.md) and
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
-| `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift` | Pure helpers (unit-tested) |
+| `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
+| `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
 | `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `InboxView`, `QuickSwitcherView`, `TagViews` |
 
@@ -86,6 +87,11 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   restore step means guarding it with the same `has-session` probe — replaying
   scrollback or `claude --resume` into a live session `cat`s a stale snapshot over
   a running TUI and starts a *second* agent beside the first.
+- **A snoozed terminal is filtered, not frozen.** `AppState.isSnoozed` keeps it
+  out of the inbox, the counts, the badges and every notification, while hooks
+  and screen detection keep updating its actual state. Any new place that counts
+  or announces attention has to apply the same filter, or a terminal the user
+  sent away starts shouting from a corner nobody thought about.
 - **Never assume `$PLANCHETTE_SOCKET` is live.** A durable terminal's environment
   is frozen at the moment its tmux session was created, so it names the socket of
   an app instance that may be long dead. Anything talking to us from inside a

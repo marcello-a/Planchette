@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [0.2.15] — 2026-08-10
+
+### Added
+- **Projects can live in named folders.** A folder is a collapsible, colorable box
+  over the projects in one window's sidebar ("myposter", "side"), and it carries
+  the attention counts of everything inside it — so a closed folder still tells
+  you whether something in there needs you. A project moves with *Move to folder*
+  in its context menu and can be reordered inside its folder; projects in no
+  folder keep the familiar list below, favorites first. Folders belong to the
+  window, because the sidebar is a per-window view: moving a project to another
+  window means putting it somewhere else there.
+- **"Not now" for a terminal or a whole project.** Mark it free, or send it away
+  for an hour, two hours, or until 9 in the morning ("Tomorrow 9:00" means the
+  *next* 9:00, so a snooze taken at 3 a.m. comes back this morning, not tomorrow).
+  A snoozed terminal goes quiet: out of the inbox, the counts, the dock and
+  menu-bar badges and every notification, including the ten-minute escalation.
+  It is filtered, not frozen — hooks and screen detection keep its color honest,
+  it just stops asking for you, and a 🔕 badge says when it comes back. The
+  reminder then arrives even if the snooze ran out while Planchette was closed:
+  it is checked once on restore, not only on the minute tick.
+- **Saved arrangements.** Store a window's folders, projects and terminals — with
+  their working directory, name, color, tags, startup command and cluster splits
+  — under a name, and rebuild the whole workspace from it with one click. After
+  *Start fresh* the welcome screen offers them, which is the point: arrangements
+  live in their own `presets.json` and survive throwing the workspace away. An
+  arrangement is a template, not a snapshot: it stores no Claude conversation id,
+  so opening one twice gives two independent workspaces instead of two terminals
+  fighting over the same conversation. Splits are stored by terminal *index*,
+  since session ids are minted fresh every time one is opened.
+
 ## [0.2.14] — 2026-08-03
 
 ### Fixed
@@ -386,6 +416,7 @@ Initial release.
 - Import terminals from iTerm2 & Terminal.app, plus folder drag-and-drop.
 - DMG packaging and the GitHub-releases-based in-app update flow.
 
+[0.2.15]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.15
 [0.2.14]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.14
 [0.2.13]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.13
 [0.2.12]: https://github.com/marcello-a/Planchette/releases/tag/v0.2.12

@@ -55,6 +55,14 @@ struct SidebarView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help(L10n.t(.newProjectHelp))
+            Button {
+                appState.promptNewFolder(inWindow: windowID)
+            } label: {
+                Image(systemName: "folder.badge.plus")
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help(L10n.t(.newFolderHelp))
             Spacer()
             Button { withAnimation(.easeInOut(duration: 0.25)) { minified = true } } label: {
                 Image(systemName: "sidebar.leading")
@@ -72,9 +80,14 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func fullList(_ windowGroups: [SessionGroup]) -> some View {
-        let favorites = windowGroups.filter(\.favorite)
-        let normal = windowGroups.filter { !$0.favorite }
+        // Folders first, then the projects that are in none — those keep the
+        // familiar favorites-before-the-rest order.
+        let folders = appState.window(for: windowID)?.folders ?? []
+        let loose = looseGroups(windowGroups)
+        let favorites = loose.filter(\.favorite)
+        let normal = loose.filter { !$0.favorite }
         List(selection: selectionBinding) {
+            ForEach(folders) { folder in folderSection(folder) }
             ForEach(favorites) { group in groupRow(group) }
                 .onMove { moveGroups(favorites, other: normal, favoritesSection: true, from: $0, to: $1) }
             ForEach(normal) { group in groupRow(group) }
@@ -115,14 +128,115 @@ struct SidebarView: View {
         }
     }
 
+    /// The window's projects that sit in no folder, in the window's order.
+    private func looseGroups(_ windowGroups: [SessionGroup]) -> [SessionGroup] {
+        guard let window = appState.window(for: windowID) else { return windowGroups }
+        let looseIDs = Set(window.looseGroupIDs)
+        return windowGroups.filter { looseIDs.contains($0.id) }
+    }
+
     /// Reorder within a section (favorites or normal) and write the combined
-    /// order back to the window — favorites always stored first.
+    /// order back to the window — favorites always stored first. Projects
+    /// inside folders keep their place: their order lives in the folder, and
+    /// dropping them from `groupIDs` here would take them out of the window.
     private func moveGroups(_ section: [SessionGroup], other: [SessionGroup],
                             favoritesSection: Bool, from: IndexSet, to: Int) {
         var moved = section
         moved.move(fromOffsets: from, toOffset: to)
         let ordered = favoritesSection ? moved + other : other + moved
-        appState.updateWindow(windowID) { $0.groupIDs = ordered.map(\.id) }
+        appState.updateWindow(windowID) { window in
+            let filed = window.folders.flatMap(\.groupIDs)
+            window.groupIDs = filed + ordered.map(\.id)
+        }
+    }
+
+    // MARK: Folders
+
+    private func folderSection(_ folder: ProjectFolder) -> some View {
+        let projects = appState.groups(inFolder: folder)
+        return DisclosureGroup(isExpanded: expansion(of: folder)) {
+            ForEach(projects) { group in groupRow(group) }
+                .onMove { from, to in
+                    var ids = projects.map(\.id)
+                    ids.move(fromOffsets: from, toOffset: to)
+                    appState.updateFolder(folder.id, inWindow: windowID) { $0.groupIDs = ids }
+                }
+        } label: {
+            folderLabel(folder, projects: projects)
+        }
+    }
+
+    /// A folder's open/closed state lives in the model, so it survives a
+    /// restart like everything else in the sidebar.
+    private func expansion(of folder: ProjectFolder) -> Binding<Bool> {
+        Binding(
+            get: { !folder.collapsed },
+            set: { open in
+                appState.updateFolder(folder.id, inWindow: windowID) { $0.collapsed = !open }
+            }
+        )
+    }
+
+    private func folderLabel(_ folder: ProjectFolder, projects: [SessionGroup]) -> some View {
+        let sessions = projects.flatMap { appState.sessions(in: $0) }
+        return HStack(spacing: 6) {
+            Image(systemName: "folder.fill")
+                .font(.caption)
+                .foregroundStyle(folder.color.color ?? .secondary)
+            Text(folder.name).fontWeight(.semibold)
+            Text("\(projects.count)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Spacer()
+            attentionSummary(sessions)
+        }
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(L10n.t(.rename)) { renameFolder(folder) }
+            colorPicker(current: folder.color) { color in
+                appState.updateFolder(folder.id, inWindow: windowID) { $0.color = color }
+            }
+            Divider()
+            Button(L10n.t(.dissolveFolder)) { appState.removeFolder(folder.id, inWindow: windowID) }
+                .help(L10n.t(.dissolveFolderHelp))
+        }
+    }
+
+    private func renameFolder(_ folder: ProjectFolder) {
+        appState.promptText(title: L10n.t(.renameFolder), value: folder.name) { name in
+            guard !name.isEmpty else { return }
+            appState.updateFolder(folder.id, inWindow: windowID) { $0.name = name }
+        }
+    }
+
+    /// "Move to folder ▸" — the way a project changes box (drag-and-drop across
+    /// List sections isn't reliable enough to be the only route).
+    @ViewBuilder
+    private func folderPicker(for group: SessionGroup) -> some View {
+        let window = appState.window(for: windowID)
+        let current = window?.folder(of: group.id)
+        Menu(L10n.t(.moveToFolder)) {
+            ForEach(window?.folders ?? []) { folder in
+                Button {
+                    appState.moveGroup(group.id, toFolder: folder.id, inWindow: windowID)
+                } label: {
+                    HStack {
+                        Text(folder.name)
+                        if folder.id == current?.id { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+            Divider()
+            Button(L10n.t(.newFolder)) {
+                appState.promptNewFolder(inWindow: windowID, containing: group.id)
+            }
+            if current != nil {
+                Button(L10n.t(.noFolder)) {
+                    appState.moveGroup(group.id, toFolder: nil, inWindow: windowID)
+                }
+            }
+        }
+        .help(L10n.t(.newFolderHelp))
     }
 
     // MARK: Minified rail
@@ -177,8 +291,10 @@ struct SidebarView: View {
     private func minifiedProjectItem(_ group: SessionGroup) -> some View {
         let isSelected = appState.window(for: windowID)?.selectedGroupID == group.id
         let sessions = appState.sessions(in: group)
-        let badge: AttentionState? = sessions.map(\.state).contains(.error) ? .error
-            : (sessions.map(\.state).contains(.waiting) ? .waiting : nil)
+        // A snoozed terminal keeps its state but stops asking for attention.
+        let states = sessions.filter { !appState.isSnoozed($0) }.map(\.state)
+        let badge: AttentionState? = states.contains(.error) ? .error
+            : (states.contains(.waiting) ? .waiting : nil)
         let initial = String(group.name.prefix(1)).uppercased()
         let fill = group.color.color ?? Color.secondary.opacity(0.22)
         return Button {
@@ -255,6 +371,9 @@ struct SidebarView: View {
                 if group.favorite {
                     Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
                 }
+                if let until = group.snoozedUntil, until > Date() {
+                    SnoozeBadge(until: until)
+                }
                 Spacer()
                 // Close (X) appears on hover; attention summary otherwise.
                 if hoveredGroup == group.id {
@@ -280,10 +399,13 @@ struct SidebarView: View {
                     appState.updateGroup(group.id) { $0.color = color }
                 }
                 Button(L10n.t(.rename)) { rename(group: group) }
+                folderPicker(for: group)
                 Button(L10n.t(.moveToNewWindow)) {
                     openWindow(value: appState.moveGroupToNewWindow(group.id))
                 }
                 .help(L10n.t(.moveToNewWindowHelp))
+                Divider()
+                GroupAttentionMenu(group: group)
                 Divider()
                 Button(L10n.t(.closeProject), role: .destructive) { confirmClose(group) }
             }
@@ -325,7 +447,9 @@ struct SidebarView: View {
                     TagChips(tags: session.tags)
                 }
                 Spacer()
-                if session.state.needsAttention {
+                if let until = appState.snoozeEnd(for: session), until > Date() {
+                    SnoozeBadge(until: until)
+                } else if session.state.needsAttention {
                     WaitingTimeText(since: session.stateSince)
                 }
             }
@@ -333,10 +457,8 @@ struct SidebarView: View {
         .buttonStyle(.plain)
         .help(sessionTooltip(session))
         .contextMenu {
-            if session.state.needsAttention {
-                Button(L10n.t(.markReady)) { appState.markReady(session.id) }
-                Divider()
-            }
+            SessionAttentionMenu(session: session)
+            Divider()
             TagMenu(session: session)
             Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
@@ -358,7 +480,14 @@ struct SidebarView: View {
     }
 
     private func attentionSummary(_ group: SessionGroup) -> some View {
-        let sessions = appState.sessions(in: group)
+        attentionSummary(appState.sessions(in: group))
+    }
+
+    /// Badge row for any set of terminals (a project, or a folder's projects
+    /// taken together). Snoozed terminals are left out — a snoozed project must
+    /// not keep a badge lit while it is meant to be quiet.
+    private func attentionSummary(_ all: [TerminalSession]) -> some View {
+        let sessions = all.filter { !appState.isSnoozed($0) }
         let waiting = sessions.filter { $0.state == .waiting }.count
         let errors = sessions.filter { $0.state == .error }.count
         // Only work you haven't looked at yet: a green badge that never clears

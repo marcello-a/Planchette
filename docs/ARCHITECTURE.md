@@ -45,6 +45,15 @@ it. Processes can't survive a reboot, so restore re-creates terminals in their
 saved `cwd`, resumes Claude via `claude --resume <id>`, and re-runs an optional
 per-session startup command.
 
+**Presets live outside `state.json`** (`presets.json`, `Presets.swift`). That
+separation is the feature: "Start fresh" throws the workspace away, and the
+saved arrangements have to still be there afterwards — the welcome screen offers
+them as the way back. A preset is a template, not a snapshot: projects, folders,
+terminals (cwd, title, color, tags, startup command) and the cluster splits,
+addressed by terminal *index* since session ids are minted fresh on every open.
+It deliberately carries no Claude conversation id — opening one twice must not
+put two terminals on the same conversation.
+
 ## Windows
 
 Multi-window: each `WindowModel` owns a set of group IDs and its own selection.
@@ -54,6 +63,13 @@ default `WindowGroup` value; secondary windows get fresh UUIDs.
 window" and guarantees a main window exists. Groups can move to a new window or
 merge back; `WindowRegistry` maps window IDs to their `NSWindow` for raising and
 key-window lookup.
+
+A window also owns its **project folders** (`WindowModel.folders`): named,
+collapsible boxes over its projects in the sidebar, each owning the order of the
+projects inside it. Per window on purpose — the sidebar is a per-window view, so
+moving a project to another window means putting it somewhere else.
+`sanitizeFolders()` (called from `sanitizeWindows`) keeps a folder from naming a
+project that left the window or already sits in another folder.
 
 ## Terminal surfaces
 
@@ -91,6 +107,18 @@ first). Focusing an `asking`/`done` terminal clears it.
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).
+
+### Snooze — the one thing that silences a terminal
+
+A terminal or a whole project can be sent away until a moment (`Snooze.swift`:
+in 1 hour, in 2 hours, the next 9:00). Snoozing sets the terminal free straight
+away and stores `snoozedUntil`; while it runs, `AppState.isSnoozed` filters that
+terminal out of the inbox, the counts, the dock and menu-bar badges and every
+notification — including the escalation reminder. It does **not** freeze the
+state machine: hooks and screen detection keep the color honest, the terminal
+just stops asking for you. `checkSnoozeExpiry()` (every housekeeping tick, and
+once after a restore, so a snooze that ran out while the app was closed still
+speaks up) clears it and posts the reminder.
 
 ## AI assist (opt-in)
 

@@ -155,6 +155,8 @@ struct TerminalAreaView: View {
         .contextMenu {
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
             Divider()
+            SessionAttentionMenu(session: session)
+            Divider()
             TagMenu(session: session)
             Divider()
             Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }

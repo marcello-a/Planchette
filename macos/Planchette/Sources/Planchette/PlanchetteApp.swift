@@ -32,6 +32,10 @@ struct PlanchetteApp: App {
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
             }
+            CommandMenu(L10n.t(.arrangements)) {
+                ArrangementsMenu()
+                    .environmentObject(delegate.appState)
+            }
             CommandMenu(L10n.t(.aiMenu)) {
                 AIMenu()
                     .environmentObject(delegate.appState)
@@ -407,8 +411,66 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             .padding(.top, 8)
+            // The whole point of arrangements: after "Start fresh" the saved
+            // workspaces are right here, one click from being back.
+            if !appState.presets.isEmpty, let windowID = resolvedWindow?.id {
+                ArrangementLauncher(windowID: windowID)
+                    .padding(.top, 14)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Saved arrangements on the welcome screen — name, size, and one click to
+/// build the whole thing.
+struct ArrangementLauncher: View {
+    @EnvironmentObject var appState: AppState
+    let windowID: UUID
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.t(.savedArrangements))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(appState.presets) { preset in
+                Button {
+                    appState.openPreset(preset, inWindow: windowID)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.grid.2x2")
+                            .foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(preset.name).fontWeight(.medium)
+                            Text(L10n.t(.arrangementSummary, preset.projects.count, preset.terminalCount))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
+                        Text(L10n.t(.openArrangement))
+                            .font(.caption).foregroundStyle(Color.accentColor)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .frame(width: 340, alignment: .leading)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(preset.projects.map(\.name).joined(separator: ", "))
+                .contextMenu {
+                    Button(L10n.t(.renameArrangement)) {
+                        appState.promptText(
+                            title: L10n.t(.saveArrangementTitle), value: preset.name
+                        ) { name in
+                            appState.renamePreset(preset.id, to: name)
+                        }
+                    }
+                    Divider()
+                    Button(L10n.t(.deleteArrangement), role: .destructive) {
+                        appState.deletePreset(preset.id)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -439,6 +501,26 @@ struct WindowAccessor: NSViewRepresentable {
         // there would raise/deminiaturize the window on every view update.
         if NSApp.isActive, NSApp.keyWindow == nil, window.canBecomeKey, !window.isMiniaturized {
             window.makeKeyAndOrderFront(nil)
+        }
+    }
+}
+
+/// "Arrangements" menu: save what this window looks like, or open a saved one.
+struct ArrangementsMenu: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Button(L10n.t(.saveArrangement)) { appState.promptSaveArrangementInKeyWindow() }
+            .help(L10n.t(.saveArrangementHelp))
+        Divider()
+        if appState.presets.isEmpty {
+            Text(L10n.t(.noArrangements))
+        } else {
+            ForEach(appState.presets) { preset in
+                Button("\(preset.name) — \(L10n.t(.arrangementSummary, preset.projects.count, preset.terminalCount))") {
+                    appState.openPresetInKeyWindow(preset)
+                }
+            }
         }
     }
 }
@@ -642,6 +724,28 @@ extension AppState {
         ) { command in
             self.update(session.id) { $0.startupCommand = command.isEmpty ? nil : command }
         }
+    }
+
+    /// Ask for a name and create a sidebar folder, optionally putting a project
+    /// straight into it.
+    func promptNewFolder(inWindow windowID: UUID, containing groupID: UUID? = nil) {
+        promptText(title: L10n.t(.newFolderTitle), value: "") { [weak self] name in
+            guard !name.isEmpty else { return }
+            self?.addFolder(name: name, inWindow: windowID, containing: groupID)
+        }
+    }
+
+    /// Save the key window's projects and terminals as a named arrangement.
+    func promptSaveArrangementInKeyWindow() {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
+        promptText(title: L10n.t(.saveArrangementTitle), value: "") { [weak self] name in
+            self?.savePreset(name: name, fromWindow: windowID)
+        }
+    }
+
+    func openPresetInKeyWindow(_ preset: Preset) {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
+        openPreset(preset, inWindow: windowID)
     }
 
     /// Add a terminal to an existing group, in that group's folder.

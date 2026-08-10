@@ -203,6 +203,11 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     // Tags: what should happen with this terminal ("to test", "review", …)
     var tags: [String] = []
 
+    /// "Not now — remind me then." Until this moment the terminal is out of the
+    /// inbox, the badges and every notification (see `AppState.isSnoozed`); when
+    /// it passes, one reminder brings it back. Nil = not snoozed.
+    var snoozedUntil: Date?
+
     // AI assist
     var transcriptPath: String?   // Claude transcript JSONL, from hook events
     var aiSummary: String?        // one-liner, only when AI assist is enabled
@@ -239,6 +244,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         currentTask = try c.decodeIfPresent(String.self, forKey: .currentTask)
         seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? true
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
+        snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)
@@ -383,10 +389,41 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     var worktreePath: String?
     /// The repo the worktree belongs to — `git worktree remove` has to run there.
     var worktreeRepoRoot: String?
+    /// Snooze for the whole project: every terminal in it is quiet until then
+    /// (see `TerminalSession.snoozedUntil`). Optional, so older state decodes.
+    var snoozedUntil: Date?
 
     init(id: UUID = UUID(), name: String) {
         self.id = id
         self.name = name
+    }
+}
+
+/// A named box of projects in one window's sidebar ("myposter", "side"). It
+/// owns the order of the projects inside it; projects listed in no folder stay
+/// at the top level. Deliberately per window (`WindowModel.folders`): the
+/// sidebar is a per-window view, and moving a project to another window means
+/// putting it somewhere else.
+struct ProjectFolder: Identifiable, Codable, Equatable {
+    let id: UUID
+    var name: String
+    var color: SessionColor = .none
+    /// Collapsed in the sidebar. Persisted — a folder you closed stays closed.
+    var collapsed: Bool = false
+    var groupIDs: [UUID] = []
+
+    init(id: UUID = UUID(), name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
+        collapsed = try c.decodeIfPresent(Bool.self, forKey: .collapsed) ?? false
+        groupIDs = try c.decodeIfPresent([UUID].self, forKey: .groupIDs) ?? []
     }
 }
 
@@ -396,9 +433,33 @@ struct WindowModel: Identifiable, Codable, Equatable {
     let id: UUID
     var groupIDs: [UUID] = []
     var selectedGroupID: UUID?
+    /// Named boxes over this window's projects, in sidebar order. A project may
+    /// appear in at most one of them; `AppState.sanitizeWindows` enforces that.
+    var folders: [ProjectFolder] = []
 
     init(id: UUID = UUID()) {
         self.id = id
+    }
+
+    // Custom, so a state written before folders existed still decodes (the
+    // synthesized decoder would demand the key).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        groupIDs = try c.decodeIfPresent([UUID].self, forKey: .groupIDs) ?? []
+        selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
+        folders = try c.decodeIfPresent([ProjectFolder].self, forKey: .folders) ?? []
+    }
+
+    /// The folder holding this project, if any.
+    func folder(of groupID: UUID) -> ProjectFolder? {
+        folders.first { $0.groupIDs.contains(groupID) }
+    }
+
+    /// Projects that are in no folder — shown at the sidebar's top level.
+    var looseGroupIDs: [UUID] {
+        let filed = Set(folders.flatMap(\.groupIDs))
+        return groupIDs.filter { !filed.contains($0) }
     }
 }
 

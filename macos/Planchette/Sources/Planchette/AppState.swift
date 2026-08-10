@@ -39,6 +39,9 @@ final class AppState: ObservableObject {
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
+    /// Saved arrangements. Kept in their own file (see `PresetStore`) so
+    /// "Start fresh" — which throws the workspace away — leaves them standing.
+    @Published var presets: [Preset] = PresetStore.load()
 
     private(set) lazy var aiAssist = AIAssist(appState: self)
 
@@ -118,7 +121,7 @@ final class AppState: ObservableObject {
 
     /// The dock badge mirrors the menu-bar counters: sessions that need you.
     func refreshDockBadge() {
-        let count = sessions.values.filter { $0.state.needsAttention }.count
+        let count = sessions.values.filter { $0.state.needsAttention && !isSnoozed($0) }.count
         NSApp?.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
     }
 
@@ -126,9 +129,10 @@ final class AppState: ObservableObject {
     /// spell: favorites get a reminder notification, everything else only
     /// counts on in the badges. State changes reset the spell (see setState).
     private func attentionHousekeeping() {
+        checkSnoozeExpiry()
         refreshDockBadge()
         for session in sessions.values
-        where session.state.needsAttention
+        where session.state.needsAttention && !isSnoozed(session)
             && Date().timeIntervalSince(session.stateSince) >= Self.escalationThreshold
             && !escalatedIDs.contains(session.id) {
             escalatedIDs.insert(session.id)
@@ -285,6 +289,71 @@ final class AppState: ObservableObject {
             || !windows[idx].groupIDs.contains(windows[idx].selectedGroupID!) {
             windows[idx].selectedGroupID = windows[idx].groupIDs.first
         }
+        sanitizeFolders()
+    }
+
+    /// A folder may only name projects that live in its own window, and each
+    /// project in at most one folder. Runs after every window repair, so a
+    /// project that was closed or moved away can't leave a ghost behind.
+    private func sanitizeFolders() {
+        for widx in windows.indices {
+            let own = Set(windows[widx].groupIDs)
+            var claimed = Set<UUID>()
+            for fidx in windows[widx].folders.indices {
+                windows[widx].folders[fidx].groupIDs.removeAll { id in
+                    !own.contains(id) || !claimed.insert(id).inserted
+                }
+            }
+            // An empty folder is kept: it is a box you just made, or emptied on
+            // purpose, and losing it while you fill it would be worse.
+        }
+    }
+
+    // MARK: Project folders (per window)
+
+    /// Create a folder in a window, optionally with a first project in it.
+    @discardableResult
+    func addFolder(name: String, inWindow windowID: UUID, containing groupID: UUID? = nil) -> ProjectFolder {
+        var folder = ProjectFolder(name: name)
+        if let groupID { folder.groupIDs = [groupID] }
+        updateWindow(windowID) { window in
+            // A project belongs to one folder only.
+            for idx in window.folders.indices {
+                window.folders[idx].groupIDs.removeAll { $0 == groupID }
+            }
+            window.folders.append(folder)
+        }
+        return folder
+    }
+
+    func updateFolder(_ folderID: UUID, inWindow windowID: UUID, _ mutate: (inout ProjectFolder) -> Void) {
+        updateWindow(windowID) { window in
+            guard let idx = window.folders.firstIndex(where: { $0.id == folderID }) else { return }
+            mutate(&window.folders[idx])
+        }
+    }
+
+    /// Dissolve a folder — its projects stay, back at the top level.
+    func removeFolder(_ folderID: UUID, inWindow windowID: UUID) {
+        updateWindow(windowID) { $0.folders.removeAll { $0.id == folderID } }
+    }
+
+    /// Move a project into a folder, or out of every folder (`folderID` nil).
+    func moveGroup(_ groupID: UUID, toFolder folderID: UUID?, inWindow windowID: UUID) {
+        updateWindow(windowID) { window in
+            for idx in window.folders.indices {
+                window.folders[idx].groupIDs.removeAll { $0 == groupID }
+            }
+            guard let folderID,
+                  let idx = window.folders.firstIndex(where: { $0.id == folderID })
+            else { return }
+            window.folders[idx].groupIDs.append(groupID)
+        }
+    }
+
+    /// The projects of a folder, in the folder's own order.
+    func groups(inFolder folder: ProjectFolder) -> [SessionGroup] {
+        folder.groupIDs.compactMap { id in groups.first { $0.id == id } }
     }
 
     /// Move a group into a brand-new window; returns the window id to open.
@@ -336,10 +405,11 @@ final class AppState: ObservableObject {
     }
 
     /// Inbox: everything needing attention. Favorites first, errors before
-    /// waiting, longest-waiting first.
+    /// waiting, longest-waiting first. Snoozed terminals are left out — that is
+    /// what snoozing them meant.
     var attentionQueue: [TerminalSession] {
         sessions.values
-            .filter { $0.state.needsAttention }
+            .filter { $0.state.needsAttention && !isSnoozed($0) }
             .sorted { a, b in
                 let aFav = group(of: a)?.favorite ?? false
                 let bFav = group(of: b)?.favorite ?? false
@@ -349,8 +419,12 @@ final class AppState: ObservableObject {
             }
     }
 
-    var waitingCount: Int { sessions.values.filter { $0.state == .waiting }.count }
-    var errorCount: Int { sessions.values.filter { $0.state == .error }.count }
+    var waitingCount: Int {
+        sessions.values.filter { $0.state == .waiting && !isSnoozed($0) }.count
+    }
+    var errorCount: Int {
+        sessions.values.filter { $0.state == .error && !isSnoozed($0) }.count
+    }
 
     // MARK: Mutations
 
@@ -582,7 +656,7 @@ final class AppState: ObservableObject {
 
     /// Terminals that finished something nobody has looked at yet.
     var unseenReadyCount: Int {
-        sessions.values.filter { $0.state == .ready && !$0.seen }.count
+        sessions.values.filter { $0.state == .ready && !$0.seen && !isSnoozed($0) }.count
     }
 
     /// Looking at a terminal marks its finished work as seen. Deliberately only
@@ -655,6 +729,97 @@ final class AppState: ObservableObject {
     /// here") — which is what the context-menu action means.
     func markReady(_ id: UUID) {
         setState(id, .free)
+        markSeen(id)
+    }
+
+    /// Mark every terminal of a project free — "I've dealt with this project".
+    func markGroupReady(_ groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        for id in group.sessionIDs { markReady(id) }
+    }
+
+    // MARK: Snooze ("not now — remind me then")
+
+    /// Is this terminal currently silenced? Either on its own, or because its
+    /// whole project is. Snoozed terminals are out of the inbox, the badges,
+    /// the menu bar and every notification — their state still tracks reality,
+    /// it just stops shouting about it.
+    func isSnoozed(_ session: TerminalSession, now: Date = Date()) -> Bool {
+        Snooze.isActive(
+            sessionUntil: session.snoozedUntil,
+            groupUntil: group(of: session)?.snoozedUntil,
+            now: now)
+    }
+
+    func isSnoozed(sessionID: UUID, now: Date = Date()) -> Bool {
+        sessions[sessionID].map { isSnoozed($0, now: now) } ?? false
+    }
+
+    /// When this terminal comes back (its own snooze, or its project's — the
+    /// later of the two is what actually silences it).
+    func snoozeEnd(for session: TerminalSession) -> Date? {
+        Snooze.end(
+            sessionUntil: session.snoozedUntil,
+            groupUntil: group(of: session)?.snoozedUntil)
+    }
+
+    /// Silence a terminal until `date`, and set it free right away: the point of
+    /// "not now" is that it stops asking. The reminder fires in
+    /// `checkSnoozeExpiry`.
+    func snooze(session id: UUID, until date: Date) {
+        setState(id, .free)
+        update(id) {
+            $0.snoozedUntil = date
+            $0.seen = true
+        }
+        refreshDockBadge()
+    }
+
+    /// Same for a whole project — one reminder for the project, not one per tab.
+    func snooze(group groupID: UUID, until date: Date) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        for id in group.sessionIDs {
+            setState(id, .free)
+            update(id) { $0.seen = true }
+        }
+        updateGroup(groupID) { $0.snoozedUntil = date }
+        refreshDockBadge()
+    }
+
+    func clearSnooze(session id: UUID) {
+        update(id) { $0.snoozedUntil = nil }
+        refreshDockBadge()
+    }
+
+    /// Cancels the *project's* reminder only. A terminal you silenced by itself
+    /// stays silenced — it was a separate decision.
+    func clearSnooze(group groupID: UUID) {
+        updateGroup(groupID) { $0.snoozedUntil = nil }
+        refreshDockBadge()
+    }
+
+    /// Fire the reminders that came due and let those terminals speak again.
+    /// Called every housekeeping tick and once after a restore — so a snooze
+    /// that ran out while the app was closed reminds you when you come back
+    /// rather than expiring in silence.
+    func checkSnoozeExpiry(now: Date = Date()) {
+        for group in groups {
+            guard let until = group.snoozedUntil, until <= now else { continue }
+            updateGroup(group.id) { $0.snoozedUntil = nil }
+            NotificationService.post(
+                title: "\(group.name) — \(L10n.t(.reminder))",
+                body: L10n.t(.reminderBody),
+                sessionID: group.activeSessionID ?? group.sessionIDs.first)
+        }
+        for session in sessions.values {
+            guard let until = session.snoozedUntil, until <= now else { continue }
+            update(session.id) { $0.snoozedUntil = nil }
+            NotificationService.post(
+                title: "\(session.displayTitle) — \(L10n.t(.reminder))",
+                body: session.lastMessage ?? session.currentTask ?? L10n.t(.reminderBody),
+                sessionID: session.id)
+        }
+        refreshDockBadge()
     }
 
     /// OSC 133: the last shell command finished. Non-zero exit → error (red),
@@ -758,6 +923,8 @@ final class AppState: ObservableObject {
 
     private func postUserNotification(sessionID: UUID, message: String?) {
         guard let session = sessions[sessionID] else { return }
+        // Snoozed means snoozed: no banner until the reminder is due.
+        guard !isSnoozed(session) else { return }
         // Only interrupt for favorites; side projects just queue in the inbox.
         guard group(of: session)?.favorite == true else { return }
         NotificationService.post(
@@ -841,6 +1008,113 @@ final class AppState: ObservableObject {
     /// Manual "summarize everything now" from the AI menu.
     func summarizeAllNow() {
         for id in sessions.keys { aiAssist.sessionUpdated(id, force: true) }
+    }
+
+    // MARK: Presets (saved arrangements)
+
+    /// Capture a window's shape as a reusable arrangement: its folders,
+    /// projects, terminals and cluster splits — no live state (see `Preset`).
+    /// An existing preset of the same name is replaced, which is what "save
+    /// again" means after you rearranged something.
+    @discardableResult
+    func savePreset(name: String, fromWindow windowID: UUID) -> Preset? {
+        guard let window = window(for: windowID) else { return nil }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        var projects: [PresetProject] = []
+        for group in groups(inWindow: window) {
+            let tabs = sessions(in: group)
+            guard !tabs.isEmpty else { continue }
+            var project = PresetProject(name: group.name)
+            project.color = group.color
+            project.favorite = group.favorite
+            project.viewMode = group.viewMode
+            if let folder = window.folder(of: group.id) {
+                project.folderName = folder.name
+                project.folderColor = folder.color
+            }
+            project.terminals = tabs.map { session in
+                var terminal = PresetTerminal(workingDirectory: session.currentDirectory)
+                terminal.customTitle = session.customTitle
+                terminal.color = session.color
+                terminal.tags = session.tags
+                terminal.startupCommand = session.startupCommand
+                return terminal
+            }
+            if group.viewMode == .cluster {
+                project.clusterLayout = PresetLayout.from(
+                    clusterLayout(for: group), sessionIDs: tabs.map(\.id))
+            }
+            projects.append(project)
+        }
+        guard !projects.isEmpty else { return nil }
+
+        var preset = Preset(name: trimmed, projects: projects)
+        if let idx = presets.firstIndex(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            preset = Preset(
+                id: presets[idx].id, name: trimmed,
+                createdAt: presets[idx].createdAt, projects: projects)
+            presets[idx] = preset
+        } else {
+            presets.append(preset)
+        }
+        PresetStore.save(presets)
+        return preset
+    }
+
+    /// Build a preset's projects and terminals in a window and jump to the first
+    /// one. Adds to whatever is already there — it never clears the window.
+    func openPreset(_ preset: Preset, inWindow windowID: UUID) {
+        var firstSession: TerminalSession?
+        for project in preset.projects {
+            let group = addGroup(name: project.name, favorite: project.favorite, inWindow: windowID)
+            updateGroup(group.id) {
+                $0.color = project.color
+                $0.viewMode = project.viewMode
+            }
+            var createdIDs: [UUID] = []
+            for terminal in project.terminals {
+                let session = addSession(directory: terminal.workingDirectory, groupID: group.id)
+                update(session.id) {
+                    $0.customTitle = terminal.customTitle
+                    $0.color = terminal.color
+                    $0.tags = terminal.tags
+                    $0.startupCommand = terminal.startupCommand
+                }
+                createdIDs.append(session.id)
+                if firstSession == nil { firstSession = sessions[session.id] }
+            }
+            if let layout = project.clusterLayout?.resolved(with: createdIDs) {
+                updateGroup(group.id) { $0.clusterLayout = layout }
+            }
+            if let folderName = project.folderName {
+                let existing = window(for: windowID)?.folders
+                    .first { $0.name.lowercased() == folderName.lowercased() }
+                if let existing {
+                    moveGroup(group.id, toFolder: existing.id, inWindow: windowID)
+                } else {
+                    let folder = addFolder(name: folderName, inWindow: windowID, containing: group.id)
+                    updateFolder(folder.id, inWindow: windowID) { $0.color = project.folderColor }
+                }
+            }
+        }
+        if let firstSession, let stored = sessions[firstSession.id] {
+            select(session: stored)
+        }
+        scheduleSave()
+    }
+
+    func deletePreset(_ id: UUID) {
+        presets.removeAll { $0.id == id }
+        PresetStore.save(presets)
+    }
+
+    func renamePreset(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, let idx = presets.firstIndex(where: { $0.id == id }) else { return }
+        presets[idx].name = trimmed
+        PresetStore.save(presets)
     }
 
     // MARK: Migration / import
@@ -965,6 +1239,9 @@ final class AppState: ObservableObject {
         durableTerminals = state.durableTerminals
         windowsToOpen = windows.dropFirst().map(\.id)
 
+        // A "remind me in 2 hours" that ran out while the app was closed is due
+        // now, not in up to a minute — and it must not expire unnoticed.
+        checkSnoozeExpiry()
         refreshDockBadge()
 
         // Resolve which Claude conversation each terminal resumes as ONE batch

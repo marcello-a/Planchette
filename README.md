@@ -21,6 +21,15 @@ architecture and roadmap.
 
 **Working today (macOS, `macos/Planchette`):**
 - Multiple libghostty terminals in groups: tab view or cluster grid per group
+- **Projects in named folders** — collapsible boxes in the sidebar ("myposter",
+  "side"), with the attention counts of everything inside them on the folder row
+- **"Not now"** on a terminal or a whole project: mark it free, or send it away
+  for an hour, two hours or until 9 in the morning. It goes quiet — out of the
+  inbox, the badges and every notification — and comes back with a reminder
+- **Saved arrangements** — store this window's folders, projects, terminals
+  (cwd, names, tags, startup commands) and cluster splits under a name; after a
+  fresh start the welcome screen offers them and one click rebuilds the whole
+  workspace. A template, not a snapshot: no conversation is claimed twice
 - Attention engine driven by agent hooks: running / waiting / done / free,
   inbox, menu-bar badge, per-session idle timers
 - **Screen fallback**: where hooks stay silent, the terminal viewport is read

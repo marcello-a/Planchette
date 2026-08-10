@@ -1448,6 +1448,200 @@ final class ClaudeResumeTests: XCTestCase {
     }
 }
 
+// MARK: Snooze — "not now, remind me then"
+
+final class SnoozeTests: XCTestCase {
+    private var utc: Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
+    }
+
+    private func date(_ iso: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.date(from: iso)!
+    }
+
+    func testHourOptionsAreExactOffsets() {
+        let now = date("2026-08-10T14:05:00Z")
+        XCTAssertEqual(SnoozeOption.oneHour.date(from: now), now.addingTimeInterval(3600))
+        XCTAssertEqual(SnoozeOption.twoHours.date(from: now), now.addingTimeInterval(7200))
+    }
+
+    // The morning option means "the next 9:00", not "+24h": snoozing at 22:00
+    // must land the next morning, not the one after.
+    func testTomorrowMorningIsTheNextNineOClock() {
+        let evening = date("2026-08-10T22:00:00Z")
+        XCTAssertEqual(
+            SnoozeOption.tomorrowMorning.date(from: evening, calendar: utc),
+            date("2026-08-11T09:00:00Z"))
+    }
+
+    // Snoozing at 3 in the morning: the next 9:00 is today's, hours away —
+    // waiting a further day would be a reminder nobody asked for.
+    func testEarlyMorningSnoozeLandsTheSameDay() {
+        let night = date("2026-08-10T03:00:00Z")
+        XCTAssertEqual(
+            SnoozeOption.tomorrowMorning.date(from: night, calendar: utc),
+            date("2026-08-10T09:00:00Z"))
+    }
+
+    // Exactly 9:00 is not "still ahead" — it would fire instantly.
+    func testAtNineExactlyGoesToTheNextDay() {
+        let nine = date("2026-08-10T09:00:00Z")
+        XCTAssertEqual(
+            SnoozeOption.tomorrowMorning.date(from: nine, calendar: utc),
+            date("2026-08-11T09:00:00Z"))
+    }
+
+    func testQuietWhileEitherSnoozeRuns() {
+        let now = date("2026-08-10T12:00:00Z")
+        let later = date("2026-08-10T13:00:00Z")
+        let earlier = date("2026-08-10T11:00:00Z")
+        XCTAssertTrue(Snooze.isActive(sessionUntil: later, groupUntil: nil, now: now),
+                      "the terminal's own snooze silences it")
+        XCTAssertTrue(Snooze.isActive(sessionUntil: nil, groupUntil: later, now: now),
+                      "a snoozed project silences its terminals")
+        XCTAssertTrue(Snooze.isActive(sessionUntil: earlier, groupUntil: later, now: now),
+                      "the longer of the two decides")
+        XCTAssertFalse(Snooze.isActive(sessionUntil: earlier, groupUntil: earlier, now: now))
+        XCTAssertFalse(Snooze.isActive(sessionUntil: nil, groupUntil: nil, now: now))
+    }
+
+    func testEndIsTheLaterOfBoth() {
+        let a = date("2026-08-10T13:00:00Z"), b = date("2026-08-10T15:00:00Z")
+        XCTAssertEqual(Snooze.end(sessionUntil: a, groupUntil: b), b)
+        XCTAssertEqual(Snooze.end(sessionUntil: nil, groupUntil: b), b)
+        XCTAssertNil(Snooze.end(sessionUntil: nil, groupUntil: nil))
+    }
+
+    // A snooze is persisted state: a restart must not un-silence a terminal.
+    func testSnoozeSurvivesEncoding() throws {
+        var session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        session.snoozedUntil = date("2026-08-10T13:00:00Z")
+        let data = try JSONEncoder().encode(session)
+        let decoded = try JSONDecoder().decode(TerminalSession.self, from: data)
+        XCTAssertEqual(decoded.snoozedUntil, session.snoozedUntil)
+    }
+
+    // State written before snoozing existed decodes as "not snoozed".
+    func testOlderStateDecodesUnsnoozed() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","groupID":"\(UUID().uuidString)","workingDirectory":"/tmp"}
+        """
+        let session = try JSONDecoder().decode(TerminalSession.self, from: Data(json.utf8))
+        XCTAssertNil(session.snoozedUntil)
+    }
+}
+
+// MARK: Project folders (grouping projects in one window's sidebar)
+
+final class ProjectFolderTests: XCTestCase {
+    func testLooseGroupsAreThoseInNoFolder() {
+        let a = UUID(), b = UUID(), c = UUID()
+        var window = WindowModel()
+        window.groupIDs = [a, b, c]
+        var folder = ProjectFolder(name: "myposter")
+        folder.groupIDs = [b]
+        window.folders = [folder]
+        XCTAssertEqual(window.looseGroupIDs, [a, c])
+        XCTAssertEqual(window.folder(of: b)?.name, "myposter")
+        XCTAssertNil(window.folder(of: a))
+    }
+
+    // A window written before folders existed must still decode — the
+    // synthesized decoder would have demanded the key.
+    func testWindowWithoutFoldersDecodes() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","groupIDs":[]}
+        """
+        let window = try JSONDecoder().decode(WindowModel.self, from: Data(json.utf8))
+        XCTAssertTrue(window.folders.isEmpty)
+    }
+
+    func testFolderRoundTrips() throws {
+        var folder = ProjectFolder(name: "side")
+        folder.color = .teal
+        folder.collapsed = true
+        folder.groupIDs = [UUID()]
+        let decoded = try JSONDecoder().decode(
+            ProjectFolder.self, from: try JSONEncoder().encode(folder))
+        XCTAssertEqual(decoded, folder)
+    }
+
+    // A folder written before `collapsed`/`color` existed keeps working.
+    func testFolderDecodesWithoutOptionalFields() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","name":"box"}
+        """
+        let folder = try JSONDecoder().decode(ProjectFolder.self, from: Data(json.utf8))
+        XCTAssertFalse(folder.collapsed)
+        XCTAssertEqual(folder.color, .none)
+        XCTAssertTrue(folder.groupIDs.isEmpty)
+    }
+}
+
+// MARK: Presets (saved arrangements)
+
+final class PresetTests: XCTestCase {
+    // A preset's splits are stored by terminal index: the session ids it was
+    // saved from are gone by the time it is opened again.
+    func testLayoutRoundTripsThroughIndices() {
+        let a = UUID(), b = UUID(), c = UUID()
+        let live = SplitLayout.row([.leaf(a), .column([.leaf(b), .leaf(c)])])
+        let stored = PresetLayout.from(live, sessionIDs: [a, b, c])
+        XCTAssertEqual(stored, .row([.leaf(0), .column([.leaf(1), .leaf(2)])]))
+
+        let x = UUID(), y = UUID(), z = UUID()
+        XCTAssertEqual(
+            stored?.resolved(with: [x, y, z]),
+            .row([.leaf(x), .column([.leaf(y), .leaf(z)])]),
+            "the arrangement must be rebuilt onto the freshly created terminals")
+    }
+
+    func testLayoutDropsPanesThatNoLongerExist() {
+        let a = UUID(), b = UUID()
+        let stored = PresetLayout.from(.row([.leaf(a), .leaf(b)]), sessionIDs: [a, b])
+        // Opened with only one terminal: the missing leaf collapses away.
+        XCTAssertEqual(stored?.resolved(with: [a]), .leaf(a))
+    }
+
+    func testLayoutIgnoresSessionsOutsideTheProject() {
+        let a = UUID(), stray = UUID()
+        XCTAssertEqual(PresetLayout.from(.row([.leaf(a), .leaf(stray)]), sessionIDs: [a]), .leaf(0))
+        XCTAssertNil(PresetLayout.from(.leaf(stray), sessionIDs: [a]))
+    }
+
+    func testPresetRoundTrips() throws {
+        var project = PresetProject(name: "designer-library")
+        project.folderName = "myposter"
+        project.viewMode = .cluster
+        project.clusterLayout = .row([.leaf(0), .leaf(1)])
+        var terminal = PresetTerminal(workingDirectory: "/tmp/x")
+        terminal.startupCommand = "pnpm dev"
+        terminal.tags = ["wip"]
+        project.terminals = [terminal, PresetTerminal(workingDirectory: "/tmp/y")]
+        let preset = Preset(name: "Frontend", projects: [project])
+
+        let decoded = try JSONDecoder().decode(
+            [Preset].self, from: try JSONEncoder().encode([preset]))
+        XCTAssertEqual(decoded, [preset])
+        XCTAssertEqual(decoded[0].terminalCount, 2)
+    }
+
+    // A preset is a template: it must never carry a Claude conversation id,
+    // or opening it twice would put two terminals on the same conversation.
+    func testPresetCarriesNoConversationID() throws {
+        var terminal = PresetTerminal(workingDirectory: "/tmp/x")
+        terminal.customTitle = "agent"
+        let data = try JSONEncoder().encode(terminal)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(json.lowercased().contains("claude"))
+        XCTAssertFalse(json.lowercased().contains("session"))
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.
