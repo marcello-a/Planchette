@@ -89,9 +89,7 @@ struct SidebarView: View {
         List(selection: selectionBinding) {
             ForEach(folders) { folder in folderSection(folder) }
             ForEach(favorites) { group in groupRow(group) }
-                .onMove { moveGroups(favorites, other: normal, favoritesSection: true, from: $0, to: $1) }
             ForEach(normal) { group in groupRow(group) }
-                .onMove { moveGroups(normal, other: favorites, favoritesSection: false, from: $0, to: $1) }
         }
         .listStyle(.sidebar)
         // Drop the translucent sidebar material so the panel is the same solid
@@ -135,19 +133,66 @@ struct SidebarView: View {
         return windowGroups.filter { looseIDs.contains($0.id) }
     }
 
-    /// Reorder within a section (favorites or normal) and write the combined
-    /// order back to the window — favorites always stored first. Projects
-    /// inside folders keep their place: their order lives in the folder, and
-    /// dropping them from `groupIDs` here would take them out of the window.
-    private func moveGroups(_ section: [SessionGroup], other: [SessionGroup],
-                            favoritesSection: Bool, from: IndexSet, to: Int) {
-        var moved = section
-        moved.move(fromOffsets: from, toOffset: to)
-        let ordered = favoritesSection ? moved + other : other + moved
+    /// Drag payload type for moving a project between sections/folders.
+    private static let projectUTType = UTType.text
+
+    /// Drop a dragged project onto another project's row: moves it into the
+    /// target's folder (or out to the top level, if the target is loose) and
+    /// places it right before the target — the one mechanism for reordering
+    /// within a section, moving between folders, and moving in/out of one.
+    private func handleProjectDrop(moving sourceID: UUID, onto target: SessionGroup) {
+        guard sourceID != target.id else { return }
+        let targetFolder = appState.window(for: windowID)?.folder(of: target.id)
+        appState.moveGroup(sourceID, toFolder: targetFolder?.id, inWindow: windowID)
+        if let targetFolder {
+            reorderInFolder(targetFolder.id, moving: sourceID, adjacentTo: target.id)
+        } else {
+            reorderLoose(moving: sourceID, adjacentTo: target.id)
+        }
+    }
+
+    /// Drop a dragged project directly onto a folder's header — moves it in,
+    /// appended at the end. Needed to file into an empty folder, or one whose
+    /// rows are collapsed/not visible as drop targets.
+    private func handleProjectDrop(moving sourceID: UUID, intoFolder folderID: UUID) {
+        appState.moveGroup(sourceID, toFolder: folderID, inWindow: windowID)
+    }
+
+    private func reorderInFolder(_ folderID: UUID, moving groupID: UUID, adjacentTo targetID: UUID) {
+        appState.updateFolder(folderID, inWindow: windowID) { folder in
+            folder.groupIDs = Self.reordered(folder.groupIDs, moving: groupID, adjacentTo: targetID)
+        }
+    }
+
+    /// Reposition within the loose (non-foldered) portion of the window's
+    /// order — the favorites/normal split itself is driven by each project's
+    /// `favorite` flag, not by position, so this only ever reorders inside
+    /// whichever bucket the dragged project already belongs to.
+    private func reorderLoose(moving groupID: UUID, adjacentTo targetID: UUID) {
         appState.updateWindow(windowID) { window in
             let filed = window.folders.flatMap(\.groupIDs)
-            window.groupIDs = filed + ordered.map(\.id)
+            let loose = window.groupIDs.filter { !filed.contains($0) }
+            window.groupIDs = filed + Self.reordered(loose, moving: groupID, adjacentTo: targetID)
         }
+    }
+
+    /// Move `id` out of `ids` and reinsert it right before `targetID` (or at
+    /// the end, if the target isn't in the list — e.g. it was the drop target
+    /// that just got filtered out below).
+    static func reordered(_ ids: [UUID], moving id: UUID, adjacentTo targetID: UUID) -> [UUID] {
+        var result = ids.filter { $0 != id }
+        result.insert(id, at: result.firstIndex(of: targetID) ?? result.count)
+        return result
+    }
+
+    /// Read a project id back off a drag payload written by `.onDrag` below.
+    private func loadDraggedGroupID(_ providers: [NSItemProvider], then perform: @escaping (UUID) -> Void) -> Bool {
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: NSString.self) { reading, _ in
+            guard let string = reading as? String, let id = UUID(uuidString: string) else { return }
+            DispatchQueue.main.async { perform(id) }
+        }
+        return true
     }
 
     // MARK: Folders
@@ -156,11 +201,6 @@ struct SidebarView: View {
         let projects = appState.groups(inFolder: folder)
         return DisclosureGroup(isExpanded: expansion(of: folder)) {
             ForEach(projects) { group in groupRow(group) }
-                .onMove { from, to in
-                    var ids = projects.map(\.id)
-                    ids.move(fromOffsets: from, toOffset: to)
-                    appState.updateFolder(folder.id, inWindow: windowID) { $0.groupIDs = ids }
-                }
         } label: {
             folderLabel(folder, projects: projects)
         }
@@ -200,6 +240,9 @@ struct SidebarView: View {
             Button(L10n.t(.dissolveFolder)) { appState.removeFolder(folder.id, inWindow: windowID) }
                 .help(L10n.t(.dissolveFolderHelp))
         }
+        .onDrop(of: [Self.projectUTType], isTargeted: nil) { providers in
+            loadDraggedGroupID(providers) { handleProjectDrop(moving: $0, intoFolder: folder.id) }
+        }
     }
 
     private func renameFolder(_ folder: ProjectFolder) {
@@ -209,8 +252,8 @@ struct SidebarView: View {
         }
     }
 
-    /// "Move to folder ▸" — the way a project changes box (drag-and-drop across
-    /// List sections isn't reliable enough to be the only route).
+    /// "Move to folder ▸" — a keyboard/menu-driven alternative to dragging a
+    /// project onto a folder, for when reaching for the mouse isn't worth it.
     @ViewBuilder
     private func folderPicker(for group: SessionGroup) -> some View {
         let window = appState.window(for: windowID)
@@ -390,6 +433,10 @@ struct SidebarView: View {
             }
             .contentShape(Rectangle())
             .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
+            .onDrag { NSItemProvider(object: group.id.uuidString as NSString) }
+            .onDrop(of: [Self.projectUTType], isTargeted: nil) { providers in
+                loadDraggedGroupID(providers) { handleProjectDrop(moving: $0, onto: group) }
+            }
             .contextMenu {
                 Button(group.favorite ? L10n.t(.unmakeFavorite) : L10n.t(.makeFavorite)) {
                     appState.updateGroup(group.id) { $0.favorite.toggle() }
