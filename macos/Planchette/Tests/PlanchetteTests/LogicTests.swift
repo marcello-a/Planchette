@@ -1655,3 +1655,19 @@ final class LocalizationTests: XCTestCase {
         XCTAssertNotEqual(AppLanguage.system.resolved, .system)
     }
 }
+
+final class SidebarReorderTests: XCTestCase {
+    // Backs dragging a project onto another row to reposition it — within a
+    // folder, within the loose list, or freshly appended by a folder move.
+    func testMovesIdBeforeTarget() {
+        let a = UUID(), b = UUID(), c = UUID()
+        XCTAssertEqual(SidebarView.reordered([a, b, c], moving: c, adjacentTo: a), [c, a, b])
+    }
+
+    // Dropped onto the folder header itself, or onto a target no longer in
+    // the list (e.g. it moved away in the same drop): append instead of losing it.
+    func testAppendsWhenTargetIsMissing() {
+        let a = UUID(), b = UUID(), missing = UUID()
+        XCTAssertEqual(SidebarView.reordered([a, b], moving: a, adjacentTo: missing), [b, a])
+    }
+}
