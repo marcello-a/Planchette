@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.16] — 2026-08-12
+
 ### Added
 - **A folder now has an overview page.** Clicking a folder used to leave the main
   area on the "no terminals" hint; it now shows what is inside the box: one card
