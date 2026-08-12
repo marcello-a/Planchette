@@ -333,8 +333,13 @@ struct ContentView: View {
                     }
 
                     Group {
-                        if let groupID = window.selectedGroupID,
-                           let group = appState.groups.first(where: { $0.id == groupID }) {
+                        // A selected folder shows what is inside it; otherwise
+                        // the selected project's terminals.
+                        if let folderID = window.selectedFolderID,
+                           let folder = window.folders.first(where: { $0.id == folderID }) {
+                            FolderOverviewView(folder: folder, windowID: window.id)
+                        } else if let groupID = window.selectedGroupID,
+                                  let group = appState.groups.first(where: { $0.id == groupID }) {
                             TerminalAreaView(group: group)
                         } else {
                             welcome

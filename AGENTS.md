@@ -53,7 +53,7 @@ groups terminals by project. See [README.md](README.md) and
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `InboxView`, `QuickSwitcherView`, `TagViews` |
+| `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews` |
 
 `hook/planchette-hook` is the tiny shell binary Claude Code invokes; it forwards
 the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
@@ -87,6 +87,11 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   restore step means guarding it with the same `has-session` probe — replaying
   scrollback or `claude --resume` into a live session `cat`s a stale snapshot over
   a running TUI and starts a *second* agent beside the first.
+- **In a `List` row, use `draggable`/`dropDestination`, not `onDrag`/`onDrop`.**
+  `.onDrag` on a row swallows the click that drives `List` selection, so the row
+  can be dragged but no longer selected — and on a `DisclosureGroup`'s *label* it
+  never receives the gesture at all, so it silently does nothing. Both cost a
+  full app run to notice; the sidebar's project drag learned it the hard way.
 - **A snoozed terminal is filtered, not frozen.** `AppState.isSnoozed` keeps it
   out of the inbox, the counts, the badges and every notification, while hooks
   and screen detection keep updating its actual state. Any new place that counts

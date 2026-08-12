@@ -22,7 +22,16 @@ architecture and roadmap.
 **Working today (macOS, `macos/Planchette`):**
 - Multiple libghostty terminals in groups: tab view or cluster grid per group
 - **Projects in named folders** — collapsible boxes in the sidebar ("myposter",
-  "side"), with the attention counts of everything inside them on the folder row
+  "side"), with the attention counts of everything inside them on the folder row.
+  Drag a project onto a folder to file it, onto another project to land beside
+  it, or onto "No folder" to take it back out
+- **Several projects at once** — ⌘/⇧-click to pick 1…n of them, then drag them
+  into a folder as one, or use the context menu on the whole batch (color, main
+  project, remind me, close)
+- **A folder is a page, not just a box** — click it and the main area shows what
+  is inside: every project with the badge for what it is doing (running, waiting,
+  free…) and all of its tabs, plus the folder's latest notifications underneath.
+  Every line is a way in — click a tab and you land in that terminal
 - **"Not now"** on a terminal or a whole project: mark it free, or send it away
   for an hour, two hours or until 9 in the morning. It goes quiet — out of the
   inbox, the badges and every notification — and comes back with a reminder

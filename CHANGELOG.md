@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Existing users receive each release via the in-app updater (Install & Relaunch).
 
+## [Unreleased]
+
+### Added
+- **A folder now has an overview page.** Clicking a folder used to leave the main
+  area on the "no terminals" hint; it now shows what is inside the box: one card
+  per project with the badge for what it is currently doing — the most urgent
+  state of its terminals, so an error is never hidden behind a calm green — and
+  every one of its tabs with its state, path, tags and current line. Underneath,
+  the folder's latest notifications across all its projects, newest first.
+  Everything on the page is a way in: a card header opens the project, a tab row
+  opens that exact tab, a feed entry jumps to the terminal that reported it.
+  A folder and a project can never both own the main area — picking either one
+  takes the other down (`WindowModel.selectGroup`), and the selected folder is
+  persisted, so the page you were on is still there after a restart.
+- **Drag projects into folders**, and **pick several at once.** ⌘/⇧-click builds a
+  selection; dragging any of it moves the whole batch as one, and the context
+  menu then acts on all of them ("2 projects selected", "Mark 2 projects as
+  free", "Close 2 projects"). Drop a project on a folder to file it, on another
+  project to land next to it in that project's folder, or on the "No folder" row
+  at the bottom of the list to take it back out. One row selected still means
+  "show me this project"; with several selected the terminal area stays where it
+  is, since switching it to whatever was clicked last is only noise.
+
+### Fixed
+- **A project row's click and its drag no longer fight over the gesture.** The
+  first cut put `.onDrag` on the row, which swallowed the click that selects a
+  project — so a project could be dragged but not opened. Both live on the row
+  now via `draggable`/`dropDestination`, which is what those APIs are for; an
+  `.onDrag` on a `DisclosureGroup`'s *label* never receives the gesture at all.
+- **Dropping a project on itself** appended it to the end of its folder instead
+  of doing nothing.
+
 ## [0.2.15] — 2026-08-10
 
 ### Added

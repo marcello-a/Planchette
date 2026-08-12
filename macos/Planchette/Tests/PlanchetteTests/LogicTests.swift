@@ -1560,6 +1560,101 @@ final class ProjectFolderTests: XCTestCase {
         XCTAssertTrue(window.folders.isEmpty)
     }
 
+    // MARK: Dragging projects between folders (WindowModel.move)
+
+    private func window(_ groups: [UUID], folders: [(String, [UUID])] = []) -> WindowModel {
+        var window = WindowModel()
+        window.groupIDs = groups
+        window.folders = folders.map { name, ids in
+            var folder = ProjectFolder(name: name)
+            folder.groupIDs = ids
+            return folder
+        }
+        window.normalizeGroupOrder()
+        return window
+    }
+
+    func testDropOnFolderFilesTheProject() {
+        let a = UUID(), b = UUID(), c = UUID()
+        var w = window([a, b, c], folders: [("box", [a])])
+        w.move([c], toFolder: w.folders[0].id)
+        XCTAssertEqual(w.folders[0].groupIDs, [a, c])
+        XCTAssertEqual(w.looseGroupIDs, [b])
+    }
+
+    func testDropOnLooseZoneTakesItOutOfTheFolder() {
+        let a = UUID(), b = UUID()
+        var w = window([a, b], folders: [("box", [a, b])])
+        w.move([a], toFolder: nil)
+        XCTAssertEqual(w.folders[0].groupIDs, [b])
+        XCTAssertEqual(w.looseGroupIDs, [a])
+    }
+
+    // Dropping on a project means "next to this one" — including landing in
+    // whatever folder that project lives in.
+    func testDropBeforeAProjectInsertsAtThatPosition() {
+        let a = UUID(), b = UUID(), c = UUID()
+        var w = window([a, b, c], folders: [("box", [a, b])])
+        w.move([c], toFolder: w.folders[0].id, before: b)
+        XCTAssertEqual(w.folders[0].groupIDs, [a, c, b])
+    }
+
+    func testMoveBetweenFoldersLeavesTheOldOne() {
+        let a = UUID(), b = UUID()
+        var w = window([a, b], folders: [("one", [a]), ("two", [b])])
+        let two = w.folders[1].id
+        w.move([a], toFolder: two)
+        XCTAssertEqual(w.folders[0].groupIDs, [])
+        XCTAssertEqual(w.folders[1].groupIDs, [b, a])
+        XCTAssertNil(w.folder(of: a).map { $0.name == "one" }.flatMap { $0 ? true : nil })
+    }
+
+    // A dragged multi-selection is ONE move, and keeps the order you saw.
+    func testMovingSeveralKeepsTheirOrder() {
+        let a = UUID(), b = UUID(), c = UUID(), d = UUID()
+        var w = window([a, b, c, d], folders: [("box", [])])
+        w.move([c, a], toFolder: w.folders[0].id)
+        XCTAssertEqual(w.folders[0].groupIDs, [a, c], "sidebar order, not click order")
+        XCTAssertEqual(w.looseGroupIDs, [b, d])
+    }
+
+    func testReorderingWithinTheTopLevel() {
+        let a = UUID(), b = UUID(), c = UUID()
+        var w = window([a, b, c])
+        w.move([c], toFolder: nil, before: a)
+        XCTAssertEqual(w.looseGroupIDs, [c, a, b])
+    }
+
+    // Dropping a project on itself must not reshuffle anything.
+    func testDropOnItselfIsANoOp() {
+        let a = UUID(), b = UUID()
+        var w = window([a, b], folders: [("box", [a, b])])
+        let before = w
+        w.move([a], toFolder: w.folders[0].id, before: a)
+        XCTAssertEqual(w.folders[0].groupIDs, before.folders[0].groupIDs)
+    }
+
+    // A project from another window (or one already closed) is not ours to move.
+    func testUnknownProjectsAreIgnored() {
+        let a = UUID(), stranger = UUID()
+        var w = window([a], folders: [("box", [])])
+        w.move([stranger], toFolder: w.folders[0].id)
+        XCTAssertEqual(w.folders[0].groupIDs, [])
+        XCTAssertEqual(w.looseGroupIDs, [a])
+    }
+
+    // groupIDs must keep holding every project of the window: it is what
+    // sanitizeWindows uses to decide a project lives here at all, so losing an
+    // id here would quietly move the project to another window.
+    func testEveryProjectStaysInTheWindow() {
+        let ids = (0..<5).map { _ in UUID() }
+        var w = window(ids, folders: [("one", [ids[0], ids[1]]), ("two", [ids[2]])])
+        w.move([ids[3], ids[0]], toFolder: w.folders[1].id)
+        w.move([ids[1]], toFolder: nil)
+        XCTAssertEqual(Set(w.groupIDs), Set(ids))
+        XCTAssertEqual(w.groupIDs.count, ids.count, "no duplicates either")
+    }
+
     func testFolderRoundTrips() throws {
         var folder = ProjectFolder(name: "side")
         folder.color = .teal
@@ -1579,6 +1674,69 @@ final class ProjectFolderTests: XCTestCase {
         XCTAssertFalse(folder.collapsed)
         XCTAssertEqual(folder.color, .none)
         XCTAssertTrue(folder.groupIDs.isEmpty)
+    }
+}
+
+// MARK: Folder overview (what a selected folder shows in the main area)
+
+final class FolderOverviewTests: XCTestCase {
+    private func session(_ state: AttentionState, since: Date = Date(),
+                         message: String? = nil) -> TerminalSession {
+        var s = TerminalSession(groupID: UUID(), workingDirectory: "/tmp/proj")
+        s.state = state
+        s.stateSince = since
+        s.lastMessage = message
+        return s
+    }
+
+    // A folder overview and a project can't both own the main area: picking a
+    // project has to take the overview down, or the sidebar selection and what
+    // is on screen drift apart.
+    func testSelectingAProjectLeavesTheFolderOverview() {
+        let folder = UUID(), project = UUID()
+        var window = WindowModel()
+        window.selectedFolderID = folder
+        window.selectGroup(project)
+        XCTAssertEqual(window.selectedGroupID, project)
+        XCTAssertNil(window.selectedFolderID)
+    }
+
+    // A window written before the overview existed must still decode.
+    func testWindowWithoutSelectedFolderDecodes() throws {
+        let json = """
+        {"id":"\(UUID().uuidString)","groupIDs":[]}
+        """
+        let window = try JSONDecoder().decode(WindowModel.self, from: Data(json.utf8))
+        XCTAssertNil(window.selectedFolderID)
+    }
+
+    // The project badge must show the worst thing going on, never the calmest.
+    func testProjectBadgeShowsTheMostUrgentState() {
+        XCTAssertEqual(AttentionState.mostUrgent(of: [.free, .error, .running]), .error)
+        XCTAssertEqual(AttentionState.mostUrgent(of: [.ready, .waiting]), .waiting)
+        XCTAssertEqual(AttentionState.mostUrgent(of: [.free, .ready]), .ready)
+        XCTAssertEqual(AttentionState.mostUrgent(of: []), .free, "no terminals = nothing going on")
+    }
+
+    func testFeedIsNewestFirst() {
+        let old = session(.waiting, since: Date(timeIntervalSince1970: 100), message: "old?")
+        let new = session(.error, since: Date(timeIntervalSince1970: 900), message: "boom")
+        XCTAssertEqual(ActivityFeed.entries([old, new]).map(\.id), [new.id, old.id])
+    }
+
+    // A terminal with nothing to say is not a notification.
+    func testFeedSkipsTerminalsWithoutAMessage() {
+        let quiet = session(.free, message: "ignored while free")
+        let silent = session(.ready)
+        let loud = session(.waiting, message: "may I?")
+        XCTAssertEqual(ActivityFeed.entries([quiet, silent, loud]).map(\.id), [loud.id])
+    }
+
+    func testFeedIsCapped() {
+        let many = (0..<10).map {
+            session(.waiting, since: Date(timeIntervalSince1970: Double($0)), message: "q\($0)")
+        }
+        XCTAssertEqual(ActivityFeed.entries(many, limit: 3).count, 3)
     }
 }
 
@@ -1656,18 +1814,3 @@ final class LocalizationTests: XCTestCase {
     }
 }
 
-final class SidebarReorderTests: XCTestCase {
-    // Backs dragging a project onto another row to reposition it — within a
-    // folder, within the loose list, or freshly appended by a folder move.
-    func testMovesIdBeforeTarget() {
-        let a = UUID(), b = UUID(), c = UUID()
-        XCTAssertEqual(SidebarView.reordered([a, b, c], moving: c, adjacentTo: a), [c, a, b])
-    }
-
-    // Dropped onto the folder header itself, or onto a target no longer in
-    // the list (e.g. it moved away in the same drop): append instead of losing it.
-    func testAppendsWhenTargetIsMissing() {
-        let a = UUID(), b = UUID(), missing = UUID()
-        XCTAssertEqual(SidebarView.reordered([a, b], moving: a, adjacentTo: missing), [b, a])
-    }
-}

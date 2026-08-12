@@ -177,11 +177,7 @@ struct AttentionPanel: View {
         // running/done what it works on / worked on — the submitted prompt
         // (currentTask), refined by the AI summary when available. Nil when
         // there's nothing real to say — the state chip already names the state.
-        let detail: String? = switch session.state {
-        case .waiting, .error: session.lastMessage ?? session.currentTask
-        case .free: nil
-        case .running, .ready: session.aiSummary ?? session.currentTask ?? session.lastMessage
-        }
+        let detail = session.notificationLine
 
         return Button {
             appState.select(session: session)
@@ -205,11 +201,7 @@ struct AttentionPanel: View {
                             .foregroundStyle(.secondary).lineLimit(2)
                     }
                     HStack(spacing: 6) {
-                        Text(session.state.label)
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background(session.state.tint.opacity(0.16), in: Capsule())
-                            .foregroundStyle(session.state.tint)
+                        StateChip(state: session.state)
                         Spacer(minLength: 0)
                         if let until = appState.snoozeEnd(for: session), until > Date() {
                             SnoozeBadge(until: until)
@@ -228,19 +220,6 @@ struct AttentionPanel: View {
             SessionAttentionMenu(session: session)
             Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
-        }
-    }
-}
-
-extension AttentionState {
-    /// Sort priority for the notifications panel (lower = more urgent).
-    var rank: Int {
-        switch self {
-        case .error: 0
-        case .waiting: 1
-        case .running: 2
-        case .ready: 3
-        case .free: 4
         }
     }
 }

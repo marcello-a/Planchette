@@ -290,6 +290,14 @@ final class AppState: ObservableObject {
             windows[idx].selectedGroupID = windows[idx].groupIDs.first
         }
         sanitizeFolders()
+        // A dissolved folder must not keep the main area on an overview of
+        // something that no longer exists.
+        for idx in windows.indices {
+            if let selected = windows[idx].selectedFolderID,
+               !windows[idx].folders.contains(where: { $0.id == selected }) {
+                windows[idx].selectedFolderID = nil
+            }
+        }
     }
 
     /// A folder may only name projects that live in its own window, and each
@@ -335,19 +343,48 @@ final class AppState: ObservableObject {
 
     /// Dissolve a folder — its projects stay, back at the top level.
     func removeFolder(_ folderID: UUID, inWindow windowID: UUID) {
-        updateWindow(windowID) { $0.folders.removeAll { $0.id == folderID } }
+        updateWindow(windowID) { window in
+            window.folders.removeAll { $0.id == folderID }
+            // Its overview was what the main area showed: back to the project.
+            if window.selectedFolderID == folderID { window.selectedFolderID = nil }
+        }
     }
 
     /// Move a project into a folder, or out of every folder (`folderID` nil).
     func moveGroup(_ groupID: UUID, toFolder folderID: UUID?, inWindow windowID: UUID) {
-        updateWindow(windowID) { window in
-            for idx in window.folders.indices {
-                window.folders[idx].groupIDs.removeAll { $0 == groupID }
-            }
-            guard let folderID,
-                  let idx = window.folders.firstIndex(where: { $0.id == folderID })
-            else { return }
-            window.folders[idx].groupIDs.append(groupID)
+        moveGroups([groupID], toFolder: folderID, inWindow: windowID)
+    }
+
+    /// Drag-and-drop: move projects into a folder (nil = top level), before
+    /// `before` or at the end. The ordering itself lives on `WindowModel` so it
+    /// is unit-tested; this only owns the persistence.
+    func moveGroups(_ ids: [UUID], toFolder folderID: UUID?, before: UUID? = nil,
+                    inWindow windowID: UUID) {
+        updateWindow(windowID) { $0.move(ids, toFolder: folderID, before: before) }
+    }
+
+    /// Bulk versions of the single-project actions, for a multi-selection.
+    func markGroupsReady(_ ids: [UUID]) {
+        for id in ids { markGroupReady(id) }
+    }
+
+    func snooze(groups ids: [UUID], until date: Date) {
+        for id in ids { snooze(group: id, until: date) }
+    }
+
+    func setFavorite(_ favorite: Bool, forGroups ids: [UUID]) {
+        for id in ids { updateGroup(id) { $0.favorite = favorite } }
+    }
+
+    func closeGroups(_ ids: [UUID]) {
+        for id in ids { closeGroup(id) }
+    }
+
+    /// Terminals across a set of projects — for "close 3 projects and their 7
+    /// terminals?" style confirmations.
+    func terminalCount(inGroups ids: [UUID]) -> Int {
+        ids.reduce(0) { total, id in
+            total + (groups.first { $0.id == id }?.sessionIDs.count ?? 0)
         }
     }
 
@@ -439,7 +476,7 @@ final class AppState: ObservableObject {
             // sanitizeWindows put the orphan into windows[0]; move if needed.
             for i in windows.indices { windows[i].groupIDs.removeAll { $0 == group.id } }
             windows[idx].groupIDs.append(group.id)
-            windows[idx].selectedGroupID = group.id
+            windows[idx].selectGroup(group.id)
         }
         scheduleSave()
         return group
@@ -670,7 +707,7 @@ final class AppState: ObservableObject {
     func select(session: TerminalSession) {
         markSeen(session.id)
         if let window = windowContaining(groupID: session.groupID) {
-            updateWindow(window.id) { $0.selectedGroupID = session.groupID }
+            updateWindow(window.id) { $0.selectGroup(session.groupID) }
             WindowRegistry.shared.raise(window.id)
         }
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
@@ -682,8 +719,17 @@ final class AppState: ObservableObject {
            let session = sessions[id] {
             select(session: session)
         } else if let window = windowContaining(groupID: group.id) {
-            updateWindow(window.id) { $0.selectedGroupID = group.id }
+            updateWindow(window.id) { $0.selectGroup(group.id) }
             WindowRegistry.shared.raise(window.id)
+        }
+    }
+
+    /// Show a folder's overview instead of a terminal — what is in this box,
+    /// what each project is doing, and what it reported last.
+    func select(folder folderID: UUID, inWindow windowID: UUID) {
+        updateWindow(windowID) { window in
+            guard window.folders.contains(where: { $0.id == folderID }) else { return }
+            window.selectedFolderID = folderID
         }
     }
 

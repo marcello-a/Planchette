@@ -44,6 +44,25 @@ enum AttentionState: String, Codable {
     /// Does this state belong in the attention inbox?
     var needsAttention: Bool { self == .waiting || self == .error }
 
+    /// Sort priority (lower = more urgent) — the notifications panel's order,
+    /// and what decides which state stands for a whole project.
+    var rank: Int {
+        switch self {
+        case .error: 0
+        case .waiting: 1
+        case .running: 2
+        case .ready: 3
+        case .free: 4
+        }
+    }
+
+    /// The single state that represents a set of terminals: the most urgent
+    /// one, so a project badge can never hide an error behind a calm green.
+    /// Empty (a project without terminals) is `free` — there is nothing going on.
+    static func mostUrgent(of states: [AttentionState]) -> AttentionState {
+        states.min { $0.rank < $1.rank } ?? .free
+    }
+
     /// Is this terminal actively doing / holding something (not idle)?
     var isActive: Bool { self != .ready && self != .free }
 
@@ -107,6 +126,21 @@ struct StateCountBadge: View {
             .font(.caption2.weight(.bold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(state.tint.opacity(0.18), in: Capsule())
+            .foregroundStyle(state.tint)
+    }
+}
+
+/// "running" / "waiting for input" / "free" — THE one way a state is named on
+/// screen (notifications panel, folder overview), so a chip always reads and
+/// colors the same. Colors come solely from `AttentionState.tint`.
+struct StateChip: View {
+    let state: AttentionState
+
+    var body: some View {
+        Text(state.label)
+            .font(.caption2.weight(.semibold))
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(state.tint.opacity(0.16), in: Capsule())
             .foregroundStyle(state.tint)
     }
 }
@@ -271,12 +305,39 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// Last two path components, full path shown on hover.
     var shortPath: String { Titles.shortPath(currentDirectory) }
 
+    /// What this terminal currently reports: for waiting/error the question or
+    /// the error itself, otherwise what it works on (the AI summary when there
+    /// is one). Nil when there is nothing real to say — the state chip already
+    /// names the state, and "free" has no message worth a line.
+    var notificationLine: String? {
+        let line: String? = switch state {
+        case .waiting, .error: lastMessage ?? currentTask
+        case .free: nil
+        case .running, .ready: aiSummary ?? currentTask ?? lastMessage
+        }
+        return (line?.isEmpty ?? true) ? nil : line
+    }
+
     /// Condense a submitted prompt to a one-line task label ("working on …").
     static func taskLine(fromPrompt prompt: String) -> String? {
         let line = prompt.split(whereSeparator: \.isNewline).first.map(String.init)?
             .trimmingCharacters(in: .whitespaces) ?? ""
         guard !line.isEmpty else { return nil }
         return line.count > 120 ? String(line.prefix(119)) + "…" : line
+    }
+}
+
+/// "What happened here lately" — the newest reports of a set of terminals,
+/// newest first. Pure, so the folder overview's feed is unit-tested rather than
+/// eyeballed. Terminals with nothing to report are left out: a feed that lists
+/// idle shells is a terminal list with timestamps, not a feed.
+enum ActivityFeed {
+    static func entries(_ sessions: [TerminalSession], limit: Int = 6) -> [TerminalSession] {
+        sessions
+            .filter { $0.notificationLine != nil }
+            .sorted { $0.stateSince > $1.stateSince }
+            .prefix(limit)
+            .map { $0 }
     }
 }
 
@@ -436,9 +497,23 @@ struct WindowModel: Identifiable, Codable, Equatable {
     /// Named boxes over this window's projects, in sidebar order. A project may
     /// appear in at most one of them; `AppState.sanitizeWindows` enforces that.
     var folders: [ProjectFolder] = []
+    /// The folder whose overview page fills the main area. Set by clicking a
+    /// folder in the sidebar and cleared the moment a project or terminal is
+    /// picked: the overview is a place you pass through on the way to a tab,
+    /// never a second thing shown beside one. `selectedGroupID` is deliberately
+    /// left standing while it is set, so leaving the overview lands back on the
+    /// project you came from.
+    var selectedFolderID: UUID?
 
     init(id: UUID = UUID()) {
         self.id = id
+    }
+
+    /// Show a project — the only way `selectedGroupID` changes, so a project and
+    /// a folder overview can never both claim the main area.
+    mutating func selectGroup(_ id: UUID) {
+        selectedGroupID = id
+        selectedFolderID = nil
     }
 
     // Custom, so a state written before folders existed still decodes (the
@@ -449,6 +524,7 @@ struct WindowModel: Identifiable, Codable, Equatable {
         groupIDs = try c.decodeIfPresent([UUID].self, forKey: .groupIDs) ?? []
         selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
         folders = try c.decodeIfPresent([ProjectFolder].self, forKey: .folders) ?? []
+        selectedFolderID = try c.decodeIfPresent(UUID.self, forKey: .selectedFolderID)
     }
 
     /// The folder holding this project, if any.
@@ -460,6 +536,50 @@ struct WindowModel: Identifiable, Codable, Equatable {
     var looseGroupIDs: [UUID] {
         let filed = Set(folders.flatMap(\.groupIDs))
         return groupIDs.filter { !filed.contains($0) }
+    }
+
+    /// Move projects into `folderID` (nil = out of every folder, back to the top
+    /// level), landing before `before` or at the end. One operation for both
+    /// halves of a sidebar drag: which box a project is in, and where in it —
+    /// dropping on a folder means "into this folder", dropping on a project
+    /// means "next to this one, wherever it lives".
+    ///
+    /// The moved projects keep their relative order, and `ids` may name several:
+    /// a drag of a multi-selection is one move, not n moves.
+    mutating func move(_ ids: [UUID], toFolder folderID: UUID?, before: UUID? = nil) {
+        // Only projects of this window, in the window's own order.
+        let moving = groupIDs.filter { ids.contains($0) }
+        guard !moving.isEmpty else { return }
+        // Dropped on one of the projects being dragged: there is no "before
+        // itself" to land on, and treating it as "at the end" would reshuffle
+        // the list for a gesture that meant nothing.
+        if let before, moving.contains(before) { return }
+        for idx in folders.indices {
+            folders[idx].groupIDs.removeAll { moving.contains($0) }
+        }
+        if let folderID, let fidx = folders.firstIndex(where: { $0.id == folderID }) {
+            var target = folders[fidx].groupIDs
+            // A `before` from another folder (or none) means "at the end".
+            let at = before.flatMap { target.firstIndex(of: $0) } ?? target.count
+            target.insert(contentsOf: moving, at: at)
+            folders[fidx].groupIDs = target
+        } else {
+            var loose = looseGroupIDs.filter { !moving.contains($0) }
+            let at = before.flatMap { loose.firstIndex(of: $0) } ?? loose.count
+            loose.insert(contentsOf: moving, at: at)
+            groupIDs = folders.flatMap(\.groupIDs) + loose
+            return
+        }
+        normalizeGroupOrder()
+    }
+
+    /// `groupIDs` mirrors the sidebar: filed projects first (in folder order),
+    /// then the loose ones. Keeping the two in step is what lets `looseGroupIDs`
+    /// carry the top-level order without a second list to maintain.
+    mutating func normalizeGroupOrder() {
+        let filed = folders.flatMap(\.groupIDs)
+        let filedSet = Set(filed)
+        groupIDs = filed + groupIDs.filter { !filedSet.contains($0) }
     }
 }
 
