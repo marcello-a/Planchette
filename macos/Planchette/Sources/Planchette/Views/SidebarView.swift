@@ -23,6 +23,49 @@ struct ProjectDragPayload: Transferable {
     }
 }
 
+/// Drop handling for one project row. `dropDestination` only reports whether a
+/// drag is over a view, never where — and "where" is the whole point of dropping
+/// a project into a list: above this row or below it. `DropDelegate` reports the
+/// live location, which is what lets the insertion line follow the pointer and a
+/// project land exactly in the gap you aimed at, in any folder.
+private struct ProjectDropDelegate: DropDelegate {
+    let rowID: UUID
+    /// Row height, read from the row itself — the midpoint decides the gap.
+    let height: () -> CGFloat
+    let slot: (SidebarView.DropSlot?) -> Void
+    let perform: (_ ids: [UUID], _ below: Bool) -> Void
+
+    private func below(_ info: DropInfo) -> Bool {
+        info.location.y > height() / 2
+    }
+
+    func dropEntered(info: DropInfo) {
+        slot(SidebarView.DropSlot(rowID: rowID, below: below(info)))
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        slot(SidebarView.DropSlot(rowID: rowID, below: below(info)))
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        slot(nil)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        let landsBelow = below(info)
+        let providers = info.itemProviders(for: [.plainText, .utf8PlainText, .text])
+        guard let provider = providers.first else { slot(nil); return false }
+        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let text = object as? String else { return }
+            let ids = text.split(separator: "\n").compactMap { UUID(uuidString: String($0)) }
+            guard !ids.isEmpty else { return }
+            DispatchQueue.main.async { perform(ids, landsBelow) }
+        }
+        return true
+    }
+}
+
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
@@ -35,6 +78,10 @@ struct SidebarView: View {
     @State private var multiSelection: Set<UUID> = []
     /// Row currently under the drag (folder id or project id).
     @State private var dropTarget: UUID?
+    /// Which gap a project drag would land in, updated as the pointer moves.
+    @State private var dropSlot: DropSlot?
+    /// Row heights, so a drop knows which half of a row the pointer is in.
+    @State private var rowHeights: [UUID: CGFloat] = [:]
 
     /// The List's selection. One row selected means "show me this" — a project
     /// in the terminal area, a folder as its overview page. Several means a
@@ -143,9 +190,9 @@ struct SidebarView: View {
         let normal = loose.filter { !$0.favorite }
         List(selection: selectionBinding) {
             ForEach(folders) { folder in folderSection(folder) }
-            ForEach(favorites) { group in groupRow(group) }
+            ForEach(favorites) { group in groupRow(group, siblings: loose) }
                 .onMove { moveGroups(favorites, other: normal, favoritesSection: true, from: $0, to: $1) }
-            ForEach(normal) { group in groupRow(group) }
+            ForEach(normal) { group in groupRow(group, siblings: loose) }
                 .onMove { moveGroups(normal, other: favorites, favoritesSection: false, from: $0, to: $1) }
             // The way back out of a folder. Shown whenever there is a folder to
             // come out of — a target that appears only mid-drag is a target you
@@ -218,6 +265,47 @@ struct SidebarView: View {
             .strokeBorder(Color.accentColor, lineWidth: dropTarget == id ? 2 : 0)
     }
 
+    /// Where a project would land: which row the pointer is over, and whether it
+    /// would go above or below it. Tracked live, so the insertion line moves with
+    /// the pointer instead of the drop being a guess you only see afterwards.
+    struct DropSlot: Equatable {
+        let rowID: UUID
+        let below: Bool
+    }
+
+    /// Insert a dragged batch next to `target`. `below` picks the gap under the
+    /// row rather than the one above it, which is the only way to reach the last
+    /// place in a folder — and the reason dropping is positional at all.
+    private func dropNext(to target: SessionGroup, below: Bool,
+                          ids: [UUID], siblings: [SessionGroup]) {
+        let folderID = appState.window(for: windowID)?.folder(of: target.id)?.id
+        // Landing "below X" is the same move as "before whatever follows X";
+        // nothing following means the end of that list.
+        var before: UUID? = target.id
+        if below {
+            let rest = siblings.drop { $0.id != target.id }.dropFirst()
+            before = rest.first { !ids.contains($0.id) }?.id
+        }
+        appState.moveGroups(ids, toFolder: folderID, before: before, inWindow: windowID)
+        dropSlot = nil
+        dropTarget = nil
+    }
+
+    /// The line drawn in the gap a drop would land in.
+    @ViewBuilder
+    private func insertionLine(_ group: SessionGroup) -> some View {
+        if let slot = dropSlot, slot.rowID == group.id {
+            VStack(spacing: 0) {
+                if !slot.below { line } else { Spacer(minLength: 0) }
+                if slot.below { line } else { Spacer(minLength: 0) }
+            }
+        }
+    }
+
+    private var line: some View {
+        Capsule().fill(Color.accentColor).frame(height: 2)
+    }
+
     /// Drop a project here to take it out of its folder. Deliberately quiet
     /// until a drag is actually over it.
     private var looseDropZone: some View {
@@ -276,7 +364,7 @@ struct SidebarView: View {
     private func folderSection(_ folder: ProjectFolder) -> some View {
         let projects = appState.groups(inFolder: folder)
         return DisclosureGroup(isExpanded: expansion(of: folder)) {
-            ForEach(projects) { group in groupRow(group) }
+            ForEach(projects) { group in groupRow(group, siblings: projects) }
                 .onMove { from, to in
                     var ids = projects.map(\.id)
                     ids.move(fromOffsets: from, toOffset: to)
@@ -490,7 +578,10 @@ struct SidebarView: View {
         return (path as NSString).deletingLastPathComponent
     }
 
-    private func groupRow(_ group: SessionGroup) -> some View {
+    /// A project row. `siblings` is the list it is displayed in (a folder's
+    /// projects, or the loose ones), which is what "the gap below this row"
+    /// resolves against.
+    private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = []) -> some View {
         DisclosureGroup {
             ForEach(appState.sessions(in: group)) { session in
                 sessionRow(session)
@@ -534,10 +625,24 @@ struct SidebarView: View {
         // Drag a project — or the whole selection — onto a folder to file it,
         // or onto another project to land next to it in that project's folder.
         .draggable(ProjectDragPayload(ids: actionTargets(group))) { dragPreview(for: group) }
-        .dropDestination(for: ProjectDragPayload.self) { payloads, _ in
-            let folderID = appState.window(for: windowID)?.folder(of: group.id)?.id
-            return acceptProjectDrop(payloads, toFolder: folderID, before: group.id)
-        } isTargeted: { setDropTarget(group.id, over: $0) }
+        // Measured so the delegate can tell the upper half of the row from the
+        // lower one — that split is what makes a drop land in a chosen gap.
+        .background(
+            GeometryReader { geo in
+                Color.clear.onAppear { rowHeights[group.id] = geo.size.height }
+                    .onChange(of: geo.size.height) { _, new in rowHeights[group.id] = new }
+            }
+        )
+        .overlay(insertionLine(group))
+        .onDrop(
+            of: [.plainText, .utf8PlainText, .text],
+            delegate: ProjectDropDelegate(
+                rowID: group.id,
+                height: { rowHeights[group.id] ?? 24 },
+                slot: { dropSlot = $0 },
+                perform: { ids, below in
+                    dropNext(to: group, below: below, ids: ids, siblings: siblings)
+                }))
     }
 
     /// The project context menu. With several projects selected it acts on all
@@ -787,6 +892,10 @@ struct WaitingTimeText: View {
             Text(Self.format(context.date.timeIntervalSince(since)))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                // "3 min" is the last thing that should wrap when a panel gets
+                // narrow — it would break into three lines and push the row open.
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 

@@ -8,6 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Drop a project exactly where you want it.** Dragging now aims at a *gap*, not
+  at a row: the upper half of a row means "above this one", the lower half "below
+  it", and a line shows which gap you are over while you drag. That is what makes
+  the last place in a folder reachable at all — dropping used to always insert
+  before the row you hit — so a project can be moved into another folder and put
+  in its final position in one gesture.
+
+### Changed
+- **The side panels are 256–300 pt wide** instead of 210–400. Wide enough for a
+  project name with its badges, narrow enough that two open panels never take the
+  window away from the terminal. Both panels use the same bounds, so the window
+  stays symmetric however either is dragged.
+
 ## [0.2.18] — 2026-08-13
 
 ### Changed

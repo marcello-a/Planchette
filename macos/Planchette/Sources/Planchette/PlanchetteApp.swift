@@ -313,6 +313,14 @@ struct ContentView: View {
     @AppStorage("inboxShown") private var inboxShown = false
     let windowID: UUID
 
+    /// How wide the two side panels may get. The lower bound is what a project
+    /// name plus its badges needs before it starts truncating; the upper bound
+    /// keeps both panels from eating the terminal on a wide screen. Dragging the
+    /// splitter still works, within these.
+    static let panelMinWidth: CGFloat = 256
+    static let panelIdealWidth: CGFloat = 272
+    static let panelMaxWidth: CGFloat = 300
+
     // A window whose id has no model (e.g. one macOS restored from a previous
     // session) redirects to the main window model instead of sitting blank or
     // being closed — guaranteeing there's always at least one usable window.
@@ -332,8 +340,13 @@ struct ContentView: View {
                             .frame(width: 60)
                             .frame(maxHeight: .infinity)
                     } else {
+                        // Wide enough for a project name, narrow enough that it
+                        // never takes room from the terminal: the panels are for
+                        // orientation, the middle is the work.
                         SidebarView(windowID: window.id)
-                            .frame(minWidth: 210, idealWidth: 250, maxWidth: 400,
+                            .frame(minWidth: Self.panelMinWidth,
+                                   idealWidth: Self.panelIdealWidth,
+                                   maxWidth: Self.panelMaxWidth,
                                    maxHeight: .infinity)
                     }
 
@@ -353,9 +366,13 @@ struct ContentView: View {
                     .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
 
                     if inboxShown {
-                        // Persistent, drag-resizable notification sidebar.
+                        // Persistent, drag-resizable notification sidebar —
+                        // same bounds as the project panel, so the window stays
+                        // symmetric however either one is dragged.
                         AttentionPanel(windowID: window.id)
-                            .frame(minWidth: 240, idealWidth: 300, maxWidth: 520,
+                            .frame(minWidth: Self.panelMinWidth,
+                                   idealWidth: Self.panelIdealWidth,
+                                   maxWidth: Self.panelMaxWidth,
                                    maxHeight: .infinity)
                     }
                 }
