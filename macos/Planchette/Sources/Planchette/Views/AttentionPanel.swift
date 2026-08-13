@@ -8,6 +8,7 @@ import SwiftUI
 struct AttentionPanel: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("inboxOnlyActive") private var onlyActive = false
+    @AppStorage("inboxOnlyUnread") private var onlyUnread = false
     let windowID: UUID
 
     /// Projects in display order: this window's groups first (favorites
@@ -24,10 +25,20 @@ struct AttentionPanel: View {
         return ordered
     }
 
-    /// The tabs shown for a project — tab order, optionally only active ones.
+    /// The tabs shown for a project — tab order, narrowed by the two filters.
+    /// "Only unread" is about what you have looked at, "only active" about what
+    /// the terminal is doing; both can be on, and then both have to hold.
     private func visibleTabs(_ group: SessionGroup) -> [TerminalSession] {
-        let tabs = appState.sessions(in: group)
-        return onlyActive ? tabs.filter(\.state.isActive) : tabs
+        var tabs = appState.sessions(in: group)
+        if onlyActive { tabs = tabs.filter(\.state.isActive) }
+        if onlyUnread { tabs = tabs.filter { isUnread($0) } }
+        return tabs
+    }
+
+    /// A terminal is unread while its last report — a question, an error, a
+    /// finished turn — has not been looked at.
+    private func isUnread(_ session: TerminalSession) -> Bool {
+        !session.seen && session.state.isReport
     }
 
     var body: some View {
@@ -36,12 +47,38 @@ struct AttentionPanel: View {
             .filter { !$0.tabs.isEmpty }
 
         VStack(spacing: 0) {
-            HStack {
-                Text(L10n.t(.notificationsPanel)).font(.headline)
-                Spacer()
-                Toggle(L10n.t(.onlyActive), isOn: $onlyActive)
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(L10n.t(.notificationsPanel)).font(.headline)
+                    // How much is unread, which is what the filter below acts on.
+                    if appState.unreadCount > 0 {
+                        Text("\(appState.unreadCount)")
+                            .font(.caption2.weight(.bold))
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Color.accentColor.opacity(0.18), in: Capsule())
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Spacer()
+                    Button {
+                        appState.markAllRead()
+                    } label: {
+                        Image(systemName: "envelope.open")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .disabled(appState.unreadCount == 0)
+                    .help(L10n.t(.markAllRead))
+                }
+                HStack(spacing: 10) {
+                    Toggle(L10n.t(.onlyUnread), isOn: $onlyUnread)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                        .help(L10n.t(.onlyUnreadHelp))
+                    Toggle(L10n.t(.onlyActive), isOn: $onlyActive)
+                        .toggleStyle(.checkbox)
+                        .font(.caption)
+                    Spacer()
+                }
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -179,18 +216,28 @@ struct AttentionPanel: View {
         // there's nothing real to say — the state chip already names the state.
         let detail = session.notificationLine
 
+        let unread = isUnread(session)
         return Button {
             appState.select(session: session)
         } label: {
             HStack(alignment: .top, spacing: 9) {
+                // Unread is carried by the ring around the state dot and the
+                // weight of the title, not by color alone — the dot's color is
+                // already spoken for by the state.
                 Circle().fill(session.state.tint)
                     .frame(width: 9, height: 9)
+                    .overlay {
+                        if unread {
+                            Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 1.5)
+                                .frame(width: 15, height: 15)
+                        }
+                    }
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         Text(session.displayTitle)
-                            .font(.subheadline).fontWeight(.medium)
-                            .foregroundStyle(.primary).lineLimit(1)
+                            .font(.subheadline).fontWeight(unread ? .bold : .medium)
+                            .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
                         Spacer(minLength: 4)
                         Text(session.stateSince, style: .time)
                             .font(.caption2).foregroundStyle(.tertiary)
@@ -217,6 +264,14 @@ struct AttentionPanel: View {
         .buttonStyle(.plain)
         .help(hoverDetail(session))
         .contextMenu {
+            // Read/unread by hand, so a row can be kept for later without
+            // opening it, or dismissed without opening it either.
+            if unread {
+                Button(L10n.t(.markRead)) { appState.markSeen(session.id) }
+            } else if session.state.isReport {
+                Button(L10n.t(.markUnread)) { appState.markUnread(session.id) }
+            }
+            Divider()
             SessionAttentionMenu(session: session)
             Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }

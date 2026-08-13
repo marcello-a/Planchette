@@ -13,8 +13,14 @@ final class HookServer {
     /// the *old* pid's socket path baked into its environment — the hook and the
     /// CLI fall back to reading this file, so the attention engine keeps working
     /// for an agent that outlived the app that started it.
+    /// An isolated instance publishes its pointer inside its own state directory:
+    /// overwriting `~/.planchette/socket` would send the hooks of the normal
+    /// instance's terminals to this one.
     static var socketPointerURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if SupportPaths.isIsolated {
+            return SupportPaths.dir.appendingPathComponent("socket")
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".planchette", isDirectory: true)
             .appendingPathComponent("socket")
     }

@@ -306,6 +306,16 @@ final class SeenTrackingTests: XCTestCase {
         let data = try JSONEncoder().encode(session)
         XCTAssertFalse(try JSONDecoder().decode(TerminalSession.self, from: data).seen)
     }
+
+    // Which states are a report you can have read: a question, an error, a
+    // finished turn. Starting work is not news, and neither is idleness.
+    func testOnlyReportsCanBeUnread() {
+        XCTAssertTrue(AttentionState.ready.isReport)
+        XCTAssertTrue(AttentionState.waiting.isReport)
+        XCTAssertTrue(AttentionState.error.isReport)
+        XCTAssertFalse(AttentionState.running.isReport)
+        XCTAssertFalse(AttentionState.free.isReport)
+    }
 }
 
 final class DurableTests: XCTestCase {

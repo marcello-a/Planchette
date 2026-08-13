@@ -61,12 +61,7 @@ final class AppState: ObservableObject {
 
     private var saveTask: Task<Void, Never>?
 
-    static let stateURL: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Planchette", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("state.json")
-    }()
+    static let stateURL: URL = SupportPaths.dir.appendingPathComponent("state.json")
 
     /// Where per-session scrollback dumps live (one <sessionID>.txt each).
     static let scrollbackDir: URL =
@@ -696,12 +691,35 @@ final class AppState: ObservableObject {
         sessions.values.filter { $0.state == .ready && !$0.seen && !isSnoozed($0) }.count
     }
 
+    /// Unread notifications: terminals whose last report you have not looked at.
+    /// Snoozed ones are left out, like everywhere else that counts.
+    var unreadCount: Int {
+        sessions.values.filter { !$0.seen && $0.state.isReport && !isSnoozed($0) }.count
+    }
+
+    /// "I've seen all of it" — the way out of a full unread list without
+    /// visiting every terminal. Only clears the reading state; the terminals
+    /// keep their colors, since a question stays open until it is answered.
+    func markAllRead() {
+        for id in sessions.keys where sessions[id]?.seen == false {
+            update(id) { $0.seen = true }
+        }
+    }
+
     /// Looking at a terminal marks its finished work as seen. Deliberately only
     /// `ready`: `waiting` and `error` persist until the agent moves on or you
     /// mark them free — a glance isn't an answer.
     func markSeen(_ id: UUID) {
         guard sessions[id]?.seen == false else { return }
         update(id) { $0.seen = true }
+    }
+
+    /// Put a report back on the unread list — "I looked, but I am not done with
+    /// this". The counterpart to markSeen, and the reason reading state is a flag
+    /// of its own rather than a side effect of having focused a terminal.
+    func markUnread(_ id: UUID) {
+        guard let session = sessions[id], session.state.isReport, session.seen else { return }
+        update(id) { $0.seen = false }
     }
 
     func select(session: TerminalSession) {
@@ -879,9 +897,11 @@ final class AppState: ObservableObject {
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
-        // A turn that ended while you were looking at something else is unseen
-        // work; one that ended in front of you is not.
-        let unseen = state == .ready && !isVisible(id)
+        // Anything that happened while you were looking elsewhere is unread: a
+        // turn that finished, a question, an error. What happened in front of you
+        // has been read by definition — and `running` is not a report at all, it
+        // is the terminal starting the work you just gave it.
+        let unseen = state.isReport && !isVisible(id)
         update(id) {
             guard $0.state != state else { return }
             $0.state = state

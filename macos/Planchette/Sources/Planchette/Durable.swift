@@ -43,12 +43,13 @@ enum Durable {
     /// set them for one session only. On a shared server we would be silently
     /// reconfiguring the user's own tmux; on our own server we can ask for
     /// exactly the fidelity we need and touch nothing of theirs.
-    static let serverName = "planchette"
+    /// An instance running against an overridden state directory gets its own
+    /// server: it knows nothing about the sessions of the normal instance, so on
+    /// a shared server it would treat them as orphans and reap them.
+    static let serverName = SupportPaths.instanceSuffix.map { "planchette-\($0)" } ?? "planchette"
 
     static var configURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Planchette", isDirectory: true)
-            .appendingPathComponent("tmux.conf")
+        SupportPaths.dir.appendingPathComponent("tmux.conf")
     }
 
     /// Pure: the config our server starts with.

@@ -66,6 +66,12 @@ enum AttentionState: String, Codable {
     /// Is this terminal actively doing / holding something (not idle)?
     var isActive: Bool { self != .ready && self != .free }
 
+    /// Does reaching this state report something to you? Those are the states
+    /// that arrive as a notification and can therefore be unread — a question,
+    /// an error, a finished turn. `running` is the terminal accepting work you
+    /// just gave it, and `free` is the absence of news.
+    var isReport: Bool { self == .ready || self == .waiting || self == .error }
+
     /// Migrate old raw values: v0.1.x used "working/asking/done/free"; until
     /// v0.2.x "free" was folded into ready — now it's a state of its own.
     init(from decoder: Decoder) throws {

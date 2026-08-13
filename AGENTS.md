@@ -92,6 +92,16 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   can be dragged but no longer selected — and on a `DisclosureGroup`'s *label* it
   never receives the gesture at all, so it silently does nothing. Both cost a
   full app run to notice; the sidebar's project drag learned it the hard way.
+- **`$HOME` does not isolate an instance — `PLANCHETTE_STATE_DIR` does.**
+  `NSHomeDirectory()` and the Application Support URL come from the *user record*
+  on macOS and ignore the environment, so launching a second copy with a
+  redirected HOME silently opens the real `state.json` and re-attaches the live
+  durable agents of the running instance. Use `PLANCHETTE_STATE_DIR=/some/dir`
+  (see `SupportPaths.swift`): it moves state, scrollback, presets, the rule
+  override, the tmux config and the socket pointer together, and switches the
+  tmux server name so the isolated instance cannot reap the real one's sessions.
+  That is how the README screenshot is taken — a seeded state dir plus the
+  packaged app, captured by window id.
 - **A snoozed terminal is filtered, not frozen.** `AppState.isSnoozed` keeps it
   out of the inbox, the counts, the badges and every notification, while hooks
   and screen detection keep updating its actual state. Any new place that counts

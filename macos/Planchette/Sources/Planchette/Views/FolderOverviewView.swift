@@ -127,7 +127,7 @@ struct FolderOverviewView: View {
                     SnoozeBadge(until: until)
                 }
                 Spacer(minLength: 4)
-                Text(L10n.t(.terminalsCount, tabs.count))
+                Text(tabs.count == 1 ? L10n.t(.terminalCountOne) : L10n.t(.terminalsCount, tabs.count))
                     .font(.caption2).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 10).padding(.vertical, 8)

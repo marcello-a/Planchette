@@ -7,6 +7,15 @@ A native terminal IDE for running many AI coding agents at once, built on the
 terminal layouts persistent across restarts and reboots, and always shows you
 which session needs your attention — who's asking, who's done, who's free.
 
+![A folder's overview page: the projects inside it with what each one is doing,
+their terminals, and the folder's latest notifications — with the notifications
+panel on the right, unread first](docs/images/folder-overview.png)
+
+*Left: projects in folders. Middle: a folder's overview — every project with the
+badge for what it is doing and every terminal named after the ticket and the task
+it was given. Right: the notifications panel, where unread reports are marked and
+can be filtered down to.*
+
 ## Install
 
 macOS 14 or newer, Apple Silicon or Intel.
@@ -119,6 +128,10 @@ architecture and roadmap.
 - **Notifications panel** on the right, mirroring projects and tabs: what each
   terminal is asking, working on or reporting, with a "Needs you" block on top —
   errors before questions, longest-waiting first. Click a row to land there
+- **Read and unread.** A report that arrived while you were looking elsewhere — a
+  question, an error, a finished turn — is unread until you open it. Unread rows
+  are marked, the header counts them, *Only unread* filters down to them, and one
+  click marks everything read. Mark a row unread again to keep it for later
 - **More than one window**, and a way back: pull a project into its own window,
   merge a window back into the main one
 - Clicking a notification jumps straight to that window, project and tab

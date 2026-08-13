@@ -8,7 +8,25 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.17] — 2026-08-13
+
 ### Added
+- **Notifications are read or unread.** A report that arrived while you were
+  looking somewhere else — a question, an error, a finished turn — is unread
+  until you open it. Unread rows carry a ring around their state dot and a bolder
+  title (never color alone: the dot's color already means the state), the panel
+  header counts them, the new *Only unread* checkbox filters down to them, and
+  one button marks everything read. A row can be marked unread again to keep it
+  for later. `running` and `free` are not reports and never count: starting the
+  work you just gave a terminal is not news.
+- **A second instance can run without touching the first.**
+  `PLANCHETTE_STATE_DIR` moves everything an instance owns — state, scrollback,
+  presets, rule override, tmux config and socket pointer — and gives it its own
+  tmux server, so a demo or a test cannot adopt the real workspace's agents.
+  Redirecting `$HOME` does not do this: `NSHomeDirectory()` reads the user record
+  and ignores the environment, so a "sandboxed" launch silently opened the real
+  workspace. This is how the README screenshot was taken.
+
 - **The update dialog says what's new.** It lists the titles of the new version's
   changelog entries — only the titles, and at most five, with "…and 3 more" for
   the rest: a modal that asks whether to restart is the wrong place to read
@@ -24,6 +42,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   and stays until you send it something else. A name set by hand still wins over
   both, and a terminal with neither ticket nor task reads as before ("free" when
   idle, otherwise its folder).
+
+### Fixed
+- A project holding one terminal read "1 terminals" in the folder overview.
 
 ## [0.2.16] — 2026-08-12
 
