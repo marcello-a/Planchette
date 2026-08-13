@@ -7,6 +7,20 @@ A native terminal IDE for running many AI coding agents at once, built on the
 terminal layouts persistent across restarts and reboots, and always shows you
 which session needs your attention — who's asking, who's done, who's free.
 
+## Install
+
+Download `Planchette.dmg` from the [latest release](https://github.com/marcello-a/Planchette/releases/latest)
+and drag the app into Applications. macOS 14 or newer, Apple Silicon or Intel.
+
+The app is ad-hoc signed, so the first launch needs *right-click → Open* (or
+System Settings → Privacy & Security → "Open anyway"). From then on it updates
+itself: it checks GitHub for a newer stable release and offers **Install &
+Relaunch**, or stages the update and installs it when you next quit — so a
+running agent is never interrupted by an update.
+
+Building from source (needs the pinned Ghostty submodule and Zig) is described
+in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Why "Planchette"?
 
 The planchette is the pointer on a Ouija board: in a séance with many spirits,
@@ -16,7 +30,8 @@ the one that speaks.
 
 ## Status
 
-Early development. See [docs/CONCEPT.md](docs/CONCEPT.md) for the full concept,
+The macOS app is released and in daily use; it updates itself from GitHub
+releases. See [docs/CONCEPT.md](docs/CONCEPT.md) for the full concept,
 architecture and roadmap.
 
 **Working today (macOS, `macos/Planchette`):**
@@ -60,6 +75,11 @@ architecture and roadmap.
 - **Unreviewed work is visible**: green counts only what finished while you were
   looking elsewhere; looking at the tab clears it. ⌘Q asks before killing a
   running turn
+- **Notifications panel** on the right, mirroring projects and tabs: what each
+  terminal is asking, working on or reporting, with a "Needs you" block on top —
+  errors before questions, longest-waiting first. Click a row to land there
+- **More than one window**, and a way back: pull a project into its own window,
+  merge a window back into the main one
 - Clicking a notification jumps straight to that window, project and tab
 - Favorites (Hauptprojekte) — prioritized in inbox, notifications, switcher
 - Quick switcher ⌘K (fuzzy over title/path/branch/tags) and ⌘⇧K (jump to the
@@ -70,6 +90,9 @@ architecture and roadmap.
   searchable in the switcher
 - **AI assist (toggleable)**: transcript-based one-line summaries per agent
   session via headless `claude -p`, topic labels, and opt-in group-by-topic
+- **Bring your existing terminals in**: import the working directories of open
+  iTerm2 / Terminal.app windows, or drop a folder from Finder onto the sidebar
+- **Seven interface languages** (EN, DE, FR, ES, IT, NL, PT), light/dark/system
 - Persistence across restart & reboot: layout, colors, titles, cwd, tags,
   Claude session — resumed via `claude --resume`, plus per-session startup
   commands
@@ -80,27 +103,22 @@ architecture and roadmap.
   pass the terminal's keyboard protocol through, so `Shift+Enter` reaches an agent
   as a plain `Enter` (see docs/LIVE-UPDATE.md § Tier C1)
 
-Current phase: **Phase 0/1 done, hardening**
+Current phase: **macOS app shipping, Linux not started**
 
-- [x] Spike A (macOS): GhosttyKit embedded in a minimal SwiftUI app, 2 interactive surfaces
-- [ ] Spike B (Linux): libghostty in a Zig + GTK4 widget (needs a Linux machine)
+- [x] Spike A (macOS): GhosttyKit embedded in a SwiftUI app — grown into the app
+      that ships today (`macos/Planchette`)
 - [x] Spike C: hook → unix socket → in-app notification roundtrip, with per-terminal
       session identity via injected `PLANCHETTE_SESSION` env var
+- [ ] Spike B (Linux): libghostty in a Zig + GTK4 widget (needs a Linux machine)
 
-### Running the spike
+### Simulating a hook event
+
+The attention states come from agent hooks. You can drive one by hand from any
+shell to see a terminal light up:
 
 ```sh
-# 1. Build GhosttyKit from the pinned submodule (once; needs Zig 0.15.2 in .tooling/)
-cd vendor/ghostty && ../../.tooling/zig/zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast && cd ../..
-cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/PlancheSpike/
-
-# 2. Build & run the app
-cd macos/PlancheSpike && swift build
-GHOSTTY_RESOURCES_DIR=$PWD/../../vendor/ghostty/zig-out/share/ghostty ./.build/debug/PlancheSpike
-
-# 3. Simulate a Claude Code hook event (from any shell)
 echo '{"hook_event_name":"Notification","message":"needs permission"}' \
-  | PLANCHETTE_SESSION=term-1 ../../hook/planchette-hook
+  | PLANCHETTE_SESSION=<uuid of a terminal> hook/planchette-hook
 ```
 
 ## Documentation
@@ -114,16 +132,19 @@ echo '{"hook_event_name":"Notification","message":"needs permission"}' \
 
 ```
 vendor/ghostty/   Ghostty submodule, pinned → builds libghostty/GhosttyKit
-core/             Zig: libplanchette — sessions, attention state machine, store, IPC
 hook/             planchette-hook — tiny binary forwarding Claude Code hook events
-macos/            Swift/SwiftUI app
-linux/            Zig + GTK4 app
+macos/Planchette  Swift/SwiftUI app — everything described above
+macos/PlancheSpike  the original two-surface spike, kept for reference
+scripts/          package.sh (app + DMG) and release.sh (tag + GitHub release)
+skills/           the planchette skill: how an agent drives the app via its CLI
 docs/             Concept & architecture docs
+core/, linux/     reserved for the shared Zig core and the GTK4 app — both empty
 ```
 
 ## Platforms
 
-macOS and Linux, native UI on both — no Electron.
+macOS today (14+). Linux is the plan, not a promise: the shared Zig core and the
+GTK4 app are still empty directories. Native UI on both, no Electron.
 
 ## License
 
