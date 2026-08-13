@@ -8,7 +8,10 @@ import SwiftUI
 struct AttentionPanel: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("inboxOnlyActive") private var onlyActive = false
-    @AppStorage("inboxOnlyUnread") private var onlyUnread = false
+    /// On by default: the panel's job is "what needs me", and a list that also
+    /// holds everything already dealt with buries that. Unticking it shows the
+    /// full mirror again, and the choice is remembered.
+    @AppStorage("inboxOnlyUnread") private var onlyUnread = true
     let windowID: UUID
 
     /// Projects in display order: this window's groups first (favorites

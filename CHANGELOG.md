@@ -8,6 +8,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.18] — 2026-08-13
+
+### Changed
+- **The notifications panel opens on *Only unread*.** Its job is "what needs me",
+  and a list that also carries everything already dealt with buries that. Untick
+  the box for the full mirror; the choice is remembered.
+
 ### Fixed
 - **An interrupted install can no longer leave you with no app.** Both the
   in-app updater and `scripts/install.sh` deleted the installed bundle *before*
