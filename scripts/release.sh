@@ -35,13 +35,33 @@ git push origin "$TAG"
 
 sh scripts/package.sh "$VERSION"
 
+# Release notes = this version's CHANGELOG section. The app reads them back off
+# the release body and shows the entry titles in the update dialog
+# (ReleaseNotes.swift), so "what's new" has exactly one source.
+NOTES="$(mktemp)"
+trap 'rm -f "$NOTES"' EXIT INT TERM
+awk -v ver="$VERSION" '
+    $0 ~ "^## \\[" ver "\\]" { inside = 1; next }
+    inside && /^## \[/       { exit }
+    inside                    { print }
+' CHANGELOG.md | sed -e '/^$/{ /./!d; }' > "$NOTES"
+if [ ! -s "$NOTES" ]; then
+    echo "warning: no CHANGELOG section for $VERSION — publishing without notes" >&2
+fi
+cat >> "$NOTES" <<EOF
+
+---
+Existing users get this automatically via the in-app updater (Install & Relaunch).
+New users: \`curl -fsSL https://raw.githubusercontent.com/$(git config --get remote.origin.url | sed -E 's#.*github.com[:/]([^/]+/[^.]+)(\.git)?#\1#')/main/scripts/install.sh | sh\`
+EOF
+
 gh release create "$TAG" \
     "dist/Planchette.dmg" \
     "dist/Planchette.zip" \
     "dist/screen-rules.json" \
     "dist/SHA256SUMS" \
     --title "Planchette $VERSION" \
-    --notes "Stable release $VERSION. Existing users get this automatically via the in-app updater (Install & Relaunch). New users: download Planchette.dmg and drag it into Applications." \
+    --notes-file "$NOTES" \
     --target "$BRANCH"
 
 echo "→ released $TAG with dist/Planchette.dmg"

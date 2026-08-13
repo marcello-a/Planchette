@@ -57,6 +57,65 @@ final class TitlesTests: XCTestCase {
     }
 }
 
+// MARK: "What's new" in the update dialog (parsed off the release body)
+
+final class ReleaseNotesTests: XCTestCase {
+    private let body = """
+    ### Added
+    - **Terminals name themselves.** A tab is now called `NIE-1902 · Add the
+      switch`: the ticket of its checkout plus the task you last sent it.
+      - a nested detail nobody needs in a dialog
+    - **A folder is a page, not just a box** — click it and the main area shows
+      what is inside.
+
+    ### Fixed
+    - A project row's click and its drag no longer fight over the gesture. See
+      [the PR](https://github.com/x/y/pull/7) for why.
+    """
+
+    func testTakesTheBoldLeadInAsTheTitle() {
+        let (items, _) = ReleaseNotes.highlights(from: body)
+        XCTAssertEqual(items.first, "Terminals name themselves")
+        XCTAssertEqual(items[1], "A folder is a page, not just a box")
+    }
+
+    // A plain bullet has no bold lead-in: its first sentence is the title.
+    func testFallsBackToTheFirstSentence() {
+        let (items, _) = ReleaseNotes.highlights(from: body)
+        XCTAssertEqual(items[2], "A project row's click and its drag no longer fight over the…")
+    }
+
+    func testSkipsNestedBulletsAndHeadings() {
+        let (items, _) = ReleaseNotes.highlights(from: body)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertFalse(items.contains { $0.contains("nested") })
+        XCTAssertFalse(items.contains { $0.contains("Added") })
+    }
+
+    // The dialog has room for a few lines, not for a whole changelog.
+    func testCutsTheListAndCountsTheRest() {
+        let long = (1...9).map { "- **Entry \($0).** Details." }.joined(separator: "\n")
+        let (items, more) = ReleaseNotes.highlights(from: long, limit: 4)
+        XCTAssertEqual(items, ["Entry 1", "Entry 2", "Entry 3", "Entry 4"])
+        XCTAssertEqual(more, 5)
+    }
+
+    func testMarkdownIsNotReadOutAsPunctuation() {
+        let (items, _) = ReleaseNotes.highlights(from: "- **A `code` name.** rest")
+        XCTAssertEqual(items, ["A code name"])
+        let (links, _) = ReleaseNotes.highlights(from: "- Fixed [the thing](http://x/y) at last.")
+        XCTAssertEqual(links, ["Fixed the thing at last"])
+    }
+
+    // A release published by hand may have no list at all — then the dialog must
+    // simply say nothing new, not show an empty "What's new" block.
+    func testNoBulletsMeansNoHighlights() {
+        let (items, more) = ReleaseNotes.highlights(from: "Stable release 0.2.16.")
+        XCTAssertTrue(items.isEmpty)
+        XCTAssertEqual(more, 0)
+    }
+}
+
 final class UpdateSecurityTests: XCTestCase {
     func testTrustedGitHubDownloads() {
         XCTAssertTrue(UpdateService.isTrustedDownload(URL(string: "https://github.com/marcello-a/Planchette/releases/download/v1/Planchette.dmg")!))
@@ -1203,6 +1262,79 @@ final class DisplayTitleTests: XCTestCase {
         XCTAssertFalse(Titles.looksLikeShellPrompt("npm run dev"))
         XCTAssertFalse(Titles.looksLikeShellPrompt("Implementiere neues Detail"))
         XCTAssertFalse(Titles.looksLikeShellPrompt("build @scope/pkg"))
+    }
+
+    // MARK: Terminals that name themselves (ticket · task)
+
+    func testTaskLabelKeepsAShortPromptAsItIs() {
+        XCTAssertEqual(Titles.taskLabel("Add the format switch"), "Add the format switch")
+    }
+
+    func testTaskLabelCutsAtAWordBoundary() {
+        let label = Titles.taskLabel(
+            "Add the format switch to the product menu and cover it with a test", max: 24)
+        XCTAssertEqual(label, "Add the format switch…")
+        XCTAssertFalse(label!.contains("swi…"), "never cut mid-word")
+    }
+
+    // A single word longer than the budget is better cut than reduced to "…".
+    func testTaskLabelCutsInsideOneLongWord() {
+        XCTAssertEqual(Titles.taskLabel("Donaudampfschifffahrtsgesellschaft", max: 12),
+                       "Donaudampfsc…")
+    }
+
+    func testTaskLabelCollapsesWhitespaceAndDropsTrailingPunctuation() {
+        XCTAssertEqual(Titles.taskLabel("  fix   the   upload spec.  "), "fix the upload spec")
+        XCTAssertNil(Titles.taskLabel("   \n  "))
+    }
+
+    func testAutoTitleCombinesWhatExists() {
+        XCTAssertEqual(Titles.autoTitle(ticket: "NIE-1902", work: "Add the switch"),
+                       "NIE-1902 · Add the switch")
+        XCTAssertEqual(Titles.autoTitle(ticket: "NIE-1902", work: nil), "NIE-1902")
+        XCTAssertEqual(Titles.autoTitle(ticket: nil, work: "Add the switch"), "Add the switch")
+        XCTAssertNil(Titles.autoTitle(ticket: nil, work: nil))
+    }
+
+    // The task is what I sent this terminal to do; the program's own title
+    // changes under it constantly, so the task has to win.
+    func testTaskOutranksTheReportedTitle() {
+        var s = session(osc: "✳ designer-library")
+        s.currentTask = "Fix the flaky upload spec"
+        XCTAssertEqual(s.displayTitle, "Fix the flaky upload spec")
+    }
+
+    func testReportedTitleIsUsedWhenThereIsNoTask() {
+        XCTAssertEqual(session(osc: "npm run dev").displayTitle, "npm run dev")
+    }
+
+    func testManualNameStillWinsOverAnAutoTitle() {
+        var s = session(osc: "✳ whatever", custom: "watcher")
+        s.currentTask = "Fix the flaky upload spec"
+        XCTAssertEqual(s.displayTitle, "watcher")
+    }
+
+    // Two terminals in the same checkout must not read the same: the ticket
+    // comes from the branch, the half after it from each terminal's own task.
+    func testTicketAndTaskTogetherInAWorktree() throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("titles-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: repo.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try "ref: refs/heads/marcello/feat/NIE-1902-format-switch\n"
+            .write(to: repo.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        var a = TerminalSession(groupID: UUID(), workingDirectory: repo.path)
+        a.currentTask = "Add the format switch to the product menu"
+        var b = TerminalSession(groupID: UUID(), workingDirectory: repo.path)
+        b.currentTask = "Fix the flaky upload spec"
+        let c = TerminalSession(groupID: UUID(), workingDirectory: repo.path)
+
+        XCTAssertEqual(a.displayTitle, "NIE-1902 · Add the format switch to the…")
+        XCTAssertEqual(b.displayTitle, "NIE-1902 · Fix the flaky upload spec")
+        XCTAssertEqual(c.displayTitle, "NIE-1902", "no task yet: the ticket alone")
+        XCTAssertNotEqual(a.displayTitle, b.displayTitle)
     }
 }
 

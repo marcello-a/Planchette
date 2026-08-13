@@ -8,6 +8,23 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **The update dialog says what's new.** It lists the titles of the new version's
+  changelog entries — only the titles, and at most five, with "…and 3 more" for
+  the rest: a modal that asks whether to restart is the wrong place to read
+  twelve paragraphs. The notes come from the release body, which `release.sh` now
+  fills from this file, so "what's new" has one source and cannot drift from it.
+- **Terminals name themselves.** A tab is now called `NIE-1902 · Add the format
+  switch`: the ticket of its checkout plus the task you last sent it, condensed
+  to a sidebar-width label that cuts at a word boundary. Two terminals in one
+  worktree used to show the identical branch ticket and nothing else; the half
+  after the `·` is what tells them apart. The task outranks the title the program
+  reports over OSC — a program rewrites that constantly, and to the same string
+  in every tab of a repo, while the task is what *you* sent the terminal to do
+  and stays until you send it something else. A name set by hand still wins over
+  both, and a terminal with neither ticket nor task reads as before ("free" when
+  idle, otherwise its folder).
+
 ## [0.2.16] — 2026-08-12
 
 ### Added

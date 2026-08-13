@@ -45,6 +45,55 @@ enum Titles {
         title.count <= max ? title : String(title.prefix(max - 1)) + "…"
     }
 
+    /// Shorten to `max` at a word boundary rather than mid-word — "Add the
+    /// format sw…" reads as damage, "Add the format…" reads as a name. Trailing
+    /// punctuation goes with the cut.
+    static func clip(_ text: String, max: Int) -> String {
+        guard text.count > max else { return trimmedTail(text) }
+        var cut = String(text.prefix(max))
+        // Drop the partial last word, unless that would leave almost nothing —
+        // a single very long word is better shown cut than reduced to "…".
+        if let space = cut.lastIndex(of: " "), cut.distance(from: cut.startIndex, to: space) > max / 3 {
+            cut = String(cut[cut.startIndex..<space])
+        }
+        return trimmedTail(cut) + "…"
+    }
+
+    /// A prompt condensed to something that fits a sidebar row.
+    static func taskLabel(_ task: String, max: Int = 32) -> String? {
+        let collapsed = task
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !collapsed.isEmpty else { return nil }
+        return clip(collapsed, max: max)
+    }
+
+    private static func trimmedTail(_ text: String) -> String {
+        var out = text
+        while let last = out.last, last.isPunctuation || last.isWhitespace, last != ")" {
+            out.removeLast()
+        }
+        return out.isEmpty ? text : out
+    }
+
+    /// The name a terminal gives itself: the ticket it belongs to and what it is
+    /// working on. Both halves are optional — a repo without a ticket branch has
+    /// only the work, a terminal that was never given a task has only the
+    /// ticket, and with neither there is nothing to auto-name it after.
+    ///
+    /// The ticket stays in the name even though the row shows the path: two
+    /// terminals in the same worktree must not read the same, and the work alone
+    /// loses which checkout it belongs to when the sidebar is narrow.
+    static func autoTitle(ticket: String?, work: String?) -> String? {
+        switch (ticket, work) {
+        case let (.some(ticket), .some(work)): "\(ticket) · \(work)"
+        case let (.some(ticket), .none): ticket
+        case let (.none, .some(work)): work
+        case (.none, .none): nil
+        }
+    }
+
     /// True if a title is just the shell's default prompt (`user@host:~/path`),
     /// which isn't a useful name — an idle terminal showing this is "free".
     static func looksLikeShellPrompt(_ title: String) -> Bool {

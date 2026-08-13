@@ -125,8 +125,10 @@ architecture and roadmap.
 - Favorites (Hauptprojekte) — prioritized in inbox, notifications, switcher
 - Quick switcher ⌘K (fuzzy over title/path/branch/tags) and ⌘⇧K (jump to the
   most urgent waiting session)
-- Auto titles (ticket from git branch), short paths with full path on hover,
-  colors and custom titles for sessions and groups
+- **Terminals name themselves**: `NIE-1902 · Add the format switch` — the ticket
+  from the git branch plus the task you last sent that terminal, so two tabs in
+  the same checkout never read the same. A name you set by hand always wins
+- Short paths with full path on hover, colors for sessions and groups
 - **Tags** on terminals ("to test", "review", …) — chips in sidebar/tabs,
   searchable in the switcher
 - **AI assist (toggleable)**: transcript-based one-line summaries per agent

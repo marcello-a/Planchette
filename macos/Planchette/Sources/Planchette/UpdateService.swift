@@ -103,6 +103,9 @@ final class UpdateService: ObservableObject {
     private struct Release: Decodable {
         let tagName: String
         let htmlURL: String
+        /// The release body — the new version's CHANGELOG section, put there by
+        /// scripts/release.sh. Optional: a release published by hand may have none.
+        let body: String?
         let assets: [Asset]
         struct Asset: Decodable {
             let name: String
@@ -115,6 +118,7 @@ final class UpdateService: ObservableObject {
         enum CodingKeys: String, CodingKey {
             case tagName = "tag_name"
             case htmlURL = "html_url"
+            case body
             case assets
         }
 
@@ -208,6 +212,19 @@ final class UpdateService: ObservableObject {
 
     // MARK: - Offer
 
+    /// "What's new", appended to whatever the dialog already says: the titles of
+    /// the new version's changelog entries, cut short. Empty when the release
+    /// carries no notes we can read — then the dialog reads exactly as before.
+    private func whatsNew(_ release: Release) -> String {
+        guard let body = release.body else { return "" }
+        let (items, more) = ReleaseNotes.highlights(from: body)
+        guard !items.isEmpty else { return "" }
+        var lines = ["", L10n.t(.whatsNew)]
+        lines.append(contentsOf: items.map { "• \($0)" })
+        if more > 0 { lines.append(L10n.t(.andMoreChanges, more)) }
+        return lines.joined(separator: "\n")
+    }
+
     private func offerUpdate(version: String, release: Release) {
         // Prefer in-app install (zip) when the bundle is replaceable in place;
         // otherwise fall back to opening the DMG for a manual drag-install.
@@ -216,7 +233,7 @@ final class UpdateService: ObservableObject {
             let checksumURL = release.asset(named: "SHA256SUMS").flatMap { trusted($0.browserDownloadURL) }
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
-            alert.informativeText = L10n.t(.updateInstallBody)
+            alert.informativeText = L10n.t(.updateInstallBody) + whatsNew(release)
             // Staging first: it is the choice that costs the user nothing, and
             // relaunching now ends every running turn.
             alert.addButton(withTitle: L10n.t(.updateInstallOnQuit))
@@ -244,7 +261,7 @@ final class UpdateService: ObservableObject {
             let target = dmg ?? URL(string: release.htmlURL)
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
-            alert.informativeText = L10n.t(.updateAvailableBody)
+            alert.informativeText = L10n.t(.updateAvailableBody) + whatsNew(release)
             alert.addButton(withTitle: L10n.t(.updateDownload))
             alert.addButton(withTitle: L10n.t(.cancel))
             if alert.runModal() == .alertFirstButtonReturn, let target,

@@ -284,22 +284,35 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)
     }
 
-    /// Short display title: manual > ticket from git branch > OSC title > folder name.
+    /// The terminal names itself: `NIE-1902 · Add the format switch` — the
+    /// ticket of its checkout plus the work it was given. A manual name always
+    /// wins; below that it is ticket + work, where the work is the task from the
+    /// last submitted prompt, or failing that the title the program reports.
+    ///
+    /// The task outranks the OSC title deliberately: the terminal's program
+    /// rewrites its title constantly (and often to the same thing in every tab
+    /// of a repo), while the task is what *you* sent this terminal to do and
+    /// stays put until you send it something else.
     var displayTitle: String {
         if let customTitle, !customTitle.isEmpty { return customTitle }
-        if let ticket = Titles.ticket(forDirectory: currentDirectory) { return ticket }
-        if let oscTitle {
-            // Strip a leading status glyph (Claude Code prefixes "✳ "/"●",
-            // which reads as a stray star/dot next to the name). Return the full
-            // title — each view truncates it to the width it actually has.
-            let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
-                .trimmingCharacters(in: .whitespaces)
-            // Skip the shell's default prompt (user@host:path) — it's not a name.
-            if !cleaned.isEmpty && !Titles.looksLikeShellPrompt(cleaned) { return cleaned }
-        }
-        // Nothing meaningful running: a free terminal says so, otherwise the
-        // folder name.
+        let ticket = Titles.ticket(forDirectory: currentDirectory)
+        let work = currentTask.flatMap { Titles.taskLabel($0) } ?? reportedTitle
+        if let auto = Titles.autoTitle(ticket: ticket, work: work) { return auto }
+        // Nothing to go on: a free terminal says so, otherwise the folder name.
         return state == .free ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
+    }
+
+    /// The title the running program reports (OSC 0/2), cleaned up — nil when it
+    /// says nothing worth showing.
+    private var reportedTitle: String? {
+        guard let oscTitle else { return nil }
+        // Strip a leading status glyph (Claude Code prefixes "✳ "/"●", which
+        // reads as a stray star/dot next to the name).
+        let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
+            .trimmingCharacters(in: .whitespaces)
+        // Skip the shell's default prompt (user@host:path) — it's not a name.
+        guard !cleaned.isEmpty, !Titles.looksLikeShellPrompt(cleaned) else { return nil }
+        return cleaned
     }
 
     /// Last two path components, full path shown on hover.
