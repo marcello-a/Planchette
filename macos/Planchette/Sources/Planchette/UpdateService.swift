@@ -425,14 +425,26 @@ final class UpdateService: ObservableObject {
         while kill -0 \#(pid) 2>/dev/null; do sleep 0.2; done
         sleep 0.7   # let the OS release the old bundle after the process exits
         STAGING="$2.new"
-        rm -rf "$STAGING"
+        OLD="$2.old"
+        rm -rf "$STAGING" "$OLD"
         if /usr/bin/ditto "$1" "$STAGING"; then
-            rm -rf "$2"
+            # Move the installed app aside rather than deleting it: if the swap
+            # fails after an `rm -rf "$2"`, the machine is left with no app at
+            # all. Keeping it until the new one is in place makes that
+            # unrecoverable case impossible.
+            if [ -d "$2" ] && ! mv "$2" "$OLD"; then
+                echo "ERROR: could not move the installed app aside; nothing changed"
+                rm -rf "$STAGING"
+                exit 0
+            fi
             if mv "$STAGING" "$2"; then
                 /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
+                rm -rf "$OLD"
                 echo "swap ok -> $2"
             else
-                echo "ERROR: mv staging into place failed"
+                echo "ERROR: mv staging into place failed; restoring previous version"
+                [ -d "$OLD" ] && mv "$OLD" "$2"
+                rm -rf "$STAGING"
             fi
         else
             echo "ERROR: ditto to staging failed; app left untouched"

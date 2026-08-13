@@ -8,6 +8,18 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **An interrupted install can no longer leave you with no app.** Both the
+  in-app updater and `scripts/install.sh` deleted the installed bundle *before*
+  the new one was in place; anything failing in that window left nothing behind.
+  Both now copy beside the destination, move the old bundle aside, swap, and put
+  the old one back if the swap fails.
+
+### Added
+- **A demo or test instance restores without asking.** With
+  `PLANCHETTE_STATE_DIR` set, the workspace it was handed is opened directly —
+  there is nobody to answer a modal in an instance that exists to be driven.
+
 ## [0.2.17] — 2026-08-13
 
 ### Added

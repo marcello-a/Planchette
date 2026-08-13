@@ -59,8 +59,33 @@ MOUNT="$(hdiutil attach "$TMP/Planchette.dmg" -nobrowse -readonly -quiet -mountp
 
 echo "→ installing into $DEST"
 mkdir -p "$DEST"
-rm -rf "$DEST/Planchette.app"
-ditto "$MOUNT/Planchette.app" "$DEST/Planchette.app"
+# Copy beside the destination first and swap only once the copy is complete.
+# Deleting the installed app before the new one exists is how an interrupted
+# install leaves a machine with no app at all — the failure mode this script is
+# supposed to prevent, not cause. On a failed swap the old bundle goes back.
+STAGING="$DEST/Planchette.app.new"
+rm -rf "$STAGING"
+ditto "$MOUNT/Planchette.app" "$STAGING" || {
+    echo "copy failed — $DEST/Planchette.app left as it was" >&2
+    rm -rf "$STAGING"
+    exit 1
+}
+if [ -d "$DEST/Planchette.app" ]; then
+    rm -rf "$DEST/Planchette.app.old"
+    mv "$DEST/Planchette.app" "$DEST/Planchette.app.old" || {
+        echo "could not move the installed app aside — nothing changed" >&2
+        rm -rf "$STAGING"
+        exit 1
+    }
+fi
+if mv "$STAGING" "$DEST/Planchette.app"; then
+    rm -rf "$DEST/Planchette.app.old"
+else
+    echo "swap failed — putting the previous version back" >&2
+    [ -d "$DEST/Planchette.app.old" ] && mv "$DEST/Planchette.app.old" "$DEST/Planchette.app"
+    rm -rf "$STAGING"
+    exit 1
+fi
 
 # The actual "unidentified developer" bypass: without this, the first launch is
 # blocked and has to be approved by hand in System Settings.

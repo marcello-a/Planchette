@@ -11,10 +11,12 @@ which session needs your attention — who's asking, who's done, who's free.
 their terminals, and the folder's latest notifications — with the notifications
 panel on the right, unread first](docs/images/folder-overview.png)
 
-*Left: projects in folders. Middle: a folder's overview — every project with the
-badge for what it is doing and every terminal named after the ticket and the task
-it was given. Right: the notifications panel, where unread reports are marked and
-can be filtered down to.*
+*A folder's **overview page**. Left: projects in folders, each row carrying the
+attention counts of what is inside. Middle: what the folder holds — every project
+with the badge for what it is doing (waiting, error, …) and every terminal named
+after its ticket and the task it was given, plus tags, snooze and the folder's
+latest notifications. Right: the **notifications panel**, where unread reports
+are ringed and bold, counted in the header, and can be filtered with* Only unread.
 
 ## Install
 
@@ -70,6 +72,23 @@ Three ways through, pick one:
 
 If you'd rather trust nothing at all, build it yourself from source — same app,
 your own machine, no quarantine involved.
+
+### One project, one terminal at a time
+
+![A project in tab view: the tab bar with the terminal's auto-generated name, the
+running terminal, and the notifications panel](docs/images/project-tabs.png)
+
+*Tabs of one project, each named `TICKET · what it was told to do`. The state dot
+in front of a tab is the same colour system as everywhere else, and the panel on
+the right keeps every other project in view while you work in this one.*
+
+### All of a project's terminals at once
+
+![A project in cluster view: three terminals side by side as split panes](docs/images/cluster-view.png)
+
+*The same project in **cluster view** — every terminal of it as a split pane, so
+three agents working in one checkout are on screen together. Drag a pane onto
+another's edge to rearrange the grid; the arrangement is saved with the project.*
 
 ## Why "Planchette"?
 
