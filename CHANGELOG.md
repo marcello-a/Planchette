@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.19] — 2026-08-13
+
 ### Added
 - **Drop a project exactly where you want it.** Dragging now aims at a *gap*, not
   at a row: the upper half of a row means "above this one", the lower half "below
@@ -21,6 +23,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   project name with its badges, narrow enough that two open panels never take the
   window away from the terminal. Both panels use the same bounds, so the window
   stays symmetric however either is dragged.
+- **The README is a page you can skim**: what it is, install, features as lists,
+  and everything a contributor runs — instead of six screens of prose.
 
 ## [0.2.18] — 2026-08-13
 
