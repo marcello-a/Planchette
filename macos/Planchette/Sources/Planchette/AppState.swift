@@ -100,6 +100,7 @@ final class AppState: ObservableObject {
         observeSurfaceNotifications()
         startAttentionHousekeeping()
         startScreenDetection()
+        startBranchPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -429,6 +430,51 @@ final class AppState: ObservableObject {
         }
         windows.removeAll { $0.id == sourceID }
         scheduleSave()
+    }
+
+    // MARK: Git branch per project
+
+    /// Which branch each project is on, keyed by group id. Derived and never
+    /// persisted: the checkout on disk is the truth, and it changes behind the
+    /// app's back (any `git checkout` in the terminal).
+    @Published var branches: [UUID: String] = [:]
+    private var branchTimer: Timer?
+    /// Cheap enough to be invisible, fast enough that a checkout you just did
+    /// shows up while you're still in the terminal.
+    static let branchPollInterval: TimeInterval = 10
+
+    private func startBranchPolling() {
+        refreshBranches()
+        let timer = Timer(timeInterval: Self.branchPollInterval, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.refreshBranches() }
+        }
+        timer.tolerance = 2
+        RunLoop.main.add(timer, forMode: .common)
+        branchTimer = timer
+    }
+
+    /// One `git branch --show-current` per project, off the main thread (rule 5).
+    /// The directory is the project's active terminal — a project whose
+    /// terminals sit in different checkouts shows the one you are looking at.
+    private func refreshBranches() {
+        let dirs: [(id: UUID, dir: String)] = groups.compactMap { group in
+            let inGroup = sessions(in: group)
+            guard let session = inGroup.first(where: { $0.id == group.activeSessionID })
+                    ?? inGroup.first,
+                  !session.currentDirectory.isEmpty
+            else { return nil }
+            return (group.id, session.currentDirectory)
+        }
+        guard !dirs.isEmpty else {
+            if !branches.isEmpty { branches = [:] }
+            return
+        }
+        Task.detached {
+            let found = dirs.reduce(into: [UUID: String]()) { found, entry in
+                if let branch = Worktrees.currentBranch(of: entry.dir) { found[entry.id] = branch }
+            }
+            await MainActor.run { [weak self] in self?.branches = found }
+        }
     }
 
     // MARK: Derived
