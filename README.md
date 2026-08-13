@@ -9,17 +9,58 @@ which session needs your attention — who's asking, who's done, who's free.
 
 ## Install
 
-Download `Planchette.dmg` from the [latest release](https://github.com/marcello-a/Planchette/releases/latest)
-and drag the app into Applications. macOS 14 or newer, Apple Silicon or Intel.
+macOS 14 or newer, Apple Silicon or Intel.
 
-The app is ad-hoc signed, so the first launch needs *right-click → Open* (or
-System Settings → Privacy & Security → "Open anyway"). From then on it updates
-itself: it checks GitHub for a newer stable release and offers **Install &
-Relaunch**, or stages the update and installs it when you next quit — so a
-running agent is never interrupted by an update.
+```sh
+curl -fsSL https://raw.githubusercontent.com/marcello-a/Planchette/main/scripts/install.sh | sh
+```
+
+That downloads the latest release, **verifies it against the release's
+`SHA256SUMS`**, installs it to `/Applications` and clears the quarantine flag,
+so it starts without the "unidentified developer" detour below. Read the script
+first if you'd rather not pipe a download into a shell — it is
+[`scripts/install.sh`](scripts/install.sh), ~70 lines. Options:
+
+```sh
+sh install.sh 0.2.15                        # a specific version
+PLANCHETTE_DEST=~/Applications sh install.sh  # install somewhere else
+```
+
+Or do it by hand: download `Planchette.dmg` from the
+[latest release](https://github.com/marcello-a/Planchette/releases/latest) and
+drag the app into Applications.
+
+From then on it updates itself: it checks GitHub for a newer stable release and
+offers **Install & Relaunch**, or stages the update and installs it when you
+next quit — so a running agent is never interrupted by an update.
 
 Building from source (needs the pinned Ghostty submodule and Zig) is described
 in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### "Apple could not verify Planchette is free of malware"
+
+Expected on the manual route. Planchette is **ad-hoc signed and not notarized**:
+notarization needs a paid Apple Developer ID, and this is a free app. macOS
+therefore quarantines the download and blocks the first launch. Nothing about
+the app changes when you allow it — you are telling Gatekeeper you trust where
+it came from.
+
+Three ways through, pick one:
+
+1. **The install script above** — it removes the quarantine flag for you, after
+   checking the download's SHA-256 against the release.
+2. **System Settings** (the route macOS 15+ wants): try to open the app once and
+   let it be blocked, then go to *System Settings → Privacy & Security*, scroll
+   to the message naming Planchette, click **Open Anyway** and confirm. On older
+   macOS, *right-click the app → Open → Open* does the same in one step.
+3. **Terminal**, if you prefer it explicit:
+
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/Planchette.app
+   ```
+
+If you'd rather trust nothing at all, build it yourself from source — same app,
+your own machine, no quarantine involved.
 
 ## Why "Planchette"?
 

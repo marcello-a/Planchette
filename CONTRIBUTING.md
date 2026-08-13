@@ -81,6 +81,11 @@ Planchette terminals, so it's safe to leave installed.
 sh scripts/package.sh            # → dist/Planchette.app and dist/Planchette.dmg
 ```
 
+`scripts/install.sh` is the user-facing counterpart: it pulls the latest release,
+verifies it against `SHA256SUMS`, installs it and clears the quarantine flag.
+Keep it working when the release assets change — the README points people at it
+as the primary install route.
+
 The app is ad-hoc signed (runs locally). Distributing to other machines needs a
 Developer ID identity + notarization — replace the `codesign` line in
 `scripts/package.sh`.
