@@ -87,6 +87,16 @@ enum Worktrees {
         return root
     }
 
+    /// The checked-out branch of a directory, or nil outside a repo / on a
+    /// detached HEAD (`--show-current` prints nothing there — no branch is the
+    /// honest answer, and a bare sha in the sidebar would only look like noise).
+    static func currentBranch(of directory: String) -> String? {
+        guard let branch = try? git(["branch", "--show-current"], in: directory),
+              !branch.isEmpty
+        else { return nil }
+        return branch
+    }
+
     /// Create a worktree for `branch`, creating the branch off `base` when it
     /// doesn't exist yet, and return the checkout path.
     static func create(repoRoot: String, branch: String, base: String?) throws -> String {

@@ -612,6 +612,14 @@ struct SidebarView: View {
                     Circle().fill(color).frame(width: 9, height: 9)
                 }
                 Text(group.name).fontWeight(group.favorite ? .semibold : .regular)
+                if let branch = appState.branches[group.id] {
+                    Text(branch)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(branch)
+                }
                 if group.favorite {
                     PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                 }
