@@ -164,22 +164,35 @@ enum StatePixels {
 /// Pixel sprites that are not states but sit beside them, so the sidebar does
 /// not mix pixel art with vector glyphs.
 enum PixelSprites {
-    /// The favourite ("main project") mark: a four-point spark, symmetric on
-    /// both axes. A five-pointed star cannot be even on an 8x8 grid — one arm
-    /// always lands off-centre and the whole thing reads as a blob with legs.
+    /// The favourite ("main project") mark: a solid five-point star — filled,
+    /// no outline and no face, because at this size an outline eats the fill and
+    /// a face turns to noise.
+    ///
+    /// 14x14, not the states' 8x8: five points do not divide into eight, and a
+    /// polygon rasterised smaller than this loses its legs to single pixels that
+    /// disappear on screen. The legs here are deliberately thicker than a true
+    /// polygon would make them, which is what every hand-drawn pixel star does.
     static let star = [
-        "...##...",
-        "...##...",
-        "..####..",
-        "########",
-        "########",
-        "..####..",
-        "...##...",
-        "...##...",
+        "..............",
+        "......##......",
+        ".....####.....",
+        ".....####.....",
+        "##############",
+        ".############.",
+        "..##########..",
+        "...########...",
+        "...########...",
+        "..####..####..",
+        "..###....###..",
+        ".###......###.",
+        ".##........##.",
+        "..............",
     ]
 }
 
-/// Any 8x8 sprite, in one colour. `StateIcon` is the state-aware wrapper.
+/// Any square pixel sprite, in one colour. `StateIcon` is the state-aware
+/// wrapper; the grid comes from the sprite, so a shape that needs more room
+/// than the states' 8x8 can have it without changing on-screen size.
 struct PixelIcon: View {
     let sprite: [String]
     var size: CGFloat = 11
@@ -187,7 +200,8 @@ struct PixelIcon: View {
 
     var body: some View {
         Canvas { context, _ in
-            let pixel = size / CGFloat(StatePixels.size)
+            let grid = max(sprite.count, sprite.first?.count ?? StatePixels.size)
+            let pixel = size / CGFloat(grid)
             for (y, row) in sprite.enumerated() {
                 for (x, char) in row.enumerated() where char == "#" {
                     context.fill(
