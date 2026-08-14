@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.20] — 2026-08-14
+
 ### Added
 - **A Help tab that lists every feature, and can be searched.** Settings → Help
   holds the whole feature set in sections — what it does, where it lives, its
