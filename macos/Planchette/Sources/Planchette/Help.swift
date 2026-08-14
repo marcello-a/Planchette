@@ -57,6 +57,7 @@ enum Help {
             Entry(.arrangements, .arrangementsHelp, where: .helpWhereSidebar),
             Entry(.saveArrangement, .saveArrangementHelp, where: .helpWhereSidebar),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
+            Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .helpSectionTerminals, entries: [
             Entry(.newTerminal, .newTerminalHelp, shortcut: "⌘T"),

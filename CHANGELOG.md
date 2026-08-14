@@ -8,6 +8,16 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.21] — 2026-08-14
+
+### Added
+- **Each project shows its checked-out branch** (#8, by @mtreuberg). Two
+  worktrees of one repo used to look identical in the sidebar; the branch is
+  read from the checkout every 10s off the main thread, so a `git checkout`
+  shows up while you are still looking at the terminal. Derived, never
+  persisted — the checkout on disk is the truth and it changes behind the app's
+  back. A detached HEAD shows nothing, since a bare sha would only be noise.
+
 ## [0.2.20] — 2026-08-14
 
 ### Added
