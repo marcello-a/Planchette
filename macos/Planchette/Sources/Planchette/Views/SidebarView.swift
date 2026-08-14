@@ -604,7 +604,7 @@ struct SidebarView: View {
     private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = []) -> some View {
         DisclosureGroup {
             ForEach(appState.sessions(in: group)) { session in
-                sessionRow(session)
+                sessionRow(session, isActive: session.id == group.activeSessionID)
             }
         } label: {
             HStack(spacing: 6) {
@@ -780,7 +780,11 @@ struct SidebarView: View {
         }
     }
 
-    private func sessionRow(_ session: TerminalSession) -> some View {
+    /// `isActive` marks the terminal this project is currently showing — the one
+    /// the tab bar has open. Outlined in its state colour, exactly like the tab,
+    /// so the sidebar answers "which one am I in, and what is it doing" without
+    /// opening the project.
+    private func sessionRow(_ session: TerminalSession, isActive: Bool = false) -> some View {
         Button {
             appState.select(session: session)
         } label: {
@@ -806,6 +810,12 @@ struct SidebarView: View {
             }
         }
         .buttonStyle(.plain)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
+        )
         .help(sessionTooltip(session))
         .contextMenu {
             SessionAttentionMenu(session: session)

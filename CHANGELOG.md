@@ -8,6 +8,21 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.22] — 2026-08-14
+
+### Added
+- **The active terminal is marked wherever it is listed.** The tab bar already
+  outlined it in its state colour; the sidebar rows and the folder overview now
+  carry the same outline, so "which terminal am I in, and what is it doing" is
+  answered without opening the project. All three marks got room to breathe.
+
+### Removed
+- **The "Needs you" block at the top of the notifications panel.** It repeated
+  rows that stand three lines further down, in a panel that already sorts and
+  filters by exactly that question. The panel opens straight into the project
+  mirror now. Nothing else changed: `attentionQueue` still drives the menu bar
+  and ⌘⇧K.
+
 ## [0.2.21] — 2026-08-14
 
 ### Added

@@ -122,8 +122,8 @@ struct TerminalAreaView: View {
                     .foregroundStyle(.secondary)
                 TagChips(tags: session.tags)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
             .background(
                 isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
                 in: RoundedRectangle(cornerRadius: 5)

@@ -98,7 +98,6 @@ struct AttentionPanel: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        triageBlock
                         ForEach(sections, id: \.group.id) { section in
                             projectHeader(section.group)
                             ForEach(section.tabs) { session in
@@ -112,50 +111,6 @@ struct AttentionPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
-    }
-
-    // MARK: Triage — what needs me RIGHT NOW, across all projects
-
-    /// Compact "Needs you" block above the project mirror: errors before
-    /// questions, favorites first, longest-waiting on top (`attentionQueue`).
-    @ViewBuilder
-    private var triageBlock: some View {
-        let queue = appState.attentionQueue
-        if !queue.isEmpty {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("\(L10n.t(.needsYou).uppercased()) (\(queue.count))")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8).padding(.bottom, 2)
-                ForEach(queue) { session in
-                    triageRow(session)
-                }
-            }
-            .background(Color.primary.opacity(0.04))
-            Divider()
-        }
-    }
-
-    private func triageRow(_ session: TerminalSession) -> some View {
-        Button {
-            appState.select(session: session)
-        } label: {
-            HStack(spacing: 7) {
-                StateIcon(state: session.state, size: 12)
-                Text(session.displayTitle)
-                    .font(.caption.weight(.semibold)).lineLimit(1)
-                    .layoutPriority(1)
-                Text(session.lastMessage ?? session.currentTask ?? session.state.label)
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Spacer(minLength: 4)
-                WaitingTimeText(since: session.stateSince)
-            }
-            .padding(.horizontal, 12).padding(.vertical, 4)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(hoverDetail(session))
     }
 
     // MARK: Project section header

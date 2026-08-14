@@ -171,6 +171,13 @@ struct FolderOverviewView: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .contentShape(Rectangle())
+            // Same mark as the tab bar and the sidebar: the terminal this
+            // project is showing, in the colour of what it is doing.
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
+                    .padding(.horizontal, 6).padding(.vertical, 3)
+            )
         }
         .buttonStyle(.plain)
         .help(session.currentDirectory)
