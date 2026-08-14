@@ -152,7 +152,7 @@ struct InfoTab: View {
                 Text(L10n.t(.colorLegendIntro)).foregroundStyle(.secondary)
                 ForEach(states, id: \.self) { state in
                     HStack(alignment: .top, spacing: 10) {
-                        Circle().fill(state.tint).frame(width: 14, height: 14).padding(.top, 2)
+                        StateIcon(state: state, size: 18).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(state.label).fontWeight(.semibold)
                             Text(description(for: state))
@@ -620,13 +620,31 @@ struct MenuBarLabel: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        let waiting = appState.waitingCount
-        let errors = appState.errorCount
-        if waiting == 0 && errors == 0 {
+        // UNREAD only: a report you already looked at (or snoozed) is off the
+        // menu bar — it counts what still wants your eyes, nothing else.
+        let errors = appState.unseenCount(.error)
+        let waiting = appState.unseenCount(.waiting)
+        let ready = appState.unseenCount(.ready)
+        if errors == 0 && waiting == 0 && ready == 0 {
             Image(systemName: "moon.zzz")
         } else {
-            Text([errors > 0 ? "\(errors)🔴" : nil, waiting > 0 ? "\(waiting)🔵" : nil]
-                .compactMap(\.self).joined(separator: " "))
+            // Sprite + count per state, in urgency order (error → waiting →
+            // done). The menu bar takes an NSImage, not a SwiftUI Canvas, and
+            // it must stay coloured: the state IS the colour.
+            HStack(spacing: 3) {
+                if errors > 0 {
+                    Image(nsImage: StatePixels.nsImage(.error, pointSize: 14))
+                    Text("\(errors)")
+                }
+                if waiting > 0 {
+                    Image(nsImage: StatePixels.nsImage(.waiting, pointSize: 14))
+                    Text("\(waiting)")
+                }
+                if ready > 0 {
+                    Image(nsImage: StatePixels.nsImage(.ready, pointSize: 14))
+                    Text("\(ready)")
+                }
+            }
         }
     }
 }
@@ -635,14 +653,17 @@ struct MenuBarContent: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        let queue = appState.attentionQueue
+        let queue = appState.menuBarQueue
         if queue.isEmpty {
             Text(L10n.t(.allQuietShort))
         } else {
             ForEach(queue) { session in
-                Button("\(session.state == .error ? "🔴" : "🔵") \(session.displayTitle) — \(session.shortPath)") {
+                Button {
                     NSApp.activate(ignoringOtherApps: true)
                     appState.select(session: session)
+                } label: {
+                    Image(nsImage: StatePixels.nsImage(session.state, pointSize: 14))
+                    Text("\(session.displayTitle) — \(session.shortPath)")
                 }
             }
         }
@@ -682,7 +703,9 @@ extension AppState {
     }
 
     /// Folder picker → always create a NEW project (group) with a first terminal.
-    func promptNewProject(inWindow windowID: UUID) {
+    /// `folderID` files the new project into that folder right away — the "+"
+    /// on a folder row means "a project in here", not "a project somewhere".
+    func promptNewProject(inWindow windowID: UUID, intoFolder folderID: UUID? = nil) {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -693,6 +716,7 @@ extension AppState {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let dir = url.path
         let group = addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
+        if let folderID { moveGroup(group.id, toFolder: folderID, inWindow: windowID) }
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
     }

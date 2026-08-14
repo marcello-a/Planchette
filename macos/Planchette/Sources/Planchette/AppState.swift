@@ -451,6 +451,17 @@ final class AppState: ObservableObject {
             }
     }
 
+    /// What the menu bar lists: everything that still wants your eyes. The
+    /// questions and errors first, in triage order, then the turns that finished
+    /// while you were away — a finished turn is news until you look at it, and
+    /// the menu bar is where you look when the app is not in front of you.
+    var menuBarQueue: [TerminalSession] {
+        let done = sessions.values
+            .filter { $0.state == .ready && !$0.seen && !isSnoozed($0) }
+            .sorted { $0.stateSince < $1.stateSince }
+        return attentionQueue + done
+    }
+
     var waitingCount: Int {
         sessions.values.filter { $0.state == .waiting && !isSnoozed($0) }.count
     }
@@ -687,8 +698,13 @@ final class AppState: ObservableObject {
     }
 
     /// Terminals that finished something nobody has looked at yet.
-    var unseenReadyCount: Int {
-        sessions.values.filter { $0.state == .ready && !$0.seen && !isSnoozed($0) }.count
+    var unseenReadyCount: Int { unseenCount(.ready) }
+
+    /// Unread terminals in one state — what the menu bar counts: only news you
+    /// have not looked at belongs up there, a report you already read (or
+    /// snoozed) must not keep nagging from the top of the screen.
+    func unseenCount(_ state: AttentionState) -> Int {
+        sessions.values.filter { $0.state == state && !$0.seen && !isSnoozed($0) }.count
     }
 
     /// Unread notifications: terminals whose last report you have not looked at.

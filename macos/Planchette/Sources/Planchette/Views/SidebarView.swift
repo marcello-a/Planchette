@@ -73,6 +73,8 @@ struct SidebarView: View {
     let windowID: UUID
     @State private var isDropTargeted = false
     @State private var hoveredGroup: UUID?
+    /// Folder row under the pointer — it shows a "+" while hovered.
+    @State private var hoveredFolder: UUID?
     /// Projects picked with ⌘/⇧-click, to act on together. Ephemeral by design —
     /// a batch is something you assemble, use and forget, not workspace state.
     @State private var multiSelection: Set<UUID> = []
@@ -405,9 +407,25 @@ struct SidebarView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Spacer()
-            attentionSummary(sessions)
+            // On hover the folder offers the one thing you want from it while
+            // pointing at it: another project *in here*. It replaces the counts
+            // rather than sitting next to them, so the row never gets wider.
+            if hoveredFolder == folder.id {
+                Button {
+                    appState.promptNewProject(inWindow: windowID, intoFolder: folder.id)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(L10n.t(.newProjectInFolder, folder.name))
+            } else {
+                attentionSummary(sessions)
+            }
         }
         .contentShape(Rectangle())
+        .onHover { hoveredFolder = $0 ? folder.id : (hoveredFolder == folder.id ? nil : hoveredFolder) }
         .overlay(dropHighlight(folder.id))
         // Both things this row does: click opens the overview, a drag files
         // projects into it.
@@ -539,11 +557,13 @@ struct SidebarView: View {
                 )
                 .overlay(alignment: .topTrailing) {
                     if let badge {
-                        // Kept inside the tile bounds so it's never clipped.
-                        Circle().fill(badge.tint)
-                            .frame(width: 10, height: 10)
-                            .overlay(Circle().strokeBorder(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
-                            .padding(3)
+                        // The same sprite as everywhere else, on a plain plate:
+                        // a ring drawn around pixel art fights the pixels.
+                        StateIcon(state: badge, size: 12)
+                            .padding(2)
+                            .background(Color(nsColor: .windowBackgroundColor).opacity(0.9),
+                                        in: RoundedRectangle(cornerRadius: 3))
+                            .padding(2)
                     }
                 }
         }
@@ -593,7 +613,7 @@ struct SidebarView: View {
                 }
                 Text(group.name).fontWeight(group.favorite ? .semibold : .regular)
                 if group.favorite {
-                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
+                    PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                 }
                 if let until = group.snoozedUntil, until > Date() {
                     SnoozeBadge(until: until)
@@ -757,9 +777,7 @@ struct SidebarView: View {
             appState.select(session: session)
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: session.state.symbol)
-                    .foregroundStyle(session.state.tint)
-                    .font(.caption)
+                StateIcon(state: session.state)
                 if let color = session.color.color {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }

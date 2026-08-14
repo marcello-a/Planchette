@@ -8,6 +8,35 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Pixel-art state icons in Claude's own visual language.** The states are 8x8
+  sprites of the spark Claude prints while it works: a dim ember for free, the
+  full spark for a finished turn, the spark opened into a question for waiting
+  and broken into a bang for an error. They replace the SF Symbols and the plain
+  dots in the sidebar, the tabs, the cluster headers, the switcher, the folder
+  overview and the notifications panel — so shape carries the state as well as
+  colour, which also answers it for anyone who cannot tell red from blue.
+- **The running state is a robot, and it runs.** Four frames off a shared
+  timeline, arms and legs moving while head and body hold still, so every
+  running terminal on screen steps in time and no view holds a timer of its own.
+  A still picture cannot say "something is happening right now"; this is the one
+  state where that is the whole message. The menu bar keeps the still frame — a
+  status item redrawn four times a second is a battery bug, not a feature.
+- **The menu bar shows the same sprites** instead of the red and blue circle
+  emoji, in the label and in every entry of its menu. It counts and lists
+  **unread only**, in urgency order — error, then waiting, then a finished turn
+  you have not looked at. A report you have read, or snoozed, is off the menu
+  bar entirely.
+- **A folder offers a "+" while you point at it**, which adds a project straight
+  into that folder instead of at the top level. It takes the place of the folder's
+  attention counts while hovered, so the row never changes width.
+- **The favourite star is pixel art too**, so the sidebar stops mixing sprites
+  with vector glyphs.
+- **The active tab is outlined in its state colour.** The tab you are in, and in
+  cluster view the header of the pane that has the keyboard, so "which terminal
+  am I in" and "what is it doing" are one glance. On the tab, not around the
+  terminal: a frame drawn around the content boxes in the text you are reading.
+
 ## [0.2.19] — 2026-08-13
 
 ### Added

@@ -120,7 +120,7 @@ struct FolderOverviewView: View {
                 }
                 Text(project.name).font(.headline)
                 if project.favorite {
-                    Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
+                    PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                 }
                 StateChip(state: state)
                 if let until = project.snoozedUntil, until > Date() {
@@ -144,9 +144,7 @@ struct FolderOverviewView: View {
             appState.select(session: session)
         } label: {
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: session.state.symbol)
-                    .foregroundStyle(session.state.tint)
-                    .font(.caption)
+                StateIcon(state: session.state)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
@@ -214,7 +212,7 @@ struct FolderOverviewView: View {
             appState.select(session: session)
         } label: {
             HStack(spacing: 7) {
-                Circle().fill(session.state.tint).frame(width: 8, height: 8)
+                StateIcon(state: session.state, size: 12)
                 Text(appState.group(of: session)?.name ?? session.displayTitle)
                     .font(.caption.weight(.semibold)).lineLimit(1)
                     .layoutPriority(1)

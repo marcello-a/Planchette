@@ -110,9 +110,7 @@ struct TerminalAreaView: View {
             appState.updateGroup(group.id) { $0.activeSessionID = session.id }
         } label: {
             HStack(spacing: 5) {
-                Image(systemName: session.state.symbol)
-                    .foregroundStyle(session.state.tint)
-                    .font(.caption)
+                StateIcon(state: session.state, size: 13)
                 if let color = session.color.color {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }
@@ -129,6 +127,13 @@ struct TerminalAreaView: View {
             .background(
                 isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
                 in: RoundedRectangle(cornerRadius: 5)
+            )
+            // The tab you are in, outlined in what that terminal is doing —
+            // on the tab, not around the terminal: a frame drawn around the
+            // content boxes in the text you are reading.
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 2)
             )
         }
         .buttonStyle(.plain)

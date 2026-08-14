@@ -142,7 +142,7 @@ struct AttentionPanel: View {
             appState.select(session: session)
         } label: {
             HStack(spacing: 7) {
-                Circle().fill(session.state.tint).frame(width: 8, height: 8)
+                StateIcon(state: session.state, size: 12)
                 Text(session.displayTitle)
                     .font(.caption.weight(.semibold)).lineLimit(1)
                     .layoutPriority(1)
@@ -180,8 +180,7 @@ struct AttentionPanel: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                 if group.favorite {
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 8)).foregroundStyle(.yellow)
+                    PixelIcon(sprite: PixelSprites.star, size: 10, tint: .yellow)
                 }
                 if let until = group.snoozedUntil, until > Date() {
                     SnoozeBadge(until: until)
@@ -224,17 +223,10 @@ struct AttentionPanel: View {
             appState.select(session: session)
         } label: {
             HStack(alignment: .top, spacing: 9) {
-                // Unread is carried by the ring around the state dot and the
-                // weight of the title, not by color alone — the dot's color is
-                // already spoken for by the state.
-                Circle().fill(session.state.tint)
-                    .frame(width: 9, height: 9)
-                    .overlay {
-                        if unread {
-                            Circle().strokeBorder(Color.primary.opacity(0.55), lineWidth: 1.5)
-                                .frame(width: 15, height: 15)
-                        }
-                    }
+                // Unread is carried by the bar down the leading edge of the row
+                // and the weight of the title — never by colour alone, and never
+                // by a ring: a circle drawn around a pixel sprite fights it.
+                StateIcon(state: session.state, size: 14)
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
@@ -263,6 +255,17 @@ struct AttentionPanel: View {
             }
             .padding(.leading, 18).padding(.trailing, 12).padding(.vertical, 6)
             .contentShape(Rectangle())
+            // The unread mark: a bar in the margin, in the state's own colour.
+            // It sits outside the text and outside the sprite, so it can be
+            // scanned down the edge of the list without crowding either.
+            .overlay(alignment: .leading) {
+                if unread {
+                    Capsule().fill(session.state.tint)
+                        .frame(width: 3)
+                        .padding(.vertical, 4)
+                        .padding(.leading, 5)
+                }
+            }
         }
         .buttonStyle(.plain)
         .help(hoverDetail(session))

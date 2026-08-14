@@ -90,13 +90,12 @@ struct QuickSwitcherView: View {
 
     private func row(_ session: TerminalSession, highlighted: Bool) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: session.state.symbol)
-                .foregroundStyle(session.state.tint)
+            StateIcon(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(session.displayTitle).bold()
                     if appState.group(of: session)?.favorite == true {
-                        Image(systemName: "star.fill").font(.caption2).foregroundStyle(.yellow)
+                        PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                     }
                 }
                 HStack(spacing: 4) {

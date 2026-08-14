@@ -79,7 +79,7 @@ private struct PaneView: View {
 
     private var header: some View {
         HStack(spacing: 5) {
-            Circle().fill(session.state.tint).frame(width: 7, height: 7)
+            StateIcon(state: session.state, size: 12)
             Text(session.displayTitle).font(.caption.weight(.medium)).lineLimit(1)
             Text(session.shortPath).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
@@ -90,7 +90,15 @@ private struct PaneView: View {
         .frame(maxWidth: .infinity)
         .background(isActive ? AnyShapeStyle(Color.accentColor.opacity(0.14))
                              : AnyShapeStyle(Color(nsColor: .windowBackgroundColor)))
-        .overlay(alignment: .bottom) { Divider() }
+        // The header is this pane's tab, so it carries the state line — the
+        // terminal body stays clean.
+        .overlay(alignment: .bottom) {
+            if isActive {
+                Rectangle().fill(session.state.tint).frame(height: 2)
+            } else {
+                Divider()
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { appState.select(session: session) }
         // Drag the pane by its header (the terminal body keeps text selection).
