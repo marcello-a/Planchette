@@ -9,6 +9,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **A Help tab that lists every feature, and can be searched.** Settings → Help
+  holds the whole feature set in sections — what it does, where it lives, its
+  shortcut — with a search box that narrows on every word you type. It is built
+  from the *same* localized strings the controls carry, not a second copy of
+  them: a feature's name is its menu item's name and its description is that
+  control's tooltip, so the page cannot drift from the app without the app
+  changing. A test walks every entry and fails on a key with no text.
+- **"Request a feature" opens a pre-filled GitHub issue** from the Help tab,
+  labelled `enhancement`, with the build and macOS version already in the body.
+- Keeping the Help tab current is now **ground rule 5 in AGENTS.md** and a step
+  in CONTRIBUTING's "Add a feature": a user-facing feature is not done until it
+  is in the catalogue.
+
+### Added
 - **Pixel-art state icons in Claude's own visual language.** The states are 8x8
   sprites of the spark Claude prints while it works: a dim ember for free, the
   full spark for a finished turn, the spark opened into a question for waiting

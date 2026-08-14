@@ -78,8 +78,10 @@ struct SettingsView: View {
                 .tabItem { Label(L10n.t(.generalTab), systemImage: "gearshape") }
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
+            HelpView(version: updater.currentVersion)
+                .tabItem { Label(L10n.t(.helpTab), systemImage: "questionmark.circle") }
         }
-        .frame(width: 440)
+        .frame(width: 480, height: 520)
     }
 
     private var general: some View {

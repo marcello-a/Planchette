@@ -1942,6 +1942,48 @@ final class PresetTests: XCTestCase {
     }
 }
 
+// MARK: Help catalogue (the searchable feature list)
+
+final class HelpTests: XCTestCase {
+    // Every entry resolves to real text — a catalogue that lists a key nobody
+    // translated would show the raw key to the user.
+    func testEveryEntryHasText() {
+        L10n.current = .en
+        for section in Help.sections {
+            XCTAssertFalse(L10n.t(section.titleKey).isEmpty, "\(section.titleKey)")
+            for entry in section.entries {
+                XCTAssertFalse(L10n.t(entry.titleKey).isEmpty, "\(entry.titleKey)")
+                XCTAssertNotEqual(L10n.t(entry.titleKey), entry.titleKey.rawValue,
+                                  "untranslated: \(entry.titleKey)")
+                if let detail = entry.detailKey {
+                    XCTAssertNotEqual(L10n.t(detail), detail.rawValue, "untranslated: \(detail)")
+                }
+            }
+        }
+    }
+
+    func testSearchMatchesTitleAndDetail() {
+        L10n.current = .en
+        XCTAssertFalse(Help.sections(matching: "folder").isEmpty)
+        XCTAssertFalse(Help.sections(matching: "⌘K").isEmpty, "shortcuts are searchable")
+        // Every word has to hit, so a two-word query narrows instead of widening.
+        XCTAssertTrue(Help.sections(matching: "folder zzzz").isEmpty)
+    }
+
+    func testEmptyQueryReturnsEverything() {
+        XCTAssertEqual(Help.sections(matching: "   ").count, Help.sections.count)
+    }
+
+    func testFeatureRequestURLIsAGitHubIssue() throws {
+        let url = try XCTUnwrap(Help.featureRequestURL(version: "9.9.9"))
+        XCTAssertEqual(url.host, "github.com")
+        XCTAssertTrue(url.path.hasSuffix("/issues/new"))
+        let query = try XCTUnwrap(url.query)
+        XCTAssertTrue(query.contains("labels=enhancement"))
+        XCTAssertTrue(url.absoluteString.contains("9.9.9"), "the build goes in the body")
+    }
+}
+
 final class LocalizationTests: XCTestCase {
     func testEveryKeyHasEnglishBase() {
         // English is the fallback table; every key must resolve there.

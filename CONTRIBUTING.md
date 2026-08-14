@@ -71,6 +71,12 @@ state files keep loading.
 **Add a control.** Give it a `.help(...)` tooltip (localized) — every control
 has one.
 
+**Add a feature.** After the control and its strings, add one line to
+`Help.sections` in `Help.swift` so it appears in the searchable Help tab. The
+entry references the `LKey`s of the control's own label and tooltip, so the help
+page and the UI cannot drift apart. `HelpTests` fails if an entry points at a key
+with no text.
+
 **Claude hooks.** `hook/install-hooks.sh` installs the forwarder into
 `~/.claude/settings.json` (merge + backup). The hook is a no-op outside
 Planchette terminals, so it's safe to leave installed.

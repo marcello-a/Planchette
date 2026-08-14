@@ -29,10 +29,18 @@ groups terminals by project. See [README.md](README.md) and
 4. **State changes go through `AppState`** and must be persisted. If you add a
    persisted field, update `PersistedState` (both `init`s), `saveNow`,
    `applyRestore`, `startFresh`, and `AppState.init`'s early load.
-5. **Keep the main thread free.** Subprocess/network work (`claude -p`,
+5. **A user-facing feature is not done until it is in the Help tab.** Every
+   feature the user can reach appears in `Help.sections` (`Help.swift`), which
+   is what the searchable Help tab in Settings renders. Add the entry in the
+   same change as the feature, reusing the `LKey`s you already added for the
+   control itself — the catalogue deliberately holds *keys*, not its own copy of
+   the text, so help cannot drift from the UI. A test walks every entry and
+   fails on an untranslated key. If a feature has no tooltip worth listing, that
+   is a sign the control needs one, not that the feature skips the catalogue.
+6. **Keep the main thread free.** Subprocess/network work (`claude -p`,
    AppleScript, `lsof`, GitHub API) runs off-main; only touch `@MainActor`
    state after awaiting back.
-6. **Verify by driving the app, not just building.** See "Verifying" below.
+7. **Verify by driving the app, not just building.** See "Verifying" below.
 
 ## Where things live (`macos/Planchette/Sources/Planchette/`)
 
@@ -51,9 +59,10 @@ groups terminals by project. See [README.md](README.md) and
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
+| `Help.swift` | The Help tab's catalogue: every feature, as `LKey` references to the controls' own strings (ground rule 5) |
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews` |
+| `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 `hook/planchette-hook` is the tiny shell binary Claude Code invokes; it forwards
 the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
