@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.23] — 2026-08-18
+
 ### Added
 - **A manual for the API** ([docs/API.md](docs/API.md)). Every command, every
   argument, every field of every object, the socket protocol for programs that
