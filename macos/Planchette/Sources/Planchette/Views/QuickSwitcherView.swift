@@ -107,12 +107,13 @@ struct QuickSwitcherView: View {
                 }
             }
             Spacer()
-            if session.state.needsAttention {
-                WaitingTimeText(since: session.stateSince)
-            }
             Text(appState.group(of: session)?.name ?? "")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
+            // Last, so the age is at the right edge here too.
+            if session.state.needsAttention {
+                WaitingTimeText(since: session.stateSince)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)

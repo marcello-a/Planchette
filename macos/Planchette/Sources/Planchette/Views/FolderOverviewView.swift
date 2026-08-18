@@ -61,7 +61,7 @@ struct FolderOverviewView: View {
     /// The same badge row the sidebar shows for this folder — snoozed terminals
     /// left out, since they are meant to be quiet.
     private var attentionSummary: some View {
-        let sessions = allSessions.filter { !appState.isSnoozed($0) }
+        let sessions = allSessions.filter { !appState.isMuted($0) }
         let errors = sessions.filter { $0.state == .error }.count
         let waiting = sessions.filter { $0.state == .waiting }.count
         let done = sessions.filter { $0.state == .ready && !$0.seen }.count
@@ -196,7 +196,7 @@ struct FolderOverviewView: View {
     /// Snoozed terminals stay out: they were sent away on purpose.
     @ViewBuilder
     private var activitySection: some View {
-        let entries = ActivityFeed.entries(allSessions.filter { !appState.isSnoozed($0) })
+        let entries = ActivityFeed.entries(allSessions.filter { !appState.isMuted($0) })
         VStack(alignment: .leading, spacing: 0) {
             Text(L10n.t(.latestNotifications).uppercased())
                 .font(.caption2.weight(.bold))

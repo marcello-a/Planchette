@@ -79,6 +79,21 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   integration, or an agent that only claims its session) the screen drives every
   state. Never widen that: a scraped pattern must not be able to overrule a hook
   that is talking to us.
+- **Three hook events do not mean what their names suggest.** `SubagentStop`
+  fires while the main agent keeps working, so it must not report a finished
+  turn; `PreToolUse`/`PostToolUse` are installed only because granting a
+  permission fires no event of its own, and a tool call is the sole proof that an
+  answered terminal has stopped asking; and `Notification` is *also* Claude
+  Code's "you left me hanging" nudge after a minute of idling, which is not a
+  question and must not turn a terminal blue. All three decisions live in
+  `AttentionState.forHookEvent`, with a table test in `LogicTests`.
+- **A parked project is filtered exactly like a snoozed one.** `AppState.isMuted`
+  is THE filter for anything that counts or announces attention — badge, dock
+  count, banner, inbox, notifications panel — and it covers both reasons a
+  terminal is silent: a snooze (its own or its project's) and
+  `SessionGroup.active == false`. `isSnoozed` alone is only for the snooze
+  *badge* and the expiry reminder. A new counter that reaches for `isSnoozed`
+  starts shouting from a project the user parked.
 - **SwiftUI steals the NSView first responder** on structural updates.
   `GhosttySurfaceView.viewDidMoveToWindow` reclaims it for the active session.
   If keyboard input silently stops working, look there.

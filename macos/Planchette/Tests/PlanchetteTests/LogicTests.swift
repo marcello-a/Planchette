@@ -611,6 +611,23 @@ final class WorktreeTests: XCTestCase {
             Worktrees.groupName(repoName: "planchette", branch: "spike"), "planchette · spike")
     }
 
+    // The sidebar states the branch once: on the project while its terminals
+    // agree, on each terminal when they do not.
+    func testSharedBranchOnlyWhenEveryTerminalAgrees() {
+        XCTAssertEqual(Worktrees.sharedBranch(["main", "main"]), "main")
+        XCTAssertEqual(Worktrees.sharedBranch(["feat/x"]), "feat/x")
+        XCTAssertNil(Worktrees.sharedBranch(["main", "feat/x"]))
+        XCTAssertNil(Worktrees.sharedBranch([]), "a project without terminals")
+    }
+
+    // A terminal outside a repo has no branch to contribute, so it cannot agree:
+    // one line on the project would claim a checkout it is not in.
+    func testMissingBranchBreaksTheAgreement() {
+        XCTAssertNil(Worktrees.sharedBranch(["main", nil]))
+        XCTAssertNil(Worktrees.sharedBranch([nil, "main"]))
+        XCTAssertNil(Worktrees.sharedBranch([nil, nil]))
+    }
+
     func testParsesWorktreeList() {
         let output = """
             worktree /Users/me/dev/planchette
@@ -1078,7 +1095,11 @@ final class StatusColorTests: XCTestCase {
         XCTAssertEqual(AttentionState.forHookEvent("Notification"), .waiting)
         XCTAssertEqual(AttentionState.forHookEvent("PermissionRequest"), .waiting)
         XCTAssertEqual(AttentionState.forHookEvent("Stop"), .ready)
-        XCTAssertEqual(AttentionState.forHookEvent("SubagentStop"), .ready)
+        // A subagent finishing is not the turn finishing.
+        XCTAssertNil(AttentionState.forHookEvent("SubagentStop"))
+        // A tool call is proof the turn is still in flight.
+        XCTAssertEqual(AttentionState.forHookEvent("PreToolUse"), .running)
+        XCTAssertEqual(AttentionState.forHookEvent("PostToolUse"), .running)
         // Claude exited entirely: nothing to review, the terminal is free.
         XCTAssertEqual(AttentionState.forHookEvent("SessionEnd"), .free)
         XCTAssertNil(AttentionState.forHookEvent("whatever"))
@@ -1100,6 +1121,50 @@ final class StatusColorTests: XCTestCase {
         XCTAssertNil(AttentionState.forHookEvent("SessionStart", source: "fork"))
     }
 
+    // Claude Code sends a Notification after a minute of idling at the prompt.
+    // It is not a question: whatever the terminal reported still stands, and
+    // turning it blue invents a question nobody asked.
+    func testIdleNudgeIsNotAQuestion() {
+        XCTAssertNil(AttentionState.forHookEvent(
+            "Notification", message: "Claude is waiting for your input"))
+        XCTAssertTrue(AttentionState.isIdleNudge("Claude is waiting for your input"))
+        // A real permission request still asks.
+        XCTAssertEqual(
+            AttentionState.forHookEvent(
+                "Notification", message: "Claude needs your permission to use Bash"),
+            .waiting)
+        XCTAssertFalse(AttentionState.isIdleNudge("Claude needs your permission to use Bash"))
+        // No message at all: an unrecognized notification counts as a question,
+        // because a missed one costs more than a spurious one.
+        XCTAssertEqual(AttentionState.forHookEvent("Notification"), .waiting)
+        XCTAssertFalse(AttentionState.isIdleNudge(nil))
+    }
+
+    // The sequence that used to lie: a tool asks for permission, you grant it,
+    // and the terminal kept saying "waiting" until the whole turn ended.
+    func testGrantedPermissionStopsAsking() {
+        var state = AttentionState.forHookEvent("UserPromptSubmit") ?? .free
+        XCTAssertEqual(state, .running)
+        state = AttentionState.forHookEvent("PreToolUse") ?? state
+        state = AttentionState.forHookEvent(
+            "Notification", message: "Claude needs your permission to use Bash") ?? state
+        XCTAssertEqual(state, .waiting, "the prompt is on screen")
+        // Granting it produces no event of its own — the tool running does.
+        state = AttentionState.forHookEvent("PostToolUse") ?? state
+        XCTAssertEqual(state, .running, "answered, so it must stop asking")
+        state = AttentionState.forHookEvent("Stop") ?? state
+        XCTAssertEqual(state, .ready)
+    }
+
+    // A turn that spawns subagents must stay purple until it really ends.
+    func testSubagentsDoNotEndTheTurn() {
+        var state = AttentionState.forHookEvent("UserPromptSubmit") ?? .free
+        state = AttentionState.forHookEvent("SubagentStop") ?? state
+        XCTAssertEqual(state, .running, "the main agent is still working")
+        state = AttentionState.forHookEvent("Stop") ?? state
+        XCTAssertEqual(state, .ready)
+    }
+
     // The whole hook surface as one table, so a new event or source can't be
     // wired up without a decision being recorded here. Every event Planchette
     // installs (see HookInstaller.events) must appear, and `nil` must be a
@@ -1110,7 +1175,13 @@ final class StatusColorTests: XCTestCase {
             ("Notification", nil, .waiting),
             ("PermissionRequest", nil, .waiting),
             ("Stop", nil, .ready),
-            ("SubagentStop", nil, .ready),
+            // Only `Stop` ends a turn. A `Task` subagent finishing leaves the
+            // main agent working, so it must not report a result to review.
+            ("SubagentStop", nil, nil),
+            // A tool call proves the turn moved on — this is what clears a
+            // permission you already granted.
+            ("PreToolUse", nil, .running),
+            ("PostToolUse", nil, .running),
             ("SessionEnd", nil, .free),
             // SessionEnd frees the terminal whatever the reason.
             ("SessionEnd", "clear", .free),
@@ -1124,8 +1195,6 @@ final class StatusColorTests: XCTestCase {
             ("SessionStart", "brand-new-source", .free),
             ("SessionStart", nil, .free),
             // Events we don't install must never move the indicator.
-            ("PreToolUse", nil, nil),
-            ("PostToolUse", nil, nil),
             ("PreCompact", nil, nil),
             ("", nil, nil),
         ]
@@ -1322,6 +1391,44 @@ final class DisplayTitleTests: XCTestCase {
         var s = session(osc: "✳ whatever", custom: "watcher")
         s.currentTask = "Fix the flaky upload spec"
         XCTAssertEqual(s.displayTitle, "watcher")
+    }
+
+    // A notification row names the checkout by its branch, from the ticket on:
+    // the lead-in is the same on every branch one person makes.
+    func testBranchIsCutAtTheTicket() {
+        XCTAssertEqual(
+            Titles.branchFromTicket("marcello/feat/NIE-1902-format-switch"),
+            "NIE-1902-format-switch")
+        XCTAssertEqual(Titles.branchFromTicket("NIE-1902"), "NIE-1902")
+        // No ticket, no meaningful place to cut.
+        XCTAssertEqual(Titles.branchFromTicket("main"), "main")
+        XCTAssertEqual(Titles.branchFromTicket("feature/big-refactor"), "feature/big-refactor")
+        XCTAssertEqual(Titles.branchFromTicket(""), "")
+    }
+
+    // The sidebar row carries the path and the last prompt on their own lines, so
+    // the name in front of the path is only a rename or the ticket — a name built
+    // from the task would repeat the line below it.
+    func testRowNameIsTheRenameOrTheTicket() throws {
+        var plain = session(osc: "✳ x")
+        plain.currentTask = "Fix the flaky upload spec"
+        XCTAssertNil(plain.rowName, "no rename and no ticket branch: the path names it")
+        XCTAssertEqual(session(osc: "x", custom: "watcher").rowName, "watcher")
+
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("rowname-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: repo.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        try "ref: refs/heads/marcello/feat/NIE-1902-format-switch\n"
+            .write(to: repo.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: repo) }
+
+        var inRepo = TerminalSession(groupID: UUID(), workingDirectory: repo.path)
+        inRepo.currentTask = "Add the format switch"
+        XCTAssertEqual(inRepo.ticket, "NIE-1902")
+        XCTAssertEqual(inRepo.rowName, "NIE-1902")
+        inRepo.customTitle = "watcher"
+        XCTAssertEqual(inRepo.rowName, "watcher", "a rename still wins")
     }
 
     // Two terminals in the same checkout must not read the same: the ticket
@@ -1591,6 +1698,48 @@ final class ClaudeResumeTests: XCTestCase {
 }
 
 // MARK: Snooze — "not now, remind me then"
+
+/// The one "how long ago" label in the app: the sidebar, the notifications
+/// panel, the folder overview and the quick switcher all render this.
+final class WaitingTimeTests: XCTestCase {
+    func testUsesUnitSymbols() {
+        XCTAssertEqual(WaitingTimeText.format(0), "0s")
+        XCTAssertEqual(WaitingTimeText.format(42), "42s")
+        XCTAssertEqual(WaitingTimeText.format(59), "59s")
+        XCTAssertEqual(WaitingTimeText.format(60), "1m")
+        XCTAssertEqual(WaitingTimeText.format(59 * 60), "59m")
+        XCTAssertEqual(WaitingTimeText.format(80 * 60), "1h 20m")
+        XCTAssertEqual(WaitingTimeText.format(3 * 3600 + 25 * 60), "3h 25m")
+        XCTAssertEqual(WaitingTimeText.format(50 * 3600), "2d 2h")
+        XCTAssertEqual(WaitingTimeText.format(9 * 86400), "1w 2d")
+    }
+
+    // The smaller unit only earns its space while it says something.
+    func testDropsAZeroRemainder() {
+        XCTAssertEqual(WaitingTimeText.format(2 * 3600), "2h")
+        XCTAssertEqual(WaitingTimeText.format(3 * 86400), "3d")
+        XCTAssertEqual(WaitingTimeText.format(14 * 86400), "2w")
+    }
+
+    // The label redraws every second while it counts seconds, then once a
+    // minute — otherwise "3s" would stand there for most of a minute.
+    func testScheduleTicksPerSecondOnlyWhileFresh() {
+        let since = Date(timeIntervalSinceReferenceDate: 0)
+        let fresh = AgeSchedule(since: since).entries(from: since, mode: .normal)
+        XCTAssertEqual(fresh.next(), since)
+        XCTAssertEqual(fresh.next(), since.addingTimeInterval(1))
+
+        let old = AgeSchedule(since: since)
+            .entries(from: since.addingTimeInterval(600), mode: .normal)
+        XCTAssertEqual(old.next(), since.addingTimeInterval(600))
+        XCTAssertEqual(old.next(), since.addingTimeInterval(660))
+    }
+
+    // A clock that moved backwards must not print a count from the future.
+    func testNegativeIntervalReadsAsZero() {
+        XCTAssertEqual(WaitingTimeText.format(-90), "0s")
+    }
+}
 
 final class SnoozeTests: XCTestCase {
     private var utc: Calendar {

@@ -97,6 +97,16 @@ enum Worktrees {
         return branch
     }
 
+    /// The one branch a set of terminals share, or nil when they disagree.
+    ///
+    /// A missing branch (a terminal outside a repo, or on a detached HEAD) never
+    /// counts as agreement: there is nothing to name for that terminal, so the
+    /// branch cannot stand for the whole set. An empty set has no branch either.
+    static func sharedBranch(_ branches: [String?]) -> String? {
+        guard let first = branches.first ?? nil else { return nil }
+        return branches.allSatisfy { $0 == first } ? first : nil
+    }
+
     /// Create a worktree for `branch`, creating the branch off `base` when it
     /// doesn't exist yet, and return the checkout path.
     static func create(repoRoot: String, branch: String, base: String?) throws -> String {

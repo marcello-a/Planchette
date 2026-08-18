@@ -10,6 +10,7 @@ one JSON request per connection, one JSON response back.
     planchette session prompt --id <uuid> --text "review the diff"
     planchette session wait --id <uuid> --until ready --timeout-ms 120000
     planchette session read --id <uuid> --lines 80
+    planchette notification list --unread-only
 
 Only works inside a Planchette terminal: the socket path and the calling
 terminal's own id arrive as env vars ($PLANCHETTE_SOCKET, $PLANCHETTE_SESSION).
@@ -28,6 +29,9 @@ import sys
 COMMANDS = {
     "session": ["list", "get", "new", "prompt", "read", "wait"],
     "project": ["list"],
+    # The read side of the notifications panel: the same rows, the same order,
+    # every fact the panel prints (state, prompt, age, branch, tags, project).
+    "notification": ["list"],
 }
 
 
@@ -136,6 +140,14 @@ def main(argv):
         help="state(s) to wait for: ready, waiting, error, free, running")
     parser.add_argument("--timeout-ms", type=int, help="wait timeout (default 120000)")
     parser.add_argument("--focus", action="store_true", help="switch to the new terminal")
+    parser.add_argument(
+        "--unread-only", action="store_true",
+        help="notification list: only terminals whose last report is unread")
+    parser.add_argument(
+        "--only-active", action="store_true",
+        help="notification list: only terminals that are running, asking or failed")
+    parser.add_argument(
+        "--limit", type=int, help="notification list: stop after this many rows")
     args = parser.parse_args(argv)
 
     if not args.group or not args.action:
@@ -173,6 +185,12 @@ def main(argv):
         payload["timeout_ms"] = args.timeout_ms
     if args.focus:
         payload["focus"] = True
+    if args.unread_only:
+        payload["unread_only"] = True
+    if args.only_active:
+        payload["only_active"] = True
+    if args.limit is not None:
+        payload["limit"] = args.limit
 
     # A wait blocks in the app, so the socket timeout must outlive it.
     wait_ms = args.timeout_ms or (120000 if args.action == "wait" else 10000)

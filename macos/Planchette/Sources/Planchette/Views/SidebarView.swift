@@ -84,6 +84,11 @@ struct SidebarView: View {
     @State private var dropSlot: DropSlot?
     /// Row heights, so a drop knows which half of a row the pointer is in.
     @State private var rowHeights: [UUID: CGFloat] = [:]
+    /// Projects whose terminal list is folded away. Ephemeral, like the
+    /// multi-selection: a folder's state is worth persisting, a project you
+    /// closed for a minute is not. Absent = expanded, which is the default the
+    /// sidebar always had.
+    @State private var collapsedGroups: Set<UUID> = []
 
     /// The List's selection. One row selected means "show me this" — a project
     /// in the terminal area, a folder as its overview page. Several means a
@@ -192,9 +197,9 @@ struct SidebarView: View {
         let normal = loose.filter { !$0.favorite }
         List(selection: selectionBinding) {
             ForEach(folders) { folder in folderSection(folder) }
-            ForEach(favorites) { group in groupRow(group, siblings: loose) }
+            ForEach(favorites) { group in projectRows(group, siblings: loose) }
                 .onMove { moveGroups(favorites, other: normal, favoritesSection: true, from: $0, to: $1) }
-            ForEach(normal) { group in groupRow(group, siblings: loose) }
+            ForEach(normal) { group in projectRows(group, siblings: loose) }
                 .onMove { moveGroups(normal, other: favorites, favoritesSection: false, from: $0, to: $1) }
             // The way back out of a folder. Shown whenever there is a folder to
             // come out of — a target that appears only mid-drag is a target you
@@ -366,7 +371,7 @@ struct SidebarView: View {
     private func folderSection(_ folder: ProjectFolder) -> some View {
         let projects = appState.groups(inFolder: folder)
         return DisclosureGroup(isExpanded: expansion(of: folder)) {
-            ForEach(projects) { group in groupRow(group, siblings: projects) }
+            ForEach(projects) { group in projectRows(group, siblings: projects) }
                 .onMove { from, to in
                     var ids = projects.map(\.id)
                     ids.move(fromOffsets: from, toOffset: to)
@@ -531,7 +536,7 @@ struct SidebarView: View {
         let isSelected = appState.window(for: windowID)?.selectedGroupID == group.id
         let sessions = appState.sessions(in: group)
         // A snoozed terminal keeps its state but stops asking for attention.
-        let states = sessions.filter { !appState.isSnoozed($0) }.map(\.state)
+        let states = sessions.filter { !appState.isMuted($0) }.map(\.state)
         let badge: AttentionState? = states.contains(.error) ? .error
             : (states.contains(.waiting) ? .waiting : nil)
         let initial = String(group.name.prefix(1)).uppercased()
@@ -598,33 +603,97 @@ struct SidebarView: View {
         return (path as NSString).deletingLastPathComponent
     }
 
+    /// A project and whatever has to be visible under it: the row itself, plus
+    /// the terminals that peek out of it while it is folded away.
+    @ViewBuilder
+    private func projectRows(_ group: SessionGroup, siblings: [SessionGroup]) -> some View {
+        groupRow(group, siblings: siblings)
+        ForEach(peeking(group)) { session in
+            sessionRow(session,
+                       isActive: false,
+                       showBranch: appState.sharedBranch(of: group) == nil)
+        }
+    }
+
+    /// What a folded project cannot hide: the terminals asking for you — a
+    /// question or an error — that you have not looked at yet. They stand under
+    /// the closed project row and go away by themselves the moment the terminal
+    /// is read, so folding a project stays a way to get space, never a way to
+    /// lose a prompt. An expanded project already shows everything, and a parked
+    /// or snoozed one is silent on purpose (`AppState.isMuted`).
+    private func peeking(_ group: SessionGroup) -> [TerminalSession] {
+        guard collapsedGroups.contains(group.id) else { return [] }
+        return appState.sessions(in: group).filter {
+            $0.state.needsAttention && $0.isUnread && !appState.isMuted($0)
+        }
+    }
+
+    /// A project's open/closed state. Not persisted (see `collapsedGroups`).
+    private func expansion(of group: SessionGroup) -> Binding<Bool> {
+        Binding(
+            get: { !collapsedGroups.contains(group.id) },
+            set: { open in
+                if open {
+                    collapsedGroups.remove(group.id)
+                } else {
+                    collapsedGroups.insert(group.id)
+                }
+            }
+        )
+    }
+
     /// A project row. `siblings` is the list it is displayed in (a folder's
     /// projects, or the loose ones), which is what "the gap below this row"
     /// resolves against.
     private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = []) -> some View {
-        DisclosureGroup {
+        // The branch sits on the project row while every terminal of it is on
+        // that branch, and moves into the terminal rows as soon as they differ —
+        // it is stated once, where it is true.
+        let shared = appState.sharedBranch(of: group)
+        // Only the terminal actually on screen is marked. The mark answers
+        // "which one am I looking at", so exactly one row in the whole sidebar
+        // may carry it: the active terminal of the project this window shows —
+        // in cluster mode the focused pane, since that is the same id. A project
+        // you are not in has no visible terminal, and neither has a window
+        // showing a folder overview.
+        let visible = appState.window(for: windowID).map { window in
+            window.selectedFolderID == nil && window.selectedGroupID == group.id
+        } ?? false
+        return DisclosureGroup(isExpanded: expansion(of: group)) {
             ForEach(appState.sessions(in: group)) { session in
-                sessionRow(session, isActive: session.id == group.activeSessionID)
+                sessionRow(session,
+                           isActive: visible && session.id == group.activeSessionID,
+                           showBranch: shared == nil)
             }
         } label: {
             HStack(spacing: 6) {
                 if let color = group.color.color {
                     Circle().fill(color).frame(width: 9, height: 9)
                 }
-                Text(group.name).fontWeight(group.favorite ? .semibold : .regular)
-                if let branch = appState.branches[group.id] {
-                    Text(branch)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(branch)
-                }
-                if group.favorite {
-                    PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
-                }
-                if let until = group.snoozedUntil, until > Date() {
-                    SnoozeBadge(until: until)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        // A parked project reads dimmed and carries the pause
+                        // glyph: it still holds its terminals, it just has
+                        // nothing to say (see `AppState.isMuted`).
+                        Text(group.name)
+                            .fontWeight(group.favorite ? .semibold : .regular)
+                            .foregroundStyle(group.active ? .primary : .secondary)
+                        if group.favorite {
+                            PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
+                        }
+                        if !group.active {
+                            Image(systemName: "pause.circle")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .help(L10n.t(.inactiveProject))
+                        }
+                        if let until = group.snoozedUntil, until > Date() {
+                            SnoozeBadge(until: until)
+                        }
+                    }
+                    if let shared {
+                        BranchText(branch: shared)
+                    }
                 }
                 Spacer()
                 // Close (X) appears on hover; attention summary otherwise.
@@ -684,6 +753,13 @@ struct SidebarView: View {
             Divider()
             Button(L10n.t(.makeFavorite)) { appState.setFavorite(true, forGroups: targets) }
             Button(L10n.t(.unmakeFavorite)) { appState.setFavorite(false, forGroups: targets) }
+            Button(L10n.t(.markProjectsActive, targets.count)) {
+                appState.setActive(true, forGroups: targets)
+            }
+            Button(L10n.t(.markProjectsInactive, targets.count)) {
+                appState.setActive(false, forGroups: targets)
+            }
+            .help(L10n.t(.markProjectActiveHelp))
             colorPicker(current: group.color) { color in
                 for id in targets { appState.updateGroup(id) { $0.color = color } }
             }
@@ -707,6 +783,10 @@ struct SidebarView: View {
                 appState.updateGroup(group.id) { $0.favorite.toggle() }
             }
             .help(L10n.t(.favoriteHelp))
+            Button(group.active ? L10n.t(.markProjectInactive) : L10n.t(.markProjectActive)) {
+                appState.setActive(!group.active, forGroups: [group.id])
+            }
+            .help(L10n.t(.markProjectActiveHelp))
             colorPicker(current: group.color) { color in
                 appState.updateGroup(group.id) { $0.color = color }
             }
@@ -784,8 +864,13 @@ struct SidebarView: View {
     /// the tab bar has open. Outlined in its state colour, exactly like the tab,
     /// so the sidebar answers "which one am I in, and what is it doing" without
     /// opening the project.
-    private func sessionRow(_ session: TerminalSession, isActive: Bool = false) -> some View {
-        Button {
+    private func sessionRow(_ session: TerminalSession, isActive: Bool = false,
+                            showBranch: Bool = false) -> some View {
+        // What I last sent this terminal to do. Its own row, so the line above
+        // can stay the fixed answer to "which checkout is this?" while this one
+        // changes with every prompt.
+        let task = session.currentTask.flatMap { Titles.taskLabel($0, max: 48) }
+        return Button {
             appState.select(session: session)
         } label: {
             HStack(spacing: 6) {
@@ -794,18 +879,44 @@ struct SidebarView: View {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(session.displayTitle).lineLimit(1)
-                    Text(session.shortPath)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    // Where this terminal is: the ticket of its checkout (or the
+                    // name you gave it) and the tail of the path.
+                    HStack(spacing: 5) {
+                        if let name = session.rowName {
+                            Text(name).lineLimit(1)
+                        }
+                        Text(session.shortPath)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if showBranch, let branch = appState.branches[session.id] {
+                        BranchText(branch: branch)
+                    }
+                    // The prompt and how long ago something last happened here.
+                    // The age sits at the right edge, the same place it sits in
+                    // every other list, so a column of ages can be read down
+                    // instead of hunted for at the end of each prompt. It stays on
+                    // the row without a prompt as well, so a question or an error
+                    // still says how long it has been one.
+                    if task != nil || session.state.needsAttention {
+                        HStack(spacing: 5) {
+                            if let task {
+                                Text(task)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 4)
+                            WaitingTimeText(since: session.stateSince)
+                        }
+                    }
                     TagChips(tags: session.tags)
                 }
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if let until = appState.snoozeEnd(for: session), until > Date() {
                     SnoozeBadge(until: until)
-                } else if session.state.needsAttention {
-                    WaitingTimeText(since: session.stateSince)
                 }
             }
         }
@@ -844,21 +955,11 @@ struct SidebarView: View {
         attentionSummary(appState.sessions(in: group))
     }
 
-    /// Badge row for any set of terminals (a project, or a folder's projects
-    /// taken together). Snoozed terminals are left out — a snoozed project must
+    /// Badge row for any set of terminals (a project, or a folder's projects taken
+    /// together). Silent terminals are left out — a snoozed or parked project must
     /// not keep a badge lit while it is meant to be quiet.
     private func attentionSummary(_ all: [TerminalSession]) -> some View {
-        let sessions = all.filter { !appState.isSnoozed($0) }
-        let waiting = sessions.filter { $0.state == .waiting }.count
-        let errors = sessions.filter { $0.state == .error }.count
-        // Only work you haven't looked at yet: a green badge that never clears
-        // would just be "this project has terminals".
-        let done = sessions.filter { $0.state == .ready && !$0.seen }.count
-        return HStack(spacing: 4) {
-            if errors > 0 { StateCountBadge(state: .error, count: errors) }
-            if waiting > 0 { StateCountBadge(state: .waiting, count: waiting) }
-            if done > 0 { StateCountBadge(state: .ready, count: done) }
-        }
+        StateSummaryBadges(sessions: all.filter { !appState.isMuted($0) })
     }
 
     @ViewBuilder
@@ -919,26 +1020,75 @@ struct SidebarBottomBar: View {
     }
 }
 
-/// "wartet seit 12 min" — updates once a minute.
+/// A checked-out branch, wherever one is named: the project row while its
+/// terminals agree on it, a terminal row when they do not. One view so both read
+/// the same and the full name is always on hover.
+struct BranchText: View {
+    let branch: String
+
+    var body: some View {
+        Text(branch)
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(branch)
+    }
+}
+
+/// When a "how long ago" label has to redraw: every second while it still counts
+/// seconds, once a minute afterwards. A fixed minute cadence would leave "3s"
+/// standing for the better part of a minute, and a fixed second cadence would
+/// redraw every row of a workspace that has been idle for hours.
+struct AgeSchedule: TimelineSchedule {
+    let since: Date
+
+    func entries(from start: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
+        var next = start
+        return AnyIterator {
+            let step: TimeInterval = next.timeIntervalSince(since) < 60 ? 1 : 60
+            defer { next = next.addingTimeInterval(step) }
+            return next
+        }
+    }
+}
+
+/// "12m" — how long ago the state last changed, updated once a minute.
 struct WaitingTimeText: View {
     let since: Date
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
+        TimelineView(AgeSchedule(since: since)) { context in
             Text(Self.format(context.date.timeIntervalSince(since)))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                // "3 min" is the last thing that should wrap when a panel gets
-                // narrow — it would break into three lines and push the row open.
+                // "3m" is the last thing that should wrap when a panel gets
+                // narrow — it would break into two lines and push the row open.
                 .lineLimit(1)
                 .fixedSize()
         }
     }
 
+    /// "42s" / "12m" / "1h 20m" / "3d" / "2w" — an age in the unit symbols the
+    /// rows use everywhere: s, m, h, d, w. Two units at most, and the smaller one
+    /// only while it carries something: "1h 20m" is worth the width, "2h 0m" is
+    /// not. A negative interval (a clock that moved) reads as "0s", never as a
+    /// count from the future.
     static func format(_ interval: TimeInterval) -> String {
-        let minutes = Int(interval / 60)
-        if minutes < 1 { return L10n.t(.now) }
+        let seconds = max(0, Int(interval))
+        let minutes = seconds / 60
+        let hours = minutes / 60
+        let days = hours / 24
+        if seconds < 60 { return L10n.t(.secondsShort, seconds) }
         if minutes < 60 { return L10n.t(.minutesShort, minutes) }
-        return L10n.t(.hoursShort, minutes / 60, minutes % 60)
+        if hours < 24 { return with(L10n.t(.hoursShort, hours), minutes % 60, .minutesShort) }
+        if days < 7 { return with(L10n.t(.daysShort, days), hours % 24, .hoursShort) }
+        return with(L10n.t(.weeksShort, days / 7), days % 7, .daysShort)
+    }
+
+    /// Append the next unit down, unless it is zero — then the bigger one already
+    /// says everything.
+    private static func with(_ head: String, _ rest: Int, _ key: LKey) -> String {
+        rest == 0 ? head : "\(head) \(L10n.t(key, rest))"
     }
 }

@@ -16,6 +16,18 @@ enum Titles {
         return String(branch[range])
     }
 
+    /// A branch from its ticket on: `marcello/feat/NIE-1902-format-switch` →
+    /// `NIE-1902-format-switch`. Everything before the ticket is the same lead-in
+    /// on every branch one person creates — it costs the width a row does not
+    /// have and says nothing. A branch without a ticket is returned unchanged:
+    /// there is no meaningful place to cut it.
+    static func branchFromTicket(_ branch: String) -> String {
+        guard let range = branch.range(of: #"[A-Z]{2,10}-\d+"#, options: .regularExpression) else {
+            return branch
+        }
+        return String(branch[range.lowerBound...])
+    }
+
     static func gitBranch(forDirectory dir: String) -> String? {
         var url = URL(fileURLWithPath: dir)
         // Walk up to find the repo root (max 10 levels).

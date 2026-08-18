@@ -8,6 +8,74 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Mark a project active or inactive.** An inactive project is parked: it keeps
+  its terminals and its place in the sidebar, reads dimmed with a pause glyph,
+  and goes silent — out of the counts, the badges, the dock, the notifications
+  panel and every banner, like a snooze that does not end on its own. Marking it
+  inactive also marks its terminals free, so a parked project cannot sit on a
+  question nobody will answer. `AppState.isMuted` is now THE filter for anything
+  that counts or announces attention; `isSnoozed` is only for the snooze badge
+  and the expiry reminder.
+- **`notification list` in the socket API and the CLI.** The notifications panel
+  as JSON — the same sections in the same order, with every fact the row prints:
+  state and its label, unread, the last prompt, the message, age (`12m`),
+  `age_seconds`, `state_since`, path, branch, ticket, tags, and the project it
+  sits under, plus the panel's own totals. Narrow it with `--unread-only`,
+  `--only-active`, `--project-id` and `--limit`. Panel and API answer from one
+  shared list (`AppState.notificationSections`), so the API cannot drift from the
+  UI it reports on.
+- **A folded project cannot hide a question.** Collapse a project and the
+  terminals asking for you — a question or an error you have not read — stay
+  visible under its row, then disappear by themselves once read.
+- **Saving an arrangement asks which one.** "Save arrangement" now offers a new
+  name *or* one of the saved arrangements to overwrite, picked from a list.
+  Overwriting used to depend on retyping an existing name exactly; a typo left
+  the old arrangement behind next to a near-duplicate.
+
+### Changed
+- **The sidebar rows are restructured around what you actually ask.** A project
+  row is its name with the checked-out branch under it, and a terminal row is
+  three lines: the ticket of its checkout plus the path, then the branch, then
+  the prompt you last sent with how long ago something happened. The branch is
+  stated once where it is true — on the project while all its terminals are on
+  it, on each terminal as soon as they differ — so two worktrees of one repo can
+  no longer read the same. The branch poll now runs per distinct directory
+  instead of per project, which costs no extra subprocesses.
+- **A notification row leads with the prompt and names its checkout by the
+  branch.** The title is the branch from its ticket on
+  (`marcello/feat/NIE-1902-format-switch` → `NIE-1902-format-switch`) — the same
+  lead-in on every branch one person makes is dropped. The middle line was the
+  agent's own message ("Claude is waiting for your input"), which said what the
+  state badge already says; it is the prompt now, up to two lines, ending before
+  the age instead of running under it. The state badge moved to the corner beside
+  the name, and the wall-clock time it replaced is gone.
+- **A project reads the same wherever it is counted.** The notifications panel's
+  project header carries the sidebar's badge row — errors, questions, unseen
+  results — instead of one badge for the most urgent state.
+- **Ages use unit symbols: `s`, `m`, `h`, `d`, `w`.** `42s`, `12m`, `1h 20m`,
+  `2d 2h`, `1w 2d` — two units at most, and the smaller one only while it says
+  something. The label ticks every second while it counts seconds and once a
+  minute afterwards, so a fresh row no longer shows a number that is already
+  wrong. The age sits at the right edge of the row in every list.
+- **Only the terminal you can see is marked as active.** The outline used to sit
+  on the active terminal of *every* project at once, which is a list of
+  bookmarks, not an answer to "which one am I in". It is now the one on screen:
+  the active terminal of the project this window shows, and in a split the pane
+  you focused.
+
+### Fixed
+- **The Claude state told three lies.** `SubagentStop` reported a finished turn,
+  so a turn that spawns `Task` subagents turned green mid-flight — only `Stop`
+  ends a turn now. Granting a permission fires no hook of its own, so a terminal
+  you had already answered kept asking until the whole turn ended; `PreToolUse`
+  and `PostToolUse` are now installed and mean "a turn is in flight", which is
+  the proof that the question is gone. And Claude Code's idle nudge after a
+  minute at the prompt ("waiting for your input") arrives as a `Notification`
+  like a permission request does — it turned terminals blue and posted "X asks"
+  for a question nobody had asked; it now changes nothing. The cost is two more
+  hook invocations per tool call, which is a `sh` + `nc` each.
+
 ## [0.2.22] — 2026-08-14
 
 ### Added

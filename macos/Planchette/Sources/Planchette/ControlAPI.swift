@@ -12,6 +12,10 @@ import AppKit
 ///
 /// Requests are recognized by the `planchette_request` key, so hook events
 /// (which carry `planchette_session`) keep flowing through untouched.
+///
+/// `notification.list` is the read side of the notifications panel: the same
+/// sections, the same order, the same per-row facts, so a status bar, a Stream
+/// Deck or another agent can show what the panel shows without scraping it.
 enum ControlAPI {
     /// Commands the API accepts. Anything else is an error, listed back to the
     /// caller — the binary is the authority on its own surface.
@@ -23,6 +27,7 @@ enum ControlAPI {
         case sessionRead = "session.read"
         case sessionWait = "session.wait"
         case projectList = "project.list"
+        case notificationList = "notification.list"
     }
 
     /// A parsed request: the command plus its raw arguments.
@@ -98,6 +103,55 @@ enum ControlAPI {
         return dict
     }
 
+    /// A terminal as the notifications panel shows it: everything on the row plus
+    /// the project it sits under. Deliberately more than `describe` — a caller
+    /// rendering its own notification list must not have to ask twice, or join
+    /// three commands to fill one line.
+    ///
+    /// Raw values *and* the labels on screen: `state` is the stable key to branch
+    /// on, `state_label` and `age` are the strings the panel prints, in the app's
+    /// current language.
+    @MainActor
+    static func describeNotification(
+        _ session: TerminalSession, in state: AppState
+    ) -> [String: Any] {
+        var dict = describe(session, in: state)
+        let since = session.stateSince
+        dict["state_label"] = session.state.label
+        dict["needs_attention"] = session.state.needsAttention
+        dict["unread"] = session.isUnread
+        dict["state_since"] = iso.string(from: since)
+        dict["age_seconds"] = Int(Date().timeIntervalSince(since))
+        dict["age"] = WaitingTimeText.format(Date().timeIntervalSince(since))
+        dict["short_path"] = session.shortPath
+        dict["tags"] = session.tags
+        dict["durable"] = session.durable
+        dict["muted"] = state.isMuted(session)
+        // The row's middle line — what the panel actually prints there.
+        if let prompt = session.promptLine { dict["prompt"] = prompt }
+        if let ticket = session.ticket { dict["ticket"] = ticket }
+        if let branch = state.branches[session.id] { dict["branch"] = branch }
+        if let summary = session.aiSummary { dict["ai_summary"] = summary }
+        if let topic = session.aiTopic { dict["ai_topic"] = topic }
+        if let until = state.snoozeEnd(for: session), until > Date() {
+            dict["snoozed_until"] = iso.string(from: until)
+        }
+        if let group = state.group(of: session) {
+            dict["project_favorite"] = group.favorite
+            dict["project_active"] = group.active
+            if let branch = state.sharedBranch(of: group) { dict["project_branch"] = branch }
+        }
+        return dict
+    }
+
+    /// ISO 8601 with the offset, so a caller in another language and another
+    /// timezone can parse a timestamp instead of a formatted date.
+    private static let iso: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
     // MARK: Dispatch
 
     /// Run a request. Returns the encoded response.
@@ -116,6 +170,7 @@ enum ControlAPI {
                     "id": group.id.uuidString,
                     "name": group.name,
                     "favorite": group.favorite,
+                    "active": group.active,
                     "sessions": group.sessionIDs.map(\.uuidString),
                 ]
                 // Absent rather than empty: a caller checks for the key.
@@ -123,6 +178,30 @@ enum ControlAPI {
                 return dict
             }
             return encode(ok: true, result: ["projects": projects])
+
+        case .notificationList:
+            // The panel's own sections, so this cannot drift from the UI.
+            var sections = state.notificationSections(
+                unreadOnly: request.bool("unread_only") == true,
+                activeOnly: request.bool("only_active") == true)
+            if let projectID = request.uuid("project_id") {
+                sections = sections.filter { $0.group.id == projectID }
+            }
+            var notifications = sections.flatMap { section in
+                section.sessions.map { describeNotification($0, in: state) }
+            }
+            if let limit = request.int("limit"), limit >= 0 {
+                notifications = Array(notifications.prefix(limit))
+            }
+            let counts: [String: Any] = [
+                "unread": state.unreadCount,
+                "waiting": state.waitingCount,
+                "errors": state.errorCount,
+                "unseen_ready": state.unseenReadyCount,
+                "listed": notifications.count,
+            ]
+            return encode(
+                ok: true, result: ["notifications": notifications, "counts": counts])
 
         case .sessionGet:
             guard let session = resolve(request, state: state) else {

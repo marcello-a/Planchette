@@ -72,7 +72,9 @@ launch. On macOS 14, right-click the app → *Open*.
 - 7 UI languages, light/dark/system
 
 **For agents**
-- Socket API + `planchette` CLI in every terminal: list, open, prompt, wait, read
+- Socket API + `planchette` CLI in every terminal: list, open, prompt, wait, read,
+  and `notification list` — the notifications panel as JSON for anything else you
+  want to show it in
 - So an agent can start a reviewer beside itself and block on its verdict
   ([skill](skills/planchette/SKILL.md))
 - Optional AI assist: one-line summaries per session via headless `claude -p`

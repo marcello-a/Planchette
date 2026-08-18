@@ -534,6 +534,31 @@ struct WindowAccessor: NSViewRepresentable {
     }
 }
 
+/// Fills the name field from the arrangement picked in the save dialog, so
+/// "overwrite this one" and "call it that" are the same single field: whatever
+/// stands in it when you hit OK is the name that gets written, and an existing
+/// name replaces that arrangement (see `AppState.savePreset`).
+///
+/// A separate object because an NSPopUpButton needs a target — and it has to
+/// outlive the alert, which the dialog does by holding it until `runModal`
+/// returns.
+private final class ArrangementTarget: NSObject {
+    private let names: [String]
+    private let field: NSTextField
+
+    init(names: [String], field: NSTextField) {
+        self.names = names
+        self.field = field
+    }
+
+    /// Item 0 is "new", item 1 the separator — the saved names start at 2.
+    @objc func pick(_ sender: NSPopUpButton) {
+        let index = sender.indexOfSelectedItem - 2
+        field.stringValue = names.indices.contains(index) ? names[index] : ""
+        field.window?.makeFirstResponder(field)
+    }
+}
+
 /// "Arrangements" menu: save what this window looks like, or open a saved one.
 struct ArrangementsMenu: View {
     @EnvironmentObject var appState: AppState
@@ -788,12 +813,45 @@ extension AppState {
         }
     }
 
-    /// Save the key window's projects and terminals as a named arrangement.
+    /// Save the key window's projects and terminals as an arrangement: a new one
+    /// under a name you type, or one of the saved ones, replaced.
+    ///
+    /// The list is there because "save" used to mean both, decided by whether you
+    /// happened to retype an existing name exactly (`savePreset` matches on it).
+    /// Picking the arrangement you mean to replace makes overwriting a choice
+    /// instead of a coincidence — and keeps a typo from quietly leaving the old
+    /// one behind next to a near-duplicate.
     func promptSaveArrangementInKeyWindow() {
         guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
-        promptText(title: L10n.t(.saveArrangementTitle), value: "") { [weak self] name in
-            self?.savePreset(name: name, fromWindow: windowID)
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.saveArrangementTitle)
+        alert.informativeText = L10n.t(.saveArrangementHelp)
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.addButton(withTitle: L10n.t(.cancel))
+
+        let width: CGFloat = 300
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: width, height: 24))
+        let existing = presets.map(\.name)
+        let picker = ArrangementTarget(names: existing, field: field)
+        if existing.isEmpty {
+            alert.accessoryView = field
+        } else {
+            let popup = NSPopUpButton(
+                frame: NSRect(x: 0, y: 32, width: width, height: 26), pullsDown: false)
+            popup.addItem(withTitle: L10n.t(.newArrangement))
+            popup.menu?.addItem(.separator())
+            for name in existing { popup.addItem(withTitle: L10n.t(.overwriteArrangement, name)) }
+            popup.target = picker
+            popup.action = #selector(ArrangementTarget.pick(_:))
+            let container = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 58))
+            container.addSubview(popup)
+            container.addSubview(field)
+            alert.accessoryView = container
         }
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        savePreset(
+            name: field.stringValue.trimmingCharacters(in: .whitespaces), fromWindow: windowID)
     }
 
     func openPresetInKeyWindow(_ preset: Preset) {

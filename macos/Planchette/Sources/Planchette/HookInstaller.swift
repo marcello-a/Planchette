@@ -17,10 +17,21 @@ import Foundation
 ///   matching `finished` event leaves a terminal purple forever.
 enum HookInstaller {
     /// The Claude Code hook events Planchette reacts to (see AppState.applyHookEvent).
+    ///
+    /// `PreToolUse`/`PostToolUse` are here for one reason: granting a permission
+    /// fires no event of its own, so they are the only proof that the turn moved
+    /// on. Without them a terminal you have already answered keeps showing
+    /// "waiting" until the whole turn ends (see `AttentionState.forHookEvent`).
     static let events = [
         "SessionStart", "UserPromptSubmit", "Notification",
-        "PermissionRequest", "Stop", "SubagentStop", "SessionEnd",
+        "PermissionRequest", "PreToolUse", "PostToolUse",
+        "Stop", "SubagentStop", "SessionEnd",
     ]
+
+    /// Events whose config entries are per tool. `*` is Claude Code's "every
+    /// tool" matcher — stated rather than omitted, so the entry reads the same as
+    /// the ones a user writes by hand.
+    static let toolEvents: Set<String> = ["PreToolUse", "PostToolUse"]
 
     /// Codex fires the same event names, but only `SessionStart` is worth
     /// installing — see the note above.
@@ -147,7 +158,9 @@ enum HookInstaller {
                 if kept.isEmpty { return nil }
                 var e = entry; e["hooks"] = kept; return e
             }
-            entries.append(["hooks": [["type": "command", "command": hookCmd]]])
+            var entry: [String: Any] = ["hooks": [["type": "command", "command": hookCmd]]]
+            if toolEvents.contains(event) { entry["matcher"] = "*" }
+            entries.append(entry)
             hooks[event] = entries
             changed = true
         }

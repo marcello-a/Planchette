@@ -97,15 +97,44 @@ enum AttentionState: String, Codable {
     /// (SessionEnd `clear` + SessionStart `clear`) must land on gray even if one
     /// of the two events is lost. `compact` and `fork` are the exception: they
     /// happen *mid-turn*, so the running/waiting state must survive them.
-    static func forHookEvent(_ event: String, source: String? = nil) -> AttentionState? {
+    ///
+    /// Three of these mappings are the answer to "does the indicator tell the
+    /// truth", and each was wrong before:
+    ///
+    /// - **A tool call proves a turn is in flight.** `PreToolUse`/`PostToolUse`
+    ///   are what clears a `waiting` you have already answered: granting a
+    ///   permission produces no event of its own, so without them the terminal
+    ///   kept asking until the whole turn ended.
+    /// - **`SubagentStop` is not the end of a turn.** A `Task` subagent finishing
+    ///   leaves the main agent working, so reporting "done, come and review"
+    ///   there turned a busy terminal green mid-turn. Only `Stop` ends a turn.
+    /// - **Not every `Notification` is a question.** Claude Code also fires one
+    ///   after 60 s of idling at the prompt ("waiting for your input"), which is
+    ///   not news: the terminal already reported whatever it reported, and
+    ///   turning that blue invented a question nobody asked.
+    static func forHookEvent(
+        _ event: String, source: String? = nil, message: String? = nil
+    ) -> AttentionState? {
         switch event {
-        case "UserPromptSubmit": .running
-        case "Notification", "PermissionRequest": .waiting
-        case "Stop", "SubagentStop": .ready
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse": .running
+        case "Notification": isIdleNudge(message) ? nil : .waiting
+        case "PermissionRequest": .waiting
+        case "Stop": .ready
+        case "SubagentStop": nil
         case "SessionEnd": .free
         case "SessionStart": (source == "compact" || source == "fork") ? nil : .free
         default: nil
         }
+    }
+
+    /// Is this `Notification` merely "you left me hanging"? Claude Code sends one
+    /// when the prompt has been idle for a minute, with the same event name it
+    /// uses for a permission request. Matched on the message because that is the
+    /// only thing that tells the two apart; anything unrecognized counts as a
+    /// real request, since a missed question costs more than a spurious one.
+    static func isIdleNudge(_ message: String?) -> Bool {
+        guard let message else { return false }
+        return message.range(of: "waiting for your input", options: .caseInsensitive) != nil
     }
 
     /// The state after a shell command finishes (OSC 133). Returns nil to keep
@@ -133,6 +162,32 @@ struct StateCountBadge: View {
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(state.tint.opacity(0.18), in: Capsule())
             .foregroundStyle(state.tint)
+    }
+}
+
+/// The badge row for a set of terminals: errors, then questions, then results
+/// nobody has looked at — in triage order, each in its own state colour. THE one
+/// way a group of terminals is counted (a project row in the sidebar, a folder
+/// row, a project header in the notifications panel), so the same project reads
+/// the same wherever it is listed.
+///
+/// Pass only terminals that are allowed to speak — filter with `AppState.isMuted`
+/// first, or a snoozed or parked project keeps a badge lit while it is meant to
+/// be quiet.
+struct StateSummaryBadges: View {
+    let sessions: [TerminalSession]
+
+    var body: some View {
+        let errors = sessions.filter { $0.state == .error }.count
+        let waiting = sessions.filter { $0.state == .waiting }.count
+        // Only work you haven't looked at yet: a green badge that never clears
+        // would just be "this project has terminals".
+        let done = sessions.filter { $0.state == .ready && !$0.seen }.count
+        return HStack(spacing: 4) {
+            if errors > 0 { StateCountBadge(state: .error, count: errors) }
+            if waiting > 0 { StateCountBadge(state: .waiting, count: waiting) }
+            if done > 0 { StateCountBadge(state: .ready, count: done) }
+        }
     }
 }
 
@@ -301,11 +356,23 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// stays put until you send it something else.
     var displayTitle: String {
         if let customTitle, !customTitle.isEmpty { return customTitle }
-        let ticket = Titles.ticket(forDirectory: currentDirectory)
         let work = currentTask.flatMap { Titles.taskLabel($0) } ?? reportedTitle
         if let auto = Titles.autoTitle(ticket: ticket, work: work) { return auto }
         // Nothing to go on: a free terminal says so, otherwise the folder name.
         return state == .free ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
+    }
+
+    /// The ticket of the checkout this terminal sits in, when its branch names
+    /// one (`marcello/feat/NIE-123-x` → `NIE-123`).
+    var ticket: String? { Titles.ticket(forDirectory: currentDirectory) }
+
+    /// What names this terminal in a list that shows its path on the same row: a
+    /// manual rename if there is one, otherwise the ticket. Nil when there is
+    /// neither — then the path names it on its own, and inventing a name from the
+    /// task would only repeat the row below it.
+    var rowName: String? {
+        if let customTitle, !customTitle.isEmpty { return customTitle }
+        return ticket
     }
 
     /// The title the running program reports (OSC 0/2), cleaned up — nil when it
@@ -334,6 +401,22 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         case .free: nil
         case .running, .ready: aiSummary ?? currentTask ?? lastMessage
         }
+        return (line?.isEmpty ?? true) ? nil : line
+    }
+
+    /// Is this terminal's last report still unread? `ready`/`waiting`/`error` are
+    /// the states that report something; `running` and `free` are not news, so
+    /// they are never unread.
+    var isUnread: Bool { !seen && state.isReport }
+
+    /// What a notification row leads with: the prompt I last submitted. The
+    /// agent's own message ("Claude is waiting for your input") is deliberately
+    /// not it — that only repeats the state the row's badge already names, while
+    /// the prompt says what the question is *about*. A terminal that was never
+    /// given a prompt falls back to what it last said, then to the AI summary, so
+    /// the row is never blank. The full message stays one hover away.
+    var promptLine: String? {
+        let line = currentTask ?? lastMessage ?? aiSummary
         return (line?.isEmpty ?? true) ? nil : line
     }
 
@@ -472,10 +555,35 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     /// Snooze for the whole project: every terminal in it is quiet until then
     /// (see `TerminalSession.snoozedUntil`). Optional, so older state decodes.
     var snoozedUntil: Date?
+    /// Parked. An inactive project is one you are not working on: it keeps its
+    /// terminals and its place in the sidebar, reads dimmed, and is silent —
+    /// out of the counts, the badges, the inbox and every notification, exactly
+    /// like a snooze that does not end on its own. Marking it inactive also marks
+    /// its terminals free, so it does not go quiet while still claiming to have
+    /// something for you. Default true: every project ever persisted was active.
+    var active: Bool = true
 
     init(id: UUID = UUID(), name: String) {
         self.id = id
         self.name = name
+    }
+
+    // Custom, so a state written before a field existed still decodes — the
+    // synthesized decoder demands every non-optional key (see ProjectFolder).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
+        viewMode = try c.decodeIfPresent(GroupViewMode.self, forKey: .viewMode) ?? .tabs
+        favorite = try c.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
+        sessionIDs = try c.decodeIfPresent([UUID].self, forKey: .sessionIDs) ?? []
+        activeSessionID = try c.decodeIfPresent(UUID.self, forKey: .activeSessionID)
+        clusterLayout = try c.decodeIfPresent(SplitLayout.self, forKey: .clusterLayout)
+        worktreePath = try c.decodeIfPresent(String.self, forKey: .worktreePath)
+        worktreeRepoRoot = try c.decodeIfPresent(String.self, forKey: .worktreeRepoRoot)
+        snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
+        active = try c.decodeIfPresent(Bool.self, forKey: .active) ?? true
     }
 }
 

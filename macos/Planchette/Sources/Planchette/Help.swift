@@ -54,6 +54,7 @@ enum Help {
             Entry(.dissolveFolder, .dissolveFolderHelp, where: .helpWhereSidebar),
             Entry(.makeFavorite, .favoriteHelp, where: .helpWhereSidebar),
             Entry(.selectedProjectsShort, .helpMultiSelectDetail, where: .helpWhereSidebar),
+            Entry(.markProjectInactive, .markProjectActiveHelp, where: .helpWhereContextMenu),
             Entry(.arrangements, .arrangementsHelp, where: .helpWhereSidebar),
             Entry(.saveArrangement, .saveArrangementHelp, where: .helpWhereSidebar),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
@@ -74,6 +75,8 @@ enum Help {
             Entry(.fontReset, nil, shortcut: "⌘0", where: .helpWhereTabBar),
             Entry(.durableSection, .durableHelp, where: .helpWhereSettings),
             Entry(.importMenu, .importMenuHelp, where: .helpWhereMenuBar),
+            Entry(.helpTerminalRowTitle, .helpTerminalRowDetail, where: .helpWhereSidebar),
+            Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .notificationsPanel, entries: [

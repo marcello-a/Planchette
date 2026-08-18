@@ -14,40 +14,17 @@ struct AttentionPanel: View {
     @AppStorage("inboxOnlyUnread") private var onlyUnread = true
     let windowID: UUID
 
-    /// Projects in display order: this window's groups first (favorites
-    /// before normal, exactly like its sidebar), then the other windows'
-    /// groups so nothing happening elsewhere is invisible.
-    private var orderedGroups: [SessionGroup] {
-        var ordered: [SessionGroup] = []
-        let windows = appState.windows.sorted { a, _ in a.id == windowID }
-        for window in windows {
-            let groups = appState.groups(inWindow: window)
-            ordered.append(contentsOf: groups.filter(\.favorite))
-            ordered.append(contentsOf: groups.filter { !$0.favorite })
-        }
-        return ordered
-    }
-
-    /// The tabs shown for a project — tab order, narrowed by the two filters.
-    /// "Only unread" is about what you have looked at, "only active" about what
-    /// the terminal is doing; both can be on, and then both have to hold.
-    private func visibleTabs(_ group: SessionGroup) -> [TerminalSession] {
-        var tabs = appState.sessions(in: group)
-        if onlyActive { tabs = tabs.filter(\.state.isActive) }
-        if onlyUnread { tabs = tabs.filter { isUnread($0) } }
-        return tabs
-    }
-
     /// A terminal is unread while its last report — a question, an error, a
     /// finished turn — has not been looked at.
-    private func isUnread(_ session: TerminalSession) -> Bool {
-        !session.seen && session.state.isReport
-    }
+    private func isUnread(_ session: TerminalSession) -> Bool { session.isUnread }
 
     var body: some View {
-        let sections = orderedGroups
-            .map { (group: $0, tabs: visibleTabs($0)) }
-            .filter { !$0.tabs.isEmpty }
+        // Order and filtering live in `AppState.notificationSections`, which the
+        // control API answers from as well: what another program can read and
+        // what this panel shows must be one list (see `ControlAPI`).
+        let sections = appState.notificationSections(
+            windowID: windowID, unreadOnly: onlyUnread, activeOnly: onlyActive)
+            .map { (group: $0.group, tabs: $0.sessions) }
 
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
@@ -116,12 +93,11 @@ struct AttentionPanel: View {
     // MARK: Project section header
 
     private func projectHeader(_ group: SessionGroup) -> some View {
-        // Most urgent tab state colors the attention badge.
-        let tabs = appState.sessions(in: group)
-        // Snoozed tabs keep their color in the list but stop counting here —
-        // the badge is "what is asking for you", and they aren't.
-        let attention = tabs.filter { $0.state.needsAttention && !appState.isSnoozed($0) }
-        let urgent = attention.min { $0.state.rank < $1.state.rank }?.state
+        // The same badge row the sidebar puts on the project — errors, questions,
+        // unseen results — instead of one badge for the most urgent state. One
+        // project, one set of numbers, wherever you read it (`StateSummaryBadges`).
+        // Silent tabs keep their colour in the list but stop counting here.
+        let counted = appState.sessions(in: group).filter { !appState.isMuted($0) }
 
         return Button {
             appState.select(group: group)
@@ -141,9 +117,7 @@ struct AttentionPanel: View {
                     SnoozeBadge(until: until)
                 }
                 Spacer(minLength: 4)
-                if let urgent {
-                    StateCountBadge(state: urgent, count: attention.count)
-                }
+                StateSummaryBadges(sessions: counted)
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)
@@ -156,6 +130,23 @@ struct AttentionPanel: View {
 
     // MARK: Tab row
 
+    /// The row's name: the branch of this terminal's checkout, from its ticket on
+    /// (`marcello/feat/NIE-1902-format-switch` → `NIE-1902-format-switch`) — the
+    /// ticket and the branch in one string, which is what tells two worktrees of
+    /// one repo apart. The line under it already says what the terminal is doing,
+    /// so repeating the task up here would cost the width the branch needs.
+    ///
+    /// A name you typed still wins, and a terminal outside a repo keeps the title
+    /// it gives itself.
+    private func headline(_ session: TerminalSession) -> String {
+        if let custom = session.customTitle, !custom.isEmpty { return custom }
+        if let branch = appState.branches[session.id] {
+            let cut = Titles.branchFromTicket(branch)
+            if !cut.isEmpty { return cut }
+        }
+        return session.displayTitle
+    }
+
     /// Full context for a hover tooltip: the whole question/error (rows clip
     /// it to 2 lines), the task it belongs to, and the path.
     private func hoverDetail(_ session: TerminalSession) -> String {
@@ -167,11 +158,11 @@ struct AttentionPanel: View {
     }
 
     private func tabRow(_ session: TerminalSession) -> some View {
-        // The tab's current notification: for waiting the question itself; for
-        // running/done what it works on / worked on — the submitted prompt
-        // (currentTask), refined by the AI summary when available. Nil when
-        // there's nothing real to say — the state chip already names the state.
-        let detail = session.notificationLine
+        // The row's middle line is the prompt this terminal is on, not the
+        // agent's own message: "Claude is waiting for your input" says what the
+        // badge in the corner already says, and the prompt is the thing you have
+        // to remember to answer the question. The message stays on hover.
+        let detail = session.promptLine
 
         let unread = isUnread(session)
         return Button {
@@ -184,22 +175,31 @@ struct AttentionPanel: View {
                 StateIcon(state: session.state, size: 14)
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
+                    // The state belongs in the corner, next to the name it
+                    // describes. The clock time it replaces is gone: "12m" below
+                    // answers "how long" without arithmetic, and the wall-clock
+                    // hour of a state change answered nothing.
                     HStack(spacing: 5) {
-                        Text(session.displayTitle)
+                        Text(headline(session))
                             .font(.subheadline).fontWeight(unread ? .bold : .medium)
                             .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
+                            .truncationMode(.middle)
                         Spacer(minLength: 4)
-                        Text(session.stateSince, style: .time)
-                            .font(.caption2).foregroundStyle(.tertiary)
-                    }
-                    if let detail, !detail.isEmpty {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundStyle(.secondary).lineLimit(2)
-                    }
-                    HStack(spacing: 6) {
                         StateChip(state: session.state)
-                        Spacer(minLength: 0)
+                    }
+                    // Prompt and age on one line: two rows of prompt at most, and
+                    // it ends before the age instead of running under it — the age
+                    // is short, fixed and always in the same place, so the eye
+                    // finds it without a line of its own.
+                    HStack(alignment: .bottom, spacing: 8) {
+                        if let detail, !detail.isEmpty {
+                            Text(detail)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 4)
                         if let until = appState.snoozeEnd(for: session), until > Date() {
                             SnoozeBadge(until: until)
                         } else {

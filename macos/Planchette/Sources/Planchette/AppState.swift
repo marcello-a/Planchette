@@ -117,7 +117,7 @@ final class AppState: ObservableObject {
 
     /// The dock badge mirrors the menu-bar counters: sessions that need you.
     func refreshDockBadge() {
-        let count = sessions.values.filter { $0.state.needsAttention && !isSnoozed($0) }.count
+        let count = sessions.values.filter { $0.state.needsAttention && !isMuted($0) }.count
         NSApp?.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
     }
 
@@ -128,7 +128,7 @@ final class AppState: ObservableObject {
         checkSnoozeExpiry()
         refreshDockBadge()
         for session in sessions.values
-        where session.state.needsAttention && !isSnoozed(session)
+        where session.state.needsAttention && !isMuted(session)
             && Date().timeIntervalSince(session.stateSince) >= Self.escalationThreshold
             && !escalatedIDs.contains(session.id) {
             escalatedIDs.insert(session.id)
@@ -372,6 +372,16 @@ final class AppState: ObservableObject {
         for id in ids { updateGroup(id) { $0.favorite = favorite } }
     }
 
+    /// Park projects, or bring them back. Parking also marks their terminals free:
+    /// a project that goes silent must not keep a question or a finished turn
+    /// standing, or marking it active again re-opens news that is hours old.
+    func setActive(_ active: Bool, forGroups ids: [UUID]) {
+        for id in ids {
+            updateGroup(id) { $0.active = active }
+            if !active { markGroupReady(id) }
+        }
+    }
+
     func closeGroups(_ ids: [UUID]) {
         for id in ids { closeGroup(id) }
     }
@@ -427,11 +437,15 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
-    // MARK: Git branch per project
+    // MARK: Git branch per terminal
 
-    /// Which branch each project is on, keyed by group id. Derived and never
-    /// persisted: the checkout on disk is the truth, and it changes behind the
-    /// app's back (any `git checkout` in the terminal).
+    /// Which branch each terminal's checkout is on, keyed by session id.
+    /// Derived and never persisted: the checkout on disk is the truth, and it
+    /// changes behind the app's back (any `git checkout` in the terminal).
+    ///
+    /// Per terminal rather than per project because the terminals of one project
+    /// can sit in different checkouts, and the sidebar shows the branch on the
+    /// project row only while they agree (see `sharedBranch`).
     @Published var branches: [UUID: String] = [:]
     private var branchTimer: Timer?
     /// Cheap enough to be invisible, fast enough that a checkout you just did
@@ -448,17 +462,14 @@ final class AppState: ObservableObject {
         branchTimer = timer
     }
 
-    /// One `git branch --show-current` per project, off the main thread (rule 5).
-    /// The directory is the project's active terminal — a project whose
-    /// terminals sit in different checkouts shows the one you are looking at.
+    /// One `git branch --show-current` per *distinct* directory, off the main
+    /// thread (rule 5). Terminals of a project usually share their checkout, so
+    /// asking per directory and fanning the answer back out to the sessions
+    /// costs no more subprocesses than the old per-project poll did.
     private func refreshBranches() {
-        let dirs: [(id: UUID, dir: String)] = groups.compactMap { group in
-            let inGroup = sessions(in: group)
-            guard let session = inGroup.first(where: { $0.id == group.activeSessionID })
-                    ?? inGroup.first,
-                  !session.currentDirectory.isEmpty
-            else { return nil }
-            return (group.id, session.currentDirectory)
+        let dirs: [String: [UUID]] = sessions.values.reduce(into: [:]) { acc, session in
+            guard !session.currentDirectory.isEmpty else { return }
+            acc[session.currentDirectory, default: []].append(session.id)
         }
         guard !dirs.isEmpty else {
             if !branches.isEmpty { branches = [:] }
@@ -466,10 +477,20 @@ final class AppState: ObservableObject {
         }
         Task.detached {
             let found = dirs.reduce(into: [UUID: String]()) { found, entry in
-                if let branch = Worktrees.currentBranch(of: entry.dir) { found[entry.id] = branch }
+                guard let branch = Worktrees.currentBranch(of: entry.key) else { return }
+                for id in entry.value { found[id] = branch }
             }
             await MainActor.run { [weak self] in self?.branches = found }
         }
+    }
+
+    /// The one branch all terminals of a project are on, or nil when they
+    /// disagree — then the branch belongs on each terminal row instead, because
+    /// a single line on the project would name a checkout some of them are not in.
+    /// A terminal outside a repo counts as a disagreement: it has no branch to
+    /// share.
+    func sharedBranch(of group: SessionGroup) -> String? {
+        Worktrees.sharedBranch(sessions(in: group).map { branches[$0.id] })
     }
 
     // MARK: Derived
@@ -487,7 +508,7 @@ final class AppState: ObservableObject {
     /// what snoozing them meant.
     var attentionQueue: [TerminalSession] {
         sessions.values
-            .filter { $0.state.needsAttention && !isSnoozed($0) }
+            .filter { $0.state.needsAttention && !isMuted($0) }
             .sorted { a, b in
                 let aFav = group(of: a)?.favorite ?? false
                 let bFav = group(of: b)?.favorite ?? false
@@ -503,16 +524,42 @@ final class AppState: ObservableObject {
     /// the menu bar is where you look when the app is not in front of you.
     var menuBarQueue: [TerminalSession] {
         let done = sessions.values
-            .filter { $0.state == .ready && !$0.seen && !isSnoozed($0) }
+            .filter { $0.state == .ready && !$0.seen && !isMuted($0) }
             .sorted { $0.stateSince < $1.stateSince }
         return attentionQueue + done
     }
 
+    /// The notifications panel as data: one section per project, in the order the
+    /// panel lists them — the given window's projects first (favorites before the
+    /// rest, exactly like its sidebar), then every other window's, so nothing
+    /// happening elsewhere is invisible. Parked projects are left out: they are
+    /// silent (see `isMuted`).
+    ///
+    /// Shared with the control API on purpose. "What another program can read"
+    /// and "what the panel shows" have to be the same list, or the API starts
+    /// answering a question about a UI that has moved on.
+    func notificationSections(
+        windowID: UUID? = nil, unreadOnly: Bool = false, activeOnly: Bool = false
+    ) -> [(group: SessionGroup, sessions: [TerminalSession])] {
+        let ordered = windows.sorted { a, _ in a.id == windowID }
+        var out: [(group: SessionGroup, sessions: [TerminalSession])] = []
+        for window in ordered {
+            let inWindow = groups(inWindow: window).filter(\.active)
+            for group in inWindow.filter(\.favorite) + inWindow.filter({ !$0.favorite }) {
+                var tabs = sessions(in: group)
+                if activeOnly { tabs = tabs.filter(\.state.isActive) }
+                if unreadOnly { tabs = tabs.filter(\.isUnread) }
+                if !tabs.isEmpty { out.append((group, tabs)) }
+            }
+        }
+        return out
+    }
+
     var waitingCount: Int {
-        sessions.values.filter { $0.state == .waiting && !isSnoozed($0) }.count
+        sessions.values.filter { $0.state == .waiting && !isMuted($0) }.count
     }
     var errorCount: Int {
-        sessions.values.filter { $0.state == .error && !isSnoozed($0) }.count
+        sessions.values.filter { $0.state == .error && !isMuted($0) }.count
     }
 
     // MARK: Mutations
@@ -750,13 +797,13 @@ final class AppState: ObservableObject {
     /// have not looked at belongs up there, a report you already read (or
     /// snoozed) must not keep nagging from the top of the screen.
     func unseenCount(_ state: AttentionState) -> Int {
-        sessions.values.filter { $0.state == state && !$0.seen && !isSnoozed($0) }.count
+        sessions.values.filter { $0.state == state && !$0.seen && !isMuted($0) }.count
     }
 
     /// Unread notifications: terminals whose last report you have not looked at.
     /// Snoozed ones are left out, like everywhere else that counts.
     var unreadCount: Int {
-        sessions.values.filter { !$0.seen && $0.state.isReport && !isSnoozed($0) }.count
+        sessions.values.filter { !$0.seen && $0.state.isReport && !isMuted($0) }.count
     }
 
     /// "I've seen all of it" — the way out of a full unread list without
@@ -879,6 +926,16 @@ final class AppState: ObservableObject {
 
     func isSnoozed(sessionID: UUID, now: Date = Date()) -> Bool {
         sessions[sessionID].map { isSnoozed($0, now: now) } ?? false
+    }
+
+    /// Is this terminal silent? Either snoozed, or parked with its project (see
+    /// `SessionGroup.active`). THE filter for anything that counts or announces
+    /// attention — a badge, a dock count, a banner, the inbox. The two reasons
+    /// differ only in how they end: a snooze runs out by itself, a parked project
+    /// waits to be marked active again.
+    func isMuted(_ session: TerminalSession, now: Date = Date()) -> Bool {
+        if isSnoozed(session, now: now) { return true }
+        return group(of: session)?.active == false
     }
 
     /// When this terminal comes back (its own snooze, or its project's — the
@@ -1034,12 +1091,17 @@ final class AppState: ObservableObject {
             update(sessionID) { $0.currentTask = nil }
         }
         // State transition (pure, tested). Message only carried for `waiting`.
-        if let newState = AttentionState.forHookEvent(hookEvent, source: source) {
+        if let newState = AttentionState.forHookEvent(
+            hookEvent, source: source, message: message) {
             setState(sessionID, newState, message: newState == .waiting ? message : nil)
         }
         // Per-event side effects.
         switch hookEvent {
         case "Notification", "PermissionRequest":
+            // The idle nudge is not a question (see `isIdleNudge`), so it must not
+            // arrive as "X asks" either — the banner would be the same lie as the
+            // blue dot, just louder.
+            guard !AttentionState.isIdleNudge(message) else { break }
             postUserNotification(sessionID: sessionID, message: message)
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
@@ -1051,8 +1113,9 @@ final class AppState: ObservableObject {
 
     private func postUserNotification(sessionID: UUID, message: String?) {
         guard let session = sessions[sessionID] else { return }
-        // Snoozed means snoozed: no banner until the reminder is due.
-        guard !isSnoozed(session) else { return }
+        // Silent means silent: no banner while snoozed, and none at all from a
+        // project that was parked.
+        guard !isMuted(session) else { return }
         // Only interrupt for favorites; side projects just queue in the inbox.
         guard group(of: session)?.favorite == true else { return }
         NotificationService.post(
