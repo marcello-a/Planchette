@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.24] — 2026-08-18
+
 ### Added
 - **Delete a saved arrangement** — and rename one — from the Arrangements menu.
   Both were only reachable from the welcome screen's cards, which you stop seeing
