@@ -20,6 +20,12 @@ reach another user's session.
 
 ## The surface
 
+The full reference — every command, every argument, every field of every object,
+plus the socket protocol for programs that are not shells — is
+[docs/API.md](https://github.com/marcello-a/Planchette/blob/main/docs/API.md) in
+the Planchette repo. Read it when this page is not enough; what follows is the
+part an agent needs most.
+
 `"$PLANCHETTE_CLI"` with no arguments prints the command groups. Every command
 returns JSON on stdout: exit 0 on success, 1 when the app reports a failure
 (read `.error`), 2 on a usage or socket problem. Parse ids out of the JSON —

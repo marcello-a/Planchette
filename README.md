@@ -74,7 +74,7 @@ launch. On macOS 14, right-click the app → *Open*.
 **For agents**
 - Socket API + `planchette` CLI in every terminal: list, open, prompt, wait, read,
   and `notification list` — the notifications panel as JSON for anything else you
-  want to show it in
+  want to show it in ([manual](docs/API.md))
 - So an agent can start a reviewer beside itself and block on its verdict
   ([skill](skills/planchette/SKILL.md))
 - Optional AI assist: one-line summaries per session via headless `claude -p`
@@ -123,13 +123,13 @@ echo '{"hook_event_name":"Notification","message":"needs permission"}' \
 | `hook/` | `planchette-hook`, forwards Claude Code hook events to the socket |
 | `scripts/` | install, package, release |
 | `skills/` | the planchette skill for agents |
-| `docs/` | concept & architecture |
+| `docs/` | concept, architecture, the API manual |
 | `core/`, `linux/` | reserved for the shared Zig core and a GTK4 app — empty |
 
 ## Docs
 
 [CONCEPT](docs/CONCEPT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) ·
+[API](docs/API.md) · [CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) ·
 [CHANGELOG](CHANGELOG.md)
 
 ## Status

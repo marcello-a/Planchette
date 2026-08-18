@@ -749,21 +749,11 @@ struct SidebarView: View {
     private func groupMenu(_ group: SessionGroup) -> some View {
         let targets = actionTargets(group)
         if targets.count > 1 {
+            // Same four groups as the single-project menu, so a batch reads like
+            // one project acted on many times. Both directions of a toggle are
+            // spelled out: a batch can be mixed, and "toggle each" would leave it
+            // mixed the other way round.
             Text(L10n.t(.selectedProjects, targets.count))
-            Divider()
-            Button(L10n.t(.makeFavorite)) { appState.setFavorite(true, forGroups: targets) }
-            Button(L10n.t(.unmakeFavorite)) { appState.setFavorite(false, forGroups: targets) }
-            Button(L10n.t(.markProjectsActive, targets.count)) {
-                appState.setActive(true, forGroups: targets)
-            }
-            Button(L10n.t(.markProjectsInactive, targets.count)) {
-                appState.setActive(false, forGroups: targets)
-            }
-            .help(L10n.t(.markProjectActiveHelp))
-            colorPicker(current: group.color) { color in
-                for id in targets { appState.updateGroup(id) { $0.color = color } }
-            }
-            bulkFolderPicker(targets)
             Divider()
             Button(L10n.t(.markProjectsFree, targets.count)) { appState.markGroupsReady(targets) }
             Menu(L10n.t(.remindMe)) {
@@ -774,30 +764,47 @@ struct SidebarView: View {
                 }
             }
             .help(L10n.t(.remindMeHelp))
+            Button(L10n.t(.markProjectsInactive, targets.count)) {
+                appState.setActive(false, forGroups: targets)
+            }
+            .help(L10n.t(.markProjectActiveHelp))
+            Button(L10n.t(.markProjectsActive, targets.count)) {
+                appState.setActive(true, forGroups: targets)
+            }
+            Divider()
+            Button(L10n.t(.makeFavorite)) { appState.setFavorite(true, forGroups: targets) }
+            Button(L10n.t(.unmakeFavorite)) { appState.setFavorite(false, forGroups: targets) }
+            colorPicker(current: group.color) { color in
+                for id in targets { appState.updateGroup(id) { $0.color = color } }
+            }
+            Divider()
+            bulkFolderPicker(targets)
             Divider()
             Button(L10n.t(.closeProjects, targets.count), role: .destructive) {
                 confirmClose(targets)
             }
         } else {
+            // Grouped by what the item acts on, in that order: the project's
+            // attention, then what it *is*, then where it lives, then ending it.
+            // Attention comes first because that is what the app is for; closing
+            // stands alone at the bottom because it is the one step that destroys
+            // something.
+            GroupAttentionMenu(group: group)
+            Divider()
             Button(group.favorite ? L10n.t(.unmakeFavorite) : L10n.t(.makeFavorite)) {
                 appState.updateGroup(group.id) { $0.favorite.toggle() }
             }
             .help(L10n.t(.favoriteHelp))
-            Button(group.active ? L10n.t(.markProjectInactive) : L10n.t(.markProjectActive)) {
-                appState.setActive(!group.active, forGroups: [group.id])
-            }
-            .help(L10n.t(.markProjectActiveHelp))
+            Button(L10n.t(.rename)) { rename(group: group) }
             colorPicker(current: group.color) { color in
                 appState.updateGroup(group.id) { $0.color = color }
             }
-            Button(L10n.t(.rename)) { rename(group: group) }
+            Divider()
             folderPicker(for: group)
             Button(L10n.t(.moveToNewWindow)) {
                 openWindow(value: appState.moveGroupToNewWindow(group.id))
             }
             .help(L10n.t(.moveToNewWindowHelp))
-            Divider()
-            GroupAttentionMenu(group: group)
             Divider()
             Button(L10n.t(.closeProject), role: .destructive) { confirmClose(group) }
         }

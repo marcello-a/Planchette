@@ -555,6 +555,24 @@ final class AppState: ObservableObject {
         return out
     }
 
+    /// The name a notification row prints: the branch of this terminal's checkout
+    /// from its ticket on (`marcello/feat/NIE-1902-format-switch` →
+    /// `NIE-1902-format-switch`) — ticket and branch in one string, which is what
+    /// tells two worktrees of one repo apart. A name you typed still wins, and a
+    /// terminal outside a repo keeps the title it gives itself.
+    ///
+    /// Here rather than in the panel so the control API can hand out the same
+    /// string (`ControlAPI.describeNotification`): a caller drawing its own
+    /// notification list must not have to re-derive it and drift.
+    func notificationHeadline(for session: TerminalSession) -> String {
+        if let custom = session.customTitle, !custom.isEmpty { return custom }
+        if let branch = branches[session.id] {
+            let cut = Titles.branchFromTicket(branch)
+            if !cut.isEmpty { return cut }
+        }
+        return session.displayTitle
+    }
+
     var waitingCount: Int {
         sessions.values.filter { $0.state == .waiting && !isMuted($0) }.count
     }

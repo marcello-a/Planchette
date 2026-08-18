@@ -26,6 +26,13 @@ struct SessionAttentionMenu: View {
 }
 
 /// The same for a whole project — one reminder for the project, not one per tab.
+///
+/// The three ways to make a project quiet, in the order of how long the quiet
+/// lasts: now, until a moment you pick, until you say otherwise. They belong
+/// together and at the top of a project's menu — "this one is not asking me
+/// anything right now" is the decision the app exists to serve, and the three
+/// answers to it should not be scattered across a menu with renaming and colours
+/// in between.
 struct GroupAttentionMenu: View {
     @EnvironmentObject var appState: AppState
     let group: SessionGroup
@@ -44,6 +51,10 @@ struct GroupAttentionMenu: View {
             }
         }
         .help(L10n.t(.remindMeHelp))
+        Button(group.active ? L10n.t(.markProjectInactive) : L10n.t(.markProjectActive)) {
+            appState.setActive(!group.active, forGroups: [group.id])
+        }
+        .help(L10n.t(.markProjectActiveHelp))
     }
 }
 

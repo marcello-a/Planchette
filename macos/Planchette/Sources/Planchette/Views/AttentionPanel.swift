@@ -130,23 +130,6 @@ struct AttentionPanel: View {
 
     // MARK: Tab row
 
-    /// The row's name: the branch of this terminal's checkout, from its ticket on
-    /// (`marcello/feat/NIE-1902-format-switch` → `NIE-1902-format-switch`) — the
-    /// ticket and the branch in one string, which is what tells two worktrees of
-    /// one repo apart. The line under it already says what the terminal is doing,
-    /// so repeating the task up here would cost the width the branch needs.
-    ///
-    /// A name you typed still wins, and a terminal outside a repo keeps the title
-    /// it gives itself.
-    private func headline(_ session: TerminalSession) -> String {
-        if let custom = session.customTitle, !custom.isEmpty { return custom }
-        if let branch = appState.branches[session.id] {
-            let cut = Titles.branchFromTicket(branch)
-            if !cut.isEmpty { return cut }
-        }
-        return session.displayTitle
-    }
-
     /// Full context for a hover tooltip: the whole question/error (rows clip
     /// it to 2 lines), the task it belongs to, and the path.
     private func hoverDetail(_ session: TerminalSession) -> String {
@@ -180,7 +163,7 @@ struct AttentionPanel: View {
                     // answers "how long" without arithmetic, and the wall-clock
                     // hour of a state change answered nothing.
                     HStack(spacing: 5) {
-                        Text(headline(session))
+                        Text(appState.notificationHeadline(for: session))
                             .font(.subheadline).fontWeight(unread ? .bold : .medium)
                             .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
                             .truncationMode(.middle)

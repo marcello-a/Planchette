@@ -117,6 +117,9 @@ enum ControlAPI {
     ) -> [String: Any] {
         var dict = describe(session, in: state)
         let since = session.stateSince
+        // The row's first line, verbatim — a caller drawing its own list gets the
+        // same name the panel shows instead of re-deriving it from the branch.
+        dict["headline"] = state.notificationHeadline(for: session)
         dict["state_label"] = session.state.label
         dict["needs_attention"] = session.state.needsAttention
         dict["unread"] = session.isUnread

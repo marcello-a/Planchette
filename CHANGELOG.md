@@ -9,6 +9,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **A manual for the API** ([docs/API.md](docs/API.md)). Every command, every
+  argument, every field of every object, the socket protocol for programs that
+  are not shells, working recipes, and the rules that keep one agent from
+  breaking another one's work. The agent skill links to it and keeps the short
+  version. It is the contract other programs read, so a command or a response
+  field that changes has to change there in the same commit.
 - **Mark a project active or inactive.** An inactive project is parked: it keeps
   its terminals and its place in the sidebar, reads dimmed with a pause glyph,
   and goes silent — out of the counts, the badges, the dock, the notifications
@@ -34,6 +40,15 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   the old arrangement behind next to a near-duplicate.
 
 ### Changed
+- **The project context menu is grouped by what its items act on.** The three
+  ways to make a project quiet now sit together at the top, ordered by how long
+  the quiet lasts — *Mark project as free*, *Remind me…*, *Mark project
+  inactive* — then what the project *is* (main project, name, colour), then where
+  it lives (folder, window), then *Close Project* alone. Parking used to stand
+  next to "Mark as main project", where it read as a designation rather than as
+  silence, and the attention items sat below a divider in the middle. The
+  notifications panel's project header gets the same three items, and the
+  multi-selection menu the same four groups.
 - **The sidebar rows are restructured around what you actually ask.** A project
   row is its name with the checked-out branch under it, and a terminal row is
   three lines: the ticket of its checkout plus the path, then the branch, then

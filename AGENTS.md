@@ -64,6 +64,10 @@ groups terminals by project. See [README.md](README.md) and
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
 | `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
+The socket API and the `planchette` CLI have their own manual:
+[docs/API.md](docs/API.md). It is the contract other programs read, so a command
+or a response field that changes has to change there in the same commit.
+
 `hook/planchette-hook` is the tiny shell binary Claude Code invokes; it forwards
 the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
 
