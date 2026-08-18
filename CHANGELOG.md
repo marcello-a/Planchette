@@ -8,6 +8,25 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Delete a saved arrangement** — and rename one — from the Arrangements menu.
+  Both were only reachable from the welcome screen's cards, which you stop seeing
+  the moment the workspace has anything in it, so an arrangement you no longer
+  wanted could not be got rid of. Deleting asks first, by name: an arrangement is
+  the one thing "Start fresh" deliberately spares, and nothing can bring one
+  back. What it built stays — the template goes, its projects and terminals do
+  not.
+
+### Changed
+- **Durable terminals are on by default**, so every setting now ships on. New
+  terminals run inside tmux and their agents survive quitting, a crash and
+  Install & Relaunch. The cost is unchanged and stated in Settings: tmux cannot
+  pass the terminal's keyboard protocol through, so `Shift+Enter` reaches an
+  agent as a plain `Enter` — turn it off if multi-line prompts matter more than a
+  surviving agent. A machine without tmux is unaffected (no tmux, no durable
+  session), and a state that already says `false` keeps it: only "never chose"
+  becomes on.
+
 ## [0.2.23] — 2026-08-18
 
 ### Added

@@ -33,7 +33,14 @@ final class AppState: ObservableObject {
     /// New terminals run inside tmux, so their agents outlive the app (see
     /// Durable.swift). Only takes effect for terminals created from now on —
     /// existing ones keep whatever they were created as.
-    @Published var durableTerminals = false {
+    ///
+    /// On by default, like every other setting. The trade-off it carries has not
+    /// changed: tmux cannot pass the terminal's keyboard protocol through, so
+    /// `Shift+Enter` reaches an agent as a plain `Enter`. Whoever needs multi-line
+    /// prompts more than a surviving agent turns it off — the Settings text says
+    /// so. Without tmux installed it does nothing (`Durable.isAvailable` gates
+    /// every new session), so the default cannot break a machine that lacks it.
+    @Published var durableTerminals = true {
         didSet { scheduleSave() }
     }
     /// Windows (beyond the main one) that still need to be opened after a

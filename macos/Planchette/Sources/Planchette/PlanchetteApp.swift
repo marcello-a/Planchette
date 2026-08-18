@@ -495,7 +495,7 @@ struct ArrangementLauncher: View {
                     }
                     Divider()
                     Button(L10n.t(.deleteArrangement), role: .destructive) {
-                        appState.deletePreset(preset.id)
+                        appState.promptDeleteArrangement(preset)
                     }
                 }
             }
@@ -570,9 +570,32 @@ struct ArrangementsMenu: View {
         if appState.presets.isEmpty {
             Text(L10n.t(.noArrangements))
         } else {
+            // One click opens an arrangement — that is what the menu is for, so
+            // the rows stay plain buttons. Renaming and deleting live in a
+            // submenu each: a menu row cannot carry a context menu, and turning
+            // the rows into submenus would cost the click that opens them. Both
+            // were reachable only from the welcome screen, which you stop seeing
+            // as soon as the workspace has anything in it.
             ForEach(appState.presets) { preset in
                 Button("\(preset.name) — \(L10n.t(.arrangementSummary, preset.projects.count, preset.terminalCount))") {
                     appState.openPresetInKeyWindow(preset)
+                }
+            }
+            Divider()
+            Menu(L10n.t(.renameArrangement)) {
+                ForEach(appState.presets) { preset in
+                    Button(preset.name) {
+                        appState.promptText(
+                            title: L10n.t(.saveArrangementTitle), value: preset.name
+                        ) { name in
+                            appState.renamePreset(preset.id, to: name)
+                        }
+                    }
+                }
+            }
+            Menu(L10n.t(.deleteArrangement)) {
+                ForEach(appState.presets) { preset in
+                    Button(preset.name) { appState.promptDeleteArrangement(preset) }
                 }
             }
         }
@@ -852,6 +875,23 @@ extension AppState {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         savePreset(
             name: field.stringValue.trimmingCharacters(in: .whitespaces), fromWindow: windowID)
+    }
+
+    /// Delete a saved arrangement, after confirming it by name.
+    ///
+    /// Confirmed because an arrangement is the one thing "Start fresh"
+    /// deliberately spares (see `PresetStore`), it lives in its own file, and
+    /// nothing in the app can bring one back. What it built is untouched: the
+    /// template goes, the projects and terminals it created stay.
+    func promptDeleteArrangement(_ preset: Preset) {
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.deleteArrangementConfirm, preset.name)
+        alert.informativeText = L10n.t(.deleteArrangementBody)
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: L10n.t(.deleteArrangement))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        deletePreset(preset.id)
     }
 
     func openPresetInKeyWindow(_ preset: Preset) {

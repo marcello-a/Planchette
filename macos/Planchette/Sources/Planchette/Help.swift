@@ -57,6 +57,7 @@ enum Help {
             Entry(.markProjectInactive, .markProjectActiveHelp, where: .helpWhereContextMenu),
             Entry(.arrangements, .arrangementsHelp, where: .helpWhereSidebar),
             Entry(.saveArrangement, .saveArrangementHelp, where: .helpWhereSidebar),
+            Entry(.deleteArrangement, .deleteArrangementBody, where: .helpWhereMenuBar),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
         ]),

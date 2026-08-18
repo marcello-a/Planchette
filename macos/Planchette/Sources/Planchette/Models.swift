@@ -720,13 +720,13 @@ struct PersistedState: Codable {
     var language: AppLanguage = .system
     var appearance: AppAppearance = .system
     var autoUpdateCheck: Bool = true
-    /// Whether new terminals are created durable (tmux-backed). Opt-in, and it
-    /// has to stay that way: tmux cannot pass the terminal's keyboard protocol
-    /// through, so `Shift+Enter` and friends reach an agent as a plain `Enter`
-    /// (verified against tmux 3.7b at both `extended-keys on` and `always`).
-    /// Durability is worth that trade for a long-running agent; it is not worth
-    /// imposing on every terminal.
-    var durableTerminals: Bool = false
+    /// Whether new terminals are created durable (tmux-backed). On by default
+    /// since 0.2.24, with its cost stated in Settings: tmux cannot pass the
+    /// terminal's keyboard protocol through, so `Shift+Enter` and friends reach an
+    /// agent as a plain `Enter` (verified against tmux 3.7b at both
+    /// `extended-keys on` and `always`). A stored `false` is a choice the user
+    /// made and survives; only a state that never carried the key comes up on.
+    var durableTerminals: Bool = true
     /// Kept only so states written by 0.2.13 still decode. That version briefly
     /// forced the setting on; nothing acts on this now.
     var durableDefaultApplied: Bool = true
@@ -763,7 +763,7 @@ struct PersistedState: Codable {
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
-        durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? false
+        durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? true
         durableDefaultApplied =
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
     }

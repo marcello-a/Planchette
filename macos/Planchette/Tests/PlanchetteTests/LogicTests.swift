@@ -505,10 +505,22 @@ final class DurableTests: XCTestCase {
         XCTAssertFalse(session.durable)
     }
 
-    // Opt-in, and it must stay that way: tmux cannot pass Shift+Enter through.
-    func testSettingDefaultsOffForAFreshState() throws {
+    // On for a fresh state, like every other setting. The cost has not changed --
+    // tmux cannot pass Shift+Enter through -- so Settings states it and whoever
+    // needs multi-line prompts turns it off. A state that already carries `false`
+    // is a choice and survives (see below); this is only about never having chosen.
+    func testSettingDefaultsOnForAFreshState() throws {
         let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
-        XCTAssertFalse(state.durableTerminals, "durability costs keyboard fidelity")
+        XCTAssertTrue(state.durableTerminals, "every setting ships on")
+    }
+
+    // A terminal is still only durable when tmux is actually there: the default
+    // must not be able to hand a machine without tmux a broken session.
+    func testDurabilityStillNeedsTmux() {
+        XCTAssertNil(
+            Durable.tmuxPath(isExecutable: { _ in false }),
+            "no tmux found means no durable session, whatever the setting says")
+        XCTAssertNotNil(Durable.tmuxPath(isExecutable: { _ in true }))
     }
 
     // 0.2.13 briefly forced it on. Whatever a state says now is respected —
