@@ -84,6 +84,7 @@ The CLI prints the whole JSON response on stdout, pretty-printed and key-sorted.
 | `session.list` | every terminal |
 | `session.get` | one terminal (default: the caller) |
 | `session.new` | open a terminal |
+| `session.focus` | switch to a terminal |
 | `session.prompt` | type text into a terminal |
 | `session.read` | read a terminal's screen or scrollback |
 | `session.wait` | block until a terminal reaches a state |
@@ -120,6 +121,29 @@ project, so "another terminal here" does not scatter projects across the sidebar
 It does not steal focus unless you ask: leave the user where they are.
 
 Returns `{"session": session}`.
+
+### session.focus
+
+| Argument | Type | Default |
+|---|---|---|
+| `id` | UUID string | the calling terminal |
+
+Shows a terminal that already exists: raises its window, switches to its
+project, makes it the active tab, and marks it seen. `session.new` can only
+focus the terminal it just created, so without this a caller could name the
+terminal that wants attention but not take you to it.
+
+That is the gap it fills. Anything displaying Planchette's state outside the app
+— a status bar, a dashboard pane, an agent triaging its siblings — can list what
+is waiting and then act on the answer:
+
+```bash
+id=$("$PLANCHETTE_CLI" notification list --unread-only \
+  | python3 -c 'import json,sys; n=json.load(sys.stdin)["result"]["notifications"]; print(n[0]["id"] if n else "")')
+[ -n "$id" ] && "$PLANCHETTE_CLI" session focus --id "$id"
+```
+
+Returns `{"session": session}`, or `{"ok": false, "error": "no such session"}`.
 
 ### session.prompt
 

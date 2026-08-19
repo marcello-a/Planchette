@@ -23,6 +23,7 @@ enum ControlAPI {
         case sessionList = "session.list"
         case sessionGet = "session.get"
         case sessionNew = "session.new"
+        case sessionFocus = "session.focus"
         case sessionPrompt = "session.prompt"
         case sessionRead = "session.read"
         case sessionWait = "session.wait"
@@ -243,6 +244,19 @@ enum ControlAPI {
                 return encode(ok: false, error: "terminal could not be started")
             }
             if request.bool("focus") == true { state.select(session: session) }
+            return encode(ok: true, result: ["session": describe(session, in: state)])
+
+        case .sessionFocus:
+            // `session.new --focus` could already do this, but only for a
+            // terminal it had just created — there was no way to say "show me
+            // that one". A status display outside the app (a dashboard, a strip,
+            // an agent reporting on its siblings) can list what needs attention
+            // and then take you to it, instead of naming a terminal you have to
+            // go and find yourself.
+            guard let session = resolve(request, state: state) else {
+                return encode(ok: false, error: "no such session")
+            }
+            state.select(session: session)
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
         case .sessionPrompt:

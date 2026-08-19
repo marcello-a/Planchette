@@ -8,6 +8,16 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **`session.focus` in the socket API** — switch to a terminal that already
+  exists. `session.new` could focus one, but only the terminal it had just
+  created, so a caller could tell you which terminal was waiting and then leave
+  you to go and find it. Anything showing Planchette's state from outside the
+  app — a status pane, a dashboard strip, an agent triaging its siblings — can
+  now list what needs attention and take you straight there. It raises the
+  window, switches to the project, makes the terminal the active tab and marks
+  it seen: the same `select(session:)` the app uses when you click a row.
+
 ## [0.2.25] — 2026-08-20
 
 ### Fixed
