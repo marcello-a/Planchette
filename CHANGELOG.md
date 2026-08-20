@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.26] — 2026-08-20
+
 ### Added
 - **`session.focus` in the socket API** — switch to a terminal that already
   exists. `session.new` could focus one, but only the terminal it had just
@@ -17,6 +19,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   now list what needs attention and take you straight there. It raises the
   window, switches to the project, makes the terminal the active tab and marks
   it seen: the same `select(session:)` the app uses when you click a row.
+  Thanks to @Vitalii-Samsoniuk!
+
+### Fixed
+- **Idle CPU no longer scales with the animated state icons.** The running
+  robot's timeline re-applied its tooltip and accessibility modifiers on every
+  0.18s frame, and each tick escalated into a full window layout pass — about
+  a third of the main thread in a working workspace, in the background as much
+  as in front. A frame step is a canvas redraw now, and an app in the
+  background shows a still sprite with no timeline at all. Alongside: no-op
+  state writes no longer invalidate every window (hook events re-carry the
+  same values constantly), terminals in minimized or covered windows stop
+  being drawn, the per-hook git-branch lookup left the main thread, and the
+  menu-bar state images are cached. Measured on the same 16-terminal
+  workspace: ~7.5% → ~1.2% CPU active, ~7.0% → ~0.8% in the background.
 
 ## [0.2.25] — 2026-08-20
 
