@@ -64,6 +64,12 @@ final class AIAssist {
         self.appState = appState
     }
 
+    /// Drop the throttle record of a closed terminal, so `lastRun` cannot grow
+    /// for the lifetime of the app.
+    func forget(_ id: UUID) {
+        lastRun[id] = nil
+    }
+
     /// Called after Stop/Notification hook events.
     func sessionUpdated(_ id: UUID, force: Bool = false) {
         guard let appState, appState.aiEnabled else { return }

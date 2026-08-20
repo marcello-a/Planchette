@@ -187,6 +187,23 @@ final class GhosttySurfaceNSView: NSView {
 
     // MARK: Scrollback
 
+    /// Free a `ghostty_text_s` the way the pinned libghostty (v1.3.1) actually
+    /// expects it. The C header declares `ghostty_surface_free_text(surface,
+    /// text)`, but the compiled Zig export is `ghostty_surface_free_text(ptr:
+    /// *Text)` — one parameter, the text struct, in the FIRST argument slot
+    /// (upstream header/ABI mismatch, verified by disassembly). Called as the
+    /// header suggests, the function reads the text pointer out of the
+    /// *surface* struct, finds null, and frees nothing — so every read leaked
+    /// its whole buffer, at screen-poll rate (1.5s × every agent terminal).
+    /// Passing the text pointer as the first argument matches the real ABI;
+    /// the second argument is never read. Re-check when bumping vendor/ghostty
+    /// (AGENTS.md rule 2).
+    private static func freeText(_ text: inout ghostty_text_s) {
+        withUnsafeMutablePointer(to: &text) { ptr in
+            ghostty_surface_free_text(UnsafeMutableRawPointer(ptr), nil)
+        }
+    }
+
     /// The full screen buffer (scrollback + screen) as plain text, for
     /// persistence. Plain text only — colors/styling aren't captured.
     func readScrollback() -> String? {
@@ -199,7 +216,7 @@ final class GhosttySurfaceNSView: NSView {
                 tag: GHOSTTY_POINT_SCREEN, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
             rectangle: false)
         guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
-        defer { ghostty_surface_free_text(surface, &text) }
+        defer { Self.freeText(&text) }
         guard let ptr = text.text else { return nil }
         return String(cString: ptr)
     }
@@ -218,7 +235,7 @@ final class GhosttySurfaceNSView: NSView {
                 tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
             rectangle: false)
         guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
-        defer { ghostty_surface_free_text(surface, &text) }
+        defer { Self.freeText(&text) }
         guard let ptr = text.text else { return nil }
         return String(cString: ptr)
     }

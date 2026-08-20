@@ -636,6 +636,8 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
         liveAgentIDs.remove(id)
+        escalatedIDs.remove(id)
+        aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
             groups[idx].sessionIDs.removeAll { $0 == id }
             if groups[idx].activeSessionID == id {
@@ -740,6 +742,8 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
             liveAgentIDs.remove(sid)
+            escalatedIDs.remove(sid)
+            aiAssist.forget(sid)
         }
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
