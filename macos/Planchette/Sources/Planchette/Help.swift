@@ -58,6 +58,8 @@ enum Help {
             Entry(.arrangements, .arrangementsHelp, where: .helpWhereSidebar),
             Entry(.saveArrangement, .saveArrangementHelp, where: .helpWhereSidebar),
             Entry(.deleteArrangement, .deleteArrangementBody, where: .helpWhereMenuBar),
+            Entry(.collapseAllProjects, nil, where: .helpWhereSidebar),
+            Entry(.peekCollapsedTitle, .peekCollapsedHelp, where: .helpWhereSettings),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
         ]),

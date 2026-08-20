@@ -120,6 +120,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.t(.projects)) {
+                Toggle(L10n.t(.peekCollapsedTitle), isOn: $appState.peekCollapsedProjects)
+                    .help(L10n.t(.peekCollapsedHelp))
+                Text(L10n.t(.peekCollapsedHelp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))

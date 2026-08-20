@@ -730,6 +730,9 @@ struct PersistedState: Codable {
     /// Kept only so states written by 0.2.13 still decode. That version briefly
     /// forced the setting on; nothing acts on this now.
     var durableDefaultApplied: Bool = true
+    /// Whether a collapsed sidebar project still lists its terminals with an
+    /// unread question or error. On by default, like every other setting.
+    var peekCollapsedProjects: Bool = true
 
     init(
         groups: [SessionGroup],
@@ -740,7 +743,8 @@ struct PersistedState: Codable {
         appearance: AppAppearance,
         autoUpdateCheck: Bool,
         durableTerminals: Bool,
-        durableDefaultApplied: Bool = true
+        durableDefaultApplied: Bool = true,
+        peekCollapsedProjects: Bool = true
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -751,6 +755,7 @@ struct PersistedState: Codable {
         self.appearance = appearance
         self.autoUpdateCheck = autoUpdateCheck
         self.durableTerminals = durableTerminals
+        self.peekCollapsedProjects = peekCollapsedProjects
     }
 
     init(from decoder: Decoder) throws {
@@ -766,5 +771,7 @@ struct PersistedState: Codable {
         durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? true
         durableDefaultApplied =
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
+        peekCollapsedProjects =
+            try c.decodeIfPresent(Bool.self, forKey: .peekCollapsedProjects) ?? true
     }
 }

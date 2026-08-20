@@ -43,6 +43,12 @@ final class AppState: ObservableObject {
     @Published var durableTerminals = true {
         didSet { scheduleSave() }
     }
+    /// A collapsed sidebar project still lists its terminals with an unread
+    /// question or error (the "peek"). On by default — folding a project is for
+    /// space, not for losing a prompt. Off keeps a folded project fully folded.
+    @Published var peekCollapsedProjects = true {
+        didSet { scheduleSave() }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -98,6 +104,7 @@ final class AppState: ObservableObject {
             appearance = saved.appearance
             autoUpdateCheck = saved.autoUpdateCheck
             durableTerminals = saved.durableTerminals
+            peekCollapsedProjects = saved.peekCollapsedProjects
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
@@ -1446,7 +1453,8 @@ final class AppState: ObservableObject {
             language: language,
             appearance: appearance,
             autoUpdateCheck: autoUpdateCheck,
-            durableTerminals: durableTerminals
+            durableTerminals: durableTerminals,
+            peekCollapsedProjects: peekCollapsedProjects
         )
         do {
             let encoder = JSONEncoder()
@@ -1484,6 +1492,7 @@ final class AppState: ObservableObject {
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
         durableTerminals = state.durableTerminals
+        peekCollapsedProjects = state.peekCollapsedProjects
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -1590,6 +1599,7 @@ final class AppState: ObservableObject {
         appearance = previous?.appearance ?? appearance
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
         durableTerminals = previous?.durableTerminals ?? durableTerminals
+        peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

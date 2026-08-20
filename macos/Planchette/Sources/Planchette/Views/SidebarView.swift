@@ -154,7 +154,12 @@ struct SidebarView: View {
     /// Matches AttentionPanel's header (font + 12/10/6 insets) so the left and
     /// right panels line up exactly.
     private var projectsHeader: some View {
-        HStack(spacing: 8) {
+        // Collapse all / expand all: one button, whichever direction still has
+        // work to do. "All collapsed" is the resolved state, so after a mixed
+        // state the first click folds everything and the second opens it.
+        let allIDs = appState.window(for: windowID)?.groupIDs ?? []
+        let allCollapsed = !allIDs.isEmpty && Set(allIDs).isSubset(of: collapsedGroups)
+        return HStack(spacing: 8) {
             Text(L10n.t(.projects)).font(.headline)
             Button {
                 appState.promptNewProject(inWindow: windowID)
@@ -172,6 +177,21 @@ struct SidebarView: View {
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
             .help(L10n.t(.newFolderHelp))
+            if !allIDs.isEmpty {
+                Button {
+                    if allCollapsed {
+                        collapsedGroups.subtract(allIDs)
+                    } else {
+                        collapsedGroups.formUnion(allIDs)
+                    }
+                } label: {
+                    Image(systemName: allCollapsed
+                        ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(L10n.t(allCollapsed ? .expandAllProjects : .collapseAllProjects))
+            }
             Spacer()
             Button { withAnimation(.easeInOut(duration: 0.25)) { minified = true } } label: {
                 Image(systemName: "sidebar.leading")
@@ -622,6 +642,9 @@ struct SidebarView: View {
     /// lose a prompt. An expanded project already shows everything, and a parked
     /// or snoozed one is silent on purpose (`AppState.isMuted`).
     private func peeking(_ group: SessionGroup) -> [TerminalSession] {
+        // The peek is a Setting: whoever folds projects to get space and wants
+        // them to STAY folded can turn it off (`peekCollapsedProjects`).
+        guard appState.peekCollapsedProjects else { return [] }
         guard collapsedGroups.contains(group.id) else { return [] }
         return appState.sessions(in: group).filter {
             $0.state.needsAttention && $0.isUnread && !appState.isMuted($0)
