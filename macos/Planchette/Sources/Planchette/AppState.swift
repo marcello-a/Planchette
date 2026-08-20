@@ -180,6 +180,13 @@ final class AppState: ObservableObject {
             // Nothing to match against (e.g. a plain shell, or an agent whose
             // patterns aren't verified yet) → don't even read the surface.
             guard !rules.isEmpty else { continue }
+            // Under hook authority the screen may only escalate to waiting —
+            // and only while the terminal does not already need attention
+            // (see AttentionState.fromScreen). When it does, no reading can
+            // change anything, so skip the read: it locks the renderer and
+            // dumps the viewport, per terminal, on every tick.
+            let hookAuthority = hasHookAuthority(id)
+            if hookAuthority && session.state.needsAttention { continue }
             guard let view = TerminalRegistry.shared.existingView(id),
                   let text = view.readViewport()
             else { continue }
@@ -188,7 +195,7 @@ final class AppState: ObservableObject {
             guard let newState = AttentionState.fromScreen(
                 detection,
                 agent: session.agentKind,
-                hookAuthority: hasHookAuthority(id),
+                hookAuthority: hookAuthority,
                 current: session.state)
             else { continue }
             // No message: the screen knows a prompt is up, not what it asks.
@@ -250,7 +257,10 @@ final class AppState: ObservableObject {
 
     func updateWindow(_ id: UUID, _ mutate: (inout WindowModel) -> Void) {
         guard let idx = windows.firstIndex(where: { $0.id == id }) else { return }
-        mutate(&windows[idx])
+        var window = windows[idx]
+        mutate(&window)
+        guard window != windows[idx] else { return }
+        windows[idx] = window
         scheduleSave()
     }
 
@@ -487,7 +497,12 @@ final class AppState: ObservableObject {
                 guard let branch = Worktrees.currentBranch(of: entry.key) else { return }
                 for id in entry.value { found[id] = branch }
             }
-            await MainActor.run { [weak self] in self?.branches = found }
+            await MainActor.run { [weak self] in
+                // Publish only a real change: an unconditional assignment
+                // invalidated every observing view on every poll tick.
+                guard let self, self.branches != found else { return }
+                self.branches = found
+            }
         }
     }
 
@@ -766,16 +781,28 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
+    // The three mutation helpers publish only a REAL change. A no-op write
+    // still fires objectWillChange (a @Published set has no equality check) and
+    // schedules a save — and hook events produce no-op writes constantly: every
+    // event re-carries the same Claude session id and transcript path, every
+    // OSC title repeat re-writes the same title. Two busy agents turned that
+    // into a steady stream of full-window SwiftUI re-layouts plus a state.json
+    // write per second, for state that never changed.
+
     func update(_ id: UUID, _ mutate: (inout TerminalSession) -> Void) {
         guard var session = sessions[id] else { return }
         mutate(&session)
+        guard session != sessions[id] else { return }
         sessions[id] = session
         scheduleSave()
     }
 
     func updateGroup(_ id: UUID, _ mutate: (inout SessionGroup) -> Void) {
         guard let idx = groups.firstIndex(where: { $0.id == id }) else { return }
-        mutate(&groups[idx])
+        var group = groups[idx]
+        mutate(&group)
+        guard group != groups[idx] else { return }
+        groups[idx] = group
         scheduleSave()
     }
 

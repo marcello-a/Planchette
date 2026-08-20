@@ -49,6 +49,16 @@ final class GhosttySurfaceNSView: NSView {
             self, selector: #selector(windowDidChangeScreen(_:)),
             name: NSWindow.didChangeScreenNotification, object: nil)
 
+        // The renderer must know when nobody can see this surface, or it keeps
+        // drawing every frame of output — for background tabs, minimized
+        // windows and a hidden app alike. Eight terminals with agents
+        // streaming kept the app at double-digit CPU doing exactly that.
+        // Registered for ALL windows (like the screen observer above) because
+        // the view moves between windows; the handler filters for its own.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowOcclusionChanged(_:)),
+            name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+
         var cfg = ghostty_surface_config_new()
         cfg.platform_tag = GHOSTTY_PLATFORM_MACOS
         cfg.platform = ghostty_platform_u(
@@ -82,6 +92,26 @@ final class GhosttySurfaceNSView: NSView {
             self.surface = ghostty_surface_new(app, &cfg)
         }
         if surface == nil { NSLog("ghostty_surface_new failed") }
+        // Born hidden: the registry creates surfaces that may never attach to a
+        // window this session (restore builds all of them eagerly; the control
+        // API builds them for background projects). viewDidMoveToWindow flips
+        // this the moment the surface actually appears. The terminal itself is
+        // unaffected — PTY, state and reads work occluded; only drawing stops.
+        if let surface { ghostty_surface_set_occlusion(surface, false) }
+    }
+
+    /// Renderer visibility = attached to a window AND that window is visible
+    /// (not miniaturized, not on another Space, not fully covered).
+    private func syncOcclusion() {
+        guard let surface else { return }
+        let visible = window?.occlusionState.contains(.visible) ?? false
+        ghostty_surface_set_occlusion(surface, visible)
+    }
+
+    @objc private func windowOcclusionChanged(_ notification: Notification) {
+        guard let window, let object = notification.object as? NSWindow,
+              window == object else { return }
+        syncOcclusion()
     }
 
     required init?(coder: NSCoder) { fatalError("unsupported") }
@@ -242,6 +272,9 @@ final class GhosttySurfaceNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // Covers attach AND detach: window == nil (a background tab, a closed
+        // window) reads as not visible.
+        syncOcclusion()
         viewDidChangeBackingProperties()
         // SwiftUI re-attaches NSViews on structural updates; the first
         // responder is lost in the process. Reclaim it if we're the active

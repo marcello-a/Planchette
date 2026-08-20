@@ -78,8 +78,10 @@ final class AIAssist {
         lastRun[id] = Date()
 
         let cwd = session.currentDirectory
-        let branch = Titles.gitBranch(forDirectory: cwd)
         Task.detached(priority: .utility) {
+            // Off-main (rule 6): gitBranch shells out, and this runs on every
+            // Stop/Notification hook — it was a subprocess on the main thread.
+            let branch = Titles.gitBranch(forDirectory: cwd)
             let tail = TranscriptReader.tail(path: transcriptPath)
             guard tail.lastUserPrompt != nil || tail.lastAssistantText != nil else { return }
             guard let result = Self.condense(tail: tail, cwd: cwd, branch: branch) else { return }

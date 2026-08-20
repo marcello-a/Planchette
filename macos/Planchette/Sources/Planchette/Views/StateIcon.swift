@@ -141,12 +141,21 @@ enum StatePixels {
         }
     }
 
+    /// Images built once per (state, size) — the menu bar re-evaluates its label
+    /// on every state change, and allocating a fresh NSImage each time was pure
+    /// churn. Safe to cache across appearance changes: the drawing handler runs
+    /// at draw time, so the colour resolves against the current appearance.
+    @MainActor
+    private static var imageCache: [String: NSImage] = [:]
+
     /// The sprite as an image for AppKit surfaces (the menu bar). Not a template
     /// image: the state colour is the other half of the information. Still — a
     /// status item redrawn four times a second would be a battery bug, not a
     /// feature.
     @MainActor
     static func nsImage(_ state: AttentionState, pointSize: CGFloat = 13) -> NSImage {
+        let key = "\(state.rawValue)-\(pointSize)"
+        if let cached = imageCache[key] { return cached }
         let image = NSImage(size: NSSize(width: pointSize, height: pointSize), flipped: true) { _ in
             let pixel = pointSize / CGFloat(size)
             NSColor(state.tint).setFill()
@@ -157,6 +166,7 @@ enum StatePixels {
             return true
         }
         image.accessibilityDescription = state.label
+        imageCache[key] = image
         return image
     }
 }
@@ -215,24 +225,63 @@ struct PixelIcon: View {
     }
 }
 
+/// Whether the app is frontmost, as an observable — so views can stop work
+/// nobody can see. Its one consumer is the sprite animation below.
+@MainActor
+final class AppActivity: ObservableObject {
+    static let shared = AppActivity()
+    @Published private(set) var isActive: Bool
+
+    private init() {
+        isActive = NSApp?.isActive ?? true
+        let center = NotificationCenter.default
+        center.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.isActive = true }
+        }
+        center.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.isActive = false }
+        }
+    }
+}
+
 /// A state as a pixel sprite, tinted by the state itself. Animated states run
 /// off a shared timeline, so every robot on screen steps in time and no view
 /// holds a timer of its own.
+///
+/// The timeline pauses while the app is in the background: every tick
+/// invalidates the hosting view, and a couple of running robots at the 0.18s
+/// cadence kept the whole app at double-digit CPU while nobody was looking.
+/// The static modifiers (frame, tooltip, accessibility) sit OUTSIDE the
+/// timeline closure for the same reason — a frame step must stay a Canvas
+/// redraw, not a re-attach of view chrome.
 struct StateIcon: View {
     let state: AttentionState
     var size: CGFloat = 13
     /// Overrides the state's own colour.
     var tint: Color?
 
+    @ObservedObject private var activity = AppActivity.shared
+
     var body: some View {
-        if StatePixels.isAnimated(state) {
-            TimelineView(.periodic(from: .now, by: StatePixels.frameDuration)) { context in
-                sprite(frame: Int(context.date.timeIntervalSinceReferenceDate
-                    / StatePixels.frameDuration))
+        Group {
+            // A static sprite while the app is in the background — no timeline,
+            // no ticks. NOT the .animation schedule with paused:, which wakes
+            // with the display link and measured 4x the cost of .periodic.
+            if StatePixels.isAnimated(state) && activity.isActive {
+                TimelineView(.periodic(from: .now, by: StatePixels.frameDuration)) { context in
+                    sprite(frame: Int(context.date.timeIntervalSinceReferenceDate
+                        / StatePixels.frameDuration))
+                }
+            } else {
+                sprite(frame: 0)
             }
-        } else {
-            sprite(frame: 0)
         }
+        .accessibilityLabel(state.label)
+        .help(state.label)
     }
 
     private func sprite(frame: Int) -> some View {
@@ -245,8 +294,11 @@ struct StateIcon: View {
                 context.fill(Path(rect), with: .color(color))
             }
         }
+        // The fixed frame stays ON the Canvas, inside the timeline content: a
+        // tick then updates a view whose geometry cannot change, so it stays a
+        // redraw. With the frame outside, every tick re-proposed the content
+        // size and escalated into a full NSHostingView layout pass — measured
+        // at 4x the CPU of this shape.
         .frame(width: size, height: size)
-        .accessibilityLabel(state.label)
-        .help(state.label)
     }
 }
