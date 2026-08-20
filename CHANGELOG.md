@@ -8,6 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.25] — 2026-08-20
+
+### Fixed
+- **Terminal reads no longer leak memory.** Every read of a terminal's text —
+  the 1.5s screen poll on each agent terminal, `session.read`, the scrollback
+  capture on quit/hide — leaked its whole buffer, because the pinned
+  libghostty's C header declares `ghostty_surface_free_text(surface, text)`
+  while the compiled export takes only the text pointer: called as the header
+  says, it freed nothing. A workday instance grew by hundreds of MB. The call
+  now matches the real ABI (verified by disassembly), and a comment at the
+  shim warns whoever bumps vendor/ghostty. Two small unbounded growths went
+  with it: the escalation and AI-throttle records of closed terminals are
+  dropped on close.
+
 ## [0.2.24] — 2026-08-18
 
 ### Added
