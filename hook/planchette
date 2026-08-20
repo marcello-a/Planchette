@@ -7,6 +7,7 @@ one JSON request per connection, one JSON response back.
 
     planchette session list
     planchette session new --cwd "$PWD"
+    planchette session focus --id <uuid>
     planchette session prompt --id <uuid> --text "review the diff"
     planchette session wait --id <uuid> --until ready --timeout-ms 120000
     planchette session read --id <uuid> --lines 80
@@ -27,7 +28,7 @@ import socket
 import sys
 
 COMMANDS = {
-    "session": ["list", "get", "new", "prompt", "read", "wait"],
+    "session": ["list", "get", "new", "focus", "prompt", "read", "wait"],
     "project": ["list"],
     # The read side of the notifications panel: the same rows, the same order,
     # every fact the panel prints (state, prompt, age, branch, tags, project).
