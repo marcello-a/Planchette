@@ -369,18 +369,54 @@ final class GhosttySurfaceNSView: NSView {
 
     override func rightMouseDragged(with event: NSEvent) { sendMousePos(event) }
 
-    /// Native terminal context menu (Copy / Paste / Select All), driven by
-    /// ghostty's own clipboard binding actions.
+    /// The link under the pointer, kept current by ghostty's
+    /// MOUSE_OVER_LINK action (set from GhosttyRuntime). nil = no link there.
+    var hoveredLinkURL: String?
+
+    /// Native terminal context menu (Copy / Paste / Open Link / Select All),
+    /// driven by ghostty's own clipboard binding actions. Every item is always
+    /// listed and disabled when it cannot act — a menu whose items come and go
+    /// makes you wonder whether the feature exists at all.
     override func menu(for event: NSEvent) -> NSMenu? {
         guard event.type == .rightMouseDown, let surface else { return nil }
         let menu = NSMenu()
-        if ghostty_surface_has_selection(surface) {
-            menu.addItem(withTitle: L10n.t(.menuCopy), action: #selector(copy(_:)), keyEquivalent: "")
-        }
-        menu.addItem(withTitle: L10n.t(.menuPaste), action: #selector(paste(_:)), keyEquivalent: "")
+        // Enabled is decided here, not by the responder chain: the conditions
+        // (a selection, a string on the clipboard, a link under the pointer)
+        // are surface state, and AppKit's auto-validation cannot see them.
+        menu.autoenablesItems = false
+
+        let copy = NSMenuItem(
+            title: L10n.t(.menuCopy), action: #selector(copy(_:)), keyEquivalent: "")
+        copy.target = self
+        copy.isEnabled = ghostty_surface_has_selection(surface)
+        menu.addItem(copy)
+
+        let paste = NSMenuItem(
+            title: L10n.t(.menuPaste), action: #selector(paste(_:)), keyEquivalent: "")
+        paste.target = self
+        paste.isEnabled = NSPasteboard.general.string(forType: .string) != nil
+        menu.addItem(paste)
+
+        let openLink = NSMenuItem(
+            title: L10n.t(.menuOpenLink), action: #selector(openLink(_:)), keyEquivalent: "")
+        openLink.target = self
+        openLink.isEnabled = hoveredLinkURL != nil
+        menu.addItem(openLink)
+
         menu.addItem(.separator())
-        menu.addItem(withTitle: L10n.t(.menuSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
+        let selectAll = NSMenuItem(
+            title: L10n.t(.menuSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
+        selectAll.target = self
+        menu.addItem(selectAll)
         return menu
+    }
+
+    /// Open the link the pointer is on — same scheme policy as a ⌘-click.
+    @objc private func openLink(_ sender: Any?) {
+        guard let raw = hoveredLinkURL,
+              let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return }
+        GhosttyRuntime.openExternalURL(url)
     }
 
     // Clicking an unfocused terminal should register the click, not just focus.

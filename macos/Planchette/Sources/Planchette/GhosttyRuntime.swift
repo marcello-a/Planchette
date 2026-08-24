@@ -213,6 +213,22 @@ final class GhosttyRuntime {
             }
             return true
 
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            // The pointer entered (url set) or left (empty) a detected link.
+            // Kept on the view so the context menu knows whether "Open Link"
+            // can act. The string is built HERE: the C buffer only lives for
+            // this callback.
+            guard let view = view(for: target) else { return false }
+            let link = action.action.mouse_over_link
+            var url: String?
+            if let ptr = link.url, link.len > 0 {
+                url = String(
+                    bytes: UnsafeRawBufferPointer(start: ptr, count: Int(link.len)),
+                    encoding: .utf8)
+            }
+            DispatchQueue.main.async { view.hoveredLinkURL = url }
+            return true
+
         case GHOSTTY_ACTION_OPEN_URL:
             // ⌘-click on a detected link (ghostty reconstructs URLs across soft
             // line wraps). Open it in the default app.
@@ -230,8 +246,9 @@ final class GhosttyRuntime {
     }
 
     /// Open a URL from terminal content, restricted to safe web/mail schemes so
-    /// untrusted output can't trigger arbitrary URL-scheme handlers.
-    private static func openExternalURL(_ url: URL) {
+    /// untrusted output can't trigger arbitrary URL-scheme handlers. Shared by
+    /// ⌘-click (OPEN_URL above) and the context menu's "Open Link" — one policy.
+    static func openExternalURL(_ url: URL) {
         let allowed: Set<String> = ["http", "https", "mailto", "ftp", "ftps", "file"]
         guard let scheme = url.scheme?.lowercased(), allowed.contains(scheme) else {
             NSLog("blocked opening url with scheme: \(url.scheme ?? "none")")

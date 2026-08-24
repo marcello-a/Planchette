@@ -68,6 +68,7 @@ enum Help {
             Entry(.addTerminalHelp, nil, where: .helpWhereTabBar),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
+            Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
             Entry(.tags, .tagsHelp, where: .helpWhereContextMenu),
             Entry(.startupCommand, .startupCommandHelp, where: .helpWhereContextMenu),
             Entry(.rename, .renameHelp, where: .helpWhereContextMenu),
