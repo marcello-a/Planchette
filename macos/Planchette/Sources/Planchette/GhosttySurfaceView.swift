@@ -15,6 +15,12 @@ final class GhosttySurfaceNSView: NSView {
     /// Dropped images are only pasted with ⌃V when it is — in a plain shell ⌃V
     /// is quoted-insert, so there we type the escaped path instead.
     var hasLiveClaude: () -> Bool = { false }
+    /// Whether this terminal runs inside tmux (fixed at creation, like the
+    /// session's `durable` flag). tmux holds a mouse grab at all times
+    /// (`mouse on` in our config), so offering a right-click to the surface
+    /// would always consume it and the native context menu could never open —
+    /// durable terminals keep the click for the menu instead.
+    var isDurableTerminal = false
 
     init(
         app: ghostty_app_t,
@@ -346,10 +352,15 @@ final class GhosttySurfaceNSView: NSView {
     // Right click, exactly like Ghostty's own app: offer it to the surface
     // first (apps with mouse reporting, e.g. TUIs, may consume it); only when
     // unconsumed does super trigger `menu(for:)` — the context menu.
+    //
+    // Durable terminals skip the offer: tmux (`mouse on`) reports as always
+    // grabbing the mouse, so the surface would consume every right-click and
+    // the menu would never open — while tmux itself does nothing with it (its
+    // own menus are unbound in our config). The menu wins there.
     override func rightMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         sendMousePos(event)
-        guard let surface else { return super.rightMouseDown(with: event) }
+        guard let surface, !isDurableTerminal else { return super.rightMouseDown(with: event) }
         if ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RIGHT, event.modifierFlags.ghosttyMods) {
             return   // consumed by the terminal app
@@ -359,7 +370,9 @@ final class GhosttySurfaceNSView: NSView {
 
     override func rightMouseUp(with event: NSEvent) {
         sendMousePos(event)
-        guard let surface else { return super.rightMouseUp(with: event) }
+        // Mirror rightMouseDown: a durable terminal never reported the press,
+        // so it must not report an orphan release either.
+        guard let surface, !isDurableTerminal else { return super.rightMouseUp(with: event) }
         if ghostty_surface_mouse_button(
             surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_RIGHT, event.modifierFlags.ghosttyMods) {
             return
@@ -924,6 +937,10 @@ final class TerminalRegistry {
                 && appState.groups.first { $0.id == session.groupID }?.activeSessionID == id
         }
         view.hasLiveClaude = { [weak appState] in appState?.hasLiveClaude(id) ?? false }
+        // Keyed on the command, not the session flag: a durable-flagged session
+        // without tmux installed runs a plain shell, and its right-clicks must
+        // keep the normal offer-to-surface path.
+        view.isDurableTerminal = command != nil
         // A plausible size before the first layout. SwiftUI corrects this the
         // moment it renders the view, but a surface created outside the view tree
         // (the control API) would otherwise start its PTY at 1x1 and every TUI

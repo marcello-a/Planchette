@@ -99,6 +99,27 @@ enum Durable {
         set -g allow-passthrough on
         set -g focus-events on
 
+        # The mouse. Without `mouse on`, tmux never asks the terminal for mouse
+        # events — ghostty then falls back to its alternate-screen behaviour and
+        # converts every wheel tick into an arrow key (tmux always holds the
+        # terminal in the alternate screen), so scrolling at a shell prompt
+        # cycled command history instead of showing output: the pane's real
+        # history lives inside tmux, where ghostty's own scrollback cannot
+        # reach. With it, tmux's default wheel bindings do the right thing per
+        # pane: scroll OUR history at a prompt, forward to a program that asked
+        # for the mouse, arrow keys for a full-screen program that did not
+        # (less, vim). Selections made by mouse land on the system clipboard
+        # via set-clipboard (OSC 52) above.
+        set -g mouse on
+        # No tmux context menus — Planchette shows its own native menu instead
+        # (the app never reports a right-click into a durable terminal).
+        unbind -n MouseDown3Pane
+        unbind -n M-MouseDown3Pane
+        unbind -n MouseDown3Status
+        unbind -n M-MouseDown3Status
+        unbind -n MouseDown3StatusLeft
+        unbind -n M-MouseDown3StatusLeft
+
         """
 
     /// Write the config if it is missing or out of date, so an app update's
@@ -152,6 +173,14 @@ enum Durable {
             parts.append("-e")
             parts.append(singleQuoted("\(key)=\(value)"))
         }
+        // Re-source the config on every attach. `-f` only applies when this
+        // command is the one that starts the server — without this, a server
+        // started by an older app version keeps the old settings until a
+        // reboot, and a config fix (like `mouse on`) would never reach the
+        // very users it is for. Sourcing twice is idempotent.
+        parts.append("\\;")
+        parts.append("source-file")
+        parts.append(singleQuoted(configURL.path))
         return parts.joined(separator: " ")
     }
 

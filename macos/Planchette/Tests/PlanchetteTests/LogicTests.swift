@@ -358,7 +358,15 @@ final class DurableTests: XCTestCase {
     func testAttachCommandCreatesOrAttachesAndEvicts() {
         let cmd = Durable.attachCommand(tmux: "/opt/homebrew/bin/tmux", session: "planchette-x")
         XCTAssertTrue(cmd.hasPrefix("/opt/homebrew/bin/tmux -L planchette -f "))
-        XCTAssertTrue(cmd.hasSuffix("new-session -A -D -s planchette-x"))
+        XCTAssertTrue(cmd.contains(" new-session -A -D -s planchette-x"))
+    }
+
+    // `-f` only applies when this command starts the server; re-sourcing on
+    // every attach is what carries a config fix to servers an older app
+    // version already started.
+    func testAttachCommandResourcesTheConfig() {
+        let cmd = Durable.attachCommand(tmux: "/usr/bin/tmux", session: "planchette-x")
+        XCTAssertTrue(cmd.hasSuffix("\\; source-file '\(Durable.configURL.path)'"))
     }
 
     // Our own server is what makes the fidelity options safe: extended-keys,
@@ -406,9 +414,22 @@ final class DurableTests: XCTestCase {
         let cmd = Durable.attachCommand(
             tmux: "/usr/bin/tmux", session: "planchette-x",
             environment: [("PLANCHETTE_SESSION", "ABC"), ("PLANCHETTE_SOCKET", "/tmp/p.sock")])
-        XCTAssertTrue(cmd.hasSuffix(
+        XCTAssertTrue(cmd.contains(
             "new-session -A -D -s planchette-x"
                 + " -e 'PLANCHETTE_SESSION=ABC' -e 'PLANCHETTE_SOCKET=/tmp/p.sock'"))
+    }
+
+    // The regression that made this necessary: with mouse off, ghostty turns
+    // wheel scrolls into arrow keys (tmux is always in the alternate screen),
+    // so scrolling at a prompt cycled shell history. tmux's own context menus
+    // must stay unbound — Planchette shows its native menu instead.
+    func testConfigEnablesMouseWithoutTmuxMenus() {
+        let c = Durable.configContents
+        XCTAssertTrue(c.contains("set -g mouse on"))
+        for binding in ["MouseDown3Pane", "MouseDown3Status", "MouseDown3StatusLeft"] {
+            XCTAssertTrue(c.contains("unbind -n \(binding)"), "tmux menu \(binding) must be unbound")
+            XCTAssertTrue(c.contains("unbind -n M-\(binding)"), "tmux menu M-\(binding) must be unbound")
+        }
     }
 
     // The click command carries quotes, $ and | — it must survive the shell
