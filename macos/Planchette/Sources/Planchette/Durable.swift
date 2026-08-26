@@ -35,6 +35,11 @@ enum Durable {
 
     static var isAvailable: Bool { tmuxPath() != nil }
 
+    /// What Settings offers to copy or type when tmux is missing. Homebrew is
+    /// the one package manager a Mac that lacks tmux plausibly has; MacPorts
+    /// users know their own spelling.
+    static let installCommand = "brew install tmux"
+
     /// Our own tmux server, separate from whatever the user runs themselves.
     ///
     /// Not hygiene — necessity. The options a durable terminal needs to behave

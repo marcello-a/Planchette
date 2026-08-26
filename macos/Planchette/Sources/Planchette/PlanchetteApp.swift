@@ -119,6 +119,9 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if !Durable.isAvailable {
+                    InstallTmuxRow()
+                }
             }
             Section(L10n.t(.projects)) {
                 Toggle(L10n.t(.peekCollapsedTitle), isOn: $appState.peekCollapsedProjects)
@@ -149,6 +152,40 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Settings → Durable terminals, when tmux is missing: the install command
+/// with a copy button, and one click to a terminal with it already typed —
+/// pressing Enter there is what runs it, so a click can never install anything
+/// by itself.
+private struct InstallTmuxRow: View {
+    @EnvironmentObject var appState: AppState
+    @State private var copied = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(Durable.installCommand)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+            Button {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(Durable.installCommand, forType: .string)
+                copied = true
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    copied = false
+                }
+            } label: {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .help(L10n.t(.installTmuxCopy))
+            Button(L10n.t(.installTmuxOpen)) {
+                appState.openTerminalTyping(Durable.installCommand)
+            }
+            .help(L10n.t(.installTmuxOpenHelp))
+        }
     }
 }
 
@@ -756,6 +793,27 @@ extension AppState {
         let group = existing ?? addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
+    }
+
+    /// Open a terminal in the home directory with `command` already typed at
+    /// the prompt — pressing Enter runs it. Behind Settings' "Install in a
+    /// terminal": the click is consent to *see* the command, Enter is consent
+    /// to run it. Reuses the window's project for that directory when one
+    /// exists, exactly like `promptNewTerminal` does.
+    func openTerminalTyping(_ command: String) {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
+        let dir = FileManager.default.homeDirectoryForCurrentUser.path
+        let window = window(for: windowID)
+        let existing = window.map { groups(inWindow: $0) }?.first { group in
+            sessions(in: group).contains { $0.workingDirectory == dir }
+        }
+        let group = existing ?? addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
+        let session = addSession(directory: dir, groupID: group.id)
+        select(session: session)
+        // Build the surface now (SwiftUI may not have rendered the tab yet).
+        // The PTY buffers injected input until the shell reads it, so the text
+        // lands at the first prompt even while the shell is still starting.
+        TerminalRegistry.shared.view(for: session, appState: self)?.sendText(command)
     }
 
     /// ⌘T from the menu: target whichever window is key.
