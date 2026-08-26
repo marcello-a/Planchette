@@ -176,7 +176,10 @@ enum HookInstaller {
         }
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let out = try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
-        try out.write(to: settingsURL)
+        // Write atomically: this is an unlocked read-modify-write of a file Claude
+        // Code also owns, and a crash or power loss mid-write would truncate the
+        // user's whole settings.json.
+        try out.write(to: settingsURL, options: .atomic)
         NSLog("hook install: wired Planchette hooks into \(settingsURL.path)")
     }
 
@@ -241,7 +244,9 @@ enum HookInstaller {
             }
         }
         let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try out.write(to: hooksURL)
+        // Atomic for the same reason as settings.json: never leave a half-written
+        // config behind if the write is interrupted.
+        try out.write(to: hooksURL, options: .atomic)
         NSLog("hook install: wired Planchette hooks into \(hooksURL.path)")
     }
 

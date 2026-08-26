@@ -70,6 +70,14 @@ final class AIAssist {
         lastRun[id] = nil
     }
 
+    /// One serial queue for every summarization. The cap matters more than the
+    /// latency: N busy agents used to spawn N concurrent `claude -p` (a Node
+    /// process each), and each blocked a thread of the shared cooperative pool
+    /// for up to 120s — enough to starve every other async task in the app.
+    /// Summaries are non-urgent by definition; they may trickle in one by one,
+    /// on a thread GCD owns and may block.
+    private static let workQueue = DispatchQueue(label: "planchette.ai-assist", qos: .utility)
+
     /// Called after Stop/Notification hook events.
     func sessionUpdated(_ id: UUID, force: Bool = false) {
         guard let appState, appState.aiEnabled else { return }
@@ -78,14 +86,14 @@ final class AIAssist {
         lastRun[id] = Date()
 
         let cwd = session.currentDirectory
-        Task.detached(priority: .utility) {
-            // Off-main (rule 6): gitBranch shells out, and this runs on every
-            // Stop/Notification hook — it was a subprocess on the main thread.
+        Self.workQueue.async { [weak appState] in
+            // Off-main (rule 6): gitBranch touches the filesystem, and this runs
+            // on every Stop/Notification hook.
             let branch = Titles.gitBranch(forDirectory: cwd)
             let tail = TranscriptReader.tail(path: transcriptPath)
             guard tail.lastUserPrompt != nil || tail.lastAssistantText != nil else { return }
             guard let result = Self.condense(tail: tail, cwd: cwd, branch: branch) else { return }
-            await MainActor.run { [weak appState] in
+            Task { @MainActor [weak appState] in
                 appState?.update(id) {
                     $0.aiSummary = result.summary
                     $0.aiTopic = result.topic
@@ -150,7 +158,11 @@ final class AIAssist {
             NSLog("ai-assist: failed to launch claude: \(error)")
             return nil
         }
-        stdin.fileHandleForWriting.write(Data(prompt.utf8))
+        // Use the throwing API: if `claude` is missing and the login shell exits
+        // at once, the pipe's read end is already closed and the write hits
+        // EPIPE. The legacy `write(_:)` surfaces that as an uncatchable ObjC
+        // exception that would crash the app; `write(contentsOf:)` throws instead.
+        try? stdin.fileHandleForWriting.write(contentsOf: Data(prompt.utf8))
         try? stdin.fileHandleForWriting.close()
 
         // Drain stdout concurrently so a full pipe can never block the child.
@@ -161,16 +173,20 @@ final class AIAssist {
             drained.signal()
         }
 
-        // Guard against hangs.
-        let deadline = Date().addingTimeInterval(120)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        if process.isRunning {
+        // Guard against hangs with a kill timer instead of a sleep-poll loop:
+        // waitUntilExit blocks only `workQueue`'s own thread, and the process
+        // is terminated the moment the deadline passes, not up to 0.25s later.
+        let killer = DispatchWorkItem { [weak process] in
+            guard let process, process.isRunning else { return }
             process.terminate()
             NSLog("ai-assist: claude -p timed out")
-            return nil
         }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 120, execute: killer)
+        process.waitUntilExit()
+        let timedOut = !killer.isCancelled
+            && process.terminationReason == .uncaughtSignal
+        killer.cancel()
+        if timedOut { return nil }
         drained.wait()
         return String(data: data, encoding: .utf8)
     }

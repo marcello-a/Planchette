@@ -184,8 +184,12 @@ enum ControlAPI {
             return encode(ok: true, result: ["projects": projects])
 
         case .notificationList:
-            // The panel's own sections, so this cannot drift from the UI.
+            // The panel's own sections, so this cannot drift from the UI —
+            // including the window order: the panel lists the front window's
+            // projects first, so the API passes that window along instead of
+            // silently using persistence order.
             var sections = state.notificationSections(
+                windowID: WindowRegistry.shared.keyWindowID() ?? state.windows.first?.id,
                 unreadOnly: request.bool("unread_only") == true,
                 activeOnly: request.bool("only_active") == true)
             if let projectID = request.uuid("project_id") {
@@ -225,6 +229,7 @@ enum ControlAPI {
             }
             // Default to the caller's own project, so "another terminal here"
             // does not scatter projects.
+            let focus = request.bool("focus") == true
             let groupID: UUID
             if let explicit = request.uuid("project_id"),
                state.groups.contains(where: { $0.id == explicit }) {
@@ -233,17 +238,26 @@ enum ControlAPI {
                       let session = state.sessions[caller] {
                 groupID = session.groupID
             } else {
+                // Without --focus the new project must not become the visible
+                // one — the docs promise "leave the user where they are", and
+                // switching the sidebar selection breaks that promise as much
+                // as switching tabs does.
                 groupID = state.addGroup(
-                    name: (directory as NSString).lastPathComponent).id
+                    name: (directory as NSString).lastPathComponent,
+                    select: focus).id
             }
-            let session = state.addSession(directory: directory, groupID: groupID)
+            // Same contract for the tab: creating a terminal in the project the
+            // user is looking at used to swap their active tab out from under
+            // them. `activate` only when the caller asked for focus.
+            let session = state.addSession(
+                directory: directory, groupID: groupID, activate: focus)
             // Start the terminal now. SwiftUI only builds a surface for what it
             // renders, so a session created into a background project would have
             // no PTY — and the very next `session.prompt` would fail.
             guard liveView(for: session, state: state) != nil else {
                 return encode(ok: false, error: "terminal could not be started")
             }
-            if request.bool("focus") == true { state.select(session: session) }
+            if focus { state.select(session: session) }
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
         case .sessionFocus:
@@ -256,7 +270,11 @@ enum ControlAPI {
             guard let session = resolve(request, state: state) else {
                 return encode(ok: false, error: "no such session")
             }
-            state.select(session: session)
+            // focusSession, not select: the docs promise "raises its window" —
+            // the caller is outside the app (a dashboard, a Stream Deck), so
+            // without activating the app the selection changed invisibly in
+            // the background and nobody was taken anywhere.
+            state.focusSession(session.id)
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
         case .sessionPrompt:

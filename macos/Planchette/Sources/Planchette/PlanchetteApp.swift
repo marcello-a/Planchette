@@ -298,11 +298,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: L10n.t(.cancel))
             return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
         }
-        guard reply == .terminateNow else { return reply }
+        guard reply == .terminateNow else {
+            // A cancelled quit may have been started by "Install & Relaunch":
+            // the update stays staged, but the relaunch intent must not.
+            MainActor.assumeIsolated { updater.quitCancelled() }
+            return reply
+        }
         isTerminating = true
         MainActor.assumeIsolated {
             appState.saveNow()
-            appState.saveScrollbacks()
+            appState.saveScrollbacks(force: true)
             // State is on disk first: the swap helper starts the moment we exit,
             // and the next launch must read the state this run wrote.
             updater.applyStagedUpdateOnQuit()

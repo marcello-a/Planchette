@@ -69,7 +69,7 @@ enum LKey: String, CaseIterable {
     case appearanceLight, appearanceDark, appearanceHelp, settingsHelp
 
     // Sidebar sections & group/session menus
-    case mainProjects, projects, sideProjects
+    case projects
     case makeFavorite, unmakeFavorite, color, colorNone, rename, moveToNewWindow
     case tags, newTag, removeAllTags, startupCommand, close
     case closeProject, closeProjectBody
@@ -83,7 +83,7 @@ enum LKey: String, CaseIterable {
     case noTerminalsInGroup, newTerminalHint
 
     // Inbox
-    case attention, allQuiet, waitingForAnswer, doneSeeResult
+    case allQuiet
 
     // Staged ("install on quit") updates
     case updateInstallOnQuit, updateStagedTitle, updateStagedBody, updatePendingQuit
@@ -95,7 +95,7 @@ enum LKey: String, CaseIterable {
     case durableSection, durableActive, durableHelp, durableExplanation, durableMissingTmux
 
     // Worktrees
-    case newWorktree, newWorktreeHelp, worktreeBranchPrompt, worktreeBasePrompt
+    case newWorktree, newWorktreeHelp, worktreeBranchPrompt
     case worktreeFailed, removeWorktreeTitle, removeWorktreeBody, removeWorktree, keepWorktree
 
     // Quick switcher
@@ -106,8 +106,8 @@ enum LKey: String, CaseIterable {
     case aiMenu, aiActive, aiExplanation, summarizeAll, groupByTopic
 
     // Toolbar
-    case aiAssist, aiAssistOn, aiAssistOff, aiAssistOnHelp, aiAssistOffHelp
-    case inbox, inboxHelp, mergeIntoMain, mergeIntoMainHelp
+    case aiAssist, aiAssistOnHelp, aiAssistOffHelp
+    case mergeIntoMain, mergeIntoMainHelp
     case newTerminalHelp, newWindowHelp, quickSwitcherHelp, jumpToWaitingHelp
     case moveToNewWindowHelp, favoriteHelp, tagsHelp, startupCommandHelp
     case renameHelp, colorHelp, closeHelp, summarizeAllHelp, groupByTopicHelp
@@ -129,7 +129,6 @@ enum LKey: String, CaseIterable {
     case chooseFolder
 
     // Merged window placeholder
-    case windowMerged
 
     // Migration / import
     case importMenu, importFromITerm, importFromTerminal
@@ -144,10 +143,10 @@ enum LKey: String, CaseIterable {
     case whatsNew, andMoreChanges
 
     // Status colors / states
-    case stateReady, stateRunning, stateWaiting, stateError, stateFree, errorOccurred, free
+    case stateReady, stateRunning, stateWaiting, stateError, stateFree, free
     case generalTab, infoTab, colorLegendTitle, colorLegendIntro
     case readyDesc, runningDesc, waitingDesc, errorDesc, freeDesc
-    case needsYou, waitingSince
+    case waitingSince
 
     // Projects / terminals / sidebar
     case newProject, newProjectHelp, addTerminalHelp
@@ -157,7 +156,7 @@ enum LKey: String, CaseIterable {
     case peekCollapsedTitle, peekCollapsedHelp
 
     // Notifications panel (right sidebar)
-    case notificationsPanel, notificationsPanelHelp, onlyActive, clearReady
+    case notificationsPanel, notificationsPanelHelp, onlyActive
     case onlyUnread, onlyUnreadHelp, markAllRead, markRead, markUnread
 
     // Empty states
@@ -231,8 +230,7 @@ enum L10n {
         .langSystem: "System", .settingsTitle: "Settings", .language: "Language",
         .appearance: "Appearance", .aiSection: "AI",
         .appearanceLight: "Light", .appearanceDark: "Dark", .appearanceHelp: "Light, dark, or follow the system", .settingsHelp: "Open settings (⌘,)",
-        .mainProjects: "Main projects", .projects: "Projects", .sideProjects: "Side projects",
-        .makeFavorite: "Mark as main project", .unmakeFavorite: "Remove main project",
+        .projects: "Projects", .makeFavorite: "Mark as main project", .unmakeFavorite: "Remove main project",
         .color: "Color", .colorNone: "None", .rename: "Rename…",
         .moveToNewWindow: "Move to new window",
         .tags: "Tags", .newTag: "New tag…", .removeAllTags: "Remove all",
@@ -244,17 +242,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "No terminals in this group",
         .newTerminalHint: "⌘T opens a new terminal",
-        .attention: "Attention", .allQuiet: "All quiet — nothing needs you.",
-        .waitingForAnswer: "Waiting for an answer", .doneSeeResult: "Done — see the result",
+        .allQuiet: "All quiet — nothing needs you.",
         .switcherPlaceholder: "Title, path, branch, group…",
         .newWindow: "New window", .sessionMenu: "Session", .newTerminal: "New terminal…",
         .quickSwitcher: "Quick switcher", .jumpToWaiting: "Jump to waiting session",
         .aiMenu: "AI", .aiActive: "AI assist active", .aiExplanation: "Shows a one-line summary of what each terminal is working on (and a topic to group them). It reads each session's local Claude transcript and condenses it with your existing Claude login — no API key, and it only runs while this is on.", .summarizeAll: "Summarize all sessions now",
         .groupByTopic: "Group by topic…",
-        .aiAssist: "AI assist", .aiAssistOn: "AI: On", .aiAssistOff: "AI: Off",
-        .aiAssistOnHelp: "AI assist on: sessions are summarized and can be grouped by topic",
+        .aiAssist: "AI assist", .aiAssistOnHelp: "AI assist on: sessions are summarized and can be grouped by topic",
         .aiAssistOffHelp: "AI assist off — turn on to summarize agent sessions and group them by topic",
-        .inbox: "Inbox", .inboxHelp: "Attention inbox: sessions that ask or finished, most urgent first",
         .mergeIntoMain: "Merge into main window",
         .mergeIntoMainHelp: "Move all groups of this window into the main window",
         .newTerminalHelp: "Open a new terminal in this window (⌘T)",
@@ -281,7 +276,6 @@ enum L10n {
         .group: "Group",
         .allQuietShort: "All quiet", .openPlanchette: "Open Planchette", .asks: "asks",
         .chooseFolder: "Choose the project folder for the new terminal",
-        .windowMerged: "Window was merged",
         .importMenu: "Import", .importFromITerm: "Import from iTerm2", .importFromTerminal: "Import from Terminal.app",
         .importNothing: "no open terminals found", .importNotRunning: "is not running", .importNotAuthorized: "Automation not allowed", .importAuthHint: "Allow Planchette to control the terminal app in System Settings → Privacy & Security → Automation, then try again.", .importFailed: "Import failed", .importMenuHelp: "Open the working directories of another terminal app as Planchette terminals", .dropHint: "Drop a folder here to open a terminal",
         .updates: "Updates", .checkForUpdates: "Check for updates…", .autoUpdateCheck: "Automatically check for updates", .autoUpdateHelp: "Check GitHub for a newer stable release on launch",
@@ -289,20 +283,20 @@ enum L10n {
         .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
         .updateInstallRelaunch: "Install & Relaunch", .updateInstallBody: "Planchette will download the new version, install it, and relaunch itself.", .updateInstalling: "Installing update…", .updateLater: "Later", .updateNoReleases: "Couldn't find any releases yet.", .updateDownloading: "Downloading update… %d%%",
         .whatsNew: "What's new", .andMoreChanges: "…and %d more",
-        .stateReady: "Done", .stateFree: "Free", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .errorOccurred: "An error occurred", .free: "free",
+        .stateReady: "Done", .stateFree: "Free", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .free: "free",
         .generalTab: "General", .infoTab: "Information", .colorLegendTitle: "Status colors", .colorLegendIntro: "Each terminal shows a colored status dot:",
-        .readyDesc: "the turn or command finished — a result awaits your review", .freeDesc: "empty prompt, nothing to review — this terminal is up for grabs", .needsYou: "Needs you", .waitingSince: "waiting for %d min", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
+        .readyDesc: "the turn or command finished — a result awaits your review", .freeDesc: "empty prompt, nothing to review — this terminal is up for grabs", .waitingSince: "waiting for %d min", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
         .newProject: "New project…", .newProjectHelp: "Add a project from a folder", .addTerminalHelp: "Add a terminal in this project's folder",
         .fontSmaller: "Smaller font (⌘-)", .fontLarger: "Larger font (⌘+)", .fontReset: "Reset font size (⌘0)",
-        .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .collapseAllProjects: "Collapse all projects", .expandAllProjects: "Expand all projects", .peekCollapsedTitle: "Show requests under collapsed projects", .peekCollapsedHelp: "A collapsed project still lists its terminals with an unread question or error. Off keeps it fully folded.", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .clearReady: "Hide idle", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All", .menuOpenLink: "Open Link", .menuOpenLinkHelp: "Right-click a link in the terminal to open it; Copy, Paste and Open Link grey out when they cannot act",
+        .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .collapseAllProjects: "Collapse all projects", .expandAllProjects: "Expand all projects", .peekCollapsedTitle: "Show requests under collapsed projects", .peekCollapsedHelp: "A collapsed project still lists its terminals with an unread question or error. Off keeps it fully folded.", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All", .menuOpenLink: "Open Link", .menuOpenLinkHelp: "Right-click a link in the terminal to open it; Copy, Paste and Open Link grey out when they cannot act",
         .onlyUnread: "Only unread", .onlyUnreadHelp: "Show only terminals whose last report you haven't looked at", .markAllRead: "Mark all as read", .markRead: "Mark as read", .markUnread: "Mark as unread",
-        .newWorktree: "New worktree…", .newWorktreeHelp: "Create a git worktree and open it as a project", .worktreeBranchPrompt: "Branch for the new worktree", .worktreeBasePrompt: "Base (empty = current HEAD)", .worktreeFailed: "Could not create the worktree", .removeWorktreeTitle: "Remove the checkout?", .removeWorktreeBody: "Delete the worktree at \"%@\"? Git refuses while it still has uncommitted changes.", .removeWorktree: "Remove", .keepWorktree: "Keep",
+        .newWorktree: "New worktree…", .newWorktreeHelp: "Create a git worktree and open it as a project", .worktreeBranchPrompt: "Branch for the new worktree", .worktreeFailed: "Could not create the worktree", .removeWorktreeTitle: "Remove the checkout?", .removeWorktreeBody: "Delete the worktree at \"%@\"? Git refuses while it still has uncommitted changes.", .removeWorktree: "Remove", .keepWorktree: "Keep",
         .quitWhileRunningTitle: "Quit while agents are working?", .quitWhileRunningBody: "%d terminal(s) are still running. Quitting ends them — a restore can bring the conversation back, but not the work in flight.", .quitAnyway: "Quit anyway",
         .durableSection: "Durable terminals", .durableActive: "New terminals survive a restart", .durableHelp: "Runs each new terminal inside tmux, so its agent keeps working when Planchette quits, crashes or installs an update.", .durableExplanation: "New terminals run inside tmux. Quitting, installing an update or even a crash leaves the agent running — reopening re-attaches to the live session instead of resuming a conversation. A reboot still ends everything. Existing terminals keep what they were created as. The cost: tmux cannot pass the terminal's keyboard protocol through, so Shift+Enter reaches an agent as a plain Enter (it submits instead of adding a line). On by default — turn it off if multi-line prompts matter more to you than an agent that outlives the app.", .durableMissingTmux: "Needs tmux, which was not found. Install it (e.g. brew install tmux) and reopen Settings.",
         .updateInstallOnQuit: "Install on quit", .updateStagedTitle: "Version %@ is ready", .updateStagedBody: "It is downloaded and verified. Nothing changes until you quit Planchette — the next launch runs the new version, and your running agents are left alone.", .updatePendingQuit: "An update will be installed when you quit.",
         .newFolder: "New folder…", .newFolderTitle: "Name of the folder", .newFolderHelp: "Group projects in a named folder", .renameFolder: "Rename folder", .moveToFolder: "Move to folder", .noFolder: "No folder", .dissolveFolder: "Dissolve folder", .dissolveFolderHelp: "Removes the folder; its projects stay",
         .folderOverviewHelp: "Show what is inside this folder", .newProjectInFolder: "Add a project in \"%@\"", .folderEmpty: "No projects in this folder yet — drag one in from the sidebar.", .openProjectHelp: "Open this project", .terminalsCount: "%d terminals", .terminalCountOne: "1 terminal", .latestNotifications: "Latest notifications", .nothingReported: "Nothing reported yet",
-        .helpTab: "Help", .helpBranchTitle: "Checked-out branch", .helpBranchDetail: "The branch sits on the project while all its terminals are on it, and on each terminal when they differ", .helpTerminalRowTitle: "What a terminal row says", .helpActiveMarkTitle: "The terminal you are in", .helpActiveMarkDetail: "One outline, in the colour of what it is doing, marks the terminal on screen — in a split, the pane you focused", .helpTerminalRowDetail: "Ticket and folder on the first line, the branch when the project's terminals differ, then the last prompt and how long ago", .helpSearch: "Search features and shortcuts", .helpNoResults: "Nothing matches that.", .helpMissing: "Missing something?", .requestFeature: "Request a feature…", .requestFeatureHelp: "Opens a pre-filled feature request on GitHub", .helpSectionTerminals: "Terminals", .helpSectionWindows: "Windows & navigation", .helpWhereSidebar: "Sidebar", .helpWhereTabBar: "Tab bar", .helpWhereContextMenu: "Right-click menu", .helpWhereSettings: "Settings", .helpWhereMenuBar: "Menu bar", .helpWhereToolbar: "Toolbar", .newProjectInFolderShort: "New project in a folder", .newProjectInFolderHelp: "The + on a folder row adds a project inside that folder", .folderOverviewTitle: "Folder overview", .dropIntoFolderHelp: "Drag a project onto a folder, or between two rows to place it exactly", .selectedProjectsShort: "Several projects at once", .helpMultiSelectDetail: "⌘/⇧-click picks a batch; drag or act on all of them at once", .helpClusterTitle: "Cluster view", .helpClusterDetail: "Show every terminal of a project at once; drag a pane onto another edge to split", .helpDropTitle: "Open a folder from Finder", .helpCLITitle: "Drive Planchette from an agent", .helpCLIDetail: "A socket API and the planchette CLI in every terminal: list, open, prompt, wait, read, and read the notifications", .helpInstallOnQuitDetail: "Downloads the update and installs it the next time you quit, so no running turn is interrupted",
+        .helpTab: "Help", .helpBranchTitle: "Checked-out branch", .helpBranchDetail: "The branch sits on the project while all its terminals are on it, and on each terminal when they differ", .helpTerminalRowTitle: "What a terminal row says", .helpActiveMarkTitle: "The terminal you are in", .helpActiveMarkDetail: "One outline, in the colour of what it is doing, marks the terminal on screen — in a split, the pane you focused", .helpTerminalRowDetail: "Ticket and folder on the first line, the branch when the project's terminals differ, then the last prompt and how long ago", .helpSearch: "Search features and shortcuts", .helpNoResults: "Nothing matches that.", .helpMissing: "Missing something?", .requestFeature: "Request a feature…", .requestFeatureHelp: "Opens a pre-filled feature request on GitHub", .helpSectionTerminals: "Terminals", .helpSectionWindows: "Windows & navigation", .helpWhereSidebar: "Sidebar", .helpWhereTabBar: "Tab bar", .helpWhereContextMenu: "Right-click menu", .helpWhereSettings: "Settings", .helpWhereMenuBar: "Menu bar", .helpWhereToolbar: "Toolbar", .newProjectInFolderShort: "New project in a folder", .newProjectInFolderHelp: "The + on a folder row adds a project inside that folder", .folderOverviewTitle: "Folder overview", .dropIntoFolderHelp: "Drag a project onto a folder, or between two rows to place it exactly", .selectedProjectsShort: "Several projects at once", .helpMultiSelectDetail: "⌘/⇧-click picks a batch; drag or act on all of them at once", .helpClusterTitle: "Cluster view", .helpClusterDetail: "Show every terminal of a project at once; drag a pane onto another edge to split", .helpDropTitle: "Open a folder from Finder", .helpCLITitle: "Drive Planchette from an agent", .helpCLIDetail: "A socket API and the planchette CLI in every terminal: list, open, focus, prompt, wait, read, and read the notifications", .helpInstallOnQuitDetail: "Downloads the update and installs it the next time you quit, so no running turn is interrupted",
         .remindMe: "Remind me…", .remindMeHelp: "Goes quiet until then, then reminds you", .remindIn1h: "In 1 hour", .remindIn2h: "In 2 hours", .remindTomorrow: "Tomorrow 9:00", .remindCancel: "Cancel reminder", .quietUntil: "quiet until %@", .reminder: "Reminder", .reminderBody: "You asked to be reminded about this.", .markGroupReady: "Mark project as free", .markProjectActive: "Mark project active", .markProjectInactive: "Mark project inactive", .markProjectActiveHelp: "A parked project is silent — no badges, no counts, no notifications — and marking it inactive marks its terminals free", .markProjectsActive: "Mark %d projects active", .markProjectsInactive: "Mark %d projects inactive", .inactiveProject: "inactive",
         .arrangements: "Arrangements", .arrangementsHelp: "Saved arrangements of projects and terminals", .saveArrangement: "Save arrangement…", .saveArrangementTitle: "Name of the arrangement", .newArrangement: "New arrangement…", .overwriteArrangement: "Overwrite \"%@\"", .saveArrangementHelp: "Save this window's projects and terminals as a reusable arrangement", .openArrangement: "Open", .renameArrangement: "Rename arrangement", .deleteArrangement: "Delete arrangement", .deleteArrangementConfirm: "Delete the arrangement \"%@\"?", .deleteArrangementBody: "Only the saved template goes. The projects and terminals it created stay as they are, and nothing can bring the arrangement back.", .noArrangements: "No saved arrangements yet", .arrangementSummary: "%d projects · %d terminals", .savedArrangements: "Saved arrangements",
         .selectedProjects: "%d projects selected", .markProjectsFree: "Mark %d projects as free", .closeProjects: "Close %d projects", .closeProjectsBody: "Close %d projects and their %d terminal(s)? This ends any running sessions.", .dropIntoFolder: "Move into \"%@\"",
@@ -313,8 +307,7 @@ enum L10n {
         .langSystem: "System", .settingsTitle: "Einstellungen", .language: "Sprache",
         .appearance: "Darstellung", .aiSection: "KI",
         .appearanceLight: "Hell", .appearanceDark: "Dunkel", .appearanceHelp: "Hell, dunkel oder dem System folgen", .settingsHelp: "Einstellungen öffnen (⌘,)",
-        .mainProjects: "Hauptprojekte", .projects: "Projekte", .sideProjects: "Side Projects",
-        .makeFavorite: "Als Hauptprojekt", .unmakeFavorite: "Kein Hauptprojekt mehr",
+        .projects: "Projekte", .makeFavorite: "Als Hauptprojekt", .unmakeFavorite: "Kein Hauptprojekt mehr",
         .color: "Farbe", .colorNone: "Keine", .rename: "Umbenennen…",
         .moveToNewWindow: "In neues Fenster verschieben",
         .tags: "Tags", .newTag: "Neues Tag…", .removeAllTags: "Alle entfernen",
@@ -326,17 +319,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "Keine Terminals in dieser Gruppe",
         .newTerminalHint: "⌘T öffnet ein neues Terminal",
-        .attention: "Aufmerksamkeit", .allQuiet: "Alles ruhig — nichts wartet auf dich.",
-        .waitingForAnswer: "Wartet auf eine Antwort", .doneSeeResult: "Fertig — Ergebnis ansehen",
+        .allQuiet: "Alles ruhig — nichts wartet auf dich.",
         .switcherPlaceholder: "Titel, Pfad, Branch, Gruppe…",
         .newWindow: "Neues Fenster", .sessionMenu: "Session", .newTerminal: "Neues Terminal…",
         .quickSwitcher: "Quick Switcher", .jumpToWaiting: "Zur wartenden Session",
         .aiMenu: "KI", .aiActive: "KI-Assistenz aktiv", .aiExplanation: "Zeigt eine einzeilige Zusammenfassung, woran jedes Terminal gerade arbeitet (und ein Thema zum Gruppieren). Liest das lokale Claude-Transcript jeder Session und verdichtet es mit deinem bestehenden Claude-Login — kein API-Key, läuft nur wenn aktiv.", .summarizeAll: "Alle Sessions jetzt zusammenfassen",
         .groupByTopic: "Nach Themen gruppieren…",
-        .aiAssist: "KI-Assistenz", .aiAssistOn: "KI: An", .aiAssistOff: "KI: Aus",
-        .aiAssistOnHelp: "KI-Assistenz aktiv: Sessions werden zusammengefasst und können nach Themen gruppiert werden",
+        .aiAssist: "KI-Assistenz", .aiAssistOnHelp: "KI-Assistenz aktiv: Sessions werden zusammengefasst und können nach Themen gruppiert werden",
         .aiAssistOffHelp: "KI-Assistenz aus — einschalten, um Agent-Sessions zusammenzufassen und nach Themen zu gruppieren",
-        .inbox: "Inbox", .inboxHelp: "Aufmerksamkeits-Inbox: Sessions, die fragen oder fertig sind, dringendste zuerst",
         .mergeIntoMain: "In Hauptfenster mergen",
         .mergeIntoMainHelp: "Alle Gruppen dieses Fensters ins Hauptfenster verschieben",
         .newTerminalHelp: "Neues Terminal in diesem Fenster öffnen (⌘T)",
@@ -363,7 +353,6 @@ enum L10n {
         .group: "Gruppieren",
         .allQuietShort: "Alles ruhig", .openPlanchette: "Planchette öffnen", .asks: "fragt",
         .chooseFolder: "Projektordner für das neue Terminal wählen",
-        .windowMerged: "Fenster wurde zusammengeführt",
         .importMenu: "Import", .importFromITerm: "Aus iTerm2 importieren", .importFromTerminal: "Aus Terminal.app importieren",
         .importNothing: "keine offenen Terminals gefunden", .importNotRunning: "läuft nicht", .importNotAuthorized: "Automatisierung nicht erlaubt", .importAuthHint: "Erlaube Planchette in Systemeinstellungen → Datenschutz & Sicherheit → Automatisierung, die Terminal-App zu steuern, und versuche es erneut.", .importFailed: "Import fehlgeschlagen", .importMenuHelp: "Die Arbeitsverzeichnisse einer anderen Terminal-App als Planchette-Terminals öffnen", .dropHint: "Ordner hierher ziehen, um ein Terminal zu öffnen",
         .updates: "Updates", .checkForUpdates: "Nach Updates suchen…", .autoUpdateCheck: "Automatisch nach Updates suchen", .autoUpdateHelp: "Beim Start auf GitHub nach einer neueren stabilen Version prüfen",
@@ -371,20 +360,20 @@ enum L10n {
         .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
         .updateInstallRelaunch: "Installieren & Neustart", .updateInstallBody: "Planchette lädt die neue Version herunter, installiert sie und startet sich neu.", .updateInstalling: "Update wird installiert…", .updateLater: "Später", .updateNoReleases: "Noch keine Releases gefunden.", .updateDownloading: "Update wird geladen… %d%%",
         .whatsNew: "Das ist neu", .andMoreChanges: "…und %d weitere",
-        .stateReady: "Fertig", .stateFree: "Frei", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .errorOccurred: "Ein Fehler ist aufgetreten", .free: "frei",
+        .stateReady: "Fertig", .stateFree: "Frei", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .free: "frei",
         .generalTab: "Allgemein", .infoTab: "Information", .colorLegendTitle: "Status-Farben", .colorLegendIntro: "Jedes Terminal zeigt einen farbigen Statuspunkt:",
-        .readyDesc: "Turn oder Befehl beendet — ein Ergebnis wartet auf deinen Blick", .freeDesc: "leerer Prompt, nichts zu reviewen — dieses Terminal ist zu haben", .needsYou: "Braucht dich", .waitingSince: "wartet seit %d min", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
+        .readyDesc: "Turn oder Befehl beendet — ein Ergebnis wartet auf deinen Blick", .freeDesc: "leerer Prompt, nichts zu reviewen — dieses Terminal ist zu haben", .waitingSince: "wartet seit %d min", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
         .newProject: "Neues Projekt…", .newProjectHelp: "Projekt aus einem Ordner hinzufügen", .addTerminalHelp: "Terminal im Ordner dieses Projekts hinzufügen",
         .fontSmaller: "Kleinere Schrift (⌘-)", .fontLarger: "Größere Schrift (⌘+)", .fontReset: "Schriftgröße zurücksetzen (⌘0)",
-        .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .collapseAllProjects: "Alle Projekte einklappen", .expandAllProjects: "Alle Projekte ausklappen", .peekCollapsedTitle: "Anfragen unter eingeklappten Projekten zeigen", .peekCollapsedHelp: "Ein eingeklapptes Projekt zeigt Terminals mit ungelesener Frage oder ungelesenem Fehler weiterhin an. Aus hält es ganz geschlossen.", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .clearReady: "Ruhige ausblenden", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen", .menuOpenLink: "Link öffnen", .menuOpenLinkHelp: "Rechtsklick auf einen Link im Terminal öffnet ihn; Kopieren, Einsetzen und Link öffnen sind ausgegraut, wenn sie nichts tun können",
+        .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .collapseAllProjects: "Alle Projekte einklappen", .expandAllProjects: "Alle Projekte ausklappen", .peekCollapsedTitle: "Anfragen unter eingeklappten Projekten zeigen", .peekCollapsedHelp: "Ein eingeklapptes Projekt zeigt Terminals mit ungelesener Frage oder ungelesenem Fehler weiterhin an. Aus hält es ganz geschlossen.", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen", .menuOpenLink: "Link öffnen", .menuOpenLinkHelp: "Rechtsklick auf einen Link im Terminal öffnet ihn; Kopieren, Einsetzen und Link öffnen sind ausgegraut, wenn sie nichts tun können",
         .onlyUnread: "Nur ungelesen", .onlyUnreadHelp: "Nur Terminals zeigen, deren letzte Meldung du noch nicht gesehen hast", .markAllRead: "Alle als gelesen markieren", .markRead: "Als gelesen markieren", .markUnread: "Als ungelesen markieren",
-        .newWorktree: "Neuer Worktree…", .newWorktreeHelp: "Git-Worktree anlegen und als Projekt öffnen", .worktreeBranchPrompt: "Branch für den neuen Worktree", .worktreeBasePrompt: "Basis (leer = aktueller HEAD)", .worktreeFailed: "Worktree konnte nicht angelegt werden", .removeWorktreeTitle: "Arbeitskopie entfernen?", .removeWorktreeBody: "Worktree unter \"%@\" löschen? Git verweigert das, solange dort uncommittete Änderungen liegen.", .removeWorktree: "Entfernen", .keepWorktree: "Behalten",
+        .newWorktree: "Neuer Worktree…", .newWorktreeHelp: "Git-Worktree anlegen und als Projekt öffnen", .worktreeBranchPrompt: "Branch für den neuen Worktree", .worktreeFailed: "Worktree konnte nicht angelegt werden", .removeWorktreeTitle: "Arbeitskopie entfernen?", .removeWorktreeBody: "Worktree unter \"%@\" löschen? Git verweigert das, solange dort uncommittete Änderungen liegen.", .removeWorktree: "Entfernen", .keepWorktree: "Behalten",
         .quitWhileRunningTitle: "Beenden, während Agents arbeiten?", .quitWhileRunningBody: "%d Terminal(s) laufen noch. Beim Beenden werden sie abgebrochen — eine Wiederherstellung bringt die Unterhaltung zurück, nicht aber die laufende Arbeit.", .quitAnyway: "Trotzdem beenden",
         .durableSection: "Dauerhafte Terminals", .durableActive: "Neue Terminals überleben einen Neustart", .durableHelp: "Führt jedes neue Terminal in tmux aus, damit sein Agent weiterarbeitet, wenn Planchette beendet wird, abstürzt oder ein Update installiert.", .durableExplanation: "Neue Terminals laufen in tmux. Beenden, ein Update oder selbst ein Absturz lassen den Agent weiterlaufen — beim Öffnen wird die laufende Sitzung wieder verbunden, statt eine Unterhaltung fortzusetzen. Ein Neustart des Rechners beendet trotzdem alles. Bestehende Terminals bleiben, wie sie erstellt wurden. Der Preis: tmux leitet das Tastatur-Protokoll des Terminals nicht durch, deshalb kommt Shift+Enter beim Agent als einfaches Enter an (es sendet ab, statt eine Zeile einzufügen). Standardmäßig an — schalte es aus, wenn dir mehrzeilige Prompts wichtiger sind als ein Agent, der die App überlebt.", .durableMissingTmux: "Benötigt tmux, das nicht gefunden wurde. Installiere es (z. B. brew install tmux) und öffne die Einstellungen erneut.",
         .updateInstallOnQuit: "Beim Beenden installieren", .updateStagedTitle: "Version %@ ist bereit", .updateStagedBody: "Sie ist geladen und geprüft. Bis du Planchette beendest, ändert sich nichts — der nächste Start läuft mit der neuen Version, laufende Agents bleiben unberührt.", .updatePendingQuit: "Ein Update wird beim Beenden installiert.",
         .newFolder: "Neuer Ordner…", .newFolderTitle: "Name des Ordners", .newFolderHelp: "Projekte in einem benannten Ordner bündeln", .renameFolder: "Ordner umbenennen", .moveToFolder: "In Ordner verschieben", .noFolder: "Kein Ordner", .dissolveFolder: "Ordner auflösen", .dissolveFolderHelp: "Entfernt den Ordner; die Projekte bleiben",
         .folderOverviewHelp: "Zeigen, was in diesem Ordner steckt", .newProjectInFolder: "Ein Projekt in \"%@\" anlegen", .folderEmpty: "Noch keine Projekte in diesem Ordner — eines aus der Seitenleiste hineinziehen.", .openProjectHelp: "Projekt öffnen", .terminalsCount: "%d Terminals", .terminalCountOne: "1 Terminal", .latestNotifications: "Neueste Benachrichtigungen", .nothingReported: "Noch nichts gemeldet",
-        .helpTab: "Hilfe", .helpBranchTitle: "Ausgecheckter Branch", .helpBranchDetail: "Der Branch steht am Projekt, solange alle seine Terminals darauf sind — sonst an jedem Terminal", .helpTerminalRowTitle: "Was eine Terminalzeile zeigt", .helpActiveMarkTitle: "Das Terminal, in dem du bist", .helpActiveMarkDetail: "Ein Rahmen in der Farbe des Zustands markiert das Terminal auf dem Bildschirm — im Split das fokussierte Feld", .helpTerminalRowDetail: "Ticket und Ordner in der ersten Zeile, der Branch, wenn die Terminals sich unterscheiden, dann der letzte Prompt und wie lange her", .helpSearch: "Funktionen und Kurzbefehle suchen", .helpNoResults: "Dazu passt nichts.", .helpMissing: "Fehlt etwas?", .requestFeature: "Funktion vorschlagen…", .requestFeatureHelp: "Öffnet einen vorbereiteten Feature-Request auf GitHub", .helpSectionTerminals: "Terminals", .helpSectionWindows: "Fenster & Navigation", .helpWhereSidebar: "Seitenleiste", .helpWhereTabBar: "Tab-Leiste", .helpWhereContextMenu: "Rechtsklick-Menü", .helpWhereSettings: "Einstellungen", .helpWhereMenuBar: "Menüleiste", .helpWhereToolbar: "Symbolleiste", .newProjectInFolderShort: "Neues Projekt in einem Ordner", .newProjectInFolderHelp: "Das + auf einer Ordnerzeile legt ein Projekt darin an", .folderOverviewTitle: "Ordner-Übersicht", .dropIntoFolderHelp: "Ein Projekt auf einen Ordner ziehen — oder zwischen zwei Zeilen, um es genau zu platzieren", .selectedProjectsShort: "Mehrere Projekte auf einmal", .helpMultiSelectDetail: "⌘/⇧-Klick wählt einen Stapel; ziehen oder alle zusammen bearbeiten", .helpClusterTitle: "Cluster-Ansicht", .helpClusterDetail: "Alle Terminals eines Projekts gleichzeitig zeigen; ein Feld an den Rand eines anderen ziehen teilt es", .helpDropTitle: "Ordner aus dem Finder öffnen", .helpCLITitle: "Planchette aus einem Agenten steuern", .helpCLIDetail: "Socket-API und das planchette-CLI in jedem Terminal: auflisten, öffnen, Prompt senden, auf Status warten, Ausgabe lesen, Benachrichtigungen abfragen", .helpInstallOnQuitDetail: "Lädt das Update und installiert es beim nächsten Beenden — kein laufender Turn wird unterbrochen",
+        .helpTab: "Hilfe", .helpBranchTitle: "Ausgecheckter Branch", .helpBranchDetail: "Der Branch steht am Projekt, solange alle seine Terminals darauf sind — sonst an jedem Terminal", .helpTerminalRowTitle: "Was eine Terminalzeile zeigt", .helpActiveMarkTitle: "Das Terminal, in dem du bist", .helpActiveMarkDetail: "Ein Rahmen in der Farbe des Zustands markiert das Terminal auf dem Bildschirm — im Split das fokussierte Feld", .helpTerminalRowDetail: "Ticket und Ordner in der ersten Zeile, der Branch, wenn die Terminals sich unterscheiden, dann der letzte Prompt und wie lange her", .helpSearch: "Funktionen und Kurzbefehle suchen", .helpNoResults: "Dazu passt nichts.", .helpMissing: "Fehlt etwas?", .requestFeature: "Funktion vorschlagen…", .requestFeatureHelp: "Öffnet einen vorbereiteten Feature-Request auf GitHub", .helpSectionTerminals: "Terminals", .helpSectionWindows: "Fenster & Navigation", .helpWhereSidebar: "Seitenleiste", .helpWhereTabBar: "Tab-Leiste", .helpWhereContextMenu: "Rechtsklick-Menü", .helpWhereSettings: "Einstellungen", .helpWhereMenuBar: "Menüleiste", .helpWhereToolbar: "Symbolleiste", .newProjectInFolderShort: "Neues Projekt in einem Ordner", .newProjectInFolderHelp: "Das + auf einer Ordnerzeile legt ein Projekt darin an", .folderOverviewTitle: "Ordner-Übersicht", .dropIntoFolderHelp: "Ein Projekt auf einen Ordner ziehen — oder zwischen zwei Zeilen, um es genau zu platzieren", .selectedProjectsShort: "Mehrere Projekte auf einmal", .helpMultiSelectDetail: "⌘/⇧-Klick wählt einen Stapel; ziehen oder alle zusammen bearbeiten", .helpClusterTitle: "Cluster-Ansicht", .helpClusterDetail: "Alle Terminals eines Projekts gleichzeitig zeigen; ein Feld an den Rand eines anderen ziehen teilt es", .helpDropTitle: "Ordner aus dem Finder öffnen", .helpCLITitle: "Planchette aus einem Agenten steuern", .helpCLIDetail: "Socket-API und das planchette-CLI in jedem Terminal: auflisten, öffnen, fokussieren, Prompt senden, auf Status warten, Ausgabe lesen, Benachrichtigungen abfragen", .helpInstallOnQuitDetail: "Lädt das Update und installiert es beim nächsten Beenden — kein laufender Turn wird unterbrochen",
         .remindMe: "Erinnere mich…", .remindMeHelp: "Bis dahin still, danach eine Erinnerung", .remindIn1h: "In 1 Stunde", .remindIn2h: "In 2 Stunden", .remindTomorrow: "Morgen 9:00", .remindCancel: "Erinnerung abbrechen", .quietUntil: "still bis %@", .reminder: "Erinnerung", .reminderBody: "Du wolltest daran erinnert werden.", .markGroupReady: "Projekt als frei markieren", .markProjectActive: "Projekt aktiv setzen", .markProjectInactive: "Projekt inaktiv setzen", .markProjectActiveHelp: "Ein geparktes Projekt ist still — keine Badges, keine Zähler, keine Benachrichtigungen — und beim Inaktivsetzen werden seine Terminals als frei markiert", .markProjectsActive: "%d Projekte aktiv setzen", .markProjectsInactive: "%d Projekte inaktiv setzen", .inactiveProject: "inaktiv",
         .arrangements: "Anordnungen", .arrangementsHelp: "Gespeicherte Anordnungen von Projekten und Terminals", .saveArrangement: "Anordnung speichern…", .saveArrangementTitle: "Name der Anordnung", .newArrangement: "Neue Anordnung…", .overwriteArrangement: "\"%@\" überschreiben", .saveArrangementHelp: "Projekte und Terminals dieses Fensters als wiederverwendbare Anordnung speichern", .openArrangement: "Öffnen", .renameArrangement: "Anordnung umbenennen", .deleteArrangement: "Anordnung löschen", .deleteArrangementConfirm: "Die Anordnung \"%@\" löschen?", .deleteArrangementBody: "Nur die gespeicherte Vorlage verschwindet. Die damit erstellten Projekte und Terminals bleiben, wie sie sind — die Anordnung selbst ist nicht wiederherstellbar.", .noArrangements: "Noch keine Anordnungen gespeichert", .arrangementSummary: "%d Projekte · %d Terminals", .savedArrangements: "Gespeicherte Anordnungen",
         .selectedProjects: "%d Projekte ausgewählt", .markProjectsFree: "%d Projekte als frei markieren", .closeProjects: "%d Projekte schließen", .closeProjectsBody: "%d Projekte mit ihren %d Terminals schließen? Laufende Sessions werden beendet.", .dropIntoFolder: "In \"%@\" verschieben",
@@ -395,8 +384,7 @@ enum L10n {
         .langSystem: "Système", .settingsTitle: "Réglages", .language: "Langue",
         .appearance: "Apparence", .aiSection: "IA",
         .appearanceLight: "Clair", .appearanceDark: "Sombre", .appearanceHelp: "Clair, sombre ou suivre le système", .settingsHelp: "Ouvrir les réglages (⌘,)",
-        .mainProjects: "Projets principaux", .projects: "Projets", .sideProjects: "Projets secondaires",
-        .makeFavorite: "Définir comme projet principal", .unmakeFavorite: "Retirer des projets principaux",
+        .projects: "Projets", .makeFavorite: "Définir comme projet principal", .unmakeFavorite: "Retirer des projets principaux",
         .color: "Couleur", .colorNone: "Aucune", .rename: "Renommer…",
         .moveToNewWindow: "Déplacer vers une nouvelle fenêtre",
         .tags: "Étiquettes", .newTag: "Nouvelle étiquette…", .removeAllTags: "Tout retirer",
@@ -408,17 +396,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "Aucun terminal dans ce groupe",
         .newTerminalHint: "⌘T ouvre un nouveau terminal",
-        .attention: "Attention", .allQuiet: "Tout est calme — rien ne vous attend.",
-        .waitingForAnswer: "En attente d'une réponse", .doneSeeResult: "Terminé — voir le résultat",
+        .allQuiet: "Tout est calme — rien ne vous attend.",
         .switcherPlaceholder: "Titre, chemin, branche, groupe…",
         .newWindow: "Nouvelle fenêtre", .sessionMenu: "Session", .newTerminal: "Nouveau terminal…",
         .quickSwitcher: "Sélecteur rapide", .jumpToWaiting: "Aller à la session en attente",
         .aiMenu: "IA", .aiActive: "Assistance IA active", .aiExplanation: "Affiche un résumé d'une ligne de ce sur quoi chaque terminal travaille (et un thème pour les regrouper). Lit le transcript Claude local de chaque session et le condense avec votre connexion Claude existante — sans clé API, uniquement quand c'est activé.", .summarizeAll: "Résumer toutes les sessions",
         .groupByTopic: "Grouper par thème…",
-        .aiAssist: "Assistance IA", .aiAssistOn: "IA : activée", .aiAssistOff: "IA : désactivée",
-        .aiAssistOnHelp: "Assistance IA active : les sessions sont résumées et peuvent être groupées par thème",
+        .aiAssist: "Assistance IA", .aiAssistOnHelp: "Assistance IA active : les sessions sont résumées et peuvent être groupées par thème",
         .aiAssistOffHelp: "Assistance IA désactivée — activez-la pour résumer les sessions et les grouper par thème",
-        .inbox: "Boîte", .inboxHelp: "Boîte d'attention : sessions qui demandent ou ont fini, les plus urgentes d'abord",
         .mergeIntoMain: "Fusionner dans la fenêtre principale",
         .mergeIntoMainHelp: "Déplacer tous les groupes de cette fenêtre dans la fenêtre principale",
         .newTerminalHelp: "Ouvrir un nouveau terminal dans cette fenêtre (⌘T)",
@@ -445,7 +430,6 @@ enum L10n {
         .group: "Grouper",
         .allQuietShort: "Tout est calme", .openPlanchette: "Ouvrir Planchette", .asks: "demande",
         .chooseFolder: "Choisir le dossier du projet pour le nouveau terminal",
-        .windowMerged: "La fenêtre a été fusionnée",
         .importMenu: "Importer", .importFromITerm: "Importer depuis iTerm2", .importFromTerminal: "Importer depuis Terminal.app",
         .importNothing: "aucun terminal ouvert trouvé", .importNotRunning: "n'est pas en cours d'exécution", .importNotAuthorized: "Automatisation non autorisée", .importAuthHint: "Autorisez Planchette à contrôler l'app de terminal dans Réglages Système → Confidentialité et sécurité → Automatisation, puis réessayez.", .importFailed: "Échec de l'import", .importMenuHelp: "Ouvrir les répertoires de travail d'une autre app de terminal comme terminaux Planchette", .dropHint: "Déposez un dossier ici pour ouvrir un terminal",
         .updates: "Mises à jour", .checkForUpdates: "Rechercher des mises à jour…", .autoUpdateCheck: "Rechercher automatiquement les mises à jour", .autoUpdateHelp: "Vérifier sur GitHub une nouvelle version stable au lancement",
@@ -453,14 +437,14 @@ enum L10n {
         .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
         .updateInstallRelaunch: "Installer et relancer", .updateInstallBody: "Planchette va télécharger la nouvelle version, l'installer et se relancer.", .updateInstalling: "Installation de la mise à jour…", .updateLater: "Plus tard", .updateNoReleases: "Aucune version trouvée pour l'instant.", .updateDownloading: "Téléchargement… %d%%",
         .whatsNew: "Nouveautés", .andMoreChanges: "…et %d autres",
-        .stateReady: "Terminé", .stateFree: "Libre", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .errorOccurred: "Une erreur s'est produite", .free: "libre",
+        .stateReady: "Terminé", .stateFree: "Libre", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .free: "libre",
         .generalTab: "Général", .infoTab: "Informations", .colorLegendTitle: "Couleurs d'état", .colorLegendIntro: "Chaque terminal affiche une pastille d'état colorée :",
-        .readyDesc: "le tour ou la commande est terminé — un résultat attend votre regard", .freeDesc: "prompt vide, rien à relire — ce terminal est disponible", .needsYou: "Besoin de vous", .waitingSince: "en attente depuis %d min", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
+        .readyDesc: "le tour ou la commande est terminé — un résultat attend votre regard", .freeDesc: "prompt vide, rien à relire — ce terminal est disponible", .waitingSince: "en attente depuis %d min", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
         .newProject: "Nouveau projet…", .newProjectHelp: "Ajouter un projet depuis un dossier", .addTerminalHelp: "Ajouter un terminal dans le dossier de ce projet",
         .fontSmaller: "Police plus petite (⌘-)", .fontLarger: "Police plus grande (⌘+)", .fontReset: "Réinitialiser la police (⌘0)",
-        .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .collapseAllProjects: "Réduire tous les projets", .expandAllProjects: "Développer tous les projets", .peekCollapsedTitle: "Afficher les demandes sous les projets réduits", .peekCollapsedHelp: "Un projet réduit montre encore les terminaux avec une question ou une erreur non lue. Désactivé, il reste entièrement replié.", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .clearReady: "Masquer les inactifs", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner", .menuOpenLink: "Ouvrir le lien", .menuOpenLinkHelp: "Clic droit sur un lien dans le terminal pour l'ouvrir ; Copier, Coller et Ouvrir le lien sont grisés quand ils ne peuvent pas agir",
+        .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .collapseAllProjects: "Réduire tous les projets", .expandAllProjects: "Développer tous les projets", .peekCollapsedTitle: "Afficher les demandes sous les projets réduits", .peekCollapsedHelp: "Un projet réduit montre encore les terminaux avec une question ou une erreur non lue. Désactivé, il reste entièrement replié.", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner", .menuOpenLink: "Ouvrir le lien", .menuOpenLinkHelp: "Clic droit sur un lien dans le terminal pour l'ouvrir ; Copier, Coller et Ouvrir le lien sont grisés quand ils ne peuvent pas agir",
         .onlyUnread: "Non lus seulement", .onlyUnreadHelp: "N'afficher que les terminaux dont le dernier rapport n'a pas été vu", .markAllRead: "Tout marquer comme lu", .markRead: "Marquer comme lu", .markUnread: "Marquer comme non lu",
-        .newWorktree: "Nouveau worktree…", .newWorktreeHelp: "Créer un worktree git et l'ouvrir comme projet", .worktreeBranchPrompt: "Branche du nouveau worktree", .worktreeBasePrompt: "Base (vide = HEAD actuel)", .worktreeFailed: "Impossible de créer le worktree", .removeWorktreeTitle: "Supprimer la copie de travail ?", .removeWorktreeBody: "Supprimer le worktree dans « %@ » ? Git refuse tant qu'il reste des modifications non validées.", .removeWorktree: "Supprimer", .keepWorktree: "Conserver",
+        .newWorktree: "Nouveau worktree…", .newWorktreeHelp: "Créer un worktree git et l'ouvrir comme projet", .worktreeBranchPrompt: "Branche du nouveau worktree", .worktreeFailed: "Impossible de créer le worktree", .removeWorktreeTitle: "Supprimer la copie de travail ?", .removeWorktreeBody: "Supprimer le worktree dans « %@ » ? Git refuse tant qu'il reste des modifications non validées.", .removeWorktree: "Supprimer", .keepWorktree: "Conserver",
         .quitWhileRunningTitle: "Quitter pendant que les agents travaillent ?", .quitWhileRunningBody: "%d terminal(aux) sont encore en cours. Quitter les interrompt — une restauration récupère la conversation, pas le travail en cours.", .quitAnyway: "Quitter quand même",
         .durableSection: "Terminaux durables", .durableActive: "Les nouveaux terminaux survivent à un redémarrage", .durableHelp: "Exécute chaque nouveau terminal dans tmux, pour que son agent continue de travailler quand Planchette quitte, plante ou installe une mise à jour.", .durableExplanation: "Les nouveaux terminaux tournent dans tmux. Quitter, installer une mise à jour ou même un plantage laissent l'agent en marche — à la réouverture, on se rattache à la session vivante au lieu de reprendre une conversation. Un redémarrage de la machine met quand même fin à tout. Les terminaux existants gardent ce qu'ils étaient à leur création. Le prix : tmux ne transmet pas le protocole clavier du terminal, donc Shift+Entrée arrive à l'agent comme une simple Entrée (il envoie au lieu d'ajouter une ligne). Activé par défaut — désactivez-le si les prompts multilignes comptent plus pour vous qu'un agent qui survit à l'application.", .durableMissingTmux: "Nécessite tmux, introuvable. Installez-le (p. ex. brew install tmux) puis rouvrez les Réglages.",
         .updateInstallOnQuit: "Installer en quittant", .updateStagedTitle: "La version %@ est prête", .updateStagedBody: "Elle est téléchargée et vérifiée. Rien ne change avant que vous quittiez Planchette — le prochain lancement utilisera la nouvelle version, et vos agents en cours ne sont pas touchés.", .updatePendingQuit: "Une mise à jour sera installée en quittant.",
@@ -477,8 +461,7 @@ enum L10n {
         .langSystem: "Sistema", .settingsTitle: "Ajustes", .language: "Idioma",
         .appearance: "Apariencia", .aiSection: "IA",
         .appearanceLight: "Claro", .appearanceDark: "Oscuro", .appearanceHelp: "Claro, oscuro o seguir el sistema", .settingsHelp: "Abrir ajustes (⌘,)",
-        .mainProjects: "Proyectos principales", .projects: "Proyectos", .sideProjects: "Proyectos secundarios",
-        .makeFavorite: "Marcar como proyecto principal", .unmakeFavorite: "Quitar de principales",
+        .projects: "Proyectos", .makeFavorite: "Marcar como proyecto principal", .unmakeFavorite: "Quitar de principales",
         .color: "Color", .colorNone: "Ninguno", .rename: "Renombrar…",
         .moveToNewWindow: "Mover a una nueva ventana",
         .tags: "Etiquetas", .newTag: "Nueva etiqueta…", .removeAllTags: "Quitar todas",
@@ -490,17 +473,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "No hay terminales en este grupo",
         .newTerminalHint: "⌘T abre un nuevo terminal",
-        .attention: "Atención", .allQuiet: "Todo tranquilo — nada te espera.",
-        .waitingForAnswer: "Esperando una respuesta", .doneSeeResult: "Listo — ver el resultado",
+        .allQuiet: "Todo tranquilo — nada te espera.",
         .switcherPlaceholder: "Título, ruta, rama, grupo…",
         .newWindow: "Nueva ventana", .sessionMenu: "Sesión", .newTerminal: "Nuevo terminal…",
         .quickSwitcher: "Selector rápido", .jumpToWaiting: "Ir a la sesión en espera",
         .aiMenu: "IA", .aiActive: "Asistencia IA activa", .aiExplanation: "Muestra un resumen de una línea de en qué trabaja cada terminal (y un tema para agruparlos). Lee el transcript local de Claude de cada sesión y lo condensa con tu sesión de Claude existente — sin clave API, solo cuando está activo.", .summarizeAll: "Resumir todas las sesiones",
         .groupByTopic: "Agrupar por tema…",
-        .aiAssist: "Asistencia IA", .aiAssistOn: "IA: activada", .aiAssistOff: "IA: desactivada",
-        .aiAssistOnHelp: "Asistencia IA activa: las sesiones se resumen y pueden agruparse por tema",
+        .aiAssist: "Asistencia IA", .aiAssistOnHelp: "Asistencia IA activa: las sesiones se resumen y pueden agruparse por tema",
         .aiAssistOffHelp: "Asistencia IA desactivada — actívala para resumir sesiones y agruparlas por tema",
-        .inbox: "Bandeja", .inboxHelp: "Bandeja de atención: sesiones que preguntan o terminaron, las más urgentes primero",
         .mergeIntoMain: "Combinar en la ventana principal",
         .mergeIntoMainHelp: "Mover todos los grupos de esta ventana a la principal",
         .newTerminalHelp: "Abrir un nuevo terminal en esta ventana (⌘T)",
@@ -527,7 +507,6 @@ enum L10n {
         .group: "Agrupar",
         .allQuietShort: "Todo tranquilo", .openPlanchette: "Abrir Planchette", .asks: "pregunta",
         .chooseFolder: "Elige la carpeta del proyecto para el nuevo terminal",
-        .windowMerged: "La ventana se combinó",
         .importMenu: "Importar", .importFromITerm: "Importar desde iTerm2", .importFromTerminal: "Importar desde Terminal.app",
         .importNothing: "no se encontraron terminales abiertos", .importNotRunning: "no se está ejecutando", .importNotAuthorized: "Automatización no permitida", .importAuthHint: "Permite que Planchette controle la app de terminal en Ajustes del Sistema → Privacidad y seguridad → Automatización, y vuelve a intentarlo.", .importFailed: "Error al importar", .importMenuHelp: "Abrir los directorios de trabajo de otra app de terminal como terminales de Planchette", .dropHint: "Suelta una carpeta aquí para abrir un terminal",
         .updates: "Actualizaciones", .checkForUpdates: "Buscar actualizaciones…", .autoUpdateCheck: "Buscar actualizaciones automáticamente", .autoUpdateHelp: "Comprobar en GitHub una nueva versión estable al iniciar",
@@ -535,14 +514,14 @@ enum L10n {
         .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
         .updateInstallRelaunch: "Instalar y reiniciar", .updateInstallBody: "Planchette descargará la nueva versión, la instalará y se reiniciará.", .updateInstalling: "Instalando actualización…", .updateLater: "Más tarde", .updateNoReleases: "Aún no se encontraron versiones.", .updateDownloading: "Descargando… %d%%",
         .whatsNew: "Novedades", .andMoreChanges: "…y %d más",
-        .stateReady: "Hecho", .stateFree: "Libre", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .errorOccurred: "Ocurrió un error", .free: "libre",
+        .stateReady: "Hecho", .stateFree: "Libre", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .free: "libre",
         .generalTab: "General", .infoTab: "Información", .colorLegendTitle: "Colores de estado", .colorLegendIntro: "Cada terminal muestra un punto de estado de color:",
-        .readyDesc: "el turno o comando terminó — un resultado espera tu revisión", .freeDesc: "prompt vacío, nada que revisar — este terminal está disponible", .needsYou: "Te necesita", .waitingSince: "esperando desde hace %d min", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
+        .readyDesc: "el turno o comando terminó — un resultado espera tu revisión", .freeDesc: "prompt vacío, nada que revisar — este terminal está disponible", .waitingSince: "esperando desde hace %d min", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
         .newProject: "Nuevo proyecto…", .newProjectHelp: "Añadir un proyecto desde una carpeta", .addTerminalHelp: "Añadir un terminal en la carpeta de este proyecto",
         .fontSmaller: "Fuente más pequeña (⌘-)", .fontLarger: "Fuente más grande (⌘+)", .fontReset: "Restablecer tamaño (⌘0)",
-        .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Contraer todos los proyectos", .expandAllProjects: "Expandir todos los proyectos", .peekCollapsedTitle: "Mostrar solicitudes bajo proyectos contraídos", .peekCollapsedHelp: "Un proyecto contraído sigue mostrando terminales con una pregunta o un error sin leer. Desactivado, permanece plegado del todo.", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .clearReady: "Ocultar inactivos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo", .menuOpenLink: "Abrir enlace", .menuOpenLinkHelp: "Clic derecho en un enlace del terminal para abrirlo; Copiar, Pegar y Abrir enlace se atenúan cuando no pueden actuar",
+        .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Contraer todos los proyectos", .expandAllProjects: "Expandir todos los proyectos", .peekCollapsedTitle: "Mostrar solicitudes bajo proyectos contraídos", .peekCollapsedHelp: "Un proyecto contraído sigue mostrando terminales con una pregunta o un error sin leer. Desactivado, permanece plegado del todo.", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo", .menuOpenLink: "Abrir enlace", .menuOpenLinkHelp: "Clic derecho en un enlace del terminal para abrirlo; Copiar, Pegar y Abrir enlace se atenúan cuando no pueden actuar",
         .onlyUnread: "Solo no leídos", .onlyUnreadHelp: "Mostrar solo terminales cuyo último informe no has visto", .markAllRead: "Marcar todo como leído", .markRead: "Marcar como leído", .markUnread: "Marcar como no leído",
-        .newWorktree: "Nuevo worktree…", .newWorktreeHelp: "Crear un worktree de git y abrirlo como proyecto", .worktreeBranchPrompt: "Rama para el nuevo worktree", .worktreeBasePrompt: "Base (vacío = HEAD actual)", .worktreeFailed: "No se pudo crear el worktree", .removeWorktreeTitle: "¿Eliminar la copia de trabajo?", .removeWorktreeBody: "¿Borrar el worktree en «%@»? Git se niega mientras haya cambios sin confirmar.", .removeWorktree: "Eliminar", .keepWorktree: "Conservar",
+        .newWorktree: "Nuevo worktree…", .newWorktreeHelp: "Crear un worktree de git y abrirlo como proyecto", .worktreeBranchPrompt: "Rama para el nuevo worktree", .worktreeFailed: "No se pudo crear el worktree", .removeWorktreeTitle: "¿Eliminar la copia de trabajo?", .removeWorktreeBody: "¿Borrar el worktree en «%@»? Git se niega mientras haya cambios sin confirmar.", .removeWorktree: "Eliminar", .keepWorktree: "Conservar",
         .quitWhileRunningTitle: "¿Salir mientras los agentes trabajan?", .quitWhileRunningBody: "%d terminal(es) siguen en marcha. Al salir se interrumpen — una restauración recupera la conversación, pero no el trabajo en curso.", .quitAnyway: "Salir de todos modos",
         .durableSection: "Terminales duraderas", .durableActive: "Las terminales nuevas sobreviven a un reinicio", .durableHelp: "Ejecuta cada terminal nueva dentro de tmux, para que su agente siga trabajando cuando Planchette se cierra, falla o instala una actualización.", .durableExplanation: "Las terminales nuevas se ejecutan en tmux. Salir, instalar una actualización o incluso un fallo dejan al agente en marcha — al reabrir se vuelve a conectar con la sesión viva en lugar de reanudar una conversación. Reiniciar el equipo sí lo termina todo. Las terminales existentes mantienen cómo fueron creadas. El coste: tmux no transmite el protocolo de teclado del terminal, así que Shift+Enter le llega al agente como un Enter normal (envía en lugar de añadir una línea). Activado por defecto: desactívalo si los prompts de varias líneas te importan más que un agente que sobreviva a la app.", .durableMissingTmux: "Necesita tmux, que no se encontró. Instálalo (p. ej. brew install tmux) y vuelve a abrir los Ajustes.",
         .updateInstallOnQuit: "Instalar al salir", .updateStagedTitle: "La versión %@ está lista", .updateStagedBody: "Está descargada y verificada. Nada cambia hasta que salgas de Planchette — el próximo inicio usará la nueva versión y tus agentes en marcha no se tocan.", .updatePendingQuit: "Se instalará una actualización al salir.",
@@ -559,8 +538,7 @@ enum L10n {
         .langSystem: "Sistema", .settingsTitle: "Impostazioni", .language: "Lingua",
         .appearance: "Aspetto", .aiSection: "IA",
         .appearanceLight: "Chiaro", .appearanceDark: "Scuro", .appearanceHelp: "Chiaro, scuro o segui il sistema", .settingsHelp: "Apri impostazioni (⌘,)",
-        .mainProjects: "Progetti principali", .projects: "Progetti", .sideProjects: "Progetti secondari",
-        .makeFavorite: "Segna come progetto principale", .unmakeFavorite: "Rimuovi da principali",
+        .projects: "Progetti", .makeFavorite: "Segna come progetto principale", .unmakeFavorite: "Rimuovi da principali",
         .color: "Colore", .colorNone: "Nessuno", .rename: "Rinomina…",
         .moveToNewWindow: "Sposta in una nuova finestra",
         .tags: "Tag", .newTag: "Nuovo tag…", .removeAllTags: "Rimuovi tutti",
@@ -572,17 +550,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "Nessun terminale in questo gruppo",
         .newTerminalHint: "⌘T apre un nuovo terminale",
-        .attention: "Attenzione", .allQuiet: "Tutto tranquillo — niente ti aspetta.",
-        .waitingForAnswer: "In attesa di una risposta", .doneSeeResult: "Fatto — vedi il risultato",
+        .allQuiet: "Tutto tranquillo — niente ti aspetta.",
         .switcherPlaceholder: "Titolo, percorso, branch, gruppo…",
         .newWindow: "Nuova finestra", .sessionMenu: "Sessione", .newTerminal: "Nuovo terminale…",
         .quickSwitcher: "Selettore rapido", .jumpToWaiting: "Vai alla sessione in attesa",
         .aiMenu: "IA", .aiActive: "Assistenza IA attiva", .aiExplanation: "Mostra un riassunto di una riga di cosa sta facendo ogni terminale (e un tema per raggrupparli). Legge il transcript locale di Claude di ogni sessione e lo condensa con il tuo accesso Claude esistente — nessuna chiave API, solo quando è attivo.", .summarizeAll: "Riassumi tutte le sessioni",
         .groupByTopic: "Raggruppa per tema…",
-        .aiAssist: "Assistenza IA", .aiAssistOn: "IA: attiva", .aiAssistOff: "IA: disattivata",
-        .aiAssistOnHelp: "Assistenza IA attiva: le sessioni vengono riassunte e possono essere raggruppate per tema",
+        .aiAssist: "Assistenza IA", .aiAssistOnHelp: "Assistenza IA attiva: le sessioni vengono riassunte e possono essere raggruppate per tema",
         .aiAssistOffHelp: "Assistenza IA disattivata — attivala per riassumere le sessioni e raggrupparle per tema",
-        .inbox: "In arrivo", .inboxHelp: "Casella attenzione: sessioni che chiedono o hanno finito, le più urgenti prima",
         .mergeIntoMain: "Unisci alla finestra principale",
         .mergeIntoMainHelp: "Sposta tutti i gruppi di questa finestra in quella principale",
         .newTerminalHelp: "Apri un nuovo terminale in questa finestra (⌘T)",
@@ -609,7 +584,6 @@ enum L10n {
         .group: "Raggruppa",
         .allQuietShort: "Tutto tranquillo", .openPlanchette: "Apri Planchette", .asks: "chiede",
         .chooseFolder: "Scegli la cartella del progetto per il nuovo terminale",
-        .windowMerged: "La finestra è stata unita",
         .importMenu: "Importa", .importFromITerm: "Importa da iTerm2", .importFromTerminal: "Importa da Terminal.app",
         .importNothing: "nessun terminale aperto trovato", .importNotRunning: "non è in esecuzione", .importNotAuthorized: "Automazione non consentita", .importAuthHint: "Consenti a Planchette di controllare l'app Terminale in Impostazioni di Sistema → Privacy e sicurezza → Automazione, poi riprova.", .importFailed: "Importazione non riuscita", .importMenuHelp: "Apri le directory di lavoro di un'altra app terminale come terminali Planchette", .dropHint: "Trascina qui una cartella per aprire un terminale",
         .updates: "Aggiornamenti", .checkForUpdates: "Cerca aggiornamenti…", .autoUpdateCheck: "Cerca aggiornamenti automaticamente", .autoUpdateHelp: "Controlla su GitHub una nuova versione stabile all'avvio",
@@ -617,14 +591,14 @@ enum L10n {
         .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
         .updateInstallRelaunch: "Installa e riavvia", .updateInstallBody: "Planchette scaricherà la nuova versione, la installerà e si riavvierà.", .updateInstalling: "Installazione dell'aggiornamento…", .updateLater: "Più tardi", .updateNoReleases: "Nessuna versione trovata per ora.", .updateDownloading: "Download… %d%%",
         .whatsNew: "Novità", .andMoreChanges: "…e altre %d",
-        .stateReady: "Fatto", .stateFree: "Libero", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .errorOccurred: "Si è verificato un errore", .free: "libero",
+        .stateReady: "Fatto", .stateFree: "Libero", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .free: "libero",
         .generalTab: "Generale", .infoTab: "Informazioni", .colorLegendTitle: "Colori di stato", .colorLegendIntro: "Ogni terminale mostra un pallino di stato colorato:",
-        .readyDesc: "il turno o comando è terminato — un risultato attende la tua revisione", .freeDesc: "prompt vuoto, niente da rivedere — questo terminale è disponibile", .needsYou: "Ha bisogno di te", .waitingSince: "in attesa da %d min", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
+        .readyDesc: "il turno o comando è terminato — un risultato attende la tua revisione", .freeDesc: "prompt vuoto, niente da rivedere — questo terminale è disponibile", .waitingSince: "in attesa da %d min", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
         .newProject: "Nuovo progetto…", .newProjectHelp: "Aggiungi un progetto da una cartella", .addTerminalHelp: "Aggiungi un terminale nella cartella di questo progetto",
         .fontSmaller: "Carattere più piccolo (⌘-)", .fontLarger: "Carattere più grande (⌘+)", .fontReset: "Reimposta dimensione (⌘0)",
-        .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .collapseAllProjects: "Comprimi tutti i progetti", .expandAllProjects: "Espandi tutti i progetti", .peekCollapsedTitle: "Mostra richieste sotto i progetti compressi", .peekCollapsedHelp: "Un progetto compresso mostra comunque i terminali con una domanda o un errore non letti. Disattivato, resta chiuso del tutto.", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .clearReady: "Nascondi inattivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto", .menuOpenLink: "Apri link", .menuOpenLinkHelp: "Clic destro su un link nel terminale per aprirlo; Copia, Incolla e Apri link sono disattivati quando non possono agire",
+        .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .collapseAllProjects: "Comprimi tutti i progetti", .expandAllProjects: "Espandi tutti i progetti", .peekCollapsedTitle: "Mostra richieste sotto i progetti compressi", .peekCollapsedHelp: "Un progetto compresso mostra comunque i terminali con una domanda o un errore non letti. Disattivato, resta chiuso del tutto.", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto", .menuOpenLink: "Apri link", .menuOpenLinkHelp: "Clic destro su un link nel terminale per aprirlo; Copia, Incolla e Apri link sono disattivati quando non possono agire",
         .onlyUnread: "Solo non letti", .onlyUnreadHelp: "Mostra solo i terminali il cui ultimo messaggio non è stato visto", .markAllRead: "Segna tutto come letto", .markRead: "Segna come letto", .markUnread: "Segna come non letto",
-        .newWorktree: "Nuovo worktree…", .newWorktreeHelp: "Crea un worktree git e aprilo come progetto", .worktreeBranchPrompt: "Branch per il nuovo worktree", .worktreeBasePrompt: "Base (vuoto = HEAD attuale)", .worktreeFailed: "Impossibile creare il worktree", .removeWorktreeTitle: "Rimuovere la copia di lavoro?", .removeWorktreeBody: "Eliminare il worktree in «%@»? Git rifiuta finché contiene modifiche non committate.", .removeWorktree: "Rimuovi", .keepWorktree: "Mantieni",
+        .newWorktree: "Nuovo worktree…", .newWorktreeHelp: "Crea un worktree git e aprilo come progetto", .worktreeBranchPrompt: "Branch per il nuovo worktree", .worktreeFailed: "Impossibile creare il worktree", .removeWorktreeTitle: "Rimuovere la copia di lavoro?", .removeWorktreeBody: "Eliminare il worktree in «%@»? Git rifiuta finché contiene modifiche non committate.", .removeWorktree: "Rimuovi", .keepWorktree: "Mantieni",
         .quitWhileRunningTitle: "Uscire mentre gli agent lavorano?", .quitWhileRunningBody: "%d terminale/i sono ancora in esecuzione. Uscendo vengono interrotti — un ripristino recupera la conversazione, non il lavoro in corso.", .quitAnyway: "Esci comunque",
         .durableSection: "Terminali durevoli", .durableActive: "I nuovi terminali sopravvivono a un riavvio", .durableHelp: "Esegue ogni nuovo terminale dentro tmux, così il suo agent continua a lavorare quando Planchette esce, va in crash o installa un aggiornamento.", .durableExplanation: "I nuovi terminali girano in tmux. Uscire, installare un aggiornamento o persino un crash lasciano l'agent in esecuzione — riaprendo ci si ricollega alla sessione viva invece di riprendere una conversazione. Un riavvio del Mac termina comunque tutto. I terminali esistenti restano come sono stati creati. Il prezzo: tmux non inoltra il protocollo di tastiera del terminale, quindi Shift+Invio arriva all'agent come un Invio normale (invia invece di aggiungere una riga). Attivo per impostazione predefinita: disattivalo se i prompt su più righe contano più di un agent che sopravvive all'app.", .durableMissingTmux: "Richiede tmux, che non è stato trovato. Installalo (es. brew install tmux) e riapri le Impostazioni.",
         .updateInstallOnQuit: "Installa all'uscita", .updateStagedTitle: "La versione %@ è pronta", .updateStagedBody: "È scaricata e verificata. Nulla cambia finché non esci da Planchette — al prossimo avvio parte la nuova versione e gli agent in esecuzione restano intatti.", .updatePendingQuit: "Un aggiornamento verrà installato all'uscita.",
@@ -641,8 +615,7 @@ enum L10n {
         .langSystem: "Systeem", .settingsTitle: "Instellingen", .language: "Taal",
         .appearance: "Weergave", .aiSection: "AI",
         .appearanceLight: "Licht", .appearanceDark: "Donker", .appearanceHelp: "Licht, donker of het systeem volgen", .settingsHelp: "Instellingen openen (⌘,)",
-        .mainProjects: "Hoofdprojecten", .projects: "Projecten", .sideProjects: "Nevenprojecten",
-        .makeFavorite: "Als hoofdproject markeren", .unmakeFavorite: "Hoofdproject verwijderen",
+        .projects: "Projecten", .makeFavorite: "Als hoofdproject markeren", .unmakeFavorite: "Hoofdproject verwijderen",
         .color: "Kleur", .colorNone: "Geen", .rename: "Hernoemen…",
         .moveToNewWindow: "Naar nieuw venster verplaatsen",
         .tags: "Tags", .newTag: "Nieuwe tag…", .removeAllTags: "Alle verwijderen",
@@ -654,17 +627,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "Geen terminals in deze groep",
         .newTerminalHint: "⌘T opent een nieuwe terminal",
-        .attention: "Aandacht", .allQuiet: "Alles rustig — niets wacht op je.",
-        .waitingForAnswer: "Wacht op een antwoord", .doneSeeResult: "Klaar — bekijk het resultaat",
+        .allQuiet: "Alles rustig — niets wacht op je.",
         .switcherPlaceholder: "Titel, pad, branch, groep…",
         .newWindow: "Nieuw venster", .sessionMenu: "Sessie", .newTerminal: "Nieuwe terminal…",
         .quickSwitcher: "Snelkiezer", .jumpToWaiting: "Ga naar wachtende sessie",
         .aiMenu: "AI", .aiActive: "AI-assistentie actief", .aiExplanation: "Toont een samenvatting van één regel van waar elke terminal aan werkt (en een onderwerp om ze te groeperen). Leest het lokale Claude-transcript van elke sessie en condenseert het met je bestaande Claude-login — geen API-sleutel, alleen actief wanneer ingeschakeld.", .summarizeAll: "Alle sessies nu samenvatten",
         .groupByTopic: "Groeperen op thema…",
-        .aiAssist: "AI-assistentie", .aiAssistOn: "AI: aan", .aiAssistOff: "AI: uit",
-        .aiAssistOnHelp: "AI-assistentie aan: sessies worden samengevat en kunnen op thema worden gegroepeerd",
+        .aiAssist: "AI-assistentie", .aiAssistOnHelp: "AI-assistentie aan: sessies worden samengevat en kunnen op thema worden gegroepeerd",
         .aiAssistOffHelp: "AI-assistentie uit — zet aan om sessies samen te vatten en op thema te groeperen",
-        .inbox: "Postvak", .inboxHelp: "Aandachtspostvak: sessies die vragen of klaar zijn, meest dringende eerst",
         .mergeIntoMain: "Samenvoegen in hoofdvenster",
         .mergeIntoMainHelp: "Alle groepen van dit venster naar het hoofdvenster verplaatsen",
         .newTerminalHelp: "Open een nieuwe terminal in dit venster (⌘T)",
@@ -691,7 +661,6 @@ enum L10n {
         .group: "Groeperen",
         .allQuietShort: "Alles rustig", .openPlanchette: "Planchette openen", .asks: "vraagt",
         .chooseFolder: "Kies de projectmap voor de nieuwe terminal",
-        .windowMerged: "Venster is samengevoegd",
         .importMenu: "Importeren", .importFromITerm: "Importeren uit iTerm2", .importFromTerminal: "Importeren uit Terminal.app",
         .importNothing: "geen open terminals gevonden", .importNotRunning: "is niet actief", .importNotAuthorized: "Automatisering niet toegestaan", .importAuthHint: "Sta Planchette toe de terminal-app te bedienen in Systeeminstellingen → Privacy en beveiliging → Automatisering en probeer opnieuw.", .importFailed: "Importeren mislukt", .importMenuHelp: "De werkmappen van een andere terminal-app als Planchette-terminals openen", .dropHint: "Sleep een map hierheen om een terminal te openen",
         .updates: "Updates", .checkForUpdates: "Zoeken naar updates…", .autoUpdateCheck: "Automatisch naar updates zoeken", .autoUpdateHelp: "Bij het starten op GitHub naar een nieuwere stabiele versie zoeken",
@@ -699,14 +668,14 @@ enum L10n {
         .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
         .updateInstallRelaunch: "Installeren en herstarten", .updateInstallBody: "Planchette downloadt de nieuwe versie, installeert die en start opnieuw op.", .updateInstalling: "Update installeren…", .updateLater: "Later", .updateNoReleases: "Nog geen releases gevonden.", .updateDownloading: "Update downloaden… %d%%",
         .whatsNew: "Wat is er nieuw", .andMoreChanges: "…en %d meer",
-        .stateReady: "Klaar", .stateFree: "Vrij", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .errorOccurred: "Er is een fout opgetreden", .free: "vrij",
+        .stateReady: "Klaar", .stateFree: "Vrij", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .free: "vrij",
         .generalTab: "Algemeen", .infoTab: "Informatie", .colorLegendTitle: "Statuskleuren", .colorLegendIntro: "Elk terminal toont een gekleurde statusstip:",
-        .readyDesc: "de beurt of opdracht is klaar — een resultaat wacht op je blik", .freeDesc: "lege prompt, niets te reviewen — deze terminal is beschikbaar", .needsYou: "Heeft je nodig", .waitingSince: "wacht al %d min", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
+        .readyDesc: "de beurt of opdracht is klaar — een resultaat wacht op je blik", .freeDesc: "lege prompt, niets te reviewen — deze terminal is beschikbaar", .waitingSince: "wacht al %d min", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
         .newProject: "Nieuw project…", .newProjectHelp: "Een project vanuit een map toevoegen", .addTerminalHelp: "Een terminal in de map van dit project toevoegen",
         .fontSmaller: "Kleiner lettertype (⌘-)", .fontLarger: "Groter lettertype (⌘+)", .fontReset: "Lettergrootte herstellen (⌘0)",
-        .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .collapseAllProjects: "Alle projecten inklappen", .expandAllProjects: "Alle projecten uitklappen", .peekCollapsedTitle: "Verzoeken onder ingeklapte projecten tonen", .peekCollapsedHelp: "Een ingeklapt project toont nog steeds terminals met een ongelezen vraag of fout. Uit houdt het volledig dichtgeklapt.", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .clearReady: "Rustige verbergen", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren", .menuOpenLink: "Link openen", .menuOpenLinkHelp: "Rechtsklik op een link in de terminal om die te openen; Kopieer, Plak en Link openen zijn grijs wanneer ze niets kunnen doen",
+        .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .collapseAllProjects: "Alle projecten inklappen", .expandAllProjects: "Alle projecten uitklappen", .peekCollapsedTitle: "Verzoeken onder ingeklapte projecten tonen", .peekCollapsedHelp: "Een ingeklapt project toont nog steeds terminals met een ongelezen vraag of fout. Uit houdt het volledig dichtgeklapt.", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren", .menuOpenLink: "Link openen", .menuOpenLinkHelp: "Rechtsklik op een link in de terminal om die te openen; Kopieer, Plak en Link openen zijn grijs wanneer ze niets kunnen doen",
         .onlyUnread: "Alleen ongelezen", .onlyUnreadHelp: "Alleen terminals tonen waarvan je de laatste melding niet hebt gezien", .markAllRead: "Alles als gelezen markeren", .markRead: "Als gelezen markeren", .markUnread: "Als ongelezen markeren",
-        .newWorktree: "Nieuwe worktree…", .newWorktreeHelp: "Een git-worktree maken en als project openen", .worktreeBranchPrompt: "Branch voor de nieuwe worktree", .worktreeBasePrompt: "Basis (leeg = huidige HEAD)", .worktreeFailed: "Kon de worktree niet aanmaken", .removeWorktreeTitle: "Werkkopie verwijderen?", .removeWorktreeBody: "De worktree in \"%@\" verwijderen? Git weigert zolang er niet-vastgelegde wijzigingen zijn.", .removeWorktree: "Verwijderen", .keepWorktree: "Bewaren",
+        .newWorktree: "Nieuwe worktree…", .newWorktreeHelp: "Een git-worktree maken en als project openen", .worktreeBranchPrompt: "Branch voor de nieuwe worktree", .worktreeFailed: "Kon de worktree niet aanmaken", .removeWorktreeTitle: "Werkkopie verwijderen?", .removeWorktreeBody: "De worktree in \"%@\" verwijderen? Git weigert zolang er niet-vastgelegde wijzigingen zijn.", .removeWorktree: "Verwijderen", .keepWorktree: "Bewaren",
         .quitWhileRunningTitle: "Afsluiten terwijl agents werken?", .quitWhileRunningBody: "%d terminal(s) zijn nog bezig. Afsluiten breekt ze af — een herstel brengt het gesprek terug, maar niet het lopende werk.", .quitAnyway: "Toch afsluiten",
         .durableSection: "Duurzame terminals", .durableActive: "Nieuwe terminals overleven een herstart", .durableHelp: "Draait elke nieuwe terminal in tmux, zodat de agent doorwerkt wanneer Planchette afsluit, crasht of een update installeert.", .durableExplanation: "Nieuwe terminals draaien in tmux. Afsluiten, een update installeren of zelfs een crash laten de agent doorlopen — bij het heropenen wordt opnieuw verbonden met de levende sessie in plaats van een gesprek te hervatten. Een herstart van de Mac beëindigt alsnog alles. Bestaande terminals blijven zoals ze zijn aangemaakt. De prijs: tmux geeft het toetsenbordprotocol van de terminal niet door, dus Shift+Enter komt bij de agent aan als een gewone Enter (het verstuurt in plaats van een regel toe te voegen). Standaard aan — zet het uit als prompts van meerdere regels je meer waard zijn dan een agent die de app overleeft.", .durableMissingTmux: "Vereist tmux, dat niet gevonden is. Installeer het (bijv. brew install tmux) en open Instellingen opnieuw.",
         .updateInstallOnQuit: "Installeren bij afsluiten", .updateStagedTitle: "Versie %@ is klaar", .updateStagedBody: "Hij is gedownload en gecontroleerd. Er verandert niets tot je Planchette afsluit — de volgende start gebruikt de nieuwe versie en je lopende agents blijven ongemoeid.", .updatePendingQuit: "Een update wordt geïnstalleerd bij afsluiten.",
@@ -723,8 +692,7 @@ enum L10n {
         .langSystem: "Sistema", .settingsTitle: "Definições", .language: "Idioma",
         .appearance: "Aparência", .aiSection: "IA",
         .appearanceLight: "Claro", .appearanceDark: "Escuro", .appearanceHelp: "Claro, escuro ou seguir o sistema", .settingsHelp: "Abrir definições (⌘,)",
-        .mainProjects: "Projetos principais", .projects: "Projetos", .sideProjects: "Projetos secundários",
-        .makeFavorite: "Marcar como projeto principal", .unmakeFavorite: "Remover dos principais",
+        .projects: "Projetos", .makeFavorite: "Marcar como projeto principal", .unmakeFavorite: "Remover dos principais",
         .color: "Cor", .colorNone: "Nenhuma", .rename: "Renomear…",
         .moveToNewWindow: "Mover para nova janela",
         .tags: "Etiquetas", .newTag: "Nova etiqueta…", .removeAllTags: "Remover todas",
@@ -736,17 +704,14 @@ enum L10n {
         .secondsShort: "%ds", .minutesShort: "%dm", .hoursShort: "%dh", .daysShort: "%dd", .weeksShort: "%dw",
         .noTerminalsInGroup: "Sem terminais neste grupo",
         .newTerminalHint: "⌘T abre um novo terminal",
-        .attention: "Atenção", .allQuiet: "Tudo calmo — nada espera por ti.",
-        .waitingForAnswer: "À espera de uma resposta", .doneSeeResult: "Concluído — ver o resultado",
+        .allQuiet: "Tudo calmo — nada espera por ti.",
         .switcherPlaceholder: "Título, caminho, branch, grupo…",
         .newWindow: "Nova janela", .sessionMenu: "Sessão", .newTerminal: "Novo terminal…",
         .quickSwitcher: "Seletor rápido", .jumpToWaiting: "Ir para a sessão em espera",
         .aiMenu: "IA", .aiActive: "Assistência IA ativa", .aiExplanation: "Mostra um resumo de uma linha do que cada terminal está a fazer (e um tema para os agrupar). Lê o transcript local do Claude de cada sessão e condensa-o com o teu login existente do Claude — sem chave de API, só corre quando está ativo.", .summarizeAll: "Resumir todas as sessões",
         .groupByTopic: "Agrupar por tema…",
-        .aiAssist: "Assistência IA", .aiAssistOn: "IA: ligada", .aiAssistOff: "IA: desligada",
-        .aiAssistOnHelp: "Assistência IA ativa: as sessões são resumidas e podem ser agrupadas por tema",
+        .aiAssist: "Assistência IA", .aiAssistOnHelp: "Assistência IA ativa: as sessões são resumidas e podem ser agrupadas por tema",
         .aiAssistOffHelp: "Assistência IA desativada — ativa para resumir sessões e agrupá-las por tema",
-        .inbox: "Caixa", .inboxHelp: "Caixa de atenção: sessões que perguntam ou terminaram, as mais urgentes primeiro",
         .mergeIntoMain: "Fundir na janela principal",
         .mergeIntoMainHelp: "Mover todos os grupos desta janela para a principal",
         .newTerminalHelp: "Abrir um novo terminal nesta janela (⌘T)",
@@ -773,7 +738,6 @@ enum L10n {
         .group: "Agrupar",
         .allQuietShort: "Tudo calmo", .openPlanchette: "Abrir Planchette", .asks: "pergunta",
         .chooseFolder: "Escolhe a pasta do projeto para o novo terminal",
-        .windowMerged: "A janela foi fundida",
         .importMenu: "Importar", .importFromITerm: "Importar do iTerm2", .importFromTerminal: "Importar do Terminal.app",
         .importNothing: "nenhum terminal aberto encontrado", .importNotRunning: "não está em execução", .importNotAuthorized: "Automação não permitida", .importAuthHint: "Permite que o Planchette controle a app de terminal em Definições do Sistema → Privacidade e segurança → Automação e tenta de novo.", .importFailed: "Falha na importação", .importMenuHelp: "Abrir os diretórios de trabalho de outra app de terminal como terminais do Planchette", .dropHint: "Arrasta uma pasta para aqui para abrir um terminal",
         .updates: "Atualizações", .checkForUpdates: "Procurar atualizações…", .autoUpdateCheck: "Procurar atualizações automaticamente", .autoUpdateHelp: "Verificar no GitHub uma nova versão estável ao iniciar",
@@ -781,14 +745,14 @@ enum L10n {
         .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
         .updateInstallRelaunch: "Instalar e reiniciar", .updateInstallBody: "O Planchette vai descarregar a nova versão, instalá-la e reiniciar.", .updateInstalling: "A instalar atualização…", .updateLater: "Mais tarde", .updateNoReleases: "Ainda não foram encontradas versões.", .updateDownloading: "A descarregar… %d%%",
         .whatsNew: "Novidades", .andMoreChanges: "…e %d mais",
-        .stateReady: "Concluído", .stateFree: "Livre", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .errorOccurred: "Ocorreu um erro", .free: "livre",
+        .stateReady: "Concluído", .stateFree: "Livre", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .free: "livre",
         .generalTab: "Geral", .infoTab: "Informação", .colorLegendTitle: "Cores de estado", .colorLegendIntro: "Cada terminal mostra um ponto de estado colorido:",
-        .readyDesc: "o turno ou comando terminou — um resultado aguarda a tua revisão", .freeDesc: "prompt vazio, nada para rever — este terminal está disponível", .needsYou: "Precisa de ti", .waitingSince: "à espera há %d min", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
+        .readyDesc: "o turno ou comando terminou — um resultado aguarda a tua revisão", .freeDesc: "prompt vazio, nada para rever — este terminal está disponível", .waitingSince: "à espera há %d min", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
         .newProject: "Novo projeto…", .newProjectHelp: "Adicionar um projeto a partir de uma pasta", .addTerminalHelp: "Adicionar um terminal na pasta deste projeto",
         .fontSmaller: "Fonte menor (⌘-)", .fontLarger: "Fonte maior (⌘+)", .fontReset: "Repor tamanho da fonte (⌘0)",
-        .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Recolher todos os projetos", .expandAllProjects: "Expandir todos os projetos", .peekCollapsedTitle: "Mostrar pedidos sob projetos recolhidos", .peekCollapsedHelp: "Um projeto recolhido continua a mostrar terminais com uma pergunta ou um erro por ler. Desligado, fica totalmente fechado.", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .clearReady: "Ocultar inativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo", .menuOpenLink: "Abrir ligação", .menuOpenLinkHelp: "Clique direito numa ligação no terminal para a abrir; Copiar, Colar e Abrir ligação ficam desativados quando não podem agir",
+        .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Recolher todos os projetos", .expandAllProjects: "Expandir todos os projetos", .peekCollapsedTitle: "Mostrar pedidos sob projetos recolhidos", .peekCollapsedHelp: "Um projeto recolhido continua a mostrar terminais com uma pergunta ou um erro por ler. Desligado, fica totalmente fechado.", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo", .menuOpenLink: "Abrir ligação", .menuOpenLinkHelp: "Clique direito numa ligação no terminal para a abrir; Copiar, Colar e Abrir ligação ficam desativados quando não podem agir",
         .onlyUnread: "Apenas não lidos", .onlyUnreadHelp: "Mostrar só terminais cujo último relatório não viste", .markAllRead: "Marcar tudo como lido", .markRead: "Marcar como lido", .markUnread: "Marcar como não lido",
-        .newWorktree: "Novo worktree…", .newWorktreeHelp: "Criar um worktree do git e abri-lo como projeto", .worktreeBranchPrompt: "Branch para o novo worktree", .worktreeBasePrompt: "Base (vazio = HEAD atual)", .worktreeFailed: "Não foi possível criar o worktree", .removeWorktreeTitle: "Remover a cópia de trabalho?", .removeWorktreeBody: "Apagar o worktree em \"%@\"? O git recusa enquanto houver alterações não submetidas.", .removeWorktree: "Remover", .keepWorktree: "Manter",
+        .newWorktree: "Novo worktree…", .newWorktreeHelp: "Criar um worktree do git e abri-lo como projeto", .worktreeBranchPrompt: "Branch para o novo worktree", .worktreeFailed: "Não foi possível criar o worktree", .removeWorktreeTitle: "Remover a cópia de trabalho?", .removeWorktreeBody: "Apagar o worktree em \"%@\"? O git recusa enquanto houver alterações não submetidas.", .removeWorktree: "Remover", .keepWorktree: "Manter",
         .quitWhileRunningTitle: "Sair enquanto os agentes trabalham?", .quitWhileRunningBody: "%d terminal(is) ainda estão a correr. Sair interrompe-os — um restauro traz a conversa de volta, mas não o trabalho em curso.", .quitAnyway: "Sair mesmo assim",
         .durableSection: "Terminais duráveis", .durableActive: "Os novos terminais sobrevivem a um reinício", .durableHelp: "Executa cada novo terminal dentro do tmux, para que o seu agente continue a trabalhar quando o Planchette sai, falha ou instala uma atualização.", .durableExplanation: "Os novos terminais correm em tmux. Sair, instalar uma atualização ou até uma falha deixam o agente a correr — ao reabrir, liga-se de novo à sessão viva em vez de retomar uma conversa. Reiniciar o computador termina tudo à mesma. Os terminais existentes mantêm-se como foram criados. O custo: o tmux não encaminha o protocolo de teclado do terminal, por isso Shift+Enter chega ao agente como um Enter normal (envia em vez de acrescentar uma linha). Ligado por omissão — desliga-o se os prompts de várias linhas te importam mais do que um agente que sobrevive à app.", .durableMissingTmux: "Precisa do tmux, que não foi encontrado. Instale-o (p. ex. brew install tmux) e reabra as Definições.",
         .updateInstallOnQuit: "Instalar ao sair", .updateStagedTitle: "A versão %@ está pronta", .updateStagedBody: "Está descarregada e verificada. Nada muda até sair do Planchette — o próximo arranque usa a nova versão e os agentes em execução ficam intactos.", .updatePendingQuit: "Uma atualização será instalada ao sair.",

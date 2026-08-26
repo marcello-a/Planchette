@@ -35,6 +35,39 @@ struct ScreenRule: Codable, Equatable {
     /// The screen is showing history (a transcript viewer, a pager), so nothing
     /// on it describes the live state. Suppresses the whole reading.
     var skipStateUpdate: Bool = false
+
+    private enum CodingKeys: String, CodingKey {
+        case id, state, priority, tailLines, contains, any, none, lineRegex
+        case visibleBlocker, skipStateUpdate
+    }
+
+    init(id: String, state: ScreenState, priority: Int, tailLines: Int = 6,
+         contains: [String] = [], any: [[String]] = [], none: [String] = [],
+         lineRegex: [String] = [], visibleBlocker: Bool = false,
+         skipStateUpdate: Bool = false) {
+        self.id = id; self.state = state; self.priority = priority
+        self.tailLines = tailLines; self.contains = contains; self.any = any
+        self.none = none; self.lineRegex = lineRegex
+        self.visibleBlocker = visibleBlocker; self.skipStateUpdate = skipStateUpdate
+    }
+
+    // Hand-written so the in-line defaults apply during decode. Synthesized
+    // Decodable ignores them and throws on any missing key, which would make an
+    // override screen-rules.json that omits an optional field (the documented,
+    // supported way to fix a pattern) silently reject the WHOLE file.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        state = try c.decode(ScreenState.self, forKey: .state)
+        priority = try c.decode(Int.self, forKey: .priority)
+        tailLines = try c.decodeIfPresent(Int.self, forKey: .tailLines) ?? 6
+        contains = try c.decodeIfPresent([String].self, forKey: .contains) ?? []
+        any = try c.decodeIfPresent([[String]].self, forKey: .any) ?? []
+        none = try c.decodeIfPresent([String].self, forKey: .none) ?? []
+        lineRegex = try c.decodeIfPresent([String].self, forKey: .lineRegex) ?? []
+        visibleBlocker = try c.decodeIfPresent(Bool.self, forKey: .visibleBlocker) ?? false
+        skipStateUpdate = try c.decodeIfPresent(Bool.self, forKey: .skipStateUpdate) ?? false
+    }
 }
 
 /// The verdict for one screen reading.

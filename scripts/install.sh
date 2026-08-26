@@ -14,6 +14,13 @@
 # is what tells you the bytes are the ones the release published.
 set -eu
 
+# Wrap the whole script in a function called only on the last line. Piped into
+# `sh` (the documented `curl … | sh`), a dropped connection can feed sh a
+# truncated file; without this wrapper sh would run the partial script and could
+# stop between moving the installed app aside and swapping the new one in,
+# leaving no app at all. With it, a truncated stream never reaches `main`.
+main() {
+
 REPO="marcello-a/Planchette"
 DEST="${PLANCHETTE_DEST:-/Applications}"
 VERSION="${1:-}"
@@ -29,7 +36,12 @@ fi
 
 # Replacing a bundle while it runs corrupts the running app: let the user quit
 # it themselves rather than killing agents that may be mid-turn.
-if pgrep -f "$DEST/Planchette.app/Contents/MacOS/Planchette" >/dev/null 2>&1; then
+# pgrep -f treats its argument as a regex, so escape the ERE metacharacters in
+# DEST — a destination like "~/Apps (work)" would otherwise never match and the
+# guard would fail open, swapping the bundle under a running app.
+BIN_RE="$(printf '%s' "$DEST/Planchette.app/Contents/MacOS/Planchette" \
+    | sed 's/[][(){}.^$*+?|\\]/\\&/g')"
+if pgrep -f "$BIN_RE" >/dev/null 2>&1; then
     echo "Planchette is running from $DEST — quit it first, then run this again." >&2
     echo "(Durable terminals survive the quit; ordinary ones do not.)" >&2
     exit 1
@@ -96,3 +108,7 @@ VERSION_INSTALLED="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionStri
 echo
 echo "✔ Planchette $VERSION_INSTALLED installed in $DEST"
 echo "  open \"$DEST/Planchette.app\""
+
+}
+
+main "$@"

@@ -65,11 +65,16 @@ final class GhosttyRuntime {
                 GhosttyRuntime.handleAction(target: target, action: action)
             },
             read_clipboard_cb: { userdata, location, state in
-                GhosttyRuntime.readClipboard(userdata, location: location, state: state)
+                GhosttyRuntime.readClipboard(userdata, location: location, state: state, confirmed: false)
             },
             confirm_read_clipboard_cb: { userdata, _, state, _ in
-                // Skip the confirmation dialog in v1: allow the read.
-                GhosttyRuntime.readClipboard(userdata, location: GHOSTTY_CLIPBOARD_STANDARD, state: state)
+                // Skip the confirmation dialog in v1: allow the read. Completing
+                // with `confirmed: true` bypasses libghostty's paste-safety check.
+                // Completing with `false` here re-triggers this callback forever
+                // (an OSC 52 read, or a newline paste into a program without
+                // bracketed paste, spins the CPU and never lands) — see the
+                // matching flag in `readClipboard`.
+                _ = GhosttyRuntime.readClipboard(userdata, location: GHOSTTY_CLIPBOARD_STANDARD, state: state, confirmed: true)
             },
             write_clipboard_cb: { _, _, content, count, _ in
                 guard let content, count > 0 else { return }
@@ -260,7 +265,8 @@ final class GhosttyRuntime {
     private static func readClipboard(
         _ userdata: UnsafeMutableRawPointer?,
         location: ghostty_clipboard_e,
-        state: UnsafeMutableRawPointer?
+        state: UnsafeMutableRawPointer?,
+        confirmed: Bool
     ) -> Bool {
         guard let userdata else { return false }
         let view = Unmanaged<GhosttySurfaceNSView>.fromOpaque(userdata).takeUnretainedValue()
@@ -268,7 +274,7 @@ final class GhosttyRuntime {
             guard let surface = view.surface else { return }
             let string = NSPasteboard.general.string(forType: .string) ?? ""
             string.withCString { ptr in
-                ghostty_surface_complete_clipboard_request(surface, ptr, state, false)
+                ghostty_surface_complete_clipboard_request(surface, ptr, state, confirmed)
             }
         }
         return true

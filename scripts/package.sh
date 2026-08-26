@@ -86,7 +86,13 @@ PLIST
 
 # 3. Ad-hoc codesign so Gatekeeper lets it run locally. For distribution to
 #    others, replace with a Developer ID identity + notarization.
-codesign --force --deep --sign - "$APP" 2>/dev/null || echo "  (ad-hoc codesign skipped)"
+# Ad-hoc signing must succeed: Apple Silicon SIGKILLs an unsigned arm64 binary
+# at exec, so a build that skipped signing would ship an app that cannot launch.
+# Fail the build rather than publish it.
+codesign --force --deep --sign - "$APP" || {
+    echo "codesign failed — refusing to package an unsigned bundle" >&2
+    exit 1
+}
 
 echo "→ built $APP"
 

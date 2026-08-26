@@ -91,9 +91,20 @@ final class AppState: ObservableObject {
 
     /// Capture every live terminal's scrollback to disk (called at durability
     /// moments: quit, resign-active, hide).
-    func saveScrollbacks() {
-        TerminalRegistry.shared.saveScrollback(to: Self.scrollbackDir)
+    ///
+    /// `force` is for quit: it always captures and writes synchronously, since
+    /// the process is about to exit. Everything else is throttled — Cmd-Tabbing
+    /// through apps must not re-capture megabytes of scrollback per switch —
+    /// and writes off the main thread.
+    func saveScrollbacks(force: Bool = false) {
+        if !force {
+            guard Date().timeIntervalSince(lastScrollbackSave) >= 15 else { return }
+        }
+        lastScrollbackSave = Date()
+        TerminalRegistry.shared.saveScrollback(to: Self.scrollbackDir, sync: force)
     }
+
+    private var lastScrollbackSave: Date = .distantPast
 
     init() {
         // Load the persisted language before any SwiftUI scene (incl. menus)
@@ -105,6 +116,11 @@ final class AppState: ObservableObject {
             autoUpdateCheck = saved.autoUpdateCheck
             durableTerminals = saved.durableTerminals
             peekCollapsedProjects = saved.peekCollapsedProjects
+            // Load the opt-in AI flag early too: a launch with a saved-but-
+            // sessionless state runs startFresh(archiving: nil), which keeps the
+            // *current* value — so without this a user's aiEnabled=false silently
+            // flips back to the default and claude -p starts summarizing again.
+            aiEnabled = saved.aiEnabled
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
@@ -177,10 +193,21 @@ final class AppState: ObservableObject {
         screenTimer = timer
     }
 
+    /// Poll ticks elapsed — drives the reduced background rate below.
+    private var screenPollTick = 0
+
     /// Read every live terminal's viewport and let the screen fill the gaps the
     /// hooks leave. Hooks stay the authority wherever they are live — see
     /// `AttentionState.fromScreen`.
     private func pollScreens() {
+        // In the background the screen is a notification source, not a live UI:
+        // nobody is watching an indicator change within 1.5s. Every read locks
+        // the renderer and copies a full viewport, per agent terminal — with
+        // the app inactive that cost bought nothing, 24/7, scaling with the
+        // session count. A quarter of the rate (6s) keeps background questions
+        // arriving promptly while cutting the idle cost by 4×.
+        screenPollTick += 1
+        if NSApp?.isActive != true && !screenPollTick.isMultiple(of: 4) { return }
         reloadScreenRulesIfChanged()
         for (id, session) in sessions {
             let rules = screenRules.rules(for: session.agentKind)
@@ -454,6 +481,10 @@ final class AppState: ObservableObject {
         let target = targetID ?? windows.first(where: { $0.id != sourceID })?.id
         guard let target, let targetIdx = windows.firstIndex(where: { $0.id == target }) else { return }
         windows[targetIdx].groupIDs.append(contentsOf: source.groupIDs)
+        // Carry the source window's project folders too: the groups they name
+        // now live in the target window, so dropping them would silently destroy
+        // the user's folder organization on every window merge.
+        windows[targetIdx].folders.append(contentsOf: source.folders)
         if windows[targetIdx].selectedGroupID == nil {
             windows[targetIdx].selectedGroupID = source.selectedGroupID
         }
@@ -611,8 +642,14 @@ final class AppState: ObservableObject {
 
     // MARK: Mutations
 
+    /// `select: false` adds the project without showing it — the control API's
+    /// contract is "do not steal focus unless asked", and switching the visible
+    /// project IS stealing focus.
     @discardableResult
-    func addGroup(name: String, favorite: Bool = false, inWindow windowID: UUID? = nil) -> SessionGroup {
+    func addGroup(
+        name: String, favorite: Bool = false, inWindow windowID: UUID? = nil,
+        select: Bool = true
+    ) -> SessionGroup {
         var group = SessionGroup(name: name)
         group.favorite = favorite
         groups.append(group)
@@ -622,14 +659,17 @@ final class AppState: ObservableObject {
             // sanitizeWindows put the orphan into windows[0]; move if needed.
             for i in windows.indices { windows[i].groupIDs.removeAll { $0 == group.id } }
             windows[idx].groupIDs.append(group.id)
-            windows[idx].selectGroup(group.id)
+            if select { windows[idx].selectGroup(group.id) }
         }
         scheduleSave()
         return group
     }
 
+    /// `activate: false` adds the terminal without making it the project's
+    /// active tab (again the control API's no-focus-steal contract); the tab
+    /// still becomes active when the project had none, or nothing would show it.
     @discardableResult
-    func addSession(directory: String, groupID: UUID) -> TerminalSession {
+    func addSession(directory: String, groupID: UUID, activate: Bool = true) -> TerminalSession {
         var session = TerminalSession(groupID: groupID, workingDirectory: directory)
         // Decided once, here: the multiplexer has to own the process tree from
         // the very first process. Without tmux installed the terminal is simply
@@ -638,7 +678,9 @@ final class AppState: ObservableObject {
         sessions[session.id] = session
         if let idx = groups.firstIndex(where: { $0.id == groupID }) {
             groups[idx].sessionIDs.append(session.id)
-            groups[idx].activeSessionID = session.id
+            if activate || groups[idx].activeSessionID == nil {
+                groups[idx].activeSessionID = session.id
+            }
         }
         scheduleSave()
         return session
@@ -769,6 +811,10 @@ final class AppState: ObservableObject {
         }
         groups.removeAll { $0.id == groupID }
         sanitizeWindows()
+        // Closing a project with waiting/error terminals must clear their share
+        // of the dock badge now, exactly as closeSession does — otherwise the
+        // count stays stale until the next housekeeping tick (up to 60 s).
+        refreshDockBadge()
         scheduleSave()
         // The checkout outlives the project unless the user says otherwise.
         if let path = group.worktreePath, let root = group.worktreeRepoRoot {
@@ -1085,11 +1131,19 @@ final class AppState: ObservableObject {
         // is the terminal starting the work you just gave it.
         let unseen = state.isReport && !isVisible(id)
         update(id) {
-            guard $0.state != state else { return }
-            $0.state = state
-            $0.stateSince = Date()
-            $0.lastMessage = message
-            if unseen { $0.seen = false }
+            let stateChanged = $0.state != state
+            if stateChanged {
+                $0.state = state
+                $0.stateSince = Date()
+            }
+            // A fresh event can carry a new message (a second permission question)
+            // even without a state change — record it and re-mark it unread.
+            // Suppress only the truly-nothing case (same state, no message), so
+            // the equality guard in update() still skips a pointless publish.
+            if stateChanged || message != nil {
+                $0.lastMessage = message
+                if unseen { $0.seen = false }
+            }
         }
         // A new waiting spell may escalate again; badges follow every change.
         escalatedIDs.remove(id)
@@ -1206,6 +1260,15 @@ final class AppState: ObservableObject {
             } else {
                 $0.tags.append(tag)
             }
+        }
+    }
+
+    /// Add a tag if the session does not already carry it. The "New tag…" prompt
+    /// uses this, not toggleTag: typing the name of an existing tag must add (or
+    /// keep) it, never silently remove it.
+    func addTag(_ tag: String, on sessionID: UUID) {
+        update(sessionID) {
+            if !$0.tags.contains(tag) { $0.tags.append(tag) }
         }
     }
 
@@ -1477,8 +1540,32 @@ final class AppState: ObservableObject {
     }
 
     /// Apply a saved state ("Wiederherstellen").
+    ///
+    /// Resolve first, publish second. The moment `sessions` is published,
+    /// SwiftUI may build any terminal's surface (`makeNSView` runs on the first
+    /// render, and the registry caches what it builds) — so every input to the
+    /// replay decision must exist BEFORE that. Resolving tmux liveness after
+    /// publishing raced the first render: a live agent read as dead, and the
+    /// restore typed `clear; cat <scrollback>` + `claude --resume` into its TUI.
     func applyRestore(_ state: PersistedState) {
         isRestoring = true
+        if state.sessions.contains(where: \.durable), Durable.isAvailable {
+            // Off-main: it shells out to tmux. The UI shows the welcome screen
+            // for the few milliseconds `list-sessions` takes.
+            Task { @MainActor in
+                self.restoreLiveDurableIDs = await Task.detached {
+                    Durable.liveIDs(in: Durable.listSessions())
+                }.value
+                self.finishRestore(state)
+            }
+        } else {
+            finishRestore(state)
+        }
+    }
+
+    /// The publishing half of a restore — runs only once every replay decision
+    /// (live durable agents, Claude resume ids) is answerable synchronously.
+    private func finishRestore(_ state: PersistedState) {
         groups = state.groups
         sessions = Dictionary(uniqueKeysWithValues: state.sessions.map { ($0.id, $0) })
         windows = state.windows
@@ -1516,22 +1603,11 @@ final class AppState: ObservableObject {
                         currentDirectory: $0.currentDirectory)
                 })
 
-        // Which durable terminals still have a live agent, resolved as one batch
-        // like the Claude conversations above. Asking tmux per terminal meant a
-        // subprocess each, on the main thread, at exactly the moment the UI
-        // should be coming up — so it happens once, off-main, and only when
-        // there is a durable terminal to ask about. Everything else keeps the
-        // synchronous path it always had.
-        if sessions.values.contains(where: \.durable) {
-            Task { @MainActor in
-                self.restoreLiveDurableIDs = await Task.detached {
-                    Durable.liveIDs(in: Durable.listSessions())
-                }.value
-                self.createRestoredSurfaces()
-            }
-        } else {
-            createRestoredSurfaces()
-        }
+        // `restoreLiveDurableIDs` was resolved in `applyRestore`, before any of
+        // this state was published — so every surface built from here on (this
+        // eager batch AND any the first SwiftUI render triggers) classifies its
+        // agent correctly.
+        createRestoredSurfaces()
 
         // After a grace period, new surfaces are ordinary terminals again.
         Task { @MainActor in
@@ -1542,6 +1618,10 @@ final class AppState: ObservableObject {
         }
 
         reapOrphanedDurableSessions(keeping: Set(sessions.keys))
+        // A notification click may have launched the app; with the restore now
+        // asynchronous, the delegate's flush can run before the terminals
+        // exist — flush again now that they do.
+        flushPendingFocus()
     }
 
     /// Eagerly create EVERY terminal's surface (while `isRestoring` is true) so
@@ -1578,7 +1658,12 @@ final class AppState: ObservableObject {
 
     /// Start fresh ("Neu") — the previous state is archived, not deleted.
     func startFresh(archiving previous: PersistedState?) {
-        if previous != nil {
+        // Archive whatever is on disk before deleting it — not only a state we
+        // decoded. A file that failed to decode (a downgrade, an unknown enum
+        // case) and a workspace with projects but no live terminals both reach
+        // `startFresh(archiving: nil)`; without this they vanish with no backup.
+        // Keeping the file recoverable in state-previous.json is the safety net.
+        if FileManager.default.fileExists(atPath: Self.stateURL.path) {
             let archive = Self.stateURL.deletingLastPathComponent()
                 .appendingPathComponent("state-previous.json")
             try? FileManager.default.removeItem(at: archive)

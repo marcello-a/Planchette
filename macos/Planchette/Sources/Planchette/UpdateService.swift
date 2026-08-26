@@ -128,10 +128,13 @@ final class UpdateService: ObservableObject {
     }
 
     private enum UpdateError: LocalizedError {
-        case checksumMismatch, noAppInArchive
+        case checksumMismatch, checksumUnavailable, noAppInArchive
         var errorDescription: String? {
             switch self {
             case .checksumMismatch: "The downloaded file failed its integrity check."
+            case .checksumUnavailable:
+                "The release's checksum file could not be read, so the download "
+                    + "could not be verified. Try again later."
             case .noAppInArchive: "The downloaded archive didn't contain Planchette.app."
             }
         }
@@ -191,11 +194,15 @@ final class UpdateService: ObservableObject {
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return }
-            // Same defence in depth as the binary: verify against the release
-            // checksum file when it lists this asset.
+            // Same defence in depth as the binary, and just as fail-closed:
+            // when the release carries a SHA256SUMS, rules whose checksum can
+            // not be fetched or found are dropped, not applied unverified.
             if let checksumURL = release.asset(named: "SHA256SUMS")
-                .flatMap({ trusted($0.browserDownloadURL) }),
-               let expected = try? await expectedSHA(checksumURL, for: "screen-rules.json") {
+                .flatMap({ trusted($0.browserDownloadURL) }) {
+                guard let expected = try? await expectedSHA(checksumURL, for: "screen-rules.json") else {
+                    NSLog("screen rules: checksum unavailable, ignored")
+                    return
+                }
                 let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
                 guard actual == expected else {
                     NSLog("screen rules: checksum mismatch, ignored")
@@ -297,9 +304,15 @@ final class UpdateService: ObservableObject {
             panel.setInstalling()   // switch to an indeterminate spinner
 
             // 2. Verify its SHA-256 against the release's checksum file (defence
-            //    in depth on top of HTTPS + the GitHub-only host allowlist). If
-            //    the release predates SHA256SUMS, skip rather than fail.
-            if let checksumURL, let expected = try? await expectedSHA(checksumURL, for: "Planchette.zip") {
+            //    in depth on top of HTTPS + the GitHub-only host allowlist).
+            //    Only a release that carries no SHA256SUMS at all (it predates
+            //    them) may skip. When the file exists, verification is fail-
+            //    closed: a fetch error or a missing entry aborts the install —
+            //    "could not verify" must never silently become "verified".
+            if let checksumURL {
+                guard let expected = try? await expectedSHA(checksumURL, for: "Planchette.zip") else {
+                    throw UpdateError.checksumUnavailable
+                }
                 guard sha256(ofFileAt: downloaded) == expected else { throw UpdateError.checksumMismatch }
             }
 
@@ -312,9 +325,17 @@ final class UpdateService: ObservableObject {
 
             switch mode {
             case .now:
-                // 4a. Hand the swap to a detached helper (we can't overwrite our
-                //     own running bundle), then quit so it can proceed.
-                try swap(newApp: newApp.path, dest: Bundle.main.bundlePath, relaunch: true)
+                // 4a. Stage the bundle, ask to quit, and only spawn the swap
+                //     helper once the quit is certain (applyStagedUpdateOnQuit,
+                //     called from applicationShouldTerminate's commit path).
+                //     Spawning it before terminate() left a helper waiting on
+                //     our pid when the user cancelled the quit dialog — it then
+                //     swapped the bundle under whatever later ended the app,
+                //     and relaunched it out of nowhere.
+                stage(StagedUpdate(version: version, bundlePath: newApp.path))
+                pendingRelaunch = true
+                panel.close()
+                isInstalling = false
                 NSApp.terminate(nil)
             case .onQuit:
                 // 4b. Keep the verified bundle and swap it at the next quit —
@@ -332,6 +353,18 @@ final class UpdateService: ObservableObject {
     }
 
     // MARK: - Staging (install on quit)
+
+    /// True while an "Install & Relaunch" is driving the current quit: the swap
+    /// helper should relaunch the app. Reset when the user cancels that quit —
+    /// the staged bundle stays (it applies at the next quit), but a later,
+    /// ordinary quit must not drag the app back up. Deliberately not persisted.
+    private var pendingRelaunch = false
+
+    /// The quit the updater initiated was cancelled (applicationShouldTerminate
+    /// returned terminateCancel). Nothing was swapped — the update stays staged.
+    func quitCancelled() {
+        pendingRelaunch = false
+    }
 
     private func stage(_ update: StagedUpdate) {
         stagedUpdate = update
@@ -367,15 +400,17 @@ final class UpdateService: ObservableObject {
     }
 
     /// Called from `applicationShouldTerminate` once the user has committed to
-    /// quitting: run the swap helper *without* relaunching, so the next manual
-    /// launch is the new version. Best-effort — a failed swap must never block
-    /// the quit the user asked for.
+    /// quitting — the ONLY place the swap helper is spawned, so a cancelled
+    /// quit can never leave one behind. Relaunches only when this quit was
+    /// started by "Install & Relaunch"; a staged update applied at an ordinary
+    /// quit must not drag the app back up. Best-effort — a failed swap must
+    /// never block the quit the user asked for.
     func applyStagedUpdateOnQuit() {
         guard let staged = stagedUpdate else { return }
         defer { discardStagedUpdate() }
         do {
-            try swap(newApp: staged.bundlePath, dest: Bundle.main.bundlePath, relaunch: false)
-            NSLog("update: swapping to \(staged.version) on quit")
+            try swap(newApp: staged.bundlePath, dest: Bundle.main.bundlePath, relaunch: pendingRelaunch)
+            NSLog("update: swapping to \(staged.version) on quit (relaunch: \(pendingRelaunch))")
         } catch {
             NSLog("update: staged swap could not start: \(error)")
         }

@@ -54,12 +54,11 @@ struct TagMenu: View {
         alert.addButton(withTitle: L10n.t(.ok))
         alert.addButton(withTitle: L10n.t(.cancel))
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        field.placeholderString = "to test"
         alert.accessoryView = field
         if alert.runModal() == .alertFirstButtonReturn {
             let tag = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
             guard !tag.isEmpty else { return }
-            appState.toggleTag(tag, on: session.id)
+            appState.addTag(tag, on: session.id)
         }
     }
 }

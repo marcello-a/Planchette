@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Where this instance keeps everything it owns — state.json, scrollback,
@@ -35,10 +36,14 @@ enum SupportPaths {
 
     /// A suffix that keeps per-instance resources apart (the tmux server name).
     /// Derived from the directory, so the same override always maps to the same
-    /// server and a restart re-attaches its own sessions rather than orphaning them.
+    /// server and a restart re-attaches its own sessions rather than orphaning
+    /// them. SHA-256, NOT `hashValue`: Swift's hash is seeded at random per
+    /// launch, so a hashValue-based suffix named a different tmux server every
+    /// run — an isolated instance could never re-attach its durable agents, and
+    /// left the previous run's server orphaned.
     static var instanceSuffix: String? {
         guard isIsolated else { return nil }
-        let digest = abs(dir.path.hashValue)
-        return String(format: "%08x", digest & 0xFFFF_FFFF)
+        let digest = SHA256.hash(data: Data(dir.path.utf8))
+        return digest.prefix(4).map { String(format: "%02x", $0) }.joined()
     }
 }

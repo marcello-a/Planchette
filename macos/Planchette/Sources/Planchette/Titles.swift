@@ -28,23 +28,73 @@ enum Titles {
         return String(branch[range.lowerBound...])
     }
 
+    /// Memoized branch lookups. `displayTitle`/`ticket` are evaluated in view
+    /// bodies and sort comparators, so without this every AppState publish ran
+    /// up to 10 filesystem probes per session, on the main thread — and the
+    /// control API's title sort ran them O(n log n) times per request. A short
+    /// TTL keeps a `git checkout` done behind the app's back visible within
+    /// seconds (the sidebar's own branch poll runs at 10s anyway).
+    private static var branchCache: [String: (branch: String?, at: Date)] = [:]
+    private static let branchCacheLock = NSLock()
+    private static let branchCacheTTL: TimeInterval = 5
+
     static func gitBranch(forDirectory dir: String) -> String? {
+        branchCacheLock.lock()
+        if let hit = branchCache[dir], Date().timeIntervalSince(hit.at) < branchCacheTTL {
+            branchCacheLock.unlock()
+            return hit.branch
+        }
+        branchCacheLock.unlock()
+        let branch = readGitBranch(forDirectory: dir)
+        branchCacheLock.lock()
+        branchCache[dir] = (branch, Date())
+        // The keys are the directories of live terminals — a handful — but a
+        // long-lived app must not collect every directory it ever saw.
+        if branchCache.count > 512 { branchCache = [:] }
+        branchCacheLock.unlock()
+        return branch
+    }
+
+    private static func readGitBranch(forDirectory dir: String) -> String? {
         var url = URL(fileURLWithPath: dir)
         // Walk up to find the repo root (max 10 levels).
         for _ in 0..<10 {
-            let head = url.appendingPathComponent(".git/HEAD")
-            if let content = try? String(contentsOf: head, encoding: .utf8) {
-                let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.hasPrefix("ref: refs/heads/") {
-                    return String(trimmed.dropFirst("ref: refs/heads/".count))
+            if let gitDir = resolveGitDir(url.appendingPathComponent(".git")) {
+                let head = gitDir.appendingPathComponent("HEAD")
+                if let content = try? String(contentsOf: head, encoding: .utf8) {
+                    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.hasPrefix("ref: refs/heads/") {
+                        return String(trimmed.dropFirst("ref: refs/heads/".count))
+                    }
+                    return nil // detached HEAD
                 }
-                return nil // detached HEAD
             }
             let parent = url.deletingLastPathComponent()
             if parent.path == url.path { break }
             url = parent
         }
         return nil
+    }
+
+    /// The directory that actually holds `HEAD` for the repo whose `.git` entry
+    /// is `dotGit`. Usually that is `.git` itself, but in a linked git worktree
+    /// `.git` is a FILE reading `gitdir: <path>` that points at the per-worktree
+    /// git directory. Without this, a worktree terminal reads no HEAD and the
+    /// walk climbs into a parent repo — showing a wrong branch or none.
+    private static func resolveGitDir(_ dotGit: URL) -> URL? {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: dotGit.path, isDirectory: &isDir) else {
+            return nil
+        }
+        if isDir.boolValue { return dotGit }
+        guard let text = try? String(contentsOf: dotGit, encoding: .utf8) else { return nil }
+        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard line.hasPrefix("gitdir:") else { return nil }
+        let path = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else { return nil }
+        if path.hasPrefix("/") { return URL(fileURLWithPath: path) }
+        return dotGit.deletingLastPathComponent()
+            .appendingPathComponent(path).standardizedFileURL
     }
 
     /// Last two path components: "…/development/sandbox/planchette" → "sandbox/planchette".

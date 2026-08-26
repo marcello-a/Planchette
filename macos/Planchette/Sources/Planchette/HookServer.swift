@@ -56,6 +56,10 @@ final class HookServer {
         guard bindResult == 0, listen(fd, 32) == 0 else {
             NSLog("hook-server: bind/listen failed: \(String(cString: strerror(errno)))")
             close(fd)
+            // Reset the field so stop() does not close this descriptor a second
+            // time — by then the kernel may have handed the number to an unrelated
+            // fd, which we would then wrongly close.
+            fd = -1
             return
         }
         // Only the owner may connect — the socket carries no auth and its events

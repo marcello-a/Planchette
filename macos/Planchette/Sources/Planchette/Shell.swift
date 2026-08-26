@@ -9,7 +9,14 @@ enum Shell {
     /// Escape shell-sensitive characters by prefixing each with a backslash.
     /// Suitable for inserting paths/URLs into a live terminal buffer.
     static func escape(_ str: String) -> String {
+        // A backslash cannot neutralize a newline — `\<newline>` is a shell line
+        // continuation, not a literal newline. A dropped filename may legally
+        // contain newlines (only NUL and "/" are forbidden in a path), so remove
+        // line breaks outright: an inserted path must never submit or split a
+        // command at the prompt.
         var result = str
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
         for char in escapeCharacters {
             result = result.replacingOccurrences(of: String(char), with: "\\\(char)")
         }

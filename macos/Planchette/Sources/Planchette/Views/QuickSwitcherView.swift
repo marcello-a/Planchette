@@ -9,14 +9,17 @@ struct QuickSwitcherView: View {
     @State private var highlighted = 0
     @FocusState private var fieldFocused: Bool
 
+    /// The ranking, frozen the moment the switcher opens. Ranking live would
+    /// re-order the list under the user's hands: any state change (the screen
+    /// poll ticks every 1.5s) republished AppState, `stateSince` moved a
+    /// session up, and the Enter/click resolved its row index against a list
+    /// the user never saw — opening the wrong terminal. Closed sessions drop
+    /// out (`compactMap`); a session created while the switcher is open simply
+    /// isn't listed.
+    @State private var rankedIDs: [UUID] = []
+
     private var results: [TerminalSession] {
-        let all = appState.sessions.values
-        let ranked = all.sorted { a, b in
-            let aScore = urgencyScore(a)
-            let bScore = urgencyScore(b)
-            if aScore != bScore { return aScore > bScore }
-            return a.stateSince > b.stateSince
-        }
+        let ranked = rankedIDs.compactMap { appState.sessions[$0] }
         guard !query.isEmpty else { return Array(ranked.prefix(12)) }
         let q = query.lowercased()
         return ranked.filter { session in
@@ -24,11 +27,22 @@ struct QuickSwitcherView: View {
                 session.displayTitle,
                 session.currentDirectory,
                 appState.group(of: session)?.name ?? "",
-                Titles.gitBranch(forDirectory: session.currentDirectory) ?? "",
+                // The published branch cache — never a filesystem walk per
+                // session per keystroke.
+                appState.branches[session.id] ?? "",
                 session.aiSummary ?? "",
             ] + session.tags).joined(separator: " ").lowercased()
             return fuzzyMatch(needle: q, haystack: haystack)
         }
+    }
+
+    private func rank() -> [UUID] {
+        appState.sessions.values.sorted { a, b in
+            let aScore = urgencyScore(a)
+            let bScore = urgencyScore(b)
+            if aScore != bScore { return aScore > bScore }
+            return a.stateSince > b.stateSince
+        }.map(\.id)
     }
 
     private func urgencyScore(_ session: TerminalSession) -> Int {
@@ -72,7 +86,10 @@ struct QuickSwitcherView: View {
             .frame(maxHeight: 320)
         }
         .frame(width: 480)
-        .onAppear { fieldFocused = true }
+        .onAppear {
+            fieldFocused = true
+            rankedIDs = rank()
+        }
         .onKeyPress(.downArrow) {
             highlighted = min(highlighted + 1, results.count - 1); return .handled
         }

