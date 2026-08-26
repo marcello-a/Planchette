@@ -8,6 +8,69 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.27] — 2026-08-26
+
+### Fixed
+- **Scrolling a durable terminal no longer types arrow keys.** tmux keeps the
+  terminal in the alternate screen, where ghostty converts wheel ticks into
+  cursor keys when no program owns the mouse — so scrolling at a prompt cycled
+  shell history, and in Claude Code it navigated instead of scrolling (the
+  pane's real history lives inside tmux, out of ghostty's reach). The private
+  tmux server now runs with `mouse on`: the wheel scrolls the pane's history at
+  a prompt, still forwards to programs that ask for the mouse, and still sends
+  arrows to full-screen programs that don't (`less`, `vim`). Mouse selections
+  land on the system clipboard on release. tmux's own right-click menus are
+  unbound — the native context menu keeps working — and the config is
+  re-sourced on every attach, so servers started by an older version pick the
+  fix up without a reboot.
+- **A restored live agent no longer gets the replay typed into it.** Restore
+  resolved "is this agent still alive in tmux?" in parallel with the first
+  render; when the render won, a surviving agent was treated as dead and got
+  `clear`, the old scrollback and `claude --resume` typed straight into its
+  TUI. The liveness answer is now resolved before any terminal is published,
+  so a surface can never be built on a stale answer.
+- **Two command injections are closed.** A crafted transcript filename could
+  inject into the `claude --resume` line a restore types (resume ids are
+  validated now, anything odd falls back to Claude's own picker), and a
+  filename containing a newline acted as Return when dropped onto a terminal
+  (`Shell.escape` strips CR/LF — a backslash cannot neutralize a newline).
+- **Clipboard reads no longer loop.** Under Ghostty's default
+  `clipboard-read = ask`, an OSC 52 read — and a newline paste into a program
+  without bracketed paste — was re-dispatched forever: pinned CPU, a paste
+  that never landed.
+- **A state.json that fails to decode is archived, not deleted.** A downgrade
+  (or closing every terminal before quitting) used to erase all projects and
+  settings silently; the file now lands in `state-previous.json` first.
+- **Updates verify fail-closed.** When a release carries `SHA256SUMS`, a
+  failed checksum fetch aborts the install instead of silently skipping
+  verification. The swap helper only starts once a quit is confirmed, so
+  cancelling the quit dialog no longer leaves a helper behind that would swap
+  the bundle and relaunch the app later, out of nowhere.
+- Smaller fixes: a second question arriving in the same state counts as
+  unread; merging windows keeps the source window's folders; shifted app
+  shortcuts (⌘⇧K, ⌘⇧T) reach the menu from a focused terminal; a hand-edited
+  `screen-rules.json` with omitted optional fields no longer discards the
+  whole file; worktree terminals show their real branch; the quick switcher
+  can no longer open the wrong row when the list re-ranks under the pointer;
+  `session.new` without `focus` leaves you where you are, and `session.focus`
+  actually brings the app forward; `notification.list` matches the panel's
+  window order; `~/.claude/settings.json` and `~/.codex/hooks.json` are
+  written atomically; an isolated instance re-attaches its own tmux server
+  after a restart.
+
+### Changed
+- **Idle cost dropped again.** The 1.5s screen poll runs at a quarter rate
+  while the app is in the background, scrollback saves are throttled and
+  written off the main thread, git-branch lookups are cached instead of
+  walking the filesystem on every view update, and AI summaries run one at a
+  time instead of spawning one `claude -p` per busy agent.
+
+### Added
+- **Settings can install tmux for you.** When tmux is missing, the
+  durable-terminals section shows the install command with a copy button —
+  and one click opens a terminal with the command already typed, so Enter is
+  all that's left.
+
 ## [0.2.26] — 2026-08-20
 
 ### Added
