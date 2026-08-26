@@ -43,6 +43,29 @@ Or *System Settings → Privacy & Security → Open Anyway* after the first bloc
 launch. On macOS 14, right-click the app → *Open*.
 </details>
 
+## Setup — what unlocks what
+
+Planchette works out of the box. Its best features switch on the moment their
+one prerequisite exists — nothing to configure:
+
+| You have | You get |
+|---|---|
+| **tmux** — `brew install tmux` | **Durable terminals.** Agents survive quit, crash and *Install & Relaunch*: the shell runs in a private tmux server that outlives the app, and reopening re-attaches to the **live** session — the turn keeps running — instead of merely resuming a conversation. On by default as soon as tmux is found. |
+| **Claude Code** | **Live states with zero setup.** Planchette installs its hooks into `~/.claude/settings.json` on first launch. Every color in the sidebar — running, waiting, error, done — comes straight from the agent. |
+| **Codex** | Recognized too: a hook claims the terminal (auto-installed into `~/.codex/hooks.json` when `~/.codex` exists), and screen detection reads the states off its TUI. |
+| **`claude` on your PATH** | **AI summaries** — one line per terminal saying what it is actually doing, via headless `claude -p` on your existing login. On by default; toggle in Settings → AI. |
+
+Also worth a second:
+
+- **Allow notifications** when macOS asks — clicking a banner jumps straight to
+  the terminal that needs you, even relaunching the app if it has to.
+- Durable terminals have exactly one trade-off: tmux cannot pass the terminal's
+  keyboard protocol through, so **Shift+Enter reaches an agent as a plain
+  Enter**. If multi-line prompts matter more to you than agents that outlive the
+  app, turn it off in *Settings → Durable terminals*. It applies to terminals
+  created from then on; existing ones keep what they were created as. A reboot
+  still ends everything — tmux's server dies with the machine.
+
 ## Features
 
 **Attention**
@@ -65,16 +88,16 @@ launch. On macOS 14, right-click the app → *Open*.
 
 **Terminals**
 - Persistence across restart and reboot, incl. `claude --resume` and startup commands
-- Durable terminals (opt-in, needs tmux): agents survive quit, crash and update
+- Durable terminals (needs tmux, then on by default): agents survive quit, crash and update
 - Git worktrees as projects (⌘⇧T), with cleanup on close
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder
 - 7 UI languages, light/dark/system
 
 **For agents**
-- Socket API + `planchette` CLI in every terminal: list, open, prompt, wait, read,
-  and `notification list` — the notifications panel as JSON for anything else you
-  want to show it in ([manual](docs/API.md))
+- Socket API + `planchette` CLI in every terminal: list, open, focus, prompt,
+  wait, read, and `notification list` — the notifications panel as JSON for
+  anything else you want to show it in ([manual](docs/API.md))
 - So an agent can start a reviewer beside itself and block on its verdict
   ([skill](skills/planchette/SKILL.md))
 - Optional AI assist: one-line summaries per session via headless `claude -p`
