@@ -8,6 +8,28 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.28] — 2026-08-27
+
+### Added
+- **Dev servers show their link on the project.** A server running in a
+  project's checkout appears as a clickable `localhost:<port>` chip in the
+  project header and the folder overview; a click opens it in the browser.
+  Found by process (listening socket → working directory → project), not by
+  reading terminal output — so a server started in an IDE's integrated
+  terminal, or anywhere else, counts exactly like one started in a Planchette
+  terminal. Debugger ports, ephemeral ports and IDE helper processes are
+  filtered out, and an ancestor directory only matches when it looks like a
+  checkout root, so a listener in a plain collection folder claims nothing.
+- **"Look at code" hands the project to your IDE.** One click opens the
+  project in the IDE that is already running — macOS focuses the window it is
+  open in instead of opening a second one. The button's menu lists every
+  installed IDE (running ones marked), and a *Default IDE* submenu with a
+  checkmark makes one of them the standing choice: from then on the button
+  always opens that one. With no IDE running and no default chosen, the
+  button reads *Open new IDE* and is the picker. Recognized: VS Code, Cursor,
+  Windsurf, Zed, WebStorm, IntelliJ IDEA (+CE), PhpStorm, PyCharm, Xcode,
+  Sublime Text.
+
 ## [0.2.27] — 2026-08-26
 
 ### Fixed
