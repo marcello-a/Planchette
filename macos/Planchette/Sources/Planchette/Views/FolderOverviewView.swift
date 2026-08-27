@@ -126,6 +126,7 @@ struct FolderOverviewView: View {
                 if let until = project.snoozedUntil, until > Date() {
                     SnoozeBadge(until: until)
                 }
+                DevServerChips(groupID: project.id)
                 Spacer(minLength: 4)
                 Text(tabs.count == 1 ? L10n.t(.terminalCountOne) : L10n.t(.terminalsCount, tabs.count))
                     .font(.caption2).foregroundStyle(.secondary)

@@ -83,6 +83,8 @@ enum Help {
             Entry(.helpTerminalRowTitle, .helpTerminalRowDetail, where: .helpWhereSidebar),
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
+            Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
+            Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereTabBar),
         ]),
         Section(titleKey: .notificationsPanel, entries: [
             Entry(.notificationsPanel, .notificationsPanelHelp),

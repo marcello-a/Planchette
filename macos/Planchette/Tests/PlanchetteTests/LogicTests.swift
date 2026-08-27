@@ -2180,3 +2180,147 @@ final class LocalizationTests: XCTestCase {
     }
 }
 
+
+final class DevServerScannerTests: XCTestCase {
+    func testParseListenersReadsPidCommandPort() {
+        let output = """
+        p870
+        cCode Helper (Plugin)
+        f42
+        n127.0.0.1:60054
+        p18533
+        cnode
+        f46
+        n127.0.0.1:8080
+        """
+        let listeners = DevServerScanner.parseListeners(output)
+        XCTAssertEqual(listeners, [
+            DevServerScanner.Listener(pid: 870, command: "Code Helper (Plugin)", port: 60054),
+            DevServerScanner.Listener(pid: 18533, command: "node", port: 8080),
+        ])
+    }
+
+    func testParseListenersDedupesIPv4AndIPv6Twins() {
+        let output = """
+        p100
+        cnode
+        f16
+        n*:3000
+        f17
+        n[::1]:3000
+        """
+        XCTAssertEqual(DevServerScanner.parseListeners(output).count, 1)
+    }
+
+    func testParseCwdsMapsPidToDirectory() {
+        let output = """
+        p870
+        fcwd
+        n/
+        p18533
+        fcwd
+        n/Users/x/dev/repo
+        """
+        XCTAssertEqual(DevServerScanner.parseCwds(output), [870: "/", 18533: "/Users/x/dev/repo"])
+    }
+
+    func testIsPathUnderRespectsComponentBoundaries() {
+        XCTAssertTrue(DevServerScanner.isPath("/a/b", under: "/a/b"))
+        XCTAssertTrue(DevServerScanner.isPath("/a/b/c", under: "/a/b"))
+        XCTAssertFalse(DevServerScanner.isPath("/a/barn", under: "/a/b"))
+    }
+
+    func testMatchAttributesServerInsideProjectDirectory() {
+        let group = UUID()
+        let found = DevServerScanner.match(
+            listeners: [.init(pid: 1, command: "node", port: 8080)],
+            cwds: [1: "/dev/repo/packages/app"],
+            projectDirs: [group: ["/dev/repo"]],
+            isProjectRoot: { _ in false })
+        XCTAssertEqual(found[group]?.map(\.port), [8080])
+    }
+
+    func testMatchAcceptsServerAtRepoRootAboveTerminal() {
+        // Server started at the repo root (e.g. in an IDE terminal), while the
+        // Planchette terminal sits in a package below it.
+        let group = UUID()
+        let found = DevServerScanner.match(
+            listeners: [.init(pid: 1, command: "node", port: 5173)],
+            cwds: [1: "/dev/repo"],
+            projectDirs: [group: ["/dev/repo/packages/app"]],
+            isProjectRoot: { $0 == "/dev/repo" })
+        XCTAssertEqual(found[group]?.map(\.port), [5173])
+    }
+
+    func testMatchRejectsAncestorThatIsNoProjectRoot() {
+        // A listener in ~/development must not claim every project below it.
+        let group = UUID()
+        let found = DevServerScanner.match(
+            listeners: [.init(pid: 1, command: "node", port: 3000)],
+            cwds: [1: "/Users/x/development"],
+            projectDirs: [group: ["/Users/x/development/repo"]],
+            isProjectRoot: { _ in false })
+        XCTAssertTrue(found.isEmpty)
+    }
+
+    func testMatchSkipsEphemeralInspectorAndIDEHelperPorts() {
+        let group = UUID()
+        let found = DevServerScanner.match(
+            listeners: [
+                .init(pid: 1, command: "node", port: 55000),          // ephemeral
+                .init(pid: 2, command: "node", port: 9229),           // inspector
+                .init(pid: 3, command: "Code Helper (Plugin)", port: 8081),
+            ],
+            cwds: [1: "/dev/repo", 2: "/dev/repo", 3: "/dev/repo"],
+            projectDirs: [group: ["/dev/repo"]],
+            isProjectRoot: { _ in true })
+        XCTAssertTrue(found.isEmpty)
+    }
+
+    func testMatchDedupesPortPerProjectAndSorts() {
+        let group = UUID()
+        let found = DevServerScanner.match(
+            listeners: [
+                .init(pid: 1, command: "node", port: 8080),
+                .init(pid: 2, command: "node", port: 8080),
+                .init(pid: 3, command: "node", port: 3000),
+            ],
+            cwds: [1: "/dev/repo", 2: "/dev/repo/sub", 3: "/dev/repo"],
+            projectDirs: [group: ["/dev/repo"]],
+            isProjectRoot: { _ in false })
+        XCTAssertEqual(found[group]?.map(\.port), [3000, 8080])
+    }
+}
+
+final class IDETargetTests: XCTestCase {
+    private let vscode = IDEs.known[0]
+    private let cursor = IDEs.known[1]
+
+    func testDefaultAlwaysWins() {
+        let target = IDEs.target(
+            defaultBundleID: cursor.bundleID,
+            running: [vscode.bundleID],
+            installed: [vscode, cursor])
+        XCTAssertEqual(target, cursor)
+    }
+
+    func testRunningIDEWinsWithoutDefault() {
+        let target = IDEs.target(
+            defaultBundleID: nil,
+            running: [cursor.bundleID],
+            installed: [vscode, cursor])
+        XCTAssertEqual(target, cursor)
+    }
+
+    func testNoTargetWhenNothingRunsAndNoDefault() {
+        XCTAssertNil(IDEs.target(defaultBundleID: nil, running: [], installed: [vscode]))
+    }
+
+    func testUninstalledDefaultFallsBackToRunning() {
+        let target = IDEs.target(
+            defaultBundleID: "com.gone.ide",
+            running: [vscode.bundleID],
+            installed: [vscode])
+        XCTAssertEqual(target, vscode)
+    }
+}

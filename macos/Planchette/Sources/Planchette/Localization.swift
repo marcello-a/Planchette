@@ -203,6 +203,11 @@ enum LKey: String, CaseIterable {
 
     // Multi-selection of projects + drag-and-drop between folders
     case selectedProjects, markProjectsFree, closeProjects, closeProjectsBody, dropIntoFolder
+
+    // Dev servers + "look at code" (IDE hand-off)
+    case devServerHelp, lookAtCode, lookAtCodeHelp, openNewIDE, openNewIDEHelp
+    case defaultIDEMenu, noDefaultIDE
+    case devServersTitle, devServersDetail, lookAtCodeDetail
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -301,6 +306,13 @@ enum L10n {
         .remindMe: "Remind me…", .remindMeHelp: "Goes quiet until then, then reminds you", .remindIn1h: "In 1 hour", .remindIn2h: "In 2 hours", .remindTomorrow: "Tomorrow 9:00", .remindCancel: "Cancel reminder", .quietUntil: "quiet until %@", .reminder: "Reminder", .reminderBody: "You asked to be reminded about this.", .markGroupReady: "Mark project as free", .markProjectActive: "Mark project active", .markProjectInactive: "Mark project inactive", .markProjectActiveHelp: "A parked project is silent — no badges, no counts, no notifications — and marking it inactive marks its terminals free", .markProjectsActive: "Mark %d projects active", .markProjectsInactive: "Mark %d projects inactive", .inactiveProject: "inactive",
         .arrangements: "Arrangements", .arrangementsHelp: "Saved arrangements of projects and terminals", .saveArrangement: "Save arrangement…", .saveArrangementTitle: "Name of the arrangement", .newArrangement: "New arrangement…", .overwriteArrangement: "Overwrite \"%@\"", .saveArrangementHelp: "Save this window's projects and terminals as a reusable arrangement", .openArrangement: "Open", .renameArrangement: "Rename arrangement", .deleteArrangement: "Delete arrangement", .deleteArrangementConfirm: "Delete the arrangement \"%@\"?", .deleteArrangementBody: "Only the saved template goes. The projects and terminals it created stay as they are, and nothing can bring the arrangement back.", .noArrangements: "No saved arrangements yet", .arrangementSummary: "%d projects · %d terminals", .savedArrangements: "Saved arrangements",
         .selectedProjects: "%d projects selected", .markProjectsFree: "Mark %d projects as free", .closeProjects: "Close %d projects", .closeProjectsBody: "Close %d projects and their %d terminal(s)? This ends any running sessions.", .dropIntoFolder: "Move into \"%@\"",
+        .devServerHelp: "Dev server (%@) running in %@ — click to open in the browser",
+        .lookAtCode: "Look at code", .lookAtCodeHelp: "Open this project in %@",
+        .openNewIDE: "Open new IDE", .openNewIDEHelp: "No IDE is running — pick one to open this project in",
+        .defaultIDEMenu: "Default IDE", .noDefaultIDE: "None — use whichever is running",
+        .devServersTitle: "Dev server links",
+        .devServersDetail: "A dev server running in a project's checkout shows as a clickable localhost chip — found by process, so a server started in an IDE counts too",
+        .lookAtCodeDetail: "Hands the project to your IDE: focuses the window it is already open in, or opens your default IDE — pick one in the button's menu",
     ]
 
     // MARK: German
@@ -378,6 +390,13 @@ enum L10n {
         .remindMe: "Erinnere mich…", .remindMeHelp: "Bis dahin still, danach eine Erinnerung", .remindIn1h: "In 1 Stunde", .remindIn2h: "In 2 Stunden", .remindTomorrow: "Morgen 9:00", .remindCancel: "Erinnerung abbrechen", .quietUntil: "still bis %@", .reminder: "Erinnerung", .reminderBody: "Du wolltest daran erinnert werden.", .markGroupReady: "Projekt als frei markieren", .markProjectActive: "Projekt aktiv setzen", .markProjectInactive: "Projekt inaktiv setzen", .markProjectActiveHelp: "Ein geparktes Projekt ist still — keine Badges, keine Zähler, keine Benachrichtigungen — und beim Inaktivsetzen werden seine Terminals als frei markiert", .markProjectsActive: "%d Projekte aktiv setzen", .markProjectsInactive: "%d Projekte inaktiv setzen", .inactiveProject: "inaktiv",
         .arrangements: "Anordnungen", .arrangementsHelp: "Gespeicherte Anordnungen von Projekten und Terminals", .saveArrangement: "Anordnung speichern…", .saveArrangementTitle: "Name der Anordnung", .newArrangement: "Neue Anordnung…", .overwriteArrangement: "\"%@\" überschreiben", .saveArrangementHelp: "Projekte und Terminals dieses Fensters als wiederverwendbare Anordnung speichern", .openArrangement: "Öffnen", .renameArrangement: "Anordnung umbenennen", .deleteArrangement: "Anordnung löschen", .deleteArrangementConfirm: "Die Anordnung \"%@\" löschen?", .deleteArrangementBody: "Nur die gespeicherte Vorlage verschwindet. Die damit erstellten Projekte und Terminals bleiben, wie sie sind — die Anordnung selbst ist nicht wiederherstellbar.", .noArrangements: "Noch keine Anordnungen gespeichert", .arrangementSummary: "%d Projekte · %d Terminals", .savedArrangements: "Gespeicherte Anordnungen",
         .selectedProjects: "%d Projekte ausgewählt", .markProjectsFree: "%d Projekte als frei markieren", .closeProjects: "%d Projekte schließen", .closeProjectsBody: "%d Projekte mit ihren %d Terminals schließen? Laufende Sessions werden beendet.", .dropIntoFolder: "In \"%@\" verschieben",
+        .devServerHelp: "Dev-Server (%@) läuft in %@ — Klick öffnet ihn im Browser",
+        .lookAtCode: "Code ansehen", .lookAtCodeHelp: "Dieses Projekt in %@ öffnen",
+        .openNewIDE: "Neue IDE öffnen", .openNewIDEHelp: "Keine IDE läuft — eine auswählen, um das Projekt darin zu öffnen",
+        .defaultIDEMenu: "Standard-IDE", .noDefaultIDE: "Keine — die gerade laufende verwenden",
+        .devServersTitle: "Dev-Server-Links",
+        .devServersDetail: "Ein Dev-Server im Checkout eines Projekts erscheint als klickbarer localhost-Chip — erkannt am Prozess, also zählt auch ein in einer IDE gestarteter Server",
+        .lookAtCodeDetail: "Übergibt das Projekt an deine IDE: fokussiert das Fenster, in dem es schon offen ist, oder öffnet die Standard-IDE — wählbar im Menü des Buttons",
     ]
 
     // MARK: French
@@ -455,6 +474,13 @@ enum L10n {
         .remindMe: "Me rappeler…", .remindMeHelp: "Silencieux jusque-là, puis un rappel", .remindIn1h: "Dans 1 heure", .remindIn2h: "Dans 2 heures", .remindTomorrow: "Demain 9:00", .remindCancel: "Annuler le rappel", .quietUntil: "silencieux jusqu’à %@", .reminder: "Rappel", .reminderBody: "Vous vouliez un rappel à ce sujet.", .markGroupReady: "Marquer le projet comme libre", .markProjectActive: "Rendre le projet actif", .markProjectInactive: "Rendre le projet inactif", .markProjectActiveHelp: "Un projet en pause est silencieux — aucun badge, aucun compteur, aucune notification — et ses terminaux passent à libre", .markProjectsActive: "Rendre %d projets actifs", .markProjectsInactive: "Rendre %d projets inactifs", .inactiveProject: "inactif",
         .arrangements: "Agencements", .arrangementsHelp: "Agencements enregistrés de projets et de terminaux", .saveArrangement: "Enregistrer l’agencement…", .saveArrangementTitle: "Nom de l’agencement", .newArrangement: "Nouvel agencement…", .overwriteArrangement: "Remplacer « %@ »", .saveArrangementHelp: "Enregistrer les projets et terminaux de cette fenêtre comme agencement réutilisable", .openArrangement: "Ouvrir", .renameArrangement: "Renommer l’agencement", .deleteArrangement: "Supprimer l’agencement", .deleteArrangementConfirm: "Supprimer l’agencement « %@ » ?", .deleteArrangementBody: "Seul le modèle enregistré disparaît. Les projets et terminaux qu’il a créés restent en place, et l’agencement est irrécupérable.", .noArrangements: "Aucun agencement enregistré", .arrangementSummary: "%d projets · %d terminaux", .savedArrangements: "Agencements enregistrés",
         .selectedProjects: "%d projets sélectionnés", .markProjectsFree: "Marquer %d projets comme libres", .closeProjects: "Fermer %d projets", .closeProjectsBody: "Fermer %d projets et leurs %d terminaux ? Les sessions en cours seront terminées.", .dropIntoFolder: "Déplacer dans \"%@\"",
+        .devServerHelp: "Serveur de dev (%@) actif dans %@ — cliquez pour l'ouvrir dans le navigateur",
+        .lookAtCode: "Voir le code", .lookAtCodeHelp: "Ouvrir ce projet dans %@",
+        .openNewIDE: "Ouvrir un IDE", .openNewIDEHelp: "Aucun IDE n'est lancé — choisissez-en un pour y ouvrir ce projet",
+        .defaultIDEMenu: "IDE par défaut", .noDefaultIDE: "Aucun — utiliser celui qui est lancé",
+        .devServersTitle: "Liens des serveurs de dev",
+        .devServersDetail: "Un serveur de dev actif dans le checkout d'un projet apparaît comme une puce localhost cliquable — détecté par processus, donc un serveur lancé dans un IDE compte aussi",
+        .lookAtCodeDetail: "Confie le projet à votre IDE : met au premier plan la fenêtre où il est déjà ouvert, ou ouvre l'IDE par défaut — à choisir dans le menu du bouton",
     ]
 
     // MARK: Spanish
@@ -532,6 +558,13 @@ enum L10n {
         .remindMe: "Recordármelo…", .remindMeHelp: "En silencio hasta entonces, luego un recordatorio", .remindIn1h: "En 1 hora", .remindIn2h: "En 2 horas", .remindTomorrow: "Mañana 9:00", .remindCancel: "Cancelar recordatorio", .quietUntil: "en silencio hasta %@", .reminder: "Recordatorio", .reminderBody: "Pediste que te lo recordara.", .markGroupReady: "Marcar proyecto como libre", .markProjectActive: "Marcar proyecto activo", .markProjectInactive: "Marcar proyecto inactivo", .markProjectActiveHelp: "Un proyecto aparcado está en silencio — sin insignias, sin contadores, sin notificaciones — y sus terminales pasan a libre", .markProjectsActive: "Marcar %d proyectos activos", .markProjectsInactive: "Marcar %d proyectos inactivos", .inactiveProject: "inactivo",
         .arrangements: "Disposiciones", .arrangementsHelp: "Disposiciones guardadas de proyectos y terminales", .saveArrangement: "Guardar disposición…", .saveArrangementTitle: "Nombre de la disposición", .newArrangement: "Nueva disposición…", .overwriteArrangement: "Sobrescribir «%@»", .saveArrangementHelp: "Guarda los proyectos y terminales de esta ventana como disposición reutilizable", .openArrangement: "Abrir", .renameArrangement: "Renombrar disposición", .deleteArrangement: "Eliminar disposición", .deleteArrangementConfirm: "¿Eliminar la disposición «%@»?", .deleteArrangementBody: "Solo desaparece la plantilla guardada. Los proyectos y terminales que creó siguen igual, y la disposición no se puede recuperar.", .noArrangements: "Aún no hay disposiciones guardadas", .arrangementSummary: "%d proyectos · %d terminales", .savedArrangements: "Disposiciones guardadas",
         .selectedProjects: "%d proyectos seleccionados", .markProjectsFree: "Marcar %d proyectos como libres", .closeProjects: "Cerrar %d proyectos", .closeProjectsBody: "¿Cerrar %d proyectos y sus %d terminales? Esto termina las sesiones en marcha.", .dropIntoFolder: "Mover a \"%@\"",
+        .devServerHelp: "Servidor de desarrollo (%@) activo en %@ — clic para abrirlo en el navegador",
+        .lookAtCode: "Ver el código", .lookAtCodeHelp: "Abrir este proyecto en %@",
+        .openNewIDE: "Abrir un IDE", .openNewIDEHelp: "Ningún IDE está abierto — elige uno para abrir este proyecto",
+        .defaultIDEMenu: "IDE predeterminado", .noDefaultIDE: "Ninguno — usar el que esté abierto",
+        .devServersTitle: "Enlaces de servidores de desarrollo",
+        .devServersDetail: "Un servidor de desarrollo activo en el checkout de un proyecto aparece como un chip localhost clicable — detectado por proceso, así que también cuenta uno iniciado en un IDE",
+        .lookAtCodeDetail: "Entrega el proyecto a tu IDE: enfoca la ventana donde ya está abierto, o abre el IDE predeterminado — elígelo en el menú del botón",
     ]
 
     // MARK: Italian
@@ -609,6 +642,13 @@ enum L10n {
         .remindMe: "Ricordamelo…", .remindMeHelp: "In silenzio fino ad allora, poi un promemoria", .remindIn1h: "Tra 1 ora", .remindIn2h: "Tra 2 ore", .remindTomorrow: "Domani 9:00", .remindCancel: "Annulla promemoria", .quietUntil: "in silenzio fino alle %@", .reminder: "Promemoria", .reminderBody: "Volevi un promemoria su questo.", .markGroupReady: "Segna il progetto come libero", .markProjectActive: "Segna il progetto attivo", .markProjectInactive: "Segna il progetto inattivo", .markProjectActiveHelp: "Un progetto in pausa è silenzioso — nessun badge, nessun contatore, nessuna notifica — e i suoi terminali passano a libero", .markProjectsActive: "Segna %d progetti attivi", .markProjectsInactive: "Segna %d progetti inattivi", .inactiveProject: "inattivo",
         .arrangements: "Disposizioni", .arrangementsHelp: "Disposizioni salvate di progetti e terminali", .saveArrangement: "Salva disposizione…", .saveArrangementTitle: "Nome della disposizione", .newArrangement: "Nuova disposizione…", .overwriteArrangement: "Sovrascrivere «%@»", .saveArrangementHelp: "Salva i progetti e i terminali di questa finestra come disposizione riutilizzabile", .openArrangement: "Apri", .renameArrangement: "Rinomina disposizione", .deleteArrangement: "Elimina disposizione", .deleteArrangementConfirm: "Eliminare la disposizione «%@»?", .deleteArrangementBody: "Scompare solo il modello salvato. I progetti e i terminali che ha creato restano come sono e la disposizione non è recuperabile.", .noArrangements: "Nessuna disposizione salvata", .arrangementSummary: "%d progetti · %d terminali", .savedArrangements: "Disposizioni salvate",
         .selectedProjects: "%d progetti selezionati", .markProjectsFree: "Segna %d progetti come liberi", .closeProjects: "Chiudi %d progetti", .closeProjectsBody: "Chiudere %d progetti e i loro %d terminali? Le sessioni in esecuzione verranno terminate.", .dropIntoFolder: "Sposta in \"%@\"",
+        .devServerHelp: "Server di sviluppo (%@) attivo in %@ — clic per aprirlo nel browser",
+        .lookAtCode: "Guarda il codice", .lookAtCodeHelp: "Apri questo progetto in %@",
+        .openNewIDE: "Apri un IDE", .openNewIDEHelp: "Nessun IDE è aperto — scegline uno per aprirci questo progetto",
+        .defaultIDEMenu: "IDE predefinito", .noDefaultIDE: "Nessuno — usa quello aperto",
+        .devServersTitle: "Link dei server di sviluppo",
+        .devServersDetail: "Un server di sviluppo attivo nel checkout di un progetto appare come chip localhost cliccabile — rilevato dal processo, quindi conta anche uno avviato in un IDE",
+        .lookAtCodeDetail: "Affida il progetto al tuo IDE: porta in primo piano la finestra dove è già aperto, oppure apre l'IDE predefinito — da scegliere nel menu del pulsante",
     ]
 
     // MARK: Dutch
@@ -686,6 +726,13 @@ enum L10n {
         .remindMe: "Herinner me…", .remindMeHelp: "Tot dan stil, daarna een herinnering", .remindIn1h: "Over 1 uur", .remindIn2h: "Over 2 uur", .remindTomorrow: "Morgen 9:00", .remindCancel: "Herinnering annuleren", .quietUntil: "stil tot %@", .reminder: "Herinnering", .reminderBody: "Je wilde hieraan herinnerd worden.", .markGroupReady: "Project als vrij markeren", .markProjectActive: "Project actief maken", .markProjectInactive: "Project inactief maken", .markProjectActiveHelp: "Een geparkeerd project is stil — geen badges, geen tellers, geen meldingen — en zijn terminals worden als vrij gemarkeerd", .markProjectsActive: "%d projecten actief maken", .markProjectsInactive: "%d projecten inactief maken", .inactiveProject: "inactief",
         .arrangements: "Indelingen", .arrangementsHelp: "Opgeslagen indelingen van projecten en terminals", .saveArrangement: "Indeling opslaan…", .saveArrangementTitle: "Naam van de indeling", .newArrangement: "Nieuwe indeling…", .overwriteArrangement: "\"%@\" overschrijven", .saveArrangementHelp: "Sla de projecten en terminals van dit venster op als herbruikbare indeling", .openArrangement: "Openen", .renameArrangement: "Indeling hernoemen", .deleteArrangement: "Indeling verwijderen", .deleteArrangementConfirm: "De indeling \"%@\" verwijderen?", .deleteArrangementBody: "Alleen het opgeslagen sjabloon verdwijnt. De projecten en terminals die het maakte blijven zoals ze zijn, en de indeling komt niet terug.", .noArrangements: "Nog geen indelingen opgeslagen", .arrangementSummary: "%d projecten · %d terminals", .savedArrangements: "Opgeslagen indelingen",
         .selectedProjects: "%d projecten geselecteerd", .markProjectsFree: "%d projecten als vrij markeren", .closeProjects: "%d projecten sluiten", .closeProjectsBody: "%d projecten en hun %d terminals sluiten? Lopende sessies worden beëindigd.", .dropIntoFolder: "Naar \"%@\" verplaatsen",
+        .devServerHelp: "Dev-server (%@) draait in %@ — klik om hem in de browser te openen",
+        .lookAtCode: "Code bekijken", .lookAtCodeHelp: "Dit project openen in %@",
+        .openNewIDE: "Nieuwe IDE openen", .openNewIDEHelp: "Er draait geen IDE — kies er een om dit project in te openen",
+        .defaultIDEMenu: "Standaard-IDE", .noDefaultIDE: "Geen — gebruik de IDE die draait",
+        .devServersTitle: "Dev-server-links",
+        .devServersDetail: "Een dev-server in de checkout van een project verschijnt als klikbare localhost-chip — herkend aan het proces, dus een server gestart in een IDE telt ook",
+        .lookAtCodeDetail: "Geeft het project aan je IDE: focust het venster waarin het al open is, of opent de standaard-IDE — te kiezen in het menu van de knop",
     ]
 
     // MARK: Portuguese
@@ -763,5 +810,12 @@ enum L10n {
         .remindMe: "Lembrar-me…", .remindMeHelp: "Em silêncio até lá, depois um lembrete", .remindIn1h: "Daqui a 1 hora", .remindIn2h: "Daqui a 2 horas", .remindTomorrow: "Amanhã às 9:00", .remindCancel: "Cancelar lembrete", .quietUntil: "em silêncio até %@", .reminder: "Lembrete", .reminderBody: "Pediste para seres lembrado disto.", .markGroupReady: "Marcar projeto como livre", .markProjectActive: "Marcar projeto como ativo", .markProjectInactive: "Marcar projeto como inativo", .markProjectActiveHelp: "Um projeto em pausa está silencioso — sem badges, sem contadores, sem notificações — e os seus terminais passam a livre", .markProjectsActive: "Marcar %d projetos como ativos", .markProjectsInactive: "Marcar %d projetos como inativos", .inactiveProject: "inativo",
         .arrangements: "Disposições", .arrangementsHelp: "Disposições guardadas de projetos e terminais", .saveArrangement: "Guardar disposição…", .saveArrangementTitle: "Nome da disposição", .newArrangement: "Nova disposição…", .overwriteArrangement: "Substituir \"%@\"", .saveArrangementHelp: "Guarda os projetos e terminais desta janela como disposição reutilizável", .openArrangement: "Abrir", .renameArrangement: "Renomear disposição", .deleteArrangement: "Eliminar disposição", .deleteArrangementConfirm: "Eliminar a disposição \"%@\"?", .deleteArrangementBody: "Só desaparece o modelo guardado. Os projetos e terminais que criou ficam como estão, e a disposição não pode ser recuperada.", .noArrangements: "Ainda sem disposições guardadas", .arrangementSummary: "%d projetos · %d terminais", .savedArrangements: "Disposições guardadas",
         .selectedProjects: "%d projetos selecionados", .markProjectsFree: "Marcar %d projetos como livres", .closeProjects: "Fechar %d projetos", .closeProjectsBody: "Fechar %d projetos e os seus %d terminais? Isto termina as sessões em execução.", .dropIntoFolder: "Mover para \"%@\"",
+        .devServerHelp: "Servidor de desenvolvimento (%@) ativo em %@ — clique para o abrir no navegador",
+        .lookAtCode: "Ver o código", .lookAtCodeHelp: "Abrir este projeto em %@",
+        .openNewIDE: "Abrir um IDE", .openNewIDEHelp: "Nenhum IDE está aberto — escolha um para abrir este projeto",
+        .defaultIDEMenu: "IDE predefinido", .noDefaultIDE: "Nenhum — usar o que estiver aberto",
+        .devServersTitle: "Ligações de servidores de desenvolvimento",
+        .devServersDetail: "Um servidor de desenvolvimento ativo no checkout de um projeto aparece como um chip localhost clicável — detetado pelo processo, por isso um servidor iniciado num IDE também conta",
+        .lookAtCodeDetail: "Entrega o projeto ao teu IDE: foca a janela onde já está aberto, ou abre o IDE predefinido — a escolher no menu do botão",
     ]
 }

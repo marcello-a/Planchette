@@ -733,6 +733,9 @@ struct PersistedState: Codable {
     /// Whether a collapsed sidebar project still lists its terminals with an
     /// unread question or error. On by default, like every other setting.
     var peekCollapsedProjects: Bool = true
+    /// The IDE the "look at code" button always opens, once chosen in its
+    /// menu. Nil = never chosen — the button follows whatever IDE is running.
+    var defaultIDEBundleID: String?
 
     init(
         groups: [SessionGroup],
@@ -744,7 +747,8 @@ struct PersistedState: Codable {
         autoUpdateCheck: Bool,
         durableTerminals: Bool,
         durableDefaultApplied: Bool = true,
-        peekCollapsedProjects: Bool = true
+        peekCollapsedProjects: Bool = true,
+        defaultIDEBundleID: String? = nil
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -756,6 +760,7 @@ struct PersistedState: Codable {
         self.autoUpdateCheck = autoUpdateCheck
         self.durableTerminals = durableTerminals
         self.peekCollapsedProjects = peekCollapsedProjects
+        self.defaultIDEBundleID = defaultIDEBundleID
     }
 
     init(from decoder: Decoder) throws {
@@ -773,5 +778,6 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
         peekCollapsedProjects =
             try c.decodeIfPresent(Bool.self, forKey: .peekCollapsedProjects) ?? true
+        defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
     }
 }

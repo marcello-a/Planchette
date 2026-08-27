@@ -54,6 +54,12 @@ struct TerminalAreaView: View {
                 .padding(.horizontal, 8)
             }
             Spacer()
+            // Dev servers running in this checkout — the link is always here.
+            DevServerChips(groupID: group.id)
+                .padding(.trailing, 6)
+            // Hand the project to an IDE.
+            IDEButton(group: group)
+                .padding(.trailing, 6)
             // Font zoom for the active terminal.
             HStack(spacing: 1) {
                 Button { fontZoom(sessions, .decrease) } label: {

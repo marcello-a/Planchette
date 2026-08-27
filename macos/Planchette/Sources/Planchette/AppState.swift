@@ -49,6 +49,12 @@ final class AppState: ObservableObject {
     @Published var peekCollapsedProjects = true {
         didSet { scheduleSave() }
     }
+    /// The IDE the "look at code" button always opens, once one is chosen in
+    /// its menu. Nil = no choice made yet: the button falls back to whichever
+    /// known IDE is running (see `IDEs.target`).
+    @Published var defaultIDEBundleID: String? {
+        didSet { scheduleSave() }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -121,11 +127,13 @@ final class AppState: ObservableObject {
             // *current* value — so without this a user's aiEnabled=false silently
             // flips back to the default and claude -p starts summarizing again.
             aiEnabled = saved.aiEnabled
+            defaultIDEBundleID = saved.defaultIDEBundleID
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
         startScreenDetection()
         startBranchPolling()
+        startDevServerPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -542,6 +550,74 @@ final class AppState: ObservableObject {
                 self.branches = found
             }
         }
+    }
+
+    // MARK: Dev servers & IDEs per project
+
+    /// Dev servers running in each project's checkout, keyed by group id.
+    /// Derived and never persisted: the processes on the machine are the
+    /// truth, and they start and stop behind the app's back — in a Planchette
+    /// terminal, in an IDE, anywhere.
+    @Published var devServers: [UUID: [DevServer]] = [:]
+    /// Known IDEs currently running — refreshed on the same tick, so the
+    /// "look at code" button always names a live target.
+    @Published var runningIDEs: Set<String> = []
+    private var devServerTimer: Timer?
+    /// Slow enough to be invisible next to the two ~100ms lsof calls (which
+    /// run off the main thread), fast enough that `npm run dev` has its link
+    /// on screen while the server is still printing its banner.
+    static let devServerPollInterval: TimeInterval = 5
+
+    private func startDevServerPolling() {
+        refreshDevServers()
+        let timer = Timer(timeInterval: Self.devServerPollInterval, repeats: true) { _ in
+            Task { @MainActor [weak self] in self?.devServerTick() }
+        }
+        timer.tolerance = 2
+        RunLoop.main.add(timer, forMode: .common)
+        devServerTimer = timer
+    }
+
+    /// Ticks elapsed — in the background nobody reads a link chip, so a
+    /// quarter of the rate is plenty (same reasoning as the screen poll).
+    private var devServerTicks = 0
+
+    private func devServerTick() {
+        devServerTicks += 1
+        if NSApp?.isActive != true && !devServerTicks.isMultiple(of: 4) { return }
+        refreshDevServers()
+    }
+
+    private func refreshDevServers() {
+        let running = IDEs.runningBundleIDs()
+        if running != runningIDEs { runningIDEs = running }
+        let dirs: [UUID: [String]] = groups.reduce(into: [:]) { acc, group in
+            let paths = sessions(in: group)
+                .flatMap { [$0.workingDirectory, $0.currentDirectory] }
+                .filter { !$0.isEmpty }
+            if !paths.isEmpty { acc[group.id] = Array(Set(paths)) }
+        }
+        guard !dirs.isEmpty else {
+            if !devServers.isEmpty { devServers = [:] }
+            return
+        }
+        Task.detached {
+            let found = DevServerScanner.scan(projectDirs: dirs)
+            await MainActor.run { [weak self] in
+                // Publish only a real change (see refreshBranches).
+                guard let self, self.devServers != found else { return }
+                self.devServers = found
+            }
+        }
+    }
+
+    /// The directory the "look at code" button and a new IDE open: where the
+    /// project's terminals started, which is the checkout for everything but a
+    /// hand-rolled setup.
+    func projectDirectory(of group: SessionGroup) -> String? {
+        let sessions = sessions(in: group)
+        return sessions.first(where: { !$0.workingDirectory.isEmpty })?.workingDirectory
+            ?? sessions.first(where: { !$0.currentDirectory.isEmpty })?.currentDirectory
     }
 
     /// The one branch all terminals of a project are on, or nil when they
@@ -1517,7 +1593,8 @@ final class AppState: ObservableObject {
             appearance: appearance,
             autoUpdateCheck: autoUpdateCheck,
             durableTerminals: durableTerminals,
-            peekCollapsedProjects: peekCollapsedProjects
+            peekCollapsedProjects: peekCollapsedProjects,
+            defaultIDEBundleID: defaultIDEBundleID
         )
         do {
             let encoder = JSONEncoder()
@@ -1580,6 +1657,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = state.autoUpdateCheck
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
+        defaultIDEBundleID = state.defaultIDEBundleID
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -1685,6 +1763,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
+        defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
     }
 
     // MARK: Surface notifications (title / pwd / child exit)
