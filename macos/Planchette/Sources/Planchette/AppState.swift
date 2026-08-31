@@ -574,6 +574,14 @@ final class AppState: ObservableObject {
     /// LaunchServices once per candidate — far too much for a view body, which
     /// re-runs on every state change.
     @Published private(set) var installedIDEs: [IDE] = []
+    /// Which IDEs already have each project open, keyed by group id. The
+    /// strongest evidence there is: then the button's job is to take you to a
+    /// window that exists, not to open one.
+    @Published private(set) var projectOpenInIDEs: [UUID: Set<String>] = [:]
+    /// Whether each dev-server port speaks TLS, keyed by port. Asked once per
+    /// port (see `DevServerScanner.probeScheme`) — a chip that guesses `http`
+    /// for an `https` server opens a page that never answers.
+    fileprivate var serverSchemes: [Int: String] = [:]
     private var devServerTimer: Timer?
     /// Slow enough to be invisible next to the two ~100ms lsof calls (which
     /// run off the main thread), fast enough that `npm run dev` has its link
@@ -647,14 +655,31 @@ final class AppState: ObservableObject {
             if !ideMarkers.isEmpty { ideMarkers = [:] }
             return
         }
+        let knownSchemes = serverSchemes
         Task.detached {
             let found = DevServerScanner.scan(projectDirs: dirs)
             let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
             let installed = IDEs.installed()
+            // Ask each new port whether it speaks TLS. Off-main and once per
+            // port: the answer cannot change while the server runs.
+            var schemes = knownSchemes
+            for port in Set(found.values.flatMap { $0.map(\.port) }) where schemes[port] == nil {
+                schemes[port] = DevServerScanner.probeScheme(port: port)
+            }
+            // Which IDE already shows each project — read from the IDEs' own
+            // state files, so it costs no permission and no window peeking.
+            let openProjects = installed.reduce(into: [String: Set<String>]()) {
+                $0[$1.bundleID] = IDEs.openProjects(of: $1)
+            }
+            let openIn = projectDirs.mapValues { dir in
+                Set(openProjects.filter { $0.value.contains(dir) }.keys)
+            }
             await MainActor.run { [weak self] in
+                self?.serverSchemes = schemes
                 guard let self else { return }
                 if self.ideMarkers != markers { self.ideMarkers = markers }
                 if self.installedIDEs != installed { self.installedIDEs = installed }
+                if self.projectOpenInIDEs != openIn { self.projectOpenInIDEs = openIn }
                 // Carry over (and complete) the announced URLs before comparing:
                 // the addresses are part of what a chip shows, so resolving one
                 // has to publish.
@@ -698,7 +723,11 @@ final class AppState: ObservableObject {
             }
             result[groupID] = servers.map {
                 var server = $0
+                // What the server announced, else at least the right scheme:
+                // the port was probed, and `https://localhost:8082` is a page,
+                // while `http://localhost:8082` on a TLS server is not.
                 server.resolvedURL = serverURLs[$0.port]
+                    ?? URL(string: "\(serverSchemes[$0.port] ?? "http")://localhost:\($0.port)")
                 return server
             }
         }
@@ -713,7 +742,15 @@ final class AppState: ObservableObject {
             defaultBundleID: defaultIDEBundleID,
             running: runningIDEs,
             installed: installedIDEs,
-            lastActivated: lastActivatedIDE)
+            lastActivated: lastActivatedIDE,
+            alreadyOpenIn: projectOpenInIDEs[group.id] ?? [])
+    }
+
+    /// Is this project already open in the IDE a click would go to? Then the
+    /// button takes you to a window instead of opening one — which is what its
+    /// tooltip should say.
+    func ideAlreadyOpen(_ group: SessionGroup, in ide: IDE) -> Bool {
+        projectOpenInIDEs[group.id]?.contains(ide.bundleID) ?? false
     }
 
     /// The directory the "look at code" button and a new IDE open: where the

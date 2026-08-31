@@ -194,6 +194,54 @@ enum DevServerScanner {
         return best?.url
     }
 
+    /// Which scheme a port speaks, asked by connecting to it.
+    ///
+    /// Needed because the server's banner is often out of reach: it runs in an
+    /// IDE's own run panel, not in a Planchette terminal, so nothing tells us
+    /// that port 8082 is `https`. Guessing `http` there produces a chip that
+    /// opens a page which never answers, and a dev server behind TLS is normal
+    /// now (Vite with a certificate, anything behind a local proxy).
+    ///
+    /// A TLS server answers a plaintext request with a handshake failure rather
+    /// than an HTTP response, which is the whole test. Self-signed certificates
+    /// are accepted on purpose: this asks "what language does this port speak",
+    /// not "is this port trustworthy", and every local dev certificate is
+    /// self-signed. Nothing is read from the response, and only localhost is
+    /// ever contacted.
+    static func probeScheme(port: Int, timeout: TimeInterval = 1.5) -> String {
+        guard let url = URL(string: "https://localhost:\(port)/") else { return "http" }
+        let delegate = AnyCertificate()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = timeout
+        let session = URLSession(
+            configuration: configuration, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        var request = URLRequest(url: url)
+        request.httpMethod = "HEAD"
+        let done = DispatchSemaphore(value: 0)
+        var spokeTLS = false
+        session.dataTask(with: request) { _, response, _ in
+            spokeTLS = response != nil
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + timeout + 0.5)
+        return spokeTLS ? "https" : "http"
+    }
+
+    /// Accepts any certificate for the scheme probe — see `probeScheme`.
+    private final class AnyCertificate: NSObject, URLSessionDelegate {
+        func urlSession(
+            _ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+            completionHandler: @escaping (URLSession.AuthChallengeDisposition,
+                                         URLCredential?) -> Void
+        ) {
+            guard let trust = challenge.protectionSpace.serverTrust else {
+                return completionHandler(.performDefaultHandling, nil)
+            }
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        }
+    }
+
     /// The impure end: two `lsof` calls, then the pure match. Call off the
     /// main thread — each `lsof` costs ~100ms.
     static func scan(projectDirs: [UUID: [String]]) -> [UUID: [DevServer]] {

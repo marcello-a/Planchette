@@ -72,7 +72,13 @@ struct IDEButton: View {
                     .padding(.horizontal, 4).padding(.vertical, 3)
                     .contentShape(Rectangle())
                 }
-                .help(target.map { L10n.t(.lookAtCodeHelp, $0.name) } ?? L10n.t(.openNewIDEHelp))
+                // Say which of the two things a click does: take you to a
+                // window that exists, or open the project somewhere new.
+                .help(target.map {
+                    appState.ideAlreadyOpen(group, in: $0)
+                        ? L10n.t(.lookAtCodeOpenHelp, $0.name)
+                        : L10n.t(.lookAtCodeHelp, $0.name)
+                } ?? L10n.t(.openNewIDEHelp))
 
                 Button {
                     showMenu(directory: directory, target: target)

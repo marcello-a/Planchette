@@ -2508,3 +2508,74 @@ final class IDEMenuTests: XCTestCase {
         XCTAssertEqual(withNone.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .on)
     }
 }
+
+/// "Is this project already open in that IDE?" — read from the IDEs' own state.
+/// The button's first job: take you to a window that exists.
+final class IDEOpenProjectTests: XCTestCase {
+    func testReadsOpenedJetBrainsProjects() {
+        // Shape taken from a real recentProjects.xml.
+        let xml = """
+            <entry key="$USER_HOME$/dev/closed-one">
+              <value>
+                <RecentProjectMetaInfo frameTitle="closed-one" projectWorkspaceId="a">
+                  <option name="productionCode" value="PS" />
+                </RecentProjectMetaInfo>
+              </value>
+            </entry>
+            <entry key="$USER_HOME$/dev/open-one">
+              <value>
+                <RecentProjectMetaInfo frameTitle="open-one – Commit" opened="true" projectWorkspaceId="b">
+                  <option name="productionCode" value="PS" />
+                </RecentProjectMetaInfo>
+              </value>
+            </entry>
+            """
+        let open = IDEs.openJetBrainsProjects(inXML: xml, home: "/Users/x")
+        XCTAssertEqual(open, ["/Users/x/dev/open-one"])
+    }
+
+    func testReadsOpenVSCodeWindows() throws {
+        let json = """
+            {"windowsState": {
+               "openedWindows": [{"folder": "file:///Users/x/dev/one"}],
+               "lastActiveWindow": {"folder": "file:///Users/x/dev/two"}}}
+            """
+        let open = IDEs.openVSCodeProjects(inJSON: Data(json.utf8))
+        XCTAssertEqual(open, ["/Users/x/dev/one", "/Users/x/dev/two"])
+    }
+
+    func testAWindowThatExistsBeatsMarkerAndDefault() {
+        let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+        let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+        // The checkout says JetBrains and VS Code is the default — but the
+        // project is on screen in VS Code, so that is where a click belongs.
+        let target = IDEs.resolve(
+            markers: [".idea"],
+            defaultBundleID: nil,
+            running: [phpstorm.bundleID, vscode.bundleID],
+            installed: [vscode, phpstorm],
+            alreadyOpenIn: [vscode.bundleID])
+        XCTAssertEqual(target, vscode)
+    }
+
+    func testAmongSeveralOpenTheDefaultStillDecides() {
+        let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+        let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+        let target = IDEs.resolve(
+            markers: [],
+            defaultBundleID: phpstorm.bundleID,
+            running: [phpstorm.bundleID, vscode.bundleID],
+            installed: [vscode, phpstorm],
+            alreadyOpenIn: [vscode.bundleID, phpstorm.bundleID])
+        XCTAssertEqual(target, phpstorm)
+    }
+
+    func testNotOpenAnywhereFallsBackToTheMarker() {
+        let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+        let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+        let target = IDEs.resolve(
+            markers: [".idea"], defaultBundleID: nil, running: [vscode.bundleID],
+            installed: [vscode, phpstorm], alreadyOpenIn: [])
+        XCTAssertEqual(target, phpstorm)
+    }
+}

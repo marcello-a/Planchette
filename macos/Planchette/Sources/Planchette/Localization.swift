@@ -208,7 +208,8 @@ enum LKey: String, CaseIterable {
     case devServerHelp, lookAtCode, lookAtCodeHelp, openNewIDE, openNewIDEHelp
     case defaultIDEMenu, noDefaultIDE
     case devServersTitle, devServersDetail, lookAtCodeDetail
-    case openInIDE, chooseIDEHelp
+    case openInIDE, chooseIDEHelp, ideNoWindowTitle, ideNoWindowBody, lookAtCodeOpenHelp
+    case ideNoWindowMinimized
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -309,12 +310,16 @@ enum L10n {
         .selectedProjects: "%d projects selected", .markProjectsFree: "Mark %d projects as free", .closeProjects: "Close %d projects", .closeProjectsBody: "Close %d projects and their %d terminal(s)? This ends any running sessions.", .dropIntoFolder: "Move into \"%@\"",
         .devServerHelp: "Open %@ — the dev server (%@) this project is running",
         .openInIDE: "Open in", .chooseIDEHelp: "Choose an IDE, or set the default one",
+        .ideNoWindowTitle: "%@ has no window here",
+        .ideNoWindowBody: "%@ is open, but its window is on another Space. macOS only follows along when \"When switching to an application, switch to a Space with open windows\" is on — System Settings → Desktop & Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ is open, but every window of it is minimized. Only you can bring one back — click it in the Dock.",
+        .lookAtCodeOpenHelp: "Jump to this project's window in %@ — it is already open there",
         .lookAtCode: "Look at code", .lookAtCodeHelp: "Open this project in %@",
         .openNewIDE: "Open new IDE", .openNewIDEHelp: "No IDE is running — pick one to open this project in",
         .defaultIDEMenu: "Default IDE", .noDefaultIDE: "None — use whichever is running",
         .devServersTitle: "Dev server links",
         .devServersDetail: "A dev server running in a project's checkout shows as a clickable port chip that opens the address the server announced — found by process, so a server started in an IDE counts too",
-        .lookAtCodeDetail: "Hands the project to the IDE its checkout belongs to (.idea → JetBrains, .vscode → VS Code), else the one you last worked in — the chevron picks another or sets the default",
+        .lookAtCodeDetail: "Jumps to the window an IDE already has this project open in; otherwise opens it in the IDE the checkout belongs to (.idea → JetBrains, .vscode → VS Code), else the one you last worked in — the chevron picks another or sets the default",
     ]
 
     // MARK: German
@@ -394,12 +399,16 @@ enum L10n {
         .selectedProjects: "%d Projekte ausgewählt", .markProjectsFree: "%d Projekte als frei markieren", .closeProjects: "%d Projekte schließen", .closeProjectsBody: "%d Projekte mit ihren %d Terminals schließen? Laufende Sessions werden beendet.", .dropIntoFolder: "In \"%@\" verschieben",
         .devServerHelp: "%@ öffnen — der Dev-Server (%@), den dieses Projekt fährt",
         .openInIDE: "Öffnen in", .chooseIDEHelp: "Eine IDE wählen oder die Standard-IDE festlegen",
+        .ideNoWindowTitle: "%@ hat hier kein Fenster",
+        .ideNoWindowBody: "%@ ist offen, das Fenster liegt aber auf einem anderen Space. macOS springt nur mit, wenn »Beim Wechseln zu einer App zu einem Space mit offenen Fenstern wechseln« aktiv ist — Systemeinstellungen → Schreibtisch & Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ ist offen, aber alle Fenster sind minimiert. Zurückholen kann es nur du — klick die App im Dock an.",
+        .lookAtCodeOpenHelp: "Zum Fenster dieses Projekts in %@ springen — dort ist es schon offen",
         .lookAtCode: "Code ansehen", .lookAtCodeHelp: "Dieses Projekt in %@ öffnen",
         .openNewIDE: "Neue IDE öffnen", .openNewIDEHelp: "Keine IDE läuft — eine auswählen, um das Projekt darin zu öffnen",
         .defaultIDEMenu: "Standard-IDE", .noDefaultIDE: "Keine — die gerade laufende verwenden",
         .devServersTitle: "Dev-Server-Links",
         .devServersDetail: "Ein Dev-Server im Checkout eines Projekts erscheint als klickbarer Port-Chip und öffnet die Adresse, die der Server gemeldet hat — erkannt am Prozess, also zählt auch ein in einer IDE gestarteter Server",
-        .lookAtCodeDetail: "Übergibt das Projekt an die IDE, zu der sein Checkout gehört (.idea → JetBrains, .vscode → VS Code), sonst an die zuletzt benutzte — der Pfeil wählt eine andere oder setzt die Standard-IDE",
+        .lookAtCodeDetail: "Springt in das Fenster, in dem eine IDE dieses Projekt schon offen hat; sonst öffnet es die IDE, zu der das Checkout gehört (.idea → JetBrains, .vscode → VS Code), sonst die zuletzt benutzte — der Pfeil wählt eine andere oder setzt die Standard-IDE",
     ]
 
     // MARK: French
@@ -479,6 +488,10 @@ enum L10n {
         .selectedProjects: "%d projets sélectionnés", .markProjectsFree: "Marquer %d projets comme libres", .closeProjects: "Fermer %d projets", .closeProjectsBody: "Fermer %d projets et leurs %d terminaux ? Les sessions en cours seront terminées.", .dropIntoFolder: "Déplacer dans \"%@\"",
         .devServerHelp: "Ouvrir %@ — le serveur de dev (%@) que ce projet fait tourner",
         .openInIDE: "Ouvrir dans", .chooseIDEHelp: "Choisir un IDE ou définir l'IDE par défaut",
+        .ideNoWindowTitle: "%@ n'a pas de fenêtre ici",
+        .ideNoWindowBody: "%@ est ouvert, mais sa fenêtre est sur un autre espace. macOS ne suit que si l'option « Lors du passage à une app, activer un espace comportant des fenêtres ouvertes » est cochée — Réglages Système → Bureau et Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ est ouvert, mais toutes ses fenêtres sont réduites. Seul vous pouvez en ramener une — cliquez sur l'app dans le Dock.",
+        .lookAtCodeOpenHelp: "Aller à la fenêtre de ce projet dans %@ — il y est déjà ouvert",
         .lookAtCode: "Voir le code", .lookAtCodeHelp: "Ouvrir ce projet dans %@",
         .openNewIDE: "Ouvrir un IDE", .openNewIDEHelp: "Aucun IDE n'est lancé — choisissez-en un pour y ouvrir ce projet",
         .defaultIDEMenu: "IDE par défaut", .noDefaultIDE: "Aucun — utiliser celui qui est lancé",
@@ -564,6 +577,10 @@ enum L10n {
         .selectedProjects: "%d proyectos seleccionados", .markProjectsFree: "Marcar %d proyectos como libres", .closeProjects: "Cerrar %d proyectos", .closeProjectsBody: "¿Cerrar %d proyectos y sus %d terminales? Esto termina las sesiones en marcha.", .dropIntoFolder: "Mover a \"%@\"",
         .devServerHelp: "Abrir %@ — el servidor de desarrollo (%@) que ejecuta este proyecto",
         .openInIDE: "Abrir en", .chooseIDEHelp: "Elegir un IDE o definir el IDE predeterminado",
+        .ideNoWindowTitle: "%@ no tiene ventana aquí",
+        .ideNoWindowBody: "%@ está abierto, pero su ventana está en otro espacio. macOS solo cambia si está activada la opción «Al cambiar a una app, ir a un espacio con ventanas abiertas» — Ajustes del Sistema → Escritorio y Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ está abierto, pero todas sus ventanas están minimizadas. Solo tú puedes recuperar una — haz clic en la app en el Dock.",
+        .lookAtCodeOpenHelp: "Ir a la ventana de este proyecto en %@ — ya está abierto allí",
         .lookAtCode: "Ver el código", .lookAtCodeHelp: "Abrir este proyecto en %@",
         .openNewIDE: "Abrir un IDE", .openNewIDEHelp: "Ningún IDE está abierto — elige uno para abrir este proyecto",
         .defaultIDEMenu: "IDE predeterminado", .noDefaultIDE: "Ninguno — usar el que esté abierto",
@@ -649,6 +666,10 @@ enum L10n {
         .selectedProjects: "%d progetti selezionati", .markProjectsFree: "Segna %d progetti come liberi", .closeProjects: "Chiudi %d progetti", .closeProjectsBody: "Chiudere %d progetti e i loro %d terminali? Le sessioni in esecuzione verranno terminate.", .dropIntoFolder: "Sposta in \"%@\"",
         .devServerHelp: "Apri %@ — il server di sviluppo (%@) che questo progetto esegue",
         .openInIDE: "Apri in", .chooseIDEHelp: "Scegli un IDE o imposta l'IDE predefinito",
+        .ideNoWindowTitle: "%@ non ha finestre qui",
+        .ideNoWindowBody: "%@ è aperto, ma la sua finestra è su un altro spazio. macOS segue solo se è attiva l'opzione «Quando passi a un'app, vai a uno spazio con finestre aperte» — Impostazioni di Sistema → Scrivania e Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ è aperto, ma tutte le sue finestre sono ridotte a icona. Solo tu puoi riportarne una — clicca l'app nel Dock.",
+        .lookAtCodeOpenHelp: "Vai alla finestra di questo progetto in %@ — lì è già aperto",
         .lookAtCode: "Guarda il codice", .lookAtCodeHelp: "Apri questo progetto in %@",
         .openNewIDE: "Apri un IDE", .openNewIDEHelp: "Nessun IDE è aperto — scegline uno per aprirci questo progetto",
         .defaultIDEMenu: "IDE predefinito", .noDefaultIDE: "Nessuno — usa quello aperto",
@@ -734,6 +755,10 @@ enum L10n {
         .selectedProjects: "%d projecten geselecteerd", .markProjectsFree: "%d projecten als vrij markeren", .closeProjects: "%d projecten sluiten", .closeProjectsBody: "%d projecten en hun %d terminals sluiten? Lopende sessies worden beëindigd.", .dropIntoFolder: "Naar \"%@\" verplaatsen",
         .devServerHelp: "%@ openen — de dev-server (%@) die dit project draait",
         .openInIDE: "Openen in", .chooseIDEHelp: "Kies een IDE of stel de standaard-IDE in",
+        .ideNoWindowTitle: "%@ heeft hier geen venster",
+        .ideNoWindowBody: "%@ is open, maar het venster staat op een andere Space. macOS gaat alleen mee als «Bij overschakelen naar een app naar een Space met open vensters gaan» aan staat — Systeeminstellingen → Bureaublad en Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ is open, maar alle vensters zijn geminimaliseerd. Alleen jij kunt er een terughalen — klik de app in het Dock aan.",
+        .lookAtCodeOpenHelp: "Ga naar het venster van dit project in %@ — daar is het al open",
         .lookAtCode: "Code bekijken", .lookAtCodeHelp: "Dit project openen in %@",
         .openNewIDE: "Nieuwe IDE openen", .openNewIDEHelp: "Er draait geen IDE — kies er een om dit project in te openen",
         .defaultIDEMenu: "Standaard-IDE", .noDefaultIDE: "Geen — gebruik de IDE die draait",
@@ -819,6 +844,10 @@ enum L10n {
         .selectedProjects: "%d projetos selecionados", .markProjectsFree: "Marcar %d projetos como livres", .closeProjects: "Fechar %d projetos", .closeProjectsBody: "Fechar %d projetos e os seus %d terminais? Isto termina as sessões em execução.", .dropIntoFolder: "Mover para \"%@\"",
         .devServerHelp: "Abrir %@ — o servidor de desenvolvimento (%@) que este projeto executa",
         .openInIDE: "Abrir em", .chooseIDEHelp: "Escolher um IDE ou definir o IDE predefinido",
+        .ideNoWindowTitle: "%@ não tem janela aqui",
+        .ideNoWindowBody: "%@ está aberto, mas a janela está noutro espaço. O macOS só acompanha se «Ao mudar para uma app, ir para um espaço com janelas abertas» estiver ativo — Ajustes do Sistema → Secretária e Dock → Mission Control.",
+        .ideNoWindowMinimized: "%@ está aberto, mas todas as janelas estão minimizadas. Só tu podes trazer uma de volta — clica na app na Dock.",
+        .lookAtCodeOpenHelp: "Ir para a janela deste projeto em %@ — já está aberto lá",
         .lookAtCode: "Ver o código", .lookAtCodeHelp: "Abrir este projeto em %@",
         .openNewIDE: "Abrir um IDE", .openNewIDEHelp: "Nenhum IDE está aberto — escolha um para abrir este projeto",
         .defaultIDEMenu: "IDE predefinido", .noDefaultIDE: "Nenhum — usar o que estiver aberto",

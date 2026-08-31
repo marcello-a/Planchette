@@ -8,6 +8,39 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.30] — 2026-08-31
+
+### Fixed
+- **"Look at code" jumps to the window that already has the project open.** The
+  strongest evidence there is, and it was not being used: the IDEs record which
+  projects they currently show (JetBrains in `recentProjects.xml`, the VS Code
+  family in its `storage.json`), so Planchette reads that and sends the click
+  there — no dialog, no second window, and the tooltip says "jump to" instead
+  of "open in". Only when no IDE has the project open does the marker decide
+  which one to start.
+- **The IDE is pulled to the front.** Opening reached the IDE all along, but
+  nothing raised it: the IDE put its window (or its "this window or a new one?"
+  dialog) wherever it already lived — behind Planchette, or on another Space —
+  and the click looked like it did nothing, while the invisible modal swallowed
+  every further click. The target app is now activated with all of its windows,
+  twice, because activating before the IDE has drawn its window raises nothing.
+- **A click that cannot become visible says so.** macOS lets no app raise
+  another app's window from a different Space, and following an app to its
+  Space is off unless *System Settings → Desktop & Dock → Mission Control →
+  "When switching to an application, switch to a Space with open windows"* is
+  on. When the IDE ends up frontmost with nothing on screen, a notification now
+  names that setting — or, when it is already on and every window is
+  minimized, says that only you can bring one back. Silence was the actual bug
+  here; the app's whole point is that you always know what happened.
+
+### Changed
+- **A dev-server chip asks the port which scheme it speaks.** Reading the URL
+  off the terminal only works when the server runs in a Planchette terminal —
+  started from an IDE's run panel, its banner is out of reach. Each new port is
+  now probed once: a TLS port yields `https://localhost:<port>`, so a Vite
+  server behind a certificate opens instead of failing. An announced network
+  URL still wins over the probe.
+
 ## [0.2.29] — 2026-08-31
 
 ### Fixed

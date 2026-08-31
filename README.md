@@ -93,9 +93,10 @@ Also worth a second:
 - Dev servers show as clickable port chips on their project, opening the
   address the server announced (`https://vite.myposter.de:8082`, network URL
   first) — found by process, so a server started in an IDE terminal counts too
-- *Look at code*: hand the project to the IDE its checkout belongs to
-  (`.idea` → JetBrains, `.vscode` → VS Code), else the one you last worked in;
-  the chevron picks another or sets a default
+- *Look at code*: jumps to the window an IDE already has the project open in —
+  otherwise opens it in the IDE the checkout belongs to (`.idea` → JetBrains,
+  `.vscode` → VS Code), else the one you last worked in; the chevron picks
+  another or sets a default
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder
 - 7 UI languages, light/dark/system
