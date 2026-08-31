@@ -736,6 +736,8 @@ struct PersistedState: Codable {
     /// The IDE the "look at code" button always opens, once chosen in its
     /// menu. Nil = never chosen — the button follows whatever IDE is running.
     var defaultIDEBundleID: String?
+    /// Whether the one question about the macOS Space setting was asked.
+    var askedAboutSpaceSwitching: Bool = false
 
     init(
         groups: [SessionGroup],
@@ -748,7 +750,8 @@ struct PersistedState: Codable {
         durableTerminals: Bool,
         durableDefaultApplied: Bool = true,
         peekCollapsedProjects: Bool = true,
-        defaultIDEBundleID: String? = nil
+        defaultIDEBundleID: String? = nil,
+        askedAboutSpaceSwitching: Bool = false
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -761,6 +764,7 @@ struct PersistedState: Codable {
         self.durableTerminals = durableTerminals
         self.peekCollapsedProjects = peekCollapsedProjects
         self.defaultIDEBundleID = defaultIDEBundleID
+        self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
     }
 
     init(from decoder: Decoder) throws {
@@ -779,5 +783,7 @@ struct PersistedState: Codable {
         peekCollapsedProjects =
             try c.decodeIfPresent(Bool.self, forKey: .peekCollapsedProjects) ?? true
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
+        askedAboutSpaceSwitching =
+            try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
     }
 }

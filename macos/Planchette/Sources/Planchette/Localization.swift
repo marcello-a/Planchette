@@ -209,7 +209,7 @@ enum LKey: String, CaseIterable {
     case defaultIDEMenu, noDefaultIDE
     case devServersTitle, devServersDetail, lookAtCodeDetail
     case openInIDE, chooseIDEHelp, ideNoWindowTitle, ideNoWindowBody, lookAtCodeOpenHelp
-    case ideNoWindowMinimized
+    case ideNoWindowMinimized, spaceSwitchTitle, spaceSwitchBody, spaceSwitchEnable
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -313,6 +313,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ has no window here",
         .ideNoWindowBody: "%@ is open, but its window is on another Space. macOS only follows along when \"When switching to an application, switch to a Space with open windows\" is on — System Settings → Desktop & Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ is open, but every window of it is minimized. Only you can bring one back — click it in the Dock.",
+        .spaceSwitchTitle: "Let macOS follow your IDE?",
+        .spaceSwitchBody: "Your IDE's window may sit on another Space, and no app may carry another app's window across Spaces — only macOS can. Its switch for that is off: Desktop & Dock → Mission Control → \"When switching to an application, switch to a Space with open windows\". Planchette can turn it on now; the Dock restarts for a moment. Asked only this once.",
+        .spaceSwitchEnable: "Turn on",
         .lookAtCodeOpenHelp: "Jump to this project's window in %@ — it is already open there",
         .lookAtCode: "Look at code", .lookAtCodeHelp: "Open this project in %@",
         .openNewIDE: "Open new IDE", .openNewIDEHelp: "No IDE is running — pick one to open this project in",
@@ -402,6 +405,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ hat hier kein Fenster",
         .ideNoWindowBody: "%@ ist offen, das Fenster liegt aber auf einem anderen Space. macOS springt nur mit, wenn »Beim Wechseln zu einer App zu einem Space mit offenen Fenstern wechseln« aktiv ist — Systemeinstellungen → Schreibtisch & Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ ist offen, aber alle Fenster sind minimiert. Zurückholen kann es nur du — klick die App im Dock an.",
+        .spaceSwitchTitle: "macOS deiner IDE folgen lassen?",
+        .spaceSwitchBody: "Das Fenster deiner IDE kann auf einem anderen Space liegen, und keine App darf das Fenster einer anderen App über Spaces holen — nur macOS kann das. Der zuständige Schalter ist aus: Schreibtisch & Dock → Mission Control → »Beim Wechseln zu einer App zu einem Space mit offenen Fenstern wechseln«. Planchette kann ihn jetzt einschalten; das Dock startet dafür kurz neu. Diese Frage kommt nur einmal.",
+        .spaceSwitchEnable: "Einschalten",
         .lookAtCodeOpenHelp: "Zum Fenster dieses Projekts in %@ springen — dort ist es schon offen",
         .lookAtCode: "Code ansehen", .lookAtCodeHelp: "Dieses Projekt in %@ öffnen",
         .openNewIDE: "Neue IDE öffnen", .openNewIDEHelp: "Keine IDE läuft — eine auswählen, um das Projekt darin zu öffnen",
@@ -491,6 +497,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ n'a pas de fenêtre ici",
         .ideNoWindowBody: "%@ est ouvert, mais sa fenêtre est sur un autre espace. macOS ne suit que si l'option « Lors du passage à une app, activer un espace comportant des fenêtres ouvertes » est cochée — Réglages Système → Bureau et Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ est ouvert, mais toutes ses fenêtres sont réduites. Seul vous pouvez en ramener une — cliquez sur l'app dans le Dock.",
+        .spaceSwitchTitle: "Laisser macOS suivre votre IDE ?",
+        .spaceSwitchBody: "La fenêtre de votre IDE peut être sur un autre espace, et aucune app ne peut déplacer la fenêtre d'une autre app entre les espaces — seul macOS le peut. Son option est désactivée : Bureau et Dock → Mission Control → « Lors du passage à une app, activer un espace comportant des fenêtres ouvertes ». Planchette peut l'activer maintenant ; le Dock redémarre un instant. Demandé une seule fois.",
+        .spaceSwitchEnable: "Activer",
         .lookAtCodeOpenHelp: "Aller à la fenêtre de ce projet dans %@ — il y est déjà ouvert",
         .lookAtCode: "Voir le code", .lookAtCodeHelp: "Ouvrir ce projet dans %@",
         .openNewIDE: "Ouvrir un IDE", .openNewIDEHelp: "Aucun IDE n'est lancé — choisissez-en un pour y ouvrir ce projet",
@@ -580,6 +589,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ no tiene ventana aquí",
         .ideNoWindowBody: "%@ está abierto, pero su ventana está en otro espacio. macOS solo cambia si está activada la opción «Al cambiar a una app, ir a un espacio con ventanas abiertas» — Ajustes del Sistema → Escritorio y Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ está abierto, pero todas sus ventanas están minimizadas. Solo tú puedes recuperar una — haz clic en la app en el Dock.",
+        .spaceSwitchTitle: "¿Dejar que macOS siga a tu IDE?",
+        .spaceSwitchBody: "La ventana de tu IDE puede estar en otro espacio, y ninguna app puede mover la ventana de otra app entre espacios — solo macOS. Su opción está desactivada: Escritorio y Dock → Mission Control → «Al cambiar a una app, ir a un espacio con ventanas abiertas». Planchette puede activarla ahora; el Dock se reinicia un momento. Se pregunta solo una vez.",
+        .spaceSwitchEnable: "Activar",
         .lookAtCodeOpenHelp: "Ir a la ventana de este proyecto en %@ — ya está abierto allí",
         .lookAtCode: "Ver el código", .lookAtCodeHelp: "Abrir este proyecto en %@",
         .openNewIDE: "Abrir un IDE", .openNewIDEHelp: "Ningún IDE está abierto — elige uno para abrir este proyecto",
@@ -669,6 +681,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ non ha finestre qui",
         .ideNoWindowBody: "%@ è aperto, ma la sua finestra è su un altro spazio. macOS segue solo se è attiva l'opzione «Quando passi a un'app, vai a uno spazio con finestre aperte» — Impostazioni di Sistema → Scrivania e Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ è aperto, ma tutte le sue finestre sono ridotte a icona. Solo tu puoi riportarne una — clicca l'app nel Dock.",
+        .spaceSwitchTitle: "Far seguire macOS al tuo IDE?",
+        .spaceSwitchBody: "La finestra del tuo IDE può essere su un altro spazio, e nessuna app può spostare la finestra di un'altra app tra gli spazi — solo macOS. La sua opzione è disattivata: Scrivania e Dock → Mission Control → «Quando passi a un'app, vai a uno spazio con finestre aperte». Planchette può attivarla ora; il Dock si riavvia per un attimo. Chiesto una volta sola.",
+        .spaceSwitchEnable: "Attiva",
         .lookAtCodeOpenHelp: "Vai alla finestra di questo progetto in %@ — lì è già aperto",
         .lookAtCode: "Guarda il codice", .lookAtCodeHelp: "Apri questo progetto in %@",
         .openNewIDE: "Apri un IDE", .openNewIDEHelp: "Nessun IDE è aperto — scegline uno per aprirci questo progetto",
@@ -758,6 +773,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ heeft hier geen venster",
         .ideNoWindowBody: "%@ is open, maar het venster staat op een andere Space. macOS gaat alleen mee als «Bij overschakelen naar een app naar een Space met open vensters gaan» aan staat — Systeeminstellingen → Bureaublad en Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ is open, maar alle vensters zijn geminimaliseerd. Alleen jij kunt er een terughalen — klik de app in het Dock aan.",
+        .spaceSwitchTitle: "macOS je IDE laten volgen?",
+        .spaceSwitchBody: "Het venster van je IDE kan op een andere Space staan, en geen app mag het venster van een andere app tussen Spaces halen — alleen macOS kan dat. Die instelling staat uit: Bureaublad en Dock → Mission Control → «Bij overschakelen naar een app naar een Space met open vensters gaan». Planchette kan hem nu aanzetten; het Dock start even opnieuw. Dit wordt maar één keer gevraagd.",
+        .spaceSwitchEnable: "Aanzetten",
         .lookAtCodeOpenHelp: "Ga naar het venster van dit project in %@ — daar is het al open",
         .lookAtCode: "Code bekijken", .lookAtCodeHelp: "Dit project openen in %@",
         .openNewIDE: "Nieuwe IDE openen", .openNewIDEHelp: "Er draait geen IDE — kies er een om dit project in te openen",
@@ -847,6 +865,9 @@ enum L10n {
         .ideNoWindowTitle: "%@ não tem janela aqui",
         .ideNoWindowBody: "%@ está aberto, mas a janela está noutro espaço. O macOS só acompanha se «Ao mudar para uma app, ir para um espaço com janelas abertas» estiver ativo — Ajustes do Sistema → Secretária e Dock → Mission Control.",
         .ideNoWindowMinimized: "%@ está aberto, mas todas as janelas estão minimizadas. Só tu podes trazer uma de volta — clica na app na Dock.",
+        .spaceSwitchTitle: "Deixar o macOS seguir o teu IDE?",
+        .spaceSwitchBody: "A janela do teu IDE pode estar noutro espaço, e nenhuma app pode trazer a janela de outra app entre espaços — só o macOS. Essa opção está desligada: Secretária e Dock → Mission Control → «Ao mudar para uma app, ir para um espaço com janelas abertas». O Planchette pode ligá-la agora; a Dock reinicia por um instante. Perguntado apenas uma vez.",
+        .spaceSwitchEnable: "Ligar",
         .lookAtCodeOpenHelp: "Ir para a janela deste projeto em %@ — já está aberto lá",
         .lookAtCode: "Ver o código", .lookAtCodeHelp: "Abrir este projeto em %@",
         .openNewIDE: "Abrir um IDE", .openNewIDEHelp: "Nenhum IDE está aberto — escolha um para abrir este projeto",

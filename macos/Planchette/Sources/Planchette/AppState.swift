@@ -55,6 +55,12 @@ final class AppState: ObservableObject {
     @Published var defaultIDEBundleID: String? {
         didSet { scheduleSave() }
     }
+    /// Whether the one question about the macOS Space setting has been asked
+    /// (see `SpaceSwitchPrompt`). Persisted, because asking twice about a
+    /// system preference the user declined is nagging.
+    @Published var askedAboutSpaceSwitching = false {
+        didSet { scheduleSave() }
+    }
     /// Windows (beyond the main one) that still need to be opened after a
     /// restore; the main window's ContentView consumes this.
     @Published var windowsToOpen: [UUID] = []
@@ -128,6 +134,7 @@ final class AppState: ObservableObject {
             // flips back to the default and claude -p starts summarizing again.
             aiEnabled = saved.aiEnabled
             defaultIDEBundleID = saved.defaultIDEBundleID
+            askedAboutSpaceSwitching = saved.askedAboutSpaceSwitching
         }
         observeSurfaceNotifications()
         startAttentionHousekeeping()
@@ -1736,7 +1743,8 @@ final class AppState: ObservableObject {
             autoUpdateCheck: autoUpdateCheck,
             durableTerminals: durableTerminals,
             peekCollapsedProjects: peekCollapsedProjects,
-            defaultIDEBundleID: defaultIDEBundleID
+            defaultIDEBundleID: defaultIDEBundleID,
+            askedAboutSpaceSwitching: askedAboutSpaceSwitching
         )
         do {
             let encoder = JSONEncoder()
@@ -1800,6 +1808,7 @@ final class AppState: ObservableObject {
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
         defaultIDEBundleID = state.defaultIDEBundleID
+        askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -1906,6 +1915,8 @@ final class AppState: ObservableObject {
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
+        askedAboutSpaceSwitching =
+            previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

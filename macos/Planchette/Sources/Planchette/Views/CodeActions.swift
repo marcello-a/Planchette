@@ -58,6 +58,7 @@ struct IDEButton: View {
             HStack(spacing: 1) {
                 Button {
                     if let target {
+                        SpaceSwitchPrompt.askIfNeeded(appState: appState)
                         IDEs.open(directory: directory, in: target)
                     } else {
                         showMenu(directory: directory, target: nil)
@@ -105,6 +106,30 @@ struct IDEButton: View {
             defaultBundleID: appState.defaultIDEBundleID,
             target: target)
         menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+}
+
+/// The one thing standing between "look at code" and the window it means: an
+/// IDE window on another Space cannot be brought here by any application, only
+/// by macOS itself, and macOS only comes along when the Dock's "switch to a
+/// Space with open windows" is on — off by default.
+///
+/// So the button asks, once, at the moment it matters, while Planchette is
+/// still the app in front. Answering it is what makes the feature work on a
+/// machine with more than one Space; declining leaves the system untouched and
+/// is never asked again.
+@MainActor
+enum SpaceSwitchPrompt {
+    static func askIfNeeded(appState: AppState) {
+        guard !appState.askedAboutSpaceSwitching, !IDEs.followsSpaces() else { return }
+        appState.askedAboutSpaceSwitching = true
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.spaceSwitchTitle)
+        alert.informativeText = L10n.t(.spaceSwitchBody)
+        alert.addButton(withTitle: L10n.t(.spaceSwitchEnable))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        IDEs.enableSpaceSwitching()
     }
 }
 

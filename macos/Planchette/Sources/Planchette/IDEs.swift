@@ -356,13 +356,36 @@ enum IDEs {
         }
     }
 
-    /// Pull an app and all of its windows in front of us — including the ones on
-    /// another Space, which is what makes macOS switch over to it.
+    /// Pull an app in front of us.
+    ///
+    /// Deliberately **not** `.activateAllWindows`: the IDE has just been told
+    /// which project to show and has put that window in front of its own stack.
+    /// Raising all of them instead surfaces whichever window happens to be on
+    /// this Space — asking for one project and getting another one's window is
+    /// worse than getting none.
     private static func raise(_ app: NSRunningApplication) {
         if #available(macOS 14.0, *) {
-            app.activate(from: .current, options: [.activateAllWindows])
+            app.activate(from: .current)
         } else {
-            app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            app.activate(options: [.activateIgnoringOtherApps])
         }
+    }
+
+    /// Make macOS follow an app to the Space its windows are on — the Dock's
+    /// "When switching to an application, switch to a Space with open windows".
+    ///
+    /// This is the one switch that decides whether "look at code" can work at
+    /// all for a window on another Space: no application may drag another
+    /// application's window across Spaces, so if macOS does not come along,
+    /// nothing can. Only ever called after the user says yes (see
+    /// `SpaceSwitchPrompt`), and the Dock has to be restarted to read it.
+    static func enableSpaceSwitching() {
+        guard let defaults = UserDefaults(suiteName: "com.apple.dock") else { return }
+        defaults.set(true, forKey: "workspaces-auto-swoosh")
+        defaults.synchronize()
+        let restart = Process()
+        restart.executableURL = URL(fileURLWithPath: "/usr/bin/killall")
+        restart.arguments = ["Dock"]
+        try? restart.run()
     }
 }

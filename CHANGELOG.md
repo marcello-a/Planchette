@@ -8,6 +8,32 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.31] — 2026-08-31
+
+### Fixed
+- **No more raising the wrong project's window.** Activating the IDE asked for
+  *all* of its windows, so whichever window happened to sit on the current
+  Space came forward — you clicked "2nd Multibild" and got another project.
+  The IDE has already put the requested project in front of its own stack, so
+  it is activated plainly now and decides itself which window that is.
+- **The one setting that decides whether the jump can work is offered.** No
+  application may carry another application's window across Spaces — only
+  macOS can, and only when *Desktop & Dock → Mission Control → "When switching
+  to an application, switch to a Space with open windows"* is on, which it is
+  not by default. The button asks once, while Planchette is still in front, and
+  can turn it on for you (the Dock restarts for a second). Declining is
+  remembered and never asked again.
+
+### Known limitation
+- An IDE window that is minimized, or on a Space none of your displays is
+  showing, cannot be brought over by Planchette — macOS offers no way, for any
+  app. All four mechanisms were tried: LaunchServices, app activation with and
+  without all windows, the app's own `activate` Apple Event, and Accessibility
+  (a JetBrains IDE exposes no windows there at all). When that happens the
+  click still reaches the IDE — the project *is* opened and focused inside it —
+  and Planchette now says so instead of looking broken. Keeping the IDE window
+  on the same Space as Planchette makes the jump instant.
+
 ## [0.2.30] — 2026-08-31
 
 ### Fixed
