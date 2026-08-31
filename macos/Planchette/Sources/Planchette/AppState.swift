@@ -562,6 +562,18 @@ final class AppState: ObservableObject {
     /// Known IDEs currently running — refreshed on the same tick, so the
     /// "look at code" button always names a live target.
     @Published var runningIDEs: Set<String> = []
+    /// Which IDE markers each project's checkout carries (`.idea`, `.vscode`,
+    /// …), keyed by group id. Read off disk on the poll tick, because the
+    /// button must not stat directories while a view renders.
+    @Published var ideMarkers: [UUID: [String]] = [:]
+    /// The known IDE you worked in last. The tie-break when a checkout carries
+    /// no marker: of two running IDEs, the one you just came from is the one
+    /// you mean.
+    @Published private(set) var lastActivatedIDE: String?
+    /// The known IDEs on this machine. Cached, because finding them asks
+    /// LaunchServices once per candidate — far too much for a view body, which
+    /// re-runs on every state change.
+    @Published private(set) var installedIDEs: [IDE] = []
     private var devServerTimer: Timer?
     /// Slow enough to be invisible next to the two ~100ms lsof calls (which
     /// run off the main thread), fast enough that `npm run dev` has its link
@@ -569,6 +581,7 @@ final class AppState: ObservableObject {
     static let devServerPollInterval: TimeInterval = 5
 
     private func startDevServerPolling() {
+        observeIDEActivation()
         refreshDevServers()
         let timer = Timer(timeInterval: Self.devServerPollInterval, repeats: true) { _ in
             Task { @MainActor [weak self] in self?.devServerTick() }
@@ -588,6 +601,33 @@ final class AppState: ObservableObject {
         refreshDevServers()
     }
 
+    /// Remember which IDE was last in front, so a click can prefer it.
+    private func observeIDEActivation() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication,
+                  let bundleID = app.bundleIdentifier,
+                  IDEs.ide(bundleID: bundleID) != nil
+            else { return }
+            Task { @MainActor in
+                self?.lastActivatedIDE = bundleID
+                // An IDE you just launched for the first time has to be a
+                // target immediately, not after the next poll tick.
+                self?.refreshInstalledIDEs()
+            }
+        }
+    }
+
+    /// Re-read which IDEs exist on this machine.
+    func refreshInstalledIDEs() {
+        let installed = IDEs.installed()
+        if installedIDEs != installed { installedIDEs = installed }
+        let running = IDEs.runningBundleIDs()
+        if running != runningIDEs { runningIDEs = running }
+    }
+
     private func refreshDevServers() {
         let running = IDEs.runningBundleIDs()
         if running != runningIDEs { runningIDEs = running }
@@ -597,18 +637,83 @@ final class AppState: ObservableObject {
                 .filter { !$0.isEmpty }
             if !paths.isEmpty { acc[group.id] = Array(Set(paths)) }
         }
+        // Where each project's IDE would be opened — one directory per project,
+        // so the marker read matches what the button acts on.
+        let projectDirs: [UUID: String] = groups.reduce(into: [:]) { acc, group in
+            if let dir = projectDirectory(of: group) { acc[group.id] = dir }
+        }
         guard !dirs.isEmpty else {
             if !devServers.isEmpty { devServers = [:] }
+            if !ideMarkers.isEmpty { ideMarkers = [:] }
             return
         }
         Task.detached {
             let found = DevServerScanner.scan(projectDirs: dirs)
+            let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
+            let installed = IDEs.installed()
             await MainActor.run { [weak self] in
+                guard let self else { return }
+                if self.ideMarkers != markers { self.ideMarkers = markers }
+                if self.installedIDEs != installed { self.installedIDEs = installed }
+                // Carry over (and complete) the announced URLs before comparing:
+                // the addresses are part of what a chip shows, so resolving one
+                // has to publish.
+                let withURLs = self.resolvingServerURLs(found)
                 // Publish only a real change (see refreshBranches).
-                guard let self, self.devServers != found else { return }
-                self.devServers = found
+                guard self.devServers != withURLs else { return }
+                self.devServers = withURLs
             }
         }
+    }
+
+    /// Addresses already learned, keyed by port. Kept because a banner scrolls
+    /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
+    /// that stays true until the port itself goes away.
+    private var serverURLs: [Int: URL] = [:]
+
+    /// Fill in each server's announced URL, reading a terminal's scrollback only
+    /// for ports we have never resolved. The read locks the renderer and copies
+    /// the whole buffer, so it happens once per port, not once per tick.
+    private func resolvingServerURLs(_ found: [UUID: [DevServer]]) -> [UUID: [DevServer]] {
+        let livePorts = Set(found.values.flatMap { $0.map(\.port) })
+        serverURLs = serverURLs.filter { livePorts.contains($0.key) }
+        var result = found
+        for (groupID, servers) in found {
+            guard let group = groups.first(where: { $0.id == groupID }) else { continue }
+            let unresolved = servers.filter { serverURLs[$0.port] == nil }
+            if !unresolved.isEmpty {
+                // The banner is in the terminal that started the server; which
+                // one that is we don't know, so read the project's terminals.
+                let texts = sessions(in: group).compactMap {
+                    TerminalRegistry.shared.existingView($0.id)?.readScrollback()
+                }
+                for server in unresolved {
+                    for text in texts {
+                        if let url = DevServerScanner.bestURL(forPort: server.port, in: text) {
+                            serverURLs[server.port] = url
+                            break
+                        }
+                    }
+                }
+            }
+            result[groupID] = servers.map {
+                var server = $0
+                server.resolvedURL = serverURLs[$0.port]
+                return server
+            }
+        }
+        return result
+    }
+
+    /// The IDE a click on this project's button opens — nil when there is no
+    /// honest target and the button has to ask instead.
+    func ideTarget(for group: SessionGroup) -> IDE? {
+        IDEs.resolve(
+            markers: ideMarkers[group.id] ?? [],
+            defaultBundleID: defaultIDEBundleID,
+            running: runningIDEs,
+            installed: installedIDEs,
+            lastActivated: lastActivatedIDE)
     }
 
     /// The directory the "look at code" button and a new IDE open: where the

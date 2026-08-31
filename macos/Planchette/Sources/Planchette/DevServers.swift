@@ -12,10 +12,22 @@ struct DevServer: Identifiable, Equatable {
     /// The server process's working directory — the evidence that ties it to
     /// its project.
     let directory: String
+    /// The address the server itself printed for this port — its network URL
+    /// when it announced one, read off the terminal (see `bestURL`). Nil until
+    /// one is found; only then can a chip know the scheme and the host, and
+    /// `https://vite.myposter.de:8082` is a different page from
+    /// `http://localhost:8082`.
+    var resolvedURL: URL?
 
     var id: Int { port }
-    var url: URL { URL(string: "http://localhost:\(port)")! }
-    var label: String { "localhost:\(port)" }
+
+    /// Where a click goes: what the server announced, else the honest guess.
+    var url: URL { resolvedURL ?? URL(string: "http://localhost:\(port)")! }
+
+    /// The chip's text — the port alone. The host is what the tooltip and the
+    /// click are for; a row of "localhost:" prefixes says nothing that the
+    /// port does not.
+    var label: String { "\(port)" }
 }
 
 /// Finds dev servers by asking the OS who is listening: one `lsof` for the
@@ -140,6 +152,46 @@ enum DevServerScanner {
         return markers.contains {
             FileManager.default.fileExists(atPath: (path as NSString).appendingPathComponent($0))
         }
+    }
+
+    /// Hosts that only name this machine — a link nobody can share.
+    static let localHosts: Set<String> = [
+        "localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]", "::",
+    ]
+
+    /// The URL a dev server announced for `port`, read off its terminal.
+    ///
+    /// The port comes from the OS (`lsof`), which knows it for certain but
+    /// nothing else; the scheme and the host only exist in what the server
+    /// printed. Vite serving `https://photo-frame-designer.myposter.de:8082`
+    /// on port 8082 is the case that matters: guessing `http://localhost` there
+    /// opens a page that does not answer.
+    ///
+    /// Preference, strongest first: the address the server labelled as its
+    /// network address, then any non-local host, then a local one. Later lines
+    /// win over earlier ones — a restarted server prints its banner again.
+    static func bestURL(forPort port: Int, in text: String) -> URL? {
+        guard let regex = try? NSRegularExpression(
+            pattern: "https?://[A-Za-z0-9._~%\\-\\[\\]]+:\(port)\\b[^\\s\"'<>]*")
+        else { return nil }
+        var best: (rank: Int, url: URL)?
+        for line in text.split(whereSeparator: \.isNewline) {
+            let isNetworkLine = line.range(of: "network", options: .caseInsensitive) != nil
+            let text = String(line)
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            for match in regex.matches(in: text, range: range) {
+                guard let matchRange = Range(match.range, in: text) else { continue }
+                // Trailing punctuation from prose ("… at http://x:3000.").
+                let raw = String(text[matchRange])
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ".,;)]}"))
+                guard let url = URL(string: raw), let host = url.host else { continue }
+                let isLocal = localHosts.contains(host.lowercased())
+                let rank = isNetworkLine && !isLocal ? 3 : (!isLocal ? 2 : 1)
+                // `>=` so a later line of equal rank replaces an earlier one.
+                if best == nil || rank >= best!.rank { best = (rank, url) }
+            }
+        }
+        return best?.url
     }
 
     /// The impure end: two `lsof` calls, then the pure match. Call off the

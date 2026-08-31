@@ -2292,35 +2292,219 @@ final class DevServerScannerTests: XCTestCase {
     }
 }
 
-final class IDETargetTests: XCTestCase {
-    private let vscode = IDEs.known[0]
-    private let cursor = IDEs.known[1]
+final class IDEResolveTests: XCTestCase {
+    private var installed: [IDE] { IDEs.known }
+    private func ide(_ name: String) -> IDE { IDEs.known.first { $0.name == name }! }
 
-    func testDefaultAlwaysWins() {
-        let target = IDEs.target(
-            defaultBundleID: cursor.bundleID,
-            running: [vscode.bundleID],
-            installed: [vscode, cursor])
-        XCTAssertEqual(target, cursor)
-    }
-
-    func testRunningIDEWinsWithoutDefault() {
-        let target = IDEs.target(
+    // The bug this shipped with: every myposter checkout carries .idea, and the
+    // button opened VS Code because it stood first in the list.
+    func testProjectMarkerBeatsListOrder() {
+        let target = IDEs.resolve(
+            markers: [".idea", "package.json"],
             defaultBundleID: nil,
-            running: [cursor.bundleID],
-            installed: [vscode, cursor])
-        XCTAssertEqual(target, cursor)
+            running: ["com.microsoft.VSCode", "com.jetbrains.PhpStorm"],
+            installed: installed)
+        XCTAssertEqual(target, ide("PhpStorm"))
     }
 
-    func testNoTargetWhenNothingRunsAndNoDefault() {
-        XCTAssertNil(IDEs.target(defaultBundleID: nil, running: [], installed: [vscode]))
+    func testVSCodeMarkerPicksVSCode() {
+        let target = IDEs.resolve(
+            markers: [".vscode"],
+            defaultBundleID: nil,
+            running: ["com.jetbrains.PhpStorm", "com.microsoft.VSCode"],
+            installed: installed)
+        XCTAssertEqual(target, ide("Visual Studio Code"))
     }
 
-    func testUninstalledDefaultFallsBackToRunning() {
-        let target = IDEs.target(
+    func testDefaultAlwaysWinsOverMarkerAndRunning() {
+        let target = IDEs.resolve(
+            markers: [".idea"],
+            defaultBundleID: "com.microsoft.VSCode",
+            running: ["com.jetbrains.PhpStorm"],
+            installed: installed)
+        XCTAssertEqual(target, ide("Visual Studio Code"))
+    }
+
+    func testLastActivatedBreaksTheTieWithoutAMarker() {
+        let target = IDEs.resolve(
+            markers: [],
+            defaultBundleID: nil,
+            running: ["com.microsoft.VSCode", "com.jetbrains.PhpStorm"],
+            installed: installed,
+            lastActivated: "com.jetbrains.PhpStorm")
+        XCTAssertEqual(target, ide("PhpStorm"))
+    }
+
+    func testNoMarkerAndNothingRunningHasNoTarget() {
+        // Then the button reads "open a new IDE" and asks instead of guessing.
+        XCTAssertNil(IDEs.resolve(
+            markers: [], defaultBundleID: nil, running: [], installed: installed))
+    }
+
+    // Handing Xcode a plain folder opens a window and closes it again — the
+    // "I just see a blank, then it closes" report. It is only ever a target
+    // when the checkout has something it can open.
+    func testXcodeIsNoTargetForAPlainFolder() {
+        let target = IDEs.resolve(
+            markers: [],
+            defaultBundleID: "com.apple.dt.Xcode",
+            running: ["com.apple.dt.Xcode"],
+            installed: [ide("Xcode")])
+        XCTAssertNil(target)
+    }
+
+    func testXcodeIsATargetWithAProjectMarker() {
+        let target = IDEs.resolve(
+            markers: ["xcode"],
+            defaultBundleID: nil,
+            running: [],
+            installed: [ide("Xcode")])
+        XCTAssertEqual(target, ide("Xcode"))
+    }
+
+    func testUninstalledDefaultFallsBackToTheEvidence() {
+        let target = IDEs.resolve(
+            markers: [".idea"],
             defaultBundleID: "com.gone.ide",
-            running: [vscode.bundleID],
-            installed: [vscode])
-        XCTAssertEqual(target, vscode)
+            running: [],
+            installed: installed)
+        XCTAssertEqual(target, ide("WebStorm"))  // first .idea IDE in known order
+    }
+
+    func testMarkersAndXcodeTargetReadTheRealDirectory() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("planchette-ide-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent(".idea"), withIntermediateDirectories: true)
+        try "// swift-tools-version:5.9\n".write(
+            to: dir.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let markers = IDEs.markers(in: dir.path)
+        XCTAssertTrue(markers.contains(".idea"))
+        XCTAssertTrue(markers.contains("xcode"), "Package.swift is an Xcode target")
+        XCTAssertEqual(
+            IDEs.xcodeTarget(in: dir.path), dir.appendingPathComponent("Package.swift").path)
+        XCTAssertEqual(IDEs.target(directory: dir.path, for: ide("PhpStorm")), dir.path)
+    }
+}
+
+final class DevServerURLTests: XCTestCase {
+    // The real Vite banner: the network address is the one worth a click, and
+    // the scheme is https — guessing http://localhost opens a dead page.
+    private let viteBanner = """
+          VITE v8.1.0  ready in 4352 ms
+
+          ➜  Local:   https://localhost:8082/
+          ➜  Local:   https://vite.myposter.de:8082/
+          ➜  Network: https://photo-frame-designer.myposter.de:8082/
+        """
+
+    func testPrefersTheNetworkAddress() {
+        XCTAssertEqual(
+            DevServerScanner.bestURL(forPort: 8082, in: viteBanner)?.absoluteString,
+            "https://photo-frame-designer.myposter.de:8082/")
+    }
+
+    func testIgnoresOtherPorts() {
+        XCTAssertNil(DevServerScanner.bestURL(forPort: 3000, in: viteBanner))
+    }
+
+    func testFallsBackToANonLocalLocalAddress() {
+        let text = """
+              ➜  Local:   https://localhost:8082/
+              ➜  Local:   https://vite.kartenliebe.de:8082/
+            """
+        XCTAssertEqual(
+            DevServerScanner.bestURL(forPort: 8082, in: text)?.absoluteString,
+            "https://vite.kartenliebe.de:8082/")
+    }
+
+    func testKeepsTheSchemeOfALocalOnlyServer() {
+        XCTAssertEqual(
+            DevServerScanner.bestURL(forPort: 5173, in: "  Local: https://localhost:5173/")?
+                .absoluteString,
+            "https://localhost:5173/")
+    }
+
+    func testNothingAnnouncedMeansTheHonestGuess() {
+        XCTAssertNil(DevServerScanner.bestURL(forPort: 8080, in: "Serving HTTP on :: port 8080"))
+        let server = DevServer(port: 8080, processName: "python", directory: "/x")
+        XCTAssertEqual(server.url.absoluteString, "http://localhost:8080")
+        XCTAssertEqual(server.label, "8080", "the chip is the port alone")
+    }
+
+    func testLaterBannerWinsAfterARestart() {
+        let text = """
+            ➜  Network: http://old.example.com:8082/
+            ➜  Network: https://new.example.com:8082/
+            """
+        XCTAssertEqual(
+            DevServerScanner.bestURL(forPort: 8082, in: text)?.absoluteString,
+            "https://new.example.com:8082/")
+    }
+
+    func testStripsTrailingProsePunctuation() {
+        XCTAssertEqual(
+            DevServerScanner.bestURL(forPort: 4000, in: "listening at http://app.test:4000.")?
+                .absoluteString,
+            "http://app.test:4000")
+    }
+}
+
+/// The menu behind the "look at code" button. It is built in AppKit because a
+/// SwiftUI `Menu` shipped as a blank flash next to a terminal surface; these
+/// tests are what keeps "the menu came up empty" from happening unnoticed again.
+@MainActor
+final class IDEMenuTests: XCTestCase {
+    private let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+    private let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+    private let xcode = IDEs.known.first { $0.name == "Xcode" }!
+
+    private func menu(default def: String? = nil, target: IDE? = nil,
+                      directory: String = "/tmp") -> NSMenu {
+        IDEMenuActions.shared.menu(
+            directory: directory,
+            installed: [vscode, phpstorm, xcode],
+            running: [phpstorm.bundleID],
+            defaultBundleID: def,
+            target: target)
+    }
+
+    func testMenuListsEveryInstalledIDEAndTheDefaultSubmenu() {
+        let items = menu().items
+        XCTAssertFalse(items.isEmpty, "the menu must never come up empty")
+        let titles = items.map(\.title)
+        XCTAssertTrue(titles.contains("Visual Studio Code"))
+        XCTAssertTrue(titles.contains("PhpStorm"))
+        XCTAssertTrue(titles.contains(L10n.t(.defaultIDEMenu)))
+        let defaults = items.last?.submenu
+        XCTAssertEqual(defaults?.items.count, 5, "3 IDEs + separator + None")
+    }
+
+    func testRunningIDEIsMarkedAndTheTargetIsBold() {
+        let items = menu(target: phpstorm).items
+        let php = items.first { $0.title == "PhpStorm" }
+        let code = items.first { $0.title == "Visual Studio Code" }
+        XCTAssertEqual(php?.state, .mixed, "running IDEs are marked")
+        XCTAssertEqual(code?.state, .off)
+        XCTAssertNotNil(php?.attributedTitle, "what a click opens reads bold")
+    }
+
+    func testXcodeIsListedButDisabledWithoutAProjectFile() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("planchette-menu-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let item = menu(directory: dir.path).items.first { $0.title == "Xcode" }
+        XCTAssertNotNil(item, "it stays listed")
+        XCTAssertFalse(item?.isEnabled ?? true, "but it cannot open a plain folder")
+    }
+
+    func testTheDefaultCarriesTheCheckmarkAndNoneIsTheAlternative() {
+        let withDefault = menu(default: phpstorm.bundleID).items.last?.submenu?.items ?? []
+        XCTAssertEqual(withDefault.first { $0.title == "PhpStorm" }?.state, .on)
+        XCTAssertEqual(withDefault.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .off)
+        let withNone = menu().items.last?.submenu?.items ?? []
+        XCTAssertEqual(withNone.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .on)
     }
 }
