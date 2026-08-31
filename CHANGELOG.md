@@ -8,6 +8,38 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.29] — 2026-08-31
+
+### Fixed
+- **The code button opens the project's own IDE.** It picked the first *listed*
+  IDE that happened to be running, so every checkout with an `.idea/` — every
+  JetBrains project — was handed to VS Code. The choice now follows evidence:
+  the default once you set one, then the marker the checkout itself carries
+  (`.idea` → JetBrains, `.vscode` → the VS Code family, an Xcode workspace or
+  `Package.swift` → Xcode), then the IDE you last worked in, then whatever
+  runs. With nothing to go on it asks instead of guessing.
+- **The IDE menu appears.** A SwiftUI `Menu` with a primary action, shown next
+  to a terminal surface, flashed blank and closed — so picking an IDE or
+  setting a default was impossible. It is an `NSMenu` now, like the terminal's
+  own context menu: every installed IDE (running ones marked, the one a click
+  would open in bold, one that cannot open this checkout listed but disabled),
+  then the default choice with its checkmark. A left click opens, the chevron
+  always asks. Unit tests now read the menu, so "it came up empty" cannot pass
+  unnoticed again.
+- **Xcode is no longer handed a bare folder.** Given a directory it has no
+  project for, Xcode opens a window and closes it again — the "I just see a
+  blank, then it closes". Xcode only counts as a target when the checkout has
+  a `.xcworkspace`, an `.xcodeproj` or a `Package.swift`, and is handed that
+  file. Failures to open are logged instead of swallowed.
+
+### Changed
+- **A dev-server chip is the port, and it opens the real address.** The port
+  comes from the OS, but the scheme and host only exist in what the server
+  printed, so Planchette reads them off the terminal — the network address
+  first. Vite on `https://photo-frame-designer.myposter.de:8082` is now what a
+  click gets, instead of a dead `http://localhost:8082`. The full URL and the
+  serving process stay one hover away.
+
 ## [0.2.28] — 2026-08-27
 
 ### Added
