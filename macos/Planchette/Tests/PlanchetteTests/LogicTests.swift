@@ -1614,13 +1614,14 @@ final class ClaudeResumeTests: XCTestCase {
             claudeSessionID: "stale", transcriptPath: tp, currentDirectory: cwd, projectsDir: root), "exact-id")
     }
 
-    // The datadog case: nothing was captured, but the folder has transcripts.
-    func testRecoversNewestWhenNothingRecorded() throws {
+    // A terminal that never ran Claude resumes nothing, however many
+    // transcripts its folder has — they belong to other terminals.
+    func testNothingRecordedResumesNothing() throws {
         let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
         try writeTranscript(root, "old", ageSeconds: 100)
         try writeTranscript(root, "newest", ageSeconds: 1)
-        XCTAssertEqual(ClaudeResume.resolveSessionID(
-            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root), "newest")
+        XCTAssertNil(ClaudeResume.resolveSessionID(
+            claudeSessionID: nil, transcriptPath: nil, currentDirectory: cwd, projectsDir: root))
     }
 
     func testUsesRecordedIDWhenTranscriptExistsButPathGone() throws {
@@ -1708,12 +1709,23 @@ final class ClaudeResumeTests: XCTestCase {
         XCTAssertNil(resolved[shellTab.id])
     }
 
-    // A project's SOLE tab without records still recovers the newest
-    // transcript (hooks may not have been installed when it was captured).
-    func testSoleTabWithoutRecordsStillRecoversNewest() throws {
+    // The reported bug: a project's SOLE tab, in which Claude never ran, used
+    // to inherit the folder's newest transcript — so restoring a plain shell
+    // (or a `npm run dev`) tab launched somebody else's conversation.
+    func testSoleTabWithoutRecordsStaysAPlainShell() throws {
         let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
         try writeTranscript(root, "only", ageSeconds: 1)
         let tab = terminal()
+        let resolved = ClaudeResume.resolveAll([tab], projectsDir: root)
+        XCTAssertNil(resolved[tab.id])
+    }
+
+    // A tab that DID run Claude still recovers the folder's newest transcript
+    // when its own record went stale — the recovery step 95cd4a0 added.
+    func testSoleTabWithAStaleRecordStillRecoversNewest() throws {
+        let root = try makeProject(); defer { try? FileManager.default.removeItem(at: root) }
+        try writeTranscript(root, "only", ageSeconds: 1)
+        let tab = terminal("gone-id", "/nope/gone.jsonl")
         let resolved = ClaudeResume.resolveAll([tab], projectsDir: root)
         XCTAssertEqual(resolved[tab.id], "only")
     }
