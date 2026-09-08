@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.32] — 2026-09-08
+
 ### Fixed
 - **A restore only starts Claude where Claude actually ran.** Restoring a tab
   that never held a Claude session — a plain shell, a `npm run dev` — could

@@ -76,10 +76,11 @@ jobs:
           echo "→ publishing $TAG"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          sh scripts/package.sh "$VERSION"
-          git tag -a "$TAG" -m "Planchette $VERSION"
-          git push origin "$TAG"
-          gh release create "$TAG" \
-            dist/Planchette.dmg dist/Planchette.zip dist/screen-rules.json dist/SHA256SUMS \
-            --title "Planchette $VERSION" \
-            --notes "Automated release $VERSION. Existing users get this via the in-app updater (Install & Relaunch); new users can download Planchette.dmg."
+          # The same script a maintainer runs by hand — deliberately, so an
+          # automated release and a local one cannot differ. It carries the one
+          # thing a hand-written `gh release create` here kept losing: the
+          # release body IS this version's CHANGELOG section, and the app reads
+          # it back to show "What's new" in the update dialog
+          # (ReleaseNotes.swift). A generic "Automated release 0.2.32" left
+          # every updating user with nothing to read.
+          sh scripts/release.sh "$VERSION"
