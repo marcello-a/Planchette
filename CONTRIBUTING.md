@@ -100,6 +100,17 @@ Developer ID identity + notarization — replace the `codesign` line in
 
 Releases are cut from the default branch and drive the in-app updater.
 
+**Normally you only bump `VERSION`.** Every push to `main` builds GhosttyKit,
+runs the tests, and then — if `VERSION` names a version whose tag does not
+exist yet — publishes that release
+([`.github/workflows/release.yml`](.github/workflows/release.yml)). So a merge
+that bumps `VERSION` releases itself, and a merge that doesn't is just a build.
+Write the version's `CHANGELOG.md` section in the same commit: the release body
+is that section, and the app reads it back for "What's new".
+
+To cut one by hand instead — the workflow runs the same script, so the result
+is identical:
+
 ```sh
 scripts/release.sh 0.2.0
 ```
