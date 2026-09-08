@@ -8,6 +8,17 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A restore only starts Claude where Claude actually ran.** Restoring a tab
+  that never held a Claude session — a plain shell, a `npm run dev` — could
+  launch `claude --resume <id>` anyway: when it was the only restored tab of
+  its folder, it inherited that folder's newest conversation (a recovery step
+  for sessions captured before the hooks were installed). Worse, the hooks then
+  recorded that id into the tab, so it kept starting Claude on every restore.
+  The recovery now requires this terminal's own evidence of Claude (a recorded
+  session id or transcript); everything else comes back as the shell it was,
+  with its scrollback.
+
 ## [0.2.31] — 2026-08-31
 
 ### Fixed

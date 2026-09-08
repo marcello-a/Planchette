@@ -15,12 +15,18 @@ import Foundation
 /// disk so `claude --resume <id>` won't fail:
 ///   1. The transcript path we recorded for this exact terminal.
 ///   2. The recorded session id, if its transcript exists for this project.
-///   3. The most recent UNCLAIMED transcript in the project's folder — only
+///   3. The most recent UNCLAIMED transcript in the project's folder — ONLY
 ///      for terminals showing evidence of Claude (a recorded id/transcript),
-///      or that are their project's sole restored terminal (recovers sessions
-///      whose id we never captured, e.g. hooks weren't installed yet). Never
-///      for extra plain-shell tabs — they must not hijack a conversation.
+///      recovering a session whose id went stale. Never for a terminal that
+///      never ran Claude: a plain shell (or a `npm run dev`) tab must come
+///      back as what it was, not as somebody else's conversation.
 ///   4. The recorded id unverified, as a final attempt.
+///
+/// The gate in step 3 is the whole point of `hasRecord`: this terminal, not
+/// its folder, has to have run Claude. A folder's transcripts say nothing
+/// about a terminal that only ever held a shell — and resuming there is
+/// doubly wrong, because the id is then recorded into that tab and it starts
+/// Claude on every restore from then on.
 enum ClaudeResume {
     /// One restored terminal's recorded Claude evidence.
     struct Terminal {
@@ -89,13 +95,10 @@ enum ClaudeResume {
             claim(id, for: t)
         }
 
-        // 3. The most recent unclaimed transcript in the project folder.
-        let projectTerminalCount = Dictionary(
-            grouping: terminals, by: { encodedProjectName($0.currentDirectory) })
-            .mapValues(\.count)
+        // 3. The most recent unclaimed transcript in the project folder —
+        // only where Claude actually ran (see the note above).
         for t in terminals where resolved[t.id] == nil {
-            let soleInProject = projectTerminalCount[encodedProjectName(t.currentDirectory)] == 1
-            guard t.hasRecord || soleInProject,
+            guard t.hasRecord,
                   let id = newestTranscriptID(in: projDir(t), excluding: claimed)
             else { continue }
             claim(id, for: t)
