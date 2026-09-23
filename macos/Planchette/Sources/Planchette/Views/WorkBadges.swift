@@ -82,6 +82,49 @@ struct PullRequestPill: View {
     }
 }
 
+/// The model a Claude terminal runs on, by its short name (`Opus 5.5`).
+struct ModelLabel: View {
+    let model: String
+
+    var body: some View {
+        Text(ModelName.short(model))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .fixedSize()
+            .help(model)
+    }
+}
+
+/// How full a Claude terminal's context is: a ring that fills with the window.
+/// It turns orange from 70 % and red from 90 % — the point where `/compact` (or
+/// a fresh session) is due. The exact figures are on hover.
+struct ContextRing: View {
+    let usage: ContextUsage
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: max(0.02, usage.fraction))
+                .stroke(tint, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+        }
+        .frame(width: 11, height: 11)
+        .help(L10n.t(.contextTooltip,
+                     ModelName.short(usage.model),
+                     ModelName.tokens(usage.usedTokens),
+                     ModelName.tokens(usage.windowTokens),
+                     usage.percent))
+    }
+
+    private var tint: Color {
+        if usage.fraction >= ContextUsage.criticalFraction { return .red }
+        if usage.fraction >= ContextUsage.warnFraction { return .orange }
+        return .secondary
+    }
+}
+
 /// "You closed this one": a check on a terminal whose work you marked finished.
 struct FinishedBadge: View {
     let since: Date

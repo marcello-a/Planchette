@@ -2675,3 +2675,137 @@ final class NoteAndFinishedTests: XCTestCase {
         XCTAssertEqual(back.finishedAt, Date(timeIntervalSince1970: 1_000))
     }
 }
+
+final class ContextUsageTests: XCTestCase {
+    private func line(_ obj: [String: Any]) -> String {
+        String(data: try! JSONSerialization.data(withJSONObject: obj), encoding: .utf8)!
+    }
+
+    private func assistant(model: String, input: Int, read: Int, create: Int,
+                           sidechain: Bool = false) -> String {
+        line([
+            "type": "assistant", "isSidechain": sidechain,
+            "message": [
+                "model": model,
+                "usage": ["input_tokens": input, "cache_read_input_tokens": read,
+                          "cache_creation_input_tokens": create, "output_tokens": 300],
+            ],
+        ])
+    }
+
+    func testNewestMainThreadUsageWins() {
+        let text = [
+            assistant(model: "claude-opus-5-5", input: 1, read: 1000, create: 0),
+            assistant(model: "claude-opus-5-5", input: 2, read: 136_428, create: 2536),
+            assistant(model: "claude-haiku-4-5", input: 5, read: 50, create: 0, sidechain: true),
+            line(["type": "user", "message": ["content": "hi"]]),
+        ].joined(separator: "\n")
+        let latest = ContextUsageReader.latest(inJSONL: text[...])
+        XCTAssertEqual(latest?.model, "claude-opus-5-5")
+        XCTAssertEqual(latest?.usedTokens, 138_966, "input + cache read + cache write")
+    }
+
+    func testSyntheticLinesAreSkipped() {
+        let text = [
+            assistant(model: "claude-sonnet-5", input: 10, read: 90, create: 0),
+            assistant(model: "<synthetic>", input: 0, read: 0, create: 0),
+        ].joined(separator: "\n")
+        XCTAssertEqual(ContextUsageReader.latest(inJSONL: text[...])?.usedTokens, 100)
+    }
+
+    func testNothingToRead() {
+        XCTAssertNil(ContextUsageReader.latest(inJSONL: ""[...]))
+        XCTAssertNil(ContextUsageReader.latest(inJSONL: "{broken\n"[...]))
+    }
+
+    func testWindowSize() {
+        XCTAssertEqual(ContextWindow.size(usedTokens: 50_000, sawExtendedBanner: false,
+                                          configuredModel: nil), 200_000)
+        XCTAssertEqual(ContextWindow.size(usedTokens: 250_000, sawExtendedBanner: false,
+                                          configuredModel: nil), 1_000_000,
+                       "more than the standard window can only be the long one")
+        XCTAssertEqual(ContextWindow.size(usedTokens: 50_000, sawExtendedBanner: true,
+                                          configuredModel: nil), 1_000_000)
+        XCTAssertEqual(ContextWindow.size(usedTokens: 50_000, sawExtendedBanner: false,
+                                          configuredModel: "opus[1m]"), 1_000_000)
+        XCTAssertTrue(ContextWindow.screenShowsExtended(" ✻ Opus 5.5 (1M context) · Claude Max"))
+        XCTAssertFalse(ContextWindow.screenShowsExtended("Opus 5.5 · Claude Max"))
+    }
+
+    func testFractionAndPercent() {
+        let usage = ContextUsage(model: "m", usedTokens: 150_000, windowTokens: 200_000)
+        XCTAssertEqual(usage.percent, 75)
+        XCTAssertEqual(ContextUsage(model: "m", usedTokens: 900, windowTokens: 100).fraction, 1)
+    }
+
+    func testModelNames() {
+        XCTAssertEqual(ModelName.short("claude-opus-5-5"), "Opus 5.5")
+        XCTAssertEqual(ModelName.short("claude-sonnet-5"), "Sonnet 5")
+        XCTAssertEqual(ModelName.short("claude-haiku-4-5-20251001"), "Haiku 4.5")
+        XCTAssertEqual(ModelName.short("claude-fable-5-1[1m]"), "Fable 5.1")
+        XCTAssertEqual(ModelName.short("gpt-5"), "gpt-5")
+    }
+
+    func testTokenLabels() {
+        XCTAssertEqual(ModelName.tokens(999), "999")
+        XCTAssertEqual(ModelName.tokens(138_966), "139k")
+        XCTAssertEqual(ModelName.tokens(1_000_000), "1.0M")
+    }
+}
+
+final class SidebarDetailsTests: XCTestCase {
+    func testDefaultsAreOnExceptModelAndContext() {
+        let details = SidebarDetails()
+        for detail in SidebarDetail.allCases {
+            XCTAssertEqual(details.shows(detail), detail != .model && detail != .contextUsage,
+                           "\(detail)")
+        }
+    }
+
+    func testOnlyChoicesThatDifferFromTheDefaultAreStored() {
+        var details = SidebarDetails()
+        details.set(.branch, false)
+        details.set(.model, true)
+        XCTAssertEqual(details.overrides, ["branch": false, "model": true])
+        details.set(.branch, true)
+        XCTAssertEqual(details.overrides, ["model": true], "back to the default = no entry")
+    }
+
+    func testUnknownKeysAreIgnoredAndMissingOnesDefault() throws {
+        let json = #"{"overrides":{"gone":false,"tags":false}}"#
+        let details = try JSONDecoder().decode(SidebarDetails.self, from: Data(json.utf8))
+        XCTAssertFalse(details.shows(.tags))
+        XCTAssertTrue(details.shows(.note))
+    }
+
+    func testEveryDetailHasATranslatedTitle() {
+        L10n.current = .en
+        for detail in SidebarDetail.allCases {
+            XCTAssertNotEqual(L10n.t(detail.titleKey), detail.titleKey.rawValue, "\(detail)")
+            XCTAssertNotEqual(L10n.t(detail.helpKey), detail.helpKey.rawValue, "\(detail)")
+        }
+    }
+
+    func testOldStateHasDefaultDetails() throws {
+        let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
+        XCTAssertEqual(state.sidebarDetails, SidebarDetails())
+    }
+}
+
+final class ProjectOverviewTests: XCTestCase {
+    func testPickingATabLeavesTheOverview() {
+        var window = WindowModel()
+        let id = UUID()
+        window.showProjectOverview(id)
+        XCTAssertTrue(window.showsProjectOverview)
+        XCTAssertEqual(window.selectedGroupID, id)
+        window.selectGroup(id)
+        XCTAssertFalse(window.showsProjectOverview)
+    }
+
+    func testOldWindowDecodesWithoutOverview() throws {
+        let json = #"{"id":"\#(UUID().uuidString)"}"#
+        let window = try JSONDecoder().decode(WindowModel.self, from: Data(json.utf8))
+        XCTAssertFalse(window.showsProjectOverview)
+    }
+}

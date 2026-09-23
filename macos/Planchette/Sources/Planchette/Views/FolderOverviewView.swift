@@ -96,7 +96,7 @@ struct FolderOverviewView: View {
             } else {
                 ForEach(tabs) { session in
                     Divider()
-                    tabRow(session, isActive: session.id == project.activeSessionID)
+                    OverviewTabRow(session: session, isActive: session.id == project.activeSessionID)
                 }
             }
         }
@@ -137,58 +137,6 @@ struct FolderOverviewView: View {
         .buttonStyle(.plain)
         .help(L10n.t(.openProjectHelp))
         .contextMenu { GroupAttentionMenu(group: project) }
-    }
-
-    /// One tab of a project — click lands on exactly this terminal.
-    private func tabRow(_ session: TerminalSession, isActive: Bool) -> some View {
-        Button {
-            appState.select(session: session)
-        } label: {
-            HStack(alignment: .top, spacing: 8) {
-                StateIcon(state: session.state)
-                    .padding(.top, 2)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) {
-                        if let color = session.color.color {
-                            Circle().fill(color).frame(width: 7, height: 7)
-                        }
-                        Text(session.displayTitle)
-                            .fontWeight(isActive ? .semibold : .regular)
-                            .lineLimit(1)
-                        Text(session.shortPath)
-                            .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
-                        TagChips(tags: session.tags)
-                    }
-                    if let line = session.notificationLine {
-                        Text(line).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                }
-                Spacer(minLength: 4)
-                if let until = appState.snoozeEnd(for: session), until > Date() {
-                    SnoozeBadge(until: until)
-                } else if session.state.needsAttention {
-                    WaitingTimeText(since: session.stateSince)
-                }
-            }
-            .padding(.horizontal, 10).padding(.vertical, 7)
-            .contentShape(Rectangle())
-            // Same mark as the tab bar and the sidebar: the terminal this
-            // project is showing, in the colour of what it is doing.
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
-                    .padding(.horizontal, 6).padding(.vertical, 3)
-            )
-        }
-        .buttonStyle(.plain)
-        .help(session.currentDirectory)
-        .contextMenu {
-            SessionAttentionMenu(session: session)
-            Divider()
-            TagMenu(session: session)
-            Divider()
-            Button(L10n.t(.rename)) { appState.promptRename(session: session) }
-        }
     }
 
     // MARK: Latest notifications

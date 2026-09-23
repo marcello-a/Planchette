@@ -644,6 +644,11 @@ struct WindowModel: Identifiable, Codable, Equatable {
     /// left standing while it is set, so leaving the overview lands back on the
     /// project you came from.
     var selectedFolderID: UUID?
+    /// The selected project shows its overview page (every tab as a card)
+    /// instead of a terminal. Set by clicking the project row itself, cleared by
+    /// anything that picks a tab — the same pass-through rule as the folder
+    /// overview.
+    var showsProjectOverview: Bool = false
 
     init(id: UUID = UUID()) {
         self.id = id
@@ -654,6 +659,14 @@ struct WindowModel: Identifiable, Codable, Equatable {
     mutating func selectGroup(_ id: UUID) {
         selectedGroupID = id
         selectedFolderID = nil
+        showsProjectOverview = false
+    }
+
+    /// Show a project as its overview page rather than one of its terminals.
+    mutating func showProjectOverview(_ id: UUID) {
+        selectedGroupID = id
+        selectedFolderID = nil
+        showsProjectOverview = true
     }
 
     // Custom, so a state written before folders existed still decodes (the
@@ -665,6 +678,7 @@ struct WindowModel: Identifiable, Codable, Equatable {
         selectedGroupID = try c.decodeIfPresent(UUID.self, forKey: .selectedGroupID)
         folders = try c.decodeIfPresent([ProjectFolder].self, forKey: .folders) ?? []
         selectedFolderID = try c.decodeIfPresent(UUID.self, forKey: .selectedFolderID)
+        showsProjectOverview = try c.decodeIfPresent(Bool.self, forKey: .showsProjectOverview) ?? false
     }
 
     /// The folder holding this project, if any.
@@ -746,6 +760,8 @@ struct PersistedState: Codable {
     /// Whether a collapsed sidebar project still lists its terminals with an
     /// unread question or error. On by default, like every other setting.
     var peekCollapsedProjects: Bool = true
+    /// Which extra details the project panel shows (Settings → Project panel).
+    var sidebarDetails = SidebarDetails()
     /// The IDE the "look at code" button always opens, once chosen in its
     /// menu. Nil = never chosen — the button follows whatever IDE is running.
     var defaultIDEBundleID: String?
@@ -763,6 +779,7 @@ struct PersistedState: Codable {
         durableTerminals: Bool,
         durableDefaultApplied: Bool = true,
         peekCollapsedProjects: Bool = true,
+        sidebarDetails: SidebarDetails = SidebarDetails(),
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false
     ) {
@@ -776,6 +793,7 @@ struct PersistedState: Codable {
         self.autoUpdateCheck = autoUpdateCheck
         self.durableTerminals = durableTerminals
         self.peekCollapsedProjects = peekCollapsedProjects
+        self.sidebarDetails = sidebarDetails
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
     }
@@ -795,6 +813,8 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
         peekCollapsedProjects =
             try c.decodeIfPresent(Bool.self, forKey: .peekCollapsedProjects) ?? true
+        sidebarDetails =
+            try c.decodeIfPresent(SidebarDetails.self, forKey: .sidebarDetails) ?? SidebarDetails()
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
         askedAboutSpaceSwitching =
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false

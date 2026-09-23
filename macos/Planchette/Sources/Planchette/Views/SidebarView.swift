@@ -89,6 +89,10 @@ struct SidebarView: View {
     /// closed for a minute is not. Absent = expanded, which is the default the
     /// sidebar always had.
     @State private var collapsedGroups: Set<UUID> = []
+    /// Peeking terminals you folded away on purpose, with the moment their
+    /// state began. A terminal stays hidden while that moment holds; the next
+    /// question or error is a new moment and peeks again.
+    @State private var dismissedPeeks: [UUID: Date] = [:]
 
     /// The List's selection. One row selected means "show me this" — a project
     /// in the terminal area, a folder as its overview page. Several means a
@@ -110,7 +114,9 @@ struct SidebarView: View {
                 if isFolder {
                     appState.select(folder: id, inWindow: windowID)
                 } else {
-                    appState.updateWindow(windowID) { $0.selectGroup(id) }
+                    // The project row itself: its overview. A tab is picked
+                    // from its own row (or the tab bar), never from this one.
+                    appState.updateWindow(windowID) { $0.showProjectOverview(id) }
                 }
             }
         )
@@ -159,6 +165,11 @@ struct SidebarView: View {
         // state the first click folds everything and the second opens it.
         let allIDs = appState.window(for: windowID)?.groupIDs ?? []
         let allCollapsed = !allIDs.isEmpty && Set(allIDs).isSubset(of: collapsedGroups)
+        // With everything folded, terminals that need you still peek out. Then
+        // the button folds those away too — "collapse" keeps meaning "hide
+        // more" until nothing is left, and only then turns into "expand".
+        let peeks = appState.groups.filter { allIDs.contains($0.id) }.flatMap(peeking)
+        let expands = allCollapsed && peeks.isEmpty
         return HStack(spacing: 8) {
             Text(L10n.t(.projects)).font(.headline)
             Button {
@@ -179,18 +190,20 @@ struct SidebarView: View {
             .help(L10n.t(.newFolderHelp))
             if !allIDs.isEmpty {
                 Button {
-                    if allCollapsed {
+                    if expands {
                         collapsedGroups.subtract(allIDs)
+                        dismissedPeeks = [:]
                     } else {
                         collapsedGroups.formUnion(allIDs)
+                        for session in peeks { dismissedPeeks[session.id] = session.stateSince }
                     }
                 } label: {
-                    Image(systemName: allCollapsed
+                    Image(systemName: expands
                         ? "rectangle.expand.vertical" : "rectangle.compress.vertical")
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .help(L10n.t(allCollapsed ? .expandAllProjects : .collapseAllProjects))
+                .help(L10n.t(expands ? .expandAllProjects : .collapseAllProjects))
             }
             Spacer()
             Button { withAnimation(.easeInOut(duration: 0.25)) { minified = true } } label: {
@@ -450,6 +463,12 @@ struct SidebarView: View {
             }
         }
         .contentShape(Rectangle())
+        // A coloured folder carries its colour on the row itself, always — the
+        // same tint as its overview header, so the colour is not something you
+        // only see after opening it.
+        .padding(.horizontal, 4).padding(.vertical, 2)
+        .background(folder.color.color?.opacity(0.14) ?? Color.clear,
+                    in: RoundedRectangle(cornerRadius: 5))
         .onHover { hoveredFolder = $0 ? folder.id : (hoveredFolder == folder.id ? nil : hoveredFolder) }
         .overlay(dropHighlight(folder.id))
         // Both things this row does: click opens the overview, a drag files
@@ -648,6 +667,7 @@ struct SidebarView: View {
         guard collapsedGroups.contains(group.id) else { return [] }
         return appState.sessions(in: group).filter {
             $0.state.needsAttention && $0.isUnread && !appState.isMuted($0)
+                && dismissedPeeks[$0.id] != $0.stateSince
         }
     }
 
@@ -680,7 +700,8 @@ struct SidebarView: View {
         // you are not in has no visible terminal, and neither has a window
         // showing a folder overview.
         let visible = appState.window(for: windowID).map { window in
-            window.selectedFolderID == nil && window.selectedGroupID == group.id
+            window.selectedFolderID == nil && !window.showsProjectOverview
+                && window.selectedGroupID == group.id
         } ?? false
         return DisclosureGroup(isExpanded: expansion(of: group)) {
             ForEach(appState.sessions(in: group)) { session in
@@ -710,17 +731,12 @@ struct SidebarView: View {
                                 .foregroundStyle(.secondary)
                                 .help(L10n.t(.inactiveProject))
                         }
-                        if let until = group.snoozedUntil, until > Date() {
+                        if appState.shows(.snooze), let until = group.snoozedUntil, until > Date() {
                             SnoozeBadge(until: until)
                         }
                     }
                     if let shared {
-                        HStack(spacing: 4) {
-                            BranchText(branch: shared)
-                            if let pr = appState.sharedPullRequest(of: group) {
-                                PullRequestPill(pr: pr)
-                            }
-                        }
+                        branchLine(shared, pr: appState.sharedPullRequest(of: group))
                     }
                 }
                 Spacer()
@@ -733,11 +749,19 @@ struct SidebarView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                     .help(L10n.t(.closeProject))
-                } else {
+                } else if appState.shows(.attentionCounts) {
                     attentionSummary(group)
                 }
             }
             .contentShape(Rectangle())
+            // The List only reports a *change* of selection, so a click on the
+            // project you are already in (looking at one of its terminals)
+            // would do nothing without this.
+            .simultaneousGesture(TapGesture().onEnded {
+                guard !NSEvent.modifierFlags.contains(.command),
+                      !NSEvent.modifierFlags.contains(.shift) else { return }
+                appState.updateWindow(windowID) { $0.showProjectOverview(group.id) }
+            })
             .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
             .overlay(dropHighlight(group.id))
             .contextMenu { groupMenu(group) }
@@ -920,21 +944,28 @@ struct SidebarView: View {
                         if let name = session.rowName {
                             Text(name).lineLimit(1)
                         }
-                        Text(session.shortPath)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    if showBranch, let branch = appState.branches[session.id] {
-                        HStack(spacing: 4) {
-                            BranchText(branch: branch)
-                            if let pr = appState.pullRequests[session.id] {
-                                PullRequestPill(pr: pr)
-                            }
+                        // A terminal without a name keeps its path either way —
+                        // turning the path off must not leave a blank row.
+                        if appState.shows(.path) || session.rowName == nil {
+                            Text(session.shortPath)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                        Spacer(minLength: 4)
+                        // Which model, and how full its context is — at the
+                        // right edge, so a column of rings reads down the list.
+                        // Both off by default (Settings → Project panel).
+                        if let usage = appState.contextUsage[session.id] {
+                            if appState.shows(.model) { ModelLabel(model: usage.model) }
+                            if appState.shows(.contextUsage) { ContextRing(usage: usage) }
                         }
                     }
-                    if let note = session.note {
+                    if showBranch, let branch = appState.branches[session.id] {
+                        branchLine(branch, pr: appState.pullRequests[session.id])
+                    }
+                    if appState.shows(.note), let note = session.note {
                         NoteLine(note: note)
                     }
                     // The prompt and how long ago something last happened here.
@@ -943,31 +974,38 @@ struct SidebarView: View {
                     // instead of hunted for at the end of each prompt. It stays on
                     // the row without a prompt as well, so a question or an error
                     // still says how long it has been one.
-                    if task != nil || session.state.needsAttention {
+                    let shownTask = appState.shows(.task) ? task : nil
+                    let showsAge = appState.shows(.age)
+                    if shownTask != nil || (showsAge && session.state.needsAttention) {
                         HStack(spacing: 5) {
-                            if let task {
+                            if let task = shownTask {
                                 Text(task)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                             Spacer(minLength: 4)
-                            WaitingTimeText(since: session.stateSince)
+                            if showsAge {
+                                WaitingTimeText(since: session.stateSince)
+                            }
                         }
                     }
-                    TagChips(tags: session.tags)
+                    if appState.shows(.tags) {
+                        TagChips(tags: session.tags)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if let finished = session.finishedAt {
+                if appState.shows(.finished), let finished = session.finishedAt {
                     FinishedBadge(since: finished)
                 }
-                if let until = appState.snoozeEnd(for: session), until > Date() {
+                if appState.shows(.snooze), let until = appState.snoozeEnd(for: session),
+                   until > Date() {
                     SnoozeBadge(until: until)
                 }
             }
             // Finished work steps back, like a parked project: still there,
             // no longer competing for a look.
-            .opacity(session.isFinished ? 0.6 : 1)
+            .opacity(appState.shows(.finished) && session.isFinished ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .padding(.vertical, 3)
@@ -990,6 +1028,21 @@ struct SidebarView: View {
                 .help(L10n.t(.startupCommandHelp))
             Divider()
             Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
+        }
+    }
+
+    /// The branch and its PR, each only while its detail is switched on. The PR
+    /// pill can stand alone: hiding the branch name is about width, not about
+    /// losing the review state.
+    @ViewBuilder
+    private func branchLine(_ branch: String, pr: PullRequest?) -> some View {
+        let showsBranch = appState.shows(.branch)
+        let shownPR = appState.shows(.pullRequest) ? pr : nil
+        if showsBranch || shownPR != nil {
+            HStack(spacing: 4) {
+                if showsBranch { BranchText(branch: branch) }
+                if let shownPR { PullRequestPill(pr: shownPR) }
+            }
         }
     }
 

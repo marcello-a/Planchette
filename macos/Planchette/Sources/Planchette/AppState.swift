@@ -49,6 +49,16 @@ final class AppState: ObservableObject {
     @Published var peekCollapsedProjects = true {
         didSet { scheduleSave() }
     }
+    /// Which extra details the project panel shows (Settings → Project panel).
+    @Published var sidebarDetails = SidebarDetails() {
+        didSet {
+            scheduleSave()
+            // The transcript reads run only while something shows them.
+            if sidebarDetails != oldValue { refreshContextUsage() }
+        }
+    }
+
+    func shows(_ detail: SidebarDetail) -> Bool { sidebarDetails.shows(detail) }
     /// The IDE the "look at code" button always opens, once one is chosen in
     /// its menu. Nil = no choice made yet: the button falls back to whichever
     /// known IDE is running (see `IDEs.target`).
@@ -128,6 +138,7 @@ final class AppState: ObservableObject {
             autoUpdateCheck = saved.autoUpdateCheck
             durableTerminals = saved.durableTerminals
             peekCollapsedProjects = saved.peekCollapsedProjects
+            sidebarDetails = saved.sidebarDetails
             // Load the opt-in AI flag early too: a launch with a saved-but-
             // sessionless state runs startFresh(archiving: nil), which keeps the
             // *current* value — so without this a user's aiEnabled=false silently
@@ -240,6 +251,16 @@ final class AppState: ObservableObject {
             guard let view = TerminalRegistry.shared.existingView(id),
                   let text = view.readViewport()
             else { continue }
+            // Claude Code names a long context window only in its banner
+            // ("Opus 5.5 (1M context)"), never in the transcript — so the
+            // viewport we already hold is where the ring learns its scale.
+            if shows(.contextUsage), session.agentKind == .claude,
+               let claudeID = session.claudeSessionID,
+               !extendedContextSessions.contains(claudeID),
+               ContextWindow.screenShowsExtended(text) {
+                extendedContextSessions.insert(claudeID)
+                refreshContextUsage()
+            }
             let detection = ScreenDetector.detect(
                 lines: text.components(separatedBy: "\n"), rules: rules)
             guard let newState = AttentionState.fromScreen(
@@ -626,6 +647,73 @@ final class AppState: ObservableObject {
         return pr
     }
 
+    // MARK: Context usage per terminal
+
+    /// How full each Claude terminal's context window is, and its model, keyed
+    /// by session id. Derived from the transcript tail (see
+    /// `ContextUsageReader`), never persisted, and only read while the model or
+    /// the context usage is switched on in Settings → Project panel.
+    @Published var contextUsage: [UUID: ContextUsage] = [:]
+    /// Claude sessions whose terminal showed the "1M context" banner.
+    private var extendedContextSessions: Set<String> = []
+    /// Terminals whose agent ended (SessionEnd) — their transcript is history.
+    private var endedAgentIDs: Set<UUID> = []
+    /// Size and mtime of each transcript at its last read, so an idle session
+    /// costs one stat per tick, not a 512 KB read.
+    private var transcriptStamps: [String: String] = [:]
+    private var transcriptUsage: [String: (model: String, usedTokens: Int)] = [:]
+
+    /// Re-read the transcripts that changed and publish the usage of every
+    /// Claude terminal. The file reads run off-main.
+    func refreshContextUsage() {
+        guard shows(.model) || shows(.contextUsage) else {
+            if !contextUsage.isEmpty { contextUsage = [:] }
+            return
+        }
+        let targets: [UUID: (path: String, claudeID: String?)] = sessions.reduce(into: [:]) { acc, entry in
+            let session = entry.value
+            guard session.agentKind == .claude, let path = session.transcriptPath,
+                  !endedAgentIDs.contains(entry.key) else { return }
+            acc[entry.key] = (path, session.claudeSessionID)
+        }
+        guard !targets.isEmpty else {
+            if !contextUsage.isEmpty { contextUsage = [:] }
+            return
+        }
+        let stamps = transcriptStamps
+        let known = transcriptUsage
+        let extended = extendedContextSessions
+        Task.detached {
+            let configured = ContextWindow.configuredModel()
+            var newStamps = stamps
+            var usageByPath = known
+            for path in Set(targets.values.map(\.path)) {
+                let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+                let stamp = "\((attrs?[.size] as? Int) ?? -1)-\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
+                guard newStamps[path] != stamp else { continue }
+                newStamps[path] = stamp
+                usageByPath[path] = ContextUsageReader.read(path: path)
+            }
+            let found: [UUID: ContextUsage] = targets.reduce(into: [:]) { acc, entry in
+                guard let usage = usageByPath[entry.value.path] else { return }
+                let window = ContextWindow.size(
+                    usedTokens: usage.usedTokens,
+                    sawExtendedBanner: entry.value.claudeID.map(extended.contains) ?? false,
+                    configuredModel: configured)
+                acc[entry.key] = ContextUsage(
+                    model: usage.model, usedTokens: usage.usedTokens, windowTokens: window)
+            }
+            let stampsNow = newStamps, usageNow = usageByPath
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                self.transcriptStamps = stampsNow
+                self.transcriptUsage = usageNow
+                guard self.contextUsage != found else { return }
+                self.contextUsage = found
+            }
+        }
+    }
+
     // MARK: Dev servers & IDEs per project
 
     /// Dev servers running in each project's checkout, keyed by group id.
@@ -681,6 +769,8 @@ final class AppState: ObservableObject {
         devServerTicks += 1
         if NSApp?.isActive != true && !devServerTicks.isMultiple(of: 4) { return }
         refreshDevServers()
+        // Same cadence: a stat per transcript, a read only when one grew.
+        refreshContextUsage()
     }
 
     /// Remember which IDE was last in front, so a click can prefer it.
@@ -1498,6 +1588,15 @@ final class AppState: ObservableObject {
         if hookEvent == "UserPromptSubmit", sessions[sessionID]?.isFinished == true {
             update(sessionID) { $0.finishedAt = nil }
         }
+        // Context usage follows the agent: gone when it ends, back (and read
+        // at once) on anything else — a finished turn is when it changed.
+        if hookEvent == "SessionEnd" {
+            endedAgentIDs.insert(sessionID)
+            contextUsage[sessionID] = nil
+        } else {
+            endedAgentIDs.remove(sessionID)
+            if hookEvent == "Stop" || hookEvent == "SessionStart" { refreshContextUsage() }
+        }
         // Claude is gone — its task is too. So is a `/clear`: the conversation
         // that carried the task no longer exists. A resumed or compacted
         // session keeps working on the same thing, so its task survives.
@@ -1815,6 +1914,7 @@ final class AppState: ObservableObject {
             autoUpdateCheck: autoUpdateCheck,
             durableTerminals: durableTerminals,
             peekCollapsedProjects: peekCollapsedProjects,
+            sidebarDetails: sidebarDetails,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching
         )
@@ -1879,6 +1979,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = state.autoUpdateCheck
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
+        sidebarDetails = state.sidebarDetails
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         windowsToOpen = windows.dropFirst().map(\.id)
@@ -1986,6 +2087,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
+        sidebarDetails = previous?.sidebarDetails ?? sidebarDetails
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching

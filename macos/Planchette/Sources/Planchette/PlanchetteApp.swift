@@ -76,6 +76,8 @@ struct SettingsView: View {
         TabView {
             general
                 .tabItem { Label(L10n.t(.generalTab), systemImage: "gearshape") }
+            ProjectPanelTab()
+                .tabItem { Label(L10n.t(.projectPanelTab), systemImage: "sidebar.left") }
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
             HelpView(version: updater.currentVersion)
@@ -123,14 +125,6 @@ struct SettingsView: View {
                     InstallTmuxRow()
                 }
             }
-            Section(L10n.t(.projects)) {
-                Toggle(L10n.t(.peekCollapsedTitle), isOn: $appState.peekCollapsedProjects)
-                    .help(L10n.t(.peekCollapsedHelp))
-                Text(L10n.t(.peekCollapsedHelp))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))
@@ -152,6 +146,64 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Settings → Project panel: every extra detail the left sidebar can show, each
+/// with its own switch. The list is `SidebarDetail.allCases`, so a new detail
+/// cannot ship without a switch here.
+private struct ProjectPanelTab: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach(SidebarDetail.allCases.filter(\.defaultOn)) { toggle($0) }
+            } header: {
+                Text(L10n.t(.projectPanelShown))
+            } footer: {
+                Text(L10n.t(.projectPanelIntro))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section {
+                ForEach(SidebarDetail.allCases.filter { !$0.defaultOn }) { toggle($0) }
+            } header: {
+                Text(L10n.t(.projectPanelOptional))
+            } footer: {
+                Text(L10n.t(.projectPanelOptionalHelp))
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section(L10n.t(.projects)) {
+                Toggle(L10n.t(.peekCollapsedTitle), isOn: $appState.peekCollapsedProjects)
+                    .help(L10n.t(.peekCollapsedHelp))
+                Text(L10n.t(.peekCollapsedHelp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    /// The switch, what it means in one line, and what it looks like — drawn
+    /// with the sidebar's own views, so the example cannot drift from the row.
+    private func toggle(_ detail: SidebarDetail) -> some View {
+        Toggle(isOn: Binding(
+            get: { appState.shows(detail) },
+            set: { appState.sidebarDetails.set(detail, $0) })
+        ) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.t(detail.titleKey))
+                Text(L10n.t(detail.helpKey))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                SidebarDetailExample(detail: detail)
+                    .opacity(appState.shows(detail) ? 1 : 0.4)
+            }
+        }
     }
 }
 
@@ -410,7 +462,11 @@ struct ContentView: View {
                             FolderOverviewView(folder: folder, windowID: window.id)
                         } else if let groupID = window.selectedGroupID,
                                   let group = appState.groups.first(where: { $0.id == groupID }) {
-                            TerminalAreaView(group: group)
+                            if window.showsProjectOverview {
+                                ProjectOverviewView(group: group)
+                            } else {
+                                TerminalAreaView(group: group)
+                            }
                         } else {
                             welcome
                         }
