@@ -2591,3 +2591,87 @@ final class IDEOpenProjectTests: XCTestCase {
         XCTAssertEqual(target, phpstorm)
     }
 }
+
+final class PullRequestTests: XCTestCase {
+    private func json(_ items: [[String: Any]]) -> Data {
+        try! JSONSerialization.data(withJSONObject: items)
+    }
+
+    func testOpenPRWithReview() {
+        let pr = PullRequests.parse(json([[
+            "number": 42, "state": "OPEN", "isDraft": false,
+            "reviewDecision": "CHANGES_REQUESTED", "url": "https://github.com/o/r/pull/42",
+            "title": "Add the pill",
+        ]]))
+        XCTAssertEqual(pr?.number, 42)
+        XCTAssertEqual(pr?.status, .open)
+        XCTAssertEqual(pr?.review, .changesRequested)
+        XCTAssertEqual(pr?.title, "Add the pill")
+    }
+
+    func testDraftIsNotOpen() {
+        let pr = PullRequests.parse(json([[
+            "number": 1, "state": "OPEN", "isDraft": true, "url": "https://x/1",
+        ]]))
+        XCTAssertEqual(pr?.status, .draft)
+    }
+
+    func testAnOpenPRWinsOverANewerClosedOne() {
+        let pr = PullRequests.parse(json([
+            ["number": 9, "state": "CLOSED", "url": "https://x/9"],
+            ["number": 7, "state": "OPEN", "url": "https://x/7"],
+        ]))
+        XCTAssertEqual(pr?.number, 7)
+    }
+
+    func testWithoutAnOpenPRTheNewestWins() {
+        let pr = PullRequests.parse(json([
+            ["number": 9, "state": "MERGED", "reviewDecision": "APPROVED", "url": "https://x/9"],
+            ["number": 7, "state": "CLOSED", "url": "https://x/7"],
+        ]))
+        XCTAssertEqual(pr?.number, 9)
+        XCTAssertEqual(pr?.status, .merged)
+        XCTAssertNil(pr?.review, "a decided PR has no review left to show")
+    }
+
+    func testNoPRAndGarbage() {
+        XCTAssertNil(PullRequests.parse(json([])))
+        XCTAssertNil(PullRequests.parse(Data("not json".utf8)))
+        XCTAssertNil(PullRequests.parse(json([["number": 1, "state": "WEIRD", "url": "https://x"]])))
+    }
+
+    func testTrunkBranchesAreNotWork() {
+        XCTAssertFalse(PullRequests.isWorkBranch("main"))
+        XCTAssertFalse(PullRequests.isWorkBranch("master"))
+        XCTAssertFalse(PullRequests.isWorkBranch(""))
+        XCTAssertTrue(PullRequests.isWorkBranch("marcello/feat/NIE-1-x"))
+    }
+
+    func testGhIsFoundAbsolutely() {
+        XCTAssertEqual(
+            PullRequests.ghPath(searching: ["/a/gh", "/b/gh"], isExecutable: { $0 == "/b/gh" }),
+            "/b/gh")
+        XCTAssertNil(PullRequests.ghPath(searching: ["/a/gh"], isExecutable: { _ in false }))
+    }
+}
+
+final class NoteAndFinishedTests: XCTestCase {
+    func testOldStateDecodesWithoutNoteOrFinished() throws {
+        let old = """
+        {"id":"\(UUID().uuidString)","groupID":"\(UUID().uuidString)","workingDirectory":"/tmp"}
+        """
+        let session = try JSONDecoder().decode(TerminalSession.self, from: Data(old.utf8))
+        XCTAssertNil(session.note)
+        XCTAssertFalse(session.isFinished)
+    }
+
+    func testNoteAndFinishedRoundTrip() throws {
+        var session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        session.note = "waits for the API fix"
+        session.finishedAt = Date(timeIntervalSince1970: 1_000)
+        let back = try JSONDecoder().decode(
+            TerminalSession.self, from: JSONEncoder().encode(session))
+        XCTAssertEqual(back.note, "waits for the API fix")
+        XCTAssertEqual(back.finishedAt, Date(timeIntervalSince1970: 1_000))
+    }
+}

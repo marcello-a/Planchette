@@ -898,6 +898,22 @@ extension AppState {
         }
     }
 
+    /// Write or clear this terminal's note (empty input removes it).
+    func promptNote(session: TerminalSession) {
+        promptText(title: L10n.t(.notePrompt), value: session.note ?? "") { note in
+            self.update(session.id) { $0.note = note.isEmpty ? nil : note }
+        }
+    }
+
+    /// Mark the work in a terminal finished, or open it again. Finishing also
+    /// reads it: whatever it reported is what you just decided about.
+    func setFinished(_ finished: Bool, session id: UUID) {
+        update(id) {
+            $0.finishedAt = finished ? ($0.finishedAt ?? Date()) : nil
+            if finished { $0.seen = true }
+        }
+    }
+
     /// Ask for a name and create a sidebar folder, optionally putting a project
     /// straight into it.
     func promptNewFolder(inWindow windowID: UUID, containing groupID: UUID? = nil) {

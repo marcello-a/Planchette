@@ -141,6 +141,7 @@ final class AppState: ObservableObject {
         startScreenDetection()
         startBranchPolling()
         startDevServerPolling()
+        startPullRequestPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -555,8 +556,74 @@ final class AppState: ObservableObject {
                 // invalidated every observing view on every poll tick.
                 guard let self, self.branches != found else { return }
                 self.branches = found
+                // A new branch may already have a PR — do not make it wait
+                // a whole PR poll interval to show it.
+                self.refreshPullRequests()
             }
         }
+    }
+
+    // MARK: Pull request per terminal
+
+    /// The PR of each terminal's branch, keyed by session id. Derived and never
+    /// persisted, like `branches`: GitHub is the truth. Empty without `gh`.
+    @Published var pullRequests: [UUID: PullRequest] = [:]
+    private var pullRequestTimer: Timer?
+    private var pullRequestTicks = 0
+    /// One `gh` call per checkout goes over the network, so this is slow on
+    /// purpose; a review arriving a minute late is still news on time.
+    static let pullRequestPollInterval: TimeInterval = 60
+
+    private func startPullRequestPolling() {
+        let timer = Timer(timeInterval: Self.pullRequestPollInterval, repeats: true) { _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pullRequestTicks += 1
+                // In the background nobody reads a pill: a quarter of the rate.
+                if NSApp?.isActive != true && !self.pullRequestTicks.isMultiple(of: 4) { return }
+                self.refreshPullRequests()
+            }
+        }
+        timer.tolerance = 10
+        RunLoop.main.add(timer, forMode: .common)
+        pullRequestTimer = timer
+    }
+
+    /// One `gh pr list` per distinct checkout + branch, off-main. Terminals on a
+    /// trunk branch are skipped (see `PullRequests.trunkBranches`).
+    func refreshPullRequests() {
+        guard PullRequests.ghPath() != nil else { return }
+        let checkouts: [String: (dir: String, branch: String, ids: [UUID])] =
+            sessions.values.reduce(into: [:]) { acc, session in
+                guard let branch = branches[session.id], PullRequests.isWorkBranch(branch),
+                      !session.currentDirectory.isEmpty else { return }
+                let key = "\(session.currentDirectory)\u{0}\(branch)"
+                acc[key, default: (session.currentDirectory, branch, [])].ids.append(session.id)
+            }
+        guard !checkouts.isEmpty else {
+            if !pullRequests.isEmpty { pullRequests = [:] }
+            return
+        }
+        Task.detached {
+            var found: [UUID: PullRequest] = [:]
+            for checkout in checkouts.values {
+                guard let pr = PullRequests.lookup(branch: checkout.branch, in: checkout.dir)
+                else { continue }
+                for id in checkout.ids { found[id] = pr }
+            }
+            let result = found
+            await MainActor.run { [weak self] in
+                guard let self, self.pullRequests != result else { return }
+                self.pullRequests = result
+            }
+        }
+    }
+
+    /// The PR a project row shows: the one its terminals share, like the branch.
+    func sharedPullRequest(of group: SessionGroup) -> PullRequest? {
+        let prs = sessions(in: group).map { pullRequests[$0.id] }
+        guard let first = prs.first, let pr = first, prs.allSatisfy({ $0 == pr }) else { return nil }
+        return pr
     }
 
     // MARK: Dev servers & IDEs per project
@@ -1425,6 +1492,11 @@ final class AppState: ObservableObject {
         if hookEvent == "UserPromptSubmit",
            let task = prompt.flatMap(TerminalSession.taskLine(fromPrompt:)) {
             update(sessionID) { $0.currentTask = task }
+        }
+        // New work reopens a terminal you had marked finished: the mark was
+        // about the work that is now over.
+        if hookEvent == "UserPromptSubmit", sessions[sessionID]?.isFinished == true {
+            update(sessionID) { $0.finishedAt = nil }
         }
         // Claude is gone — its task is too. So is a `/clear`: the conversation
         // that carried the task no longer exists. A resumed or compacted

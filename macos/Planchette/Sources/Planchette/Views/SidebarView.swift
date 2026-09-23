@@ -715,7 +715,12 @@ struct SidebarView: View {
                         }
                     }
                     if let shared {
-                        BranchText(branch: shared)
+                        HStack(spacing: 4) {
+                            BranchText(branch: shared)
+                            if let pr = appState.sharedPullRequest(of: group) {
+                                PullRequestPill(pr: pr)
+                            }
+                        }
                     }
                 }
                 Spacer()
@@ -922,7 +927,15 @@ struct SidebarView: View {
                             .truncationMode(.middle)
                     }
                     if showBranch, let branch = appState.branches[session.id] {
-                        BranchText(branch: branch)
+                        HStack(spacing: 4) {
+                            BranchText(branch: branch)
+                            if let pr = appState.pullRequests[session.id] {
+                                PullRequestPill(pr: pr)
+                            }
+                        }
+                    }
+                    if let note = session.note {
+                        NoteLine(note: note)
                     }
                     // The prompt and how long ago something last happened here.
                     // The age sits at the right edge, the same place it sits in
@@ -945,10 +958,16 @@ struct SidebarView: View {
                     TagChips(tags: session.tags)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if let finished = session.finishedAt {
+                    FinishedBadge(since: finished)
+                }
                 if let until = appState.snoozeEnd(for: session), until > Date() {
                     SnoozeBadge(until: until)
                 }
             }
+            // Finished work steps back, like a parked project: still there,
+            // no longer competing for a look.
+            .opacity(session.isFinished ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .padding(.vertical, 3)
@@ -976,6 +995,7 @@ struct SidebarView: View {
 
     private func sessionTooltip(_ session: TerminalSession) -> String {
         var lines = [session.currentDirectory]
+        if let note = session.note { lines.append("📝 \(note)") }
         if let summary = session.aiSummary { lines.append("🔮 \(summary)") }
         if !session.tags.isEmpty { lines.append("Tags: \(session.tags.joined(separator: ", "))") }
         return lines.joined(separator: "\n")

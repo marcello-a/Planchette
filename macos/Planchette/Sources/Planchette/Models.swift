@@ -303,6 +303,17 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// it passes, one reminder brings it back. Nil = not snoozed.
     var snoozedUntil: Date?
 
+    /// Your own words about this terminal ("waits for the API fix", "demo on
+    /// Friday"). Never written by the app — it is the one line here that only
+    /// you can say, so nothing clears it but you.
+    var note: String?
+    /// When you marked the work in this terminal as finished. The hook states
+    /// say what the *agent* is doing, and `ready` flips back the moment it runs
+    /// again; this says what *you* decided, and stays until you give the
+    /// terminal new work (the next submitted prompt reopens it) or undo it.
+    var finishedAt: Date?
+    var isFinished: Bool { finishedAt != nil }
+
     // AI assist
     var transcriptPath: String?   // Claude transcript JSONL, from hook events
     var aiSummary: String?        // one-liner, only when AI assist is enabled
@@ -340,6 +351,8 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? true
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
+        note = try c.decodeIfPresent(String.self, forKey: .note)
+        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)

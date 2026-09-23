@@ -22,6 +22,17 @@ struct SessionAttentionMenu: View {
             }
         }
         .help(L10n.t(.remindMeHelp))
+        // What you decided about this terminal, beside what it is doing.
+        if session.isFinished {
+            Button(L10n.t(.reopenWork)) { appState.setFinished(false, session: session.id) }
+        } else {
+            Button(L10n.t(.markFinished)) { appState.setFinished(true, session: session.id) }
+                .help(L10n.t(.markFinishedHelp))
+        }
+        Button(session.note == nil ? L10n.t(.addNote) : L10n.t(.editNote)) {
+            appState.promptNote(session: session)
+        }
+        .help(L10n.t(.noteHelp))
     }
 }
 

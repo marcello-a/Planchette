@@ -210,6 +210,11 @@ enum LKey: String, CaseIterable {
     case devServersTitle, devServersDetail, lookAtCodeDetail
     case openInIDE, chooseIDEHelp, ideNoWindowTitle, ideNoWindowBody, lookAtCodeOpenHelp
     case ideNoWindowMinimized, spaceSwitchTitle, spaceSwitchBody, spaceSwitchEnable
+
+    // Pull requests, notes and finished work
+    case prDraft, prOpen, prMerged, prClosed, prApproved, prChangesRequested, prReviewRequired, prTooltip, prOpenHelp
+    case finishedSince, markFinished, markFinishedHelp, reopenWork, addNote, editNote, noteHelp, notePrompt
+    case helpPullRequestTitle, helpPullRequestDetail
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -323,6 +328,25 @@ enum L10n {
         .devServersTitle: "Dev server links",
         .devServersDetail: "A dev server running in a project's checkout shows as a clickable port chip that opens the address the server announced — found by process, so a server started in an IDE counts too",
         .lookAtCodeDetail: "Jumps to the window an IDE already has this project open in; otherwise opens it in the IDE the checkout belongs to (.idea → JetBrains, .vscode → VS Code), else the one you last worked in — the chevron picks another or sets the default",
+        .prDraft: "Draft",
+        .prOpen: "Open",
+        .prMerged: "Merged",
+        .prClosed: "Closed",
+        .prApproved: "Approved",
+        .prChangesRequested: "Changes requested",
+        .prReviewRequired: "Review required",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Click to open it in the browser",
+        .finishedSince: "Finished since %@",
+        .markFinished: "Mark as finished",
+        .markFinishedHelp: "Your own \"done\": the row steps back and stays like that until you give the terminal new work",
+        .reopenWork: "Reopen",
+        .addNote: "Add note…",
+        .editNote: "Edit note…",
+        .noteHelp: "A line of your own on this terminal — why it waits, what comes next. Shown under the row and kept until you remove it",
+        .notePrompt: "Note (empty removes it)",
+        .helpPullRequestTitle: "Pull request of a branch",
+        .helpPullRequestDetail: "Next to a branch: its PR number and state — draft, open, merged or closed — plus a check for approved or ! for changes requested. Click it to open the PR. Needs the GitHub CLI (gh) with a login",
     ]
 
     // MARK: German
@@ -415,6 +439,25 @@ enum L10n {
         .devServersTitle: "Dev-Server-Links",
         .devServersDetail: "Ein Dev-Server im Checkout eines Projekts erscheint als klickbarer Port-Chip und öffnet die Adresse, die der Server gemeldet hat — erkannt am Prozess, also zählt auch ein in einer IDE gestarteter Server",
         .lookAtCodeDetail: "Springt in das Fenster, in dem eine IDE dieses Projekt schon offen hat; sonst öffnet es die IDE, zu der das Checkout gehört (.idea → JetBrains, .vscode → VS Code), sonst die zuletzt benutzte — der Pfeil wählt eine andere oder setzt die Standard-IDE",
+        .prDraft: "Entwurf",
+        .prOpen: "Offen",
+        .prMerged: "Gemergt",
+        .prClosed: "Geschlossen",
+        .prApproved: "Freigegeben",
+        .prChangesRequested: "Änderungen angefragt",
+        .prReviewRequired: "Review ausstehend",
+        .prTooltip: "Pull Request #%d · %@",
+        .prOpenHelp: "Klicken öffnet ihn im Browser",
+        .finishedSince: "Fertig seit %@",
+        .markFinished: "Als fertig markieren",
+        .markFinishedHelp: "Dein eigenes „fertig“: die Zeile tritt zurück und bleibt so, bis das Terminal neue Arbeit bekommt",
+        .reopenWork: "Wieder öffnen",
+        .addNote: "Notiz hinzufügen…",
+        .editNote: "Notiz bearbeiten…",
+        .noteHelp: "Eine eigene Zeile zu diesem Terminal — warum es wartet, was als Nächstes kommt. Steht unter der Zeile, bis du sie entfernst",
+        .notePrompt: "Notiz (leer entfernt sie)",
+        .helpPullRequestTitle: "Pull Request eines Branches",
+        .helpPullRequestDetail: "Neben einem Branch: Nummer und Stand seines PRs — Entwurf, offen, gemergt oder geschlossen — plus ein Haken für freigegeben oder ! für Änderungen angefragt. Klicken öffnet den PR. Braucht die GitHub CLI (gh) mit Login",
     ]
 
     // MARK: French
@@ -507,6 +550,25 @@ enum L10n {
         .devServersTitle: "Liens des serveurs de dev",
         .devServersDetail: "Un serveur de dev actif dans le checkout d'un projet apparaît comme une puce localhost cliquable — détecté par processus, donc un serveur lancé dans un IDE compte aussi",
         .lookAtCodeDetail: "Confie le projet à votre IDE : met au premier plan la fenêtre où il est déjà ouvert, ou ouvre l'IDE par défaut — à choisir dans le menu du bouton",
+        .prDraft: "Brouillon",
+        .prOpen: "Ouverte",
+        .prMerged: "Fusionnée",
+        .prClosed: "Fermée",
+        .prApproved: "Approuvée",
+        .prChangesRequested: "Modifications demandées",
+        .prReviewRequired: "Revue requise",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Cliquer pour l’ouvrir dans le navigateur",
+        .finishedSince: "Terminé depuis %@",
+        .markFinished: "Marquer comme terminé",
+        .markFinishedHelp: "Votre propre « terminé » : la ligne passe au second plan jusqu’à ce que le terminal reçoive un nouveau travail",
+        .reopenWork: "Rouvrir",
+        .addNote: "Ajouter une note…",
+        .editNote: "Modifier la note…",
+        .noteHelp: "Une ligne à vous sur ce terminal — pourquoi il attend, ce qui suit. Affichée sous la ligne jusqu’à ce que vous la supprimiez",
+        .notePrompt: "Note (vide la supprime)",
+        .helpPullRequestTitle: "Pull request d’une branche",
+        .helpPullRequestDetail: "À côté d’une branche : le numéro et l’état de sa PR — brouillon, ouverte, fusionnée ou fermée — plus une coche si approuvée ou ! si des modifications sont demandées. Un clic ouvre la PR. Nécessite la CLI GitHub (gh) connectée",
     ]
 
     // MARK: Spanish
@@ -599,6 +661,25 @@ enum L10n {
         .devServersTitle: "Enlaces de servidores de desarrollo",
         .devServersDetail: "Un servidor de desarrollo activo en el checkout de un proyecto aparece como un chip localhost clicable — detectado por proceso, así que también cuenta uno iniciado en un IDE",
         .lookAtCodeDetail: "Entrega el proyecto a tu IDE: enfoca la ventana donde ya está abierto, o abre el IDE predeterminado — elígelo en el menú del botón",
+        .prDraft: "Borrador",
+        .prOpen: "Abierta",
+        .prMerged: "Fusionada",
+        .prClosed: "Cerrada",
+        .prApproved: "Aprobada",
+        .prChangesRequested: "Cambios solicitados",
+        .prReviewRequired: "Revisión pendiente",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Haz clic para abrirla en el navegador",
+        .finishedSince: "Terminado desde %@",
+        .markFinished: "Marcar como terminado",
+        .markFinishedHelp: "Tu propio «terminado»: la fila pasa a segundo plano hasta que la terminal reciba trabajo nuevo",
+        .reopenWork: "Reabrir",
+        .addNote: "Añadir nota…",
+        .editNote: "Editar nota…",
+        .noteHelp: "Una línea tuya sobre esta terminal: por qué espera, qué viene después. Se muestra bajo la fila hasta que la quites",
+        .notePrompt: "Nota (vacía la elimina)",
+        .helpPullRequestTitle: "Pull request de una rama",
+        .helpPullRequestDetail: "Junto a una rama: el número y el estado de su PR — borrador, abierta, fusionada o cerrada — y una marca si está aprobada o ! si se piden cambios. Un clic abre la PR. Necesita la CLI de GitHub (gh) con sesión iniciada",
     ]
 
     // MARK: Italian
@@ -691,6 +772,25 @@ enum L10n {
         .devServersTitle: "Link dei server di sviluppo",
         .devServersDetail: "Un server di sviluppo attivo nel checkout di un progetto appare come chip localhost cliccabile — rilevato dal processo, quindi conta anche uno avviato in un IDE",
         .lookAtCodeDetail: "Affida il progetto al tuo IDE: porta in primo piano la finestra dove è già aperto, oppure apre l'IDE predefinito — da scegliere nel menu del pulsante",
+        .prDraft: "Bozza",
+        .prOpen: "Aperta",
+        .prMerged: "Unita",
+        .prClosed: "Chiusa",
+        .prApproved: "Approvata",
+        .prChangesRequested: "Modifiche richieste",
+        .prReviewRequired: "Revisione richiesta",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Clicca per aprirla nel browser",
+        .finishedSince: "Finito dal %@",
+        .markFinished: "Segna come finito",
+        .markFinishedHelp: "Il tuo «finito»: la riga passa in secondo piano finché il terminale non riceve nuovo lavoro",
+        .reopenWork: "Riapri",
+        .addNote: "Aggiungi nota…",
+        .editNote: "Modifica nota…",
+        .noteHelp: "Una riga tua su questo terminale: perché aspetta, cosa viene dopo. Resta sotto la riga finché non la rimuovi",
+        .notePrompt: "Nota (vuota la rimuove)",
+        .helpPullRequestTitle: "Pull request di un branch",
+        .helpPullRequestDetail: "Accanto a un branch: numero e stato della sua PR — bozza, aperta, unita o chiusa — più una spunta se approvata o ! se sono richieste modifiche. Un clic apre la PR. Richiede la CLI di GitHub (gh) con login",
     ]
 
     // MARK: Dutch
@@ -783,6 +883,25 @@ enum L10n {
         .devServersTitle: "Dev-server-links",
         .devServersDetail: "Een dev-server in de checkout van een project verschijnt als klikbare localhost-chip — herkend aan het proces, dus een server gestart in een IDE telt ook",
         .lookAtCodeDetail: "Geeft het project aan je IDE: focust het venster waarin het al open is, of opent de standaard-IDE — te kiezen in het menu van de knop",
+        .prDraft: "Concept",
+        .prOpen: "Open",
+        .prMerged: "Gemerged",
+        .prClosed: "Gesloten",
+        .prApproved: "Goedgekeurd",
+        .prChangesRequested: "Wijzigingen gevraagd",
+        .prReviewRequired: "Review vereist",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Klik om hem in de browser te openen",
+        .finishedSince: "Klaar sinds %@",
+        .markFinished: "Markeren als klaar",
+        .markFinishedHelp: "Je eigen ‘klaar’: de rij treedt terug en blijft zo tot de terminal nieuw werk krijgt",
+        .reopenWork: "Heropenen",
+        .addNote: "Notitie toevoegen…",
+        .editNote: "Notitie bewerken…",
+        .noteHelp: "Een eigen regel bij deze terminal — waarom hij wacht, wat hierna komt. Staat onder de rij tot je hem verwijdert",
+        .notePrompt: "Notitie (leeg verwijdert haar)",
+        .helpPullRequestTitle: "Pull request van een branch",
+        .helpPullRequestDetail: "Naast een branch: nummer en status van zijn PR — concept, open, gemerged of gesloten — plus een vinkje bij goedgekeurd of ! bij gevraagde wijzigingen. Klik om de PR te openen. Vereist de GitHub CLI (gh) met login",
     ]
 
     // MARK: Portuguese
@@ -875,5 +994,24 @@ enum L10n {
         .devServersTitle: "Ligações de servidores de desenvolvimento",
         .devServersDetail: "Um servidor de desenvolvimento ativo no checkout de um projeto aparece como um chip localhost clicável — detetado pelo processo, por isso um servidor iniciado num IDE também conta",
         .lookAtCodeDetail: "Entrega o projeto ao teu IDE: foca a janela onde já está aberto, ou abre o IDE predefinido — a escolher no menu do botão",
+        .prDraft: "Rascunho",
+        .prOpen: "Aberta",
+        .prMerged: "Mesclada",
+        .prClosed: "Fechada",
+        .prApproved: "Aprovada",
+        .prChangesRequested: "Alterações solicitadas",
+        .prReviewRequired: "Revisão pendente",
+        .prTooltip: "Pull request #%d · %@",
+        .prOpenHelp: "Clique para abri-la no navegador",
+        .finishedSince: "Concluído desde %@",
+        .markFinished: "Marcar como concluído",
+        .markFinishedHelp: "O seu próprio «concluído»: a linha fica em segundo plano até o terminal receber trabalho novo",
+        .reopenWork: "Reabrir",
+        .addNote: "Adicionar nota…",
+        .editNote: "Editar nota…",
+        .noteHelp: "Uma linha sua sobre este terminal — por que espera, o que vem a seguir. Fica sob a linha até você removê-la",
+        .notePrompt: "Nota (vazia remove)",
+        .helpPullRequestTitle: "Pull request de um branch",
+        .helpPullRequestDetail: "Ao lado de um branch: o número e o estado da PR — rascunho, aberta, mesclada ou fechada — e um visto se aprovada ou ! se pedem alterações. Um clique abre a PR. Requer a CLI do GitHub (gh) com login",
     ]
 }

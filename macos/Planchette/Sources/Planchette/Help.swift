@@ -62,6 +62,7 @@ enum Help {
             Entry(.peekCollapsedTitle, .peekCollapsedHelp, where: .helpWhereSettings),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
+            Entry(.helpPullRequestTitle, .helpPullRequestDetail, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .helpSectionTerminals, entries: [
             Entry(.newTerminal, .newTerminalHelp, shortcut: "⌘T"),
@@ -81,6 +82,8 @@ enum Help {
             Entry(.installTmuxOpen, .installTmuxOpenHelp, where: .helpWhereSettings),
             Entry(.importMenu, .importMenuHelp, where: .helpWhereMenuBar),
             Entry(.helpTerminalRowTitle, .helpTerminalRowDetail, where: .helpWhereSidebar),
+            Entry(.markFinished, .markFinishedHelp, where: .helpWhereContextMenu),
+            Entry(.addNote, .noteHelp, where: .helpWhereContextMenu),
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
             Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
