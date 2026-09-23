@@ -8,6 +8,31 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.33] — 2026-09-23
+
+### Added
+- **Pull request on every branch.** Next to a branch, the sidebar shows its
+  PR: number, state (draft, open, merged, closed) and the review decision — a
+  check for approved, `!` for changes requested. Click it to open the PR. It
+  uses your own GitHub CLI login (`gh`); without it there is simply no pill.
+- **Notes and a "finished" mark.** Right-click a terminal to write a note on
+  it ("waits for QA") or to mark its work finished. A finished terminal gets a
+  seal and steps back in the list until you send it a new prompt.
+- **Project overview.** Clicking a project row (not a tab) opens a page with
+  every tab of the project: state, branch, PR, prompt and note. A click on a
+  tab still goes straight to that terminal.
+- **Settings → Project panel.** A switch for every extra detail the sidebar
+  shows, each with a description and a live example. All on by default,
+  except two new optional ones: the **model** a Claude terminal runs on and a
+  **context-usage ring** that turns orange at 70 % and red at 90 %.
+
+### Changed
+- **A folder's colour is always visible** on its sidebar row, not only in its
+  overview.
+- **Collapse all folds everything.** With every project collapsed, terminals
+  that need you still peek out — a second click on Collapse all now folds
+  those away too. The next question or error peeks again.
+
 ## [0.2.32] — 2026-09-08
 
 ### Fixed
