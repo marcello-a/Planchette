@@ -8,6 +8,19 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.34] — 2026-09-24
+
+### Changed
+- **Font size lives in the terminal's right-click menu.** Larger, Smaller and
+  Reset moved out of the tab bar, next to copy and paste, where the menu also
+  shows their shortcuts (⌘+ / ⌘- / ⌘0). The shortcuts work as before.
+
+### Fixed
+- **A click anywhere on a tab row opens that tab.** Before, only the text
+  caught the click; the empty part of the row opened the project overview.
+- **Selecting a project opens its active tab again.** Only a click on the
+  project's own row opens the overview.
+
 ## [0.2.33] — 2026-09-23
 
 ### Added
