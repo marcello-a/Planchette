@@ -421,8 +421,30 @@ final class GhosttySurfaceNSView: NSView {
             title: L10n.t(.menuSelectAll), action: #selector(selectAll(_:)), keyEquivalent: "")
         selectAll.target = self
         menu.addItem(selectAll)
+
+        // Font size. It used to be three permanent buttons in the project
+        // header; here it sits with the other things you do to the text in
+        // front of you, and the menu renders the shortcuts that always worked
+        // (⌘+ / ⌘- / ⌘0) — which the buttons could only spell out in a tooltip.
+        menu.addItem(.separator())
+        for (key, action, shortcut) in [
+            (LKey.fontLarger, #selector(fontLarger(_:)), "+"),
+            (LKey.fontSmaller, #selector(fontSmaller(_:)), "-"),
+            (LKey.fontReset, #selector(fontReset(_:)), "0"),
+        ] {
+            let item = NSMenuItem(
+                title: L10n.t(key), action: action, keyEquivalent: shortcut)
+            item.keyEquivalentModifierMask = .command
+            item.target = self
+            item.isEnabled = true
+            menu.addItem(item)
+        }
         return menu
     }
+
+    @objc private func fontLarger(_ sender: Any?) { increaseFontSize() }
+    @objc private func fontSmaller(_ sender: Any?) { decreaseFontSize() }
+    @objc private func fontReset(_ sender: Any?) { resetFontSize() }
 
     /// Open the link the pointer is on — same scheme policy as a ⌘-click.
     @objc private func openLink(_ sender: Any?) {
