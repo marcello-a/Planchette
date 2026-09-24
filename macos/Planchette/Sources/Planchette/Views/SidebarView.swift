@@ -113,10 +113,12 @@ struct SidebarView: View {
                 let isFolder = appState.window(for: windowID)?.folders.contains { $0.id == id } ?? false
                 if isFolder {
                     appState.select(folder: id, inWindow: windowID)
-                } else {
-                    // The project row itself: its overview. A tab is picked
-                    // from its own row (or the tab bar), never from this one.
-                    appState.updateWindow(windowID) { $0.showProjectOverview(id) }
+                } else if let group = appState.groups.first(where: { $0.id == id }) {
+                    // Selecting a project — by keyboard, or by a click anywhere
+                    // in its block — opens its active tab, as it always did.
+                    // Only a click on the project's own row opens the overview
+                    // (the tap gesture on the row label).
+                    appState.select(group: group)
                 }
             }
         )
@@ -757,10 +759,16 @@ struct SidebarView: View {
             // The List only reports a *change* of selection, so a click on the
             // project you are already in (looking at one of its terminals)
             // would do nothing without this.
+            //
+            // The overview is set on the next turn of the run loop, so it lands
+            // after the selection change above (which opens the active tab)
+            // whichever of the two the List delivers first.
             .simultaneousGesture(TapGesture().onEnded {
                 guard !NSEvent.modifierFlags.contains(.command),
                       !NSEvent.modifierFlags.contains(.shift) else { return }
-                appState.updateWindow(windowID) { $0.showProjectOverview(group.id) }
+                DispatchQueue.main.async {
+                    appState.updateWindow(windowID) { $0.showProjectOverview(group.id) }
+                }
             })
             .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
             .overlay(dropHighlight(group.id))
@@ -1006,10 +1014,14 @@ struct SidebarView: View {
             // Finished work steps back, like a parked project: still there,
             // no longer competing for a look.
             .opacity(appState.shows(.finished) && session.isFinished ? 0.6 : 1)
+            // The whole row is the button, not only its text: a plain button
+            // hit-tests its drawn content alone, so a click into the empty part
+            // of the row fell through to the project and opened that instead.
+            .padding(.vertical, 3)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 3)
-        .padding(.horizontal, 4)
         .overlay(
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
