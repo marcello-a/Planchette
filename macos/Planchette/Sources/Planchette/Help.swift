@@ -68,6 +68,7 @@ enum Help {
         Section(titleKey: .helpSectionTerminals, entries: [
             Entry(.newTerminal, .newTerminalHelp, shortcut: "⌘T"),
             Entry(.addTerminalHelp, nil, where: .helpWhereTabBar),
+            Entry(.addTerminal, .addTerminalHelp, where: .helpWhereProjectOverview),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),

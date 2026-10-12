@@ -33,12 +33,32 @@ struct ProjectOverviewView: View {
                                     RoundedRectangle(cornerRadius: 8)
                                         .strokeBorder(Color.secondary.opacity(0.18)))
                         }
+                        addTerminalButton
                     }
                     .padding(14)
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Add a terminal in this project's folder — the tab bar's + at the end of the list.
+    private var addTerminalButton: some View {
+        Button {
+            appState.addTerminalToGroup(group.id)
+        } label: {
+            Label(L10n.t(.addTerminal), systemImage: "plus")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .contentShape(Rectangle())
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.secondary.opacity(0.3),
+                                      style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(L10n.t(.addTerminalHelp))
     }
 
     private var header: some View {
