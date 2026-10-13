@@ -62,6 +62,12 @@ struct SidebarDetailExample: View {
                 ContextRing(usage: ContextUsage(model: "claude-opus-5-5",
                                                 usedTokens: 188_000, windowTokens: 200_000))
             }
+        case .cacheTimer:
+            HStack(spacing: 8) {
+                CacheTimer(expiresAt: Date().addingTimeInterval(42 * 60))
+                CacheTimer(expiresAt: Date().addingTimeInterval(3 * 60))
+                CacheTimer(expiresAt: Date().addingTimeInterval(-10 * 60))
+            }
         }
     }
 

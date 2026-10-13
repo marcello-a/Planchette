@@ -96,6 +96,41 @@ struct ModelLabel: View {
     }
 }
 
+/// How long a Claude session's prompt cache has left: minutes until it clears,
+/// orange in the last five, and "cleared" once it is gone — the next prompt
+/// then pays to write the whole context again. The exact time is on hover.
+struct CacheTimer: View {
+    let expiresAt: Date
+    static let warnRemaining: TimeInterval = 5 * 60
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            label(remaining: expiresAt.timeIntervalSince(context.date))
+        }
+    }
+
+    private func label(remaining: TimeInterval) -> some View {
+        let time = expiresAt.formatted(date: .omitted, time: .shortened)
+        let live = remaining > 0
+        let text = live
+            ? L10n.t(.minutesShort, Int((remaining / 60).rounded(.up)))
+            : L10n.t(.cacheTimerCleared)
+        let tint: Color = live && remaining <= Self.warnRemaining ? .orange : .secondary
+        return HStack(spacing: 2) {
+            Image(systemName: live ? "hourglass" : "hourglass.bottomhalf.filled")
+                .font(.system(size: 9))
+            Text(text)
+                .font(.caption2)
+                .monospacedDigit()
+        }
+        .foregroundStyle(tint)
+        .opacity(live ? 1 : 0.7)
+        .lineLimit(1)
+        .fixedSize()
+        .help(live ? L10n.t(.cacheTimerTooltip, time) : L10n.t(.cacheTimerClearedTooltip, time))
+    }
+}
+
 /// How full a Claude terminal's context is: a ring that fills with the window.
 /// It turns orange from 70 % and red from 90 % — the point where `/compact` (or
 /// a fresh session) is due. The exact figures are on hover.

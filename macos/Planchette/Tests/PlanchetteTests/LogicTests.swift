@@ -806,6 +806,56 @@ final class ScreenDetectionTests: XCTestCase {
                 detection, agent: .claude, hookAuthority: false, current: .running))
     }
 
+    // Esc on a running turn fires no hook — the marker Claude Code prints is
+    // the only sign the turn is over, and it frees even a hooked terminal.
+    func testInterruptedTurnFreesTheTerminal() {
+        let screen = """
+            ⏺ Reading the config…
+              ⎿  Interrupted · What should Claude do instead?
+            ╭───────────────────────────────╮
+            │ >                             │
+            ╰───────────────────────────────╯
+              ? for shortcuts
+            """
+        let detection = ScreenDetector.detect(
+            lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+        XCTAssertTrue(detection?.interrupted == true)
+        for authority in [true, false] {
+            XCTAssertEqual(
+                AttentionState.fromScreen(
+                    detection, agent: .claude, hookAuthority: authority, current: .running),
+                .free)
+            XCTAssertEqual(
+                AttentionState.fromScreen(
+                    detection, agent: .claude, hookAuthority: authority, current: .waiting),
+                .free)
+            // Already quiet (or a finished turn to review) stays as it is.
+            for current in [AttentionState.free, .ready, .error] {
+                XCTAssertNil(
+                    AttentionState.fromScreen(
+                        detection, agent: .claude, hookAuthority: authority, current: current))
+            }
+        }
+    }
+
+    // The next turn runs below the old marker: the spinner says it is live.
+    func testStaleInterruptMarkerUnderARunningTurnIsIgnored() {
+        let screen = """
+              ⎿  Interrupted · What should Claude do instead?
+            > try the other approach
+            ✻ Thinking… (3s · esc to interrupt)
+            ╭───────────────────────────────╮
+            │ >                             │
+            ╰───────────────────────────────╯
+            """
+        let detection = ScreenDetector.detect(
+            lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+        XCTAssertFalse(detection?.interrupted == true)
+        XCTAssertNil(
+            AttentionState.fromScreen(
+                detection, agent: .claude, hookAuthority: true, current: .running))
+    }
+
     func testUnrelatedOutputMatchesNothing() {
         let screen = "$ ls -la\ntotal 42\ndrwxr-xr-x  5 me  staff  160 Jul 31 12:00 ."
         XCTAssertNil(
@@ -2713,6 +2763,44 @@ final class ContextUsageTests: XCTestCase {
         XCTAssertEqual(ContextUsageReader.latest(inJSONL: text[...])?.usedTokens, 100)
     }
 
+    private func cached(at timestamp: String, oneHour: Int, fiveMinutes: Int) -> String {
+        line([
+            "type": "assistant", "timestamp": timestamp,
+            "message": [
+                "model": "claude-opus-5-5",
+                "usage": ["input_tokens": 2, "cache_read_input_tokens": 1000,
+                          "cache_creation_input_tokens": oneHour + fiveMinutes,
+                          "cache_creation": ["ephemeral_1h_input_tokens": oneHour,
+                                             "ephemeral_5m_input_tokens": fiveMinutes]],
+            ],
+        ])
+    }
+
+    // The cache clock counts from the newest request; its TTL comes from the
+    // newest line that wrote to the cache, since a pure read does not say.
+    func testCacheTimerReadsTimestampAndTTL() {
+        let text = [
+            cached(at: "2026-10-13T12:00:00.000Z", oneHour: 0, fiveMinutes: 400),
+            cached(at: "2026-10-13T13:00:00.000Z", oneHour: 3926, fiveMinutes: 0),
+            cached(at: "2026-10-13T13:56:36.793Z", oneHour: 0, fiveMinutes: 0),
+        ].joined(separator: "\n")
+        let latest = ContextUsageReader.latest(inJSONL: text[...])
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        XCTAssertEqual(latest?.at, formatter.date(from: "2026-10-13T13:56:36.793Z"))
+        XCTAssertEqual(latest?.cacheTTL, 3600)
+
+        let fiveMinute = cached(at: "2026-10-13T13:00:00.000Z", oneHour: 0, fiveMinutes: 10)
+        XCTAssertEqual(ContextUsageReader.latest(inJSONL: fiveMinute[...])?.cacheTTL, 300)
+    }
+
+    func testCacheExpiryFallsBackToOneHour() {
+        let touched = Date(timeIntervalSince1970: 1_000_000)
+        let usage = ContextUsage(model: "m", usedTokens: 1, windowTokens: 2, cacheTouchedAt: touched)
+        XCTAssertEqual(usage.cacheExpiresAt, touched.addingTimeInterval(3600))
+        XCTAssertNil(ContextUsage(model: "m", usedTokens: 1, windowTokens: 2).cacheExpiresAt)
+    }
+
     func testNothingToRead() {
         XCTAssertNil(ContextUsageReader.latest(inJSONL: ""[...]))
         XCTAssertNil(ContextUsageReader.latest(inJSONL: "{broken\n"[...]))
@@ -2754,11 +2842,11 @@ final class ContextUsageTests: XCTestCase {
 }
 
 final class SidebarDetailsTests: XCTestCase {
-    func testDefaultsAreOnExceptModelAndContext() {
+    func testDefaultsAreOnExceptTheClaudeDetails() {
         let details = SidebarDetails()
+        let optional: Set<SidebarDetail> = [.model, .contextUsage, .cacheTimer]
         for detail in SidebarDetail.allCases {
-            XCTAssertEqual(details.shows(detail), detail != .model && detail != .contextUsage,
-                           "\(detail)")
+            XCTAssertEqual(details.shows(detail), !optional.contains(detail), "\(detail)")
         }
     }
 

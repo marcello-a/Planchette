@@ -156,6 +156,7 @@ enum LKey: String, CaseIterable {
     case collapseAllProjects, expandAllProjects
     case peekCollapsedTitle, peekCollapsedHelp
     case doneExpiryTitle, doneExpiryHelp, doneExpiryNever
+    case detailCacheTimer, detailCacheTimerHelp, cacheTimerCleared, cacheTimerTooltip, cacheTimerClearedTooltip
 
     // Notifications panel (right sidebar)
     case notificationsPanel, notificationsPanelHelp, onlyActive
@@ -388,6 +389,7 @@ enum L10n {
         .detailAttentionCountsHelp: "How many terminals of a project ask (blue), fail (red) or finished unread work (green).",
         .detailModelHelp: "The Claude model the terminal runs on.",
         .detailContextUsageHelp: "How full the context window is — orange from 70 %, red from 90 %.",
+        .detailCacheTimer: "Prompt cache timer", .detailCacheTimerHelp: "Minutes until Claude's prompt cache clears (1 h on Opus 5.5). After that, the next prompt sends the whole context again, at full price.", .cacheTimerCleared: "cleared", .cacheTimerTooltip: "Prompt cache clears at %@ unless you send something", .cacheTimerClearedTooltip: "Prompt cache cleared at %@ — the next prompt writes the whole context again",
     ]
 
     // MARK: German
@@ -532,6 +534,7 @@ enum L10n {
         .detailAttentionCountsHelp: "Wie viele Terminals eines Projekts fragen (blau), Fehler haben (rot) oder ungelesen fertig sind (grün).",
         .detailModelHelp: "Das Claude-Modell, auf dem das Terminal läuft.",
         .detailContextUsageHelp: "Wie voll das Kontextfenster ist — orange ab 70 %, rot ab 90 %.",
+        .detailCacheTimer: "Prompt-Cache-Timer", .detailCacheTimerHelp: "Minuten, bis Claudes Prompt-Cache verfällt (1 h bei Opus 5.5). Danach schickt der nächste Prompt den ganzen Kontext neu, zum vollen Preis.", .cacheTimerCleared: "verfallen", .cacheTimerTooltip: "Prompt-Cache verfällt um %@, wenn du nichts schickst", .cacheTimerClearedTooltip: "Prompt-Cache um %@ verfallen — der nächste Prompt schreibt den ganzen Kontext neu",
     ]
 
     // MARK: French
@@ -676,6 +679,7 @@ enum L10n {
         .detailAttentionCountsHelp: "Combien de terminaux d’un projet demandent (bleu), échouent (rouge) ou ont fini sans être lus (vert).",
         .detailModelHelp: "Le modèle Claude utilisé par le terminal.",
         .detailContextUsageHelp: "Le remplissage de la fenêtre de contexte — orange dès 70 %, rouge dès 90 %.",
+        .detailCacheTimer: "Minuteur du cache de prompt", .detailCacheTimerHelp: "Minutes avant que le cache de prompt de Claude expire (1 h sur Opus 5.5). Ensuite, le prochain prompt renvoie tout le contexte, au plein tarif.", .cacheTimerCleared: "expiré", .cacheTimerTooltip: "Le cache de prompt expire à %@ si vous n'envoyez rien", .cacheTimerClearedTooltip: "Cache de prompt expiré à %@ — le prochain prompt réécrit tout le contexte",
     ]
 
     // MARK: Spanish
@@ -820,6 +824,7 @@ enum L10n {
         .detailAttentionCountsHelp: "Cuántas terminales de un proyecto preguntan (azul), fallan (rojo) o terminaron sin leer (verde).",
         .detailModelHelp: "El modelo de Claude que usa la terminal.",
         .detailContextUsageHelp: "Lo lleno que está la ventana de contexto — naranja desde 70 %, rojo desde 90 %.",
+        .detailCacheTimer: "Temporizador de la caché de prompt", .detailCacheTimerHelp: "Minutos hasta que caduca la caché de prompt de Claude (1 h en Opus 5.5). Después, el siguiente prompt vuelve a enviar todo el contexto, a precio completo.", .cacheTimerCleared: "caducada", .cacheTimerTooltip: "La caché de prompt caduca a las %@ si no envías nada", .cacheTimerClearedTooltip: "Caché de prompt caducada a las %@ — el siguiente prompt reescribe todo el contexto",
     ]
 
     // MARK: Italian
@@ -964,6 +969,7 @@ enum L10n {
         .detailAttentionCountsHelp: "Quanti terminali di un progetto chiedono (blu), falliscono (rosso) o hanno finito senza lettura (verde).",
         .detailModelHelp: "Il modello Claude usato dal terminale.",
         .detailContextUsageHelp: "Quanto è piena la finestra di contesto — arancione dal 70 %, rosso dal 90 %.",
+        .detailCacheTimer: "Timer della cache del prompt", .detailCacheTimerHelp: "Minuti prima che la cache del prompt di Claude scada (1 h su Opus 5.5). Dopo, il prompt successivo reinvia tutto il contesto, a prezzo pieno.", .cacheTimerCleared: "scaduta", .cacheTimerTooltip: "La cache del prompt scade alle %@ se non invii nulla", .cacheTimerClearedTooltip: "Cache del prompt scaduta alle %@ — il prompt successivo riscrive tutto il contesto",
     ]
 
     // MARK: Dutch
@@ -1108,6 +1114,7 @@ enum L10n {
         .detailAttentionCountsHelp: "Hoeveel terminals van een project vragen (blauw), falen (rood) of ongelezen klaar zijn (groen).",
         .detailModelHelp: "Het Claude-model waarop de terminal draait.",
         .detailContextUsageHelp: "Hoe vol het contextvenster is — oranje vanaf 70 %, rood vanaf 90 %.",
+        .detailCacheTimer: "Promptcache-timer", .detailCacheTimerHelp: "Minuten tot Claudes promptcache verloopt (1 u bij Opus 5.5). Daarna stuurt de volgende prompt de hele context opnieuw, tegen de volle prijs.", .cacheTimerCleared: "verlopen", .cacheTimerTooltip: "Promptcache verloopt om %@ als je niets stuurt", .cacheTimerClearedTooltip: "Promptcache verlopen om %@ — de volgende prompt schrijft de hele context opnieuw",
     ]
 
     // MARK: Portuguese
@@ -1252,5 +1259,6 @@ enum L10n {
         .detailAttentionCountsHelp: "Quantos terminais de um projeto perguntam (azul), falham (vermelho) ou terminaram sem leitura (verde).",
         .detailModelHelp: "O modelo Claude em que o terminal corre.",
         .detailContextUsageHelp: "Quão cheia está a janela de contexto — laranja a partir de 70 %, vermelho a partir de 90 %.",
+        .detailCacheTimer: "Temporizador da cache de prompt", .detailCacheTimerHelp: "Minutos até a cache de prompt do Claude expirar (1 h no Opus 5.5). Depois, o próximo prompt volta a enviar todo o contexto, a preço total.", .cacheTimerCleared: "expirada", .cacheTimerTooltip: "A cache de prompt expira às %@ se não enviares nada", .cacheTimerClearedTooltip: "Cache de prompt expirada às %@ — o próximo prompt reescreve todo o contexto",
     ]
 }

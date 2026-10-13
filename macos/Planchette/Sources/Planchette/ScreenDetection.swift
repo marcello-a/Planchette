@@ -35,20 +35,25 @@ struct ScreenRule: Codable, Equatable {
     /// The screen is showing history (a transcript viewer, a pager), so nothing
     /// on it describes the live state. Suppresses the whole reading.
     var skipStateUpdate: Bool = false
+    /// The user aborted the turn (Esc) and the agent is back at its prompt.
+    /// No hook fires for that — Claude Code's `Stop` skips user interrupts — so
+    /// without this a hooked terminal would show `running` until the next turn.
+    var interrupted: Bool = false
 
     private enum CodingKeys: String, CodingKey {
         case id, state, priority, tailLines, contains, any, none, lineRegex
-        case visibleBlocker, skipStateUpdate
+        case visibleBlocker, skipStateUpdate, interrupted
     }
 
     init(id: String, state: ScreenState, priority: Int, tailLines: Int = 6,
          contains: [String] = [], any: [[String]] = [], none: [String] = [],
          lineRegex: [String] = [], visibleBlocker: Bool = false,
-         skipStateUpdate: Bool = false) {
+         skipStateUpdate: Bool = false, interrupted: Bool = false) {
         self.id = id; self.state = state; self.priority = priority
         self.tailLines = tailLines; self.contains = contains; self.any = any
         self.none = none; self.lineRegex = lineRegex
         self.visibleBlocker = visibleBlocker; self.skipStateUpdate = skipStateUpdate
+        self.interrupted = interrupted
     }
 
     // Hand-written so the in-line defaults apply during decode. Synthesized
@@ -67,6 +72,7 @@ struct ScreenRule: Codable, Equatable {
         lineRegex = try c.decodeIfPresent([String].self, forKey: .lineRegex) ?? []
         visibleBlocker = try c.decodeIfPresent(Bool.self, forKey: .visibleBlocker) ?? false
         skipStateUpdate = try c.decodeIfPresent(Bool.self, forKey: .skipStateUpdate) ?? false
+        interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted) ?? false
     }
 }
 
@@ -76,6 +82,7 @@ struct ScreenDetection: Equatable {
     let ruleID: String
     var visibleBlocker: Bool = false
     var skipStateUpdate: Bool = false
+    var interrupted: Bool = false
 }
 
 /// Rules per agent, versioned so an override file can be recognized (and
@@ -125,7 +132,8 @@ enum ScreenDetector {
             return ScreenDetection(
                 state: rule.state, ruleID: rule.id,
                 visibleBlocker: rule.visibleBlocker,
-                skipStateUpdate: rule.skipStateUpdate)
+                skipStateUpdate: rule.skipStateUpdate,
+                interrupted: rule.interrupted)
         }
         return nil
     }
@@ -218,7 +226,9 @@ enum ScreenDetector {
     /// unrelated output). Add them to `screen-rules.json` and they take effect
     /// without a release.
     static let builtIn = ScreenRuleSet(
-        version: 1,
+        // 2: claude_interrupted — a newer version, so installs holding the
+        // fetched v1 file take the release asset that carries it.
+        version: 2,
         engine: ScreenRuleSet.engineVersion,
         agents: [
             AgentKind.claude.rawValue: [
@@ -246,6 +256,16 @@ enum ScreenDetector {
                     tailLines: 8, contains: ["esc to cancel"],
                     any: [["enter to select"], ["to navigate"]],
                     visibleBlocker: true),
+                // A turn aborted with Esc: Claude Code prints "Interrupted ·
+                // What should Claude do instead?" and returns to its prompt,
+                // without a hook. The spinner's "esc to interrupt" means a new
+                // turn already runs below a stale marker.
+                ScreenRule(
+                    id: "claude_interrupted", state: .idle, priority: 800,
+                    tailLines: 10, contains: ["what should claude do instead"],
+                    none: ["esc to interrupt", "enter to interrupt", "esc to cancel",
+                           "do you want to"],
+                    interrupted: true),
                 // The idle prompt footer, with no prompt open.
                 ScreenRule(
                     id: "claude_idle_footer", state: .idle, priority: 700,
@@ -275,6 +295,14 @@ extension AttentionState {
         current: AttentionState
     ) -> AttentionState? {
         guard let screen, !screen.skipStateUpdate else { return nil }
+
+        // An aborted turn is the one end of work no hook reports, so the screen
+        // may close it even under hook authority — but only a turn in flight or
+        // a question you just dismissed with Esc. Nothing was produced to
+        // review, so it is free, not ready.
+        if screen.interrupted {
+            return (current == .running || current == .waiting) ? .free : nil
+        }
 
         if hookAuthority {
             // The one case the screen knows better: something is visibly waiting

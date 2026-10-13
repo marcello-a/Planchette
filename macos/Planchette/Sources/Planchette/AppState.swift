@@ -681,12 +681,12 @@ final class AppState: ObservableObject {
     /// Size and mtime of each transcript at its last read, so an idle session
     /// costs one stat per tick, not a 512 KB read.
     private var transcriptStamps: [String: String] = [:]
-    private var transcriptUsage: [String: (model: String, usedTokens: Int)] = [:]
+    private var transcriptUsage: [String: TranscriptUsage] = [:]
 
     /// Re-read the transcripts that changed and publish the usage of every
     /// Claude terminal. The file reads run off-main.
     func refreshContextUsage() {
-        guard shows(.model) || shows(.contextUsage) else {
+        guard shows(.model) || shows(.contextUsage) || shows(.cacheTimer) else {
             if !contextUsage.isEmpty { contextUsage = [:] }
             return
         }
@@ -721,7 +721,9 @@ final class AppState: ObservableObject {
                     sawExtendedBanner: entry.value.claudeID.map(extended.contains) ?? false,
                     configuredModel: configured)
                 acc[entry.key] = ContextUsage(
-                    model: usage.model, usedTokens: usage.usedTokens, windowTokens: window)
+                    model: usage.model, usedTokens: usage.usedTokens, windowTokens: window,
+                    cacheTouchedAt: usage.at,
+                    cacheTTL: usage.cacheTTL ?? PromptCache.defaultTTL)
             }
             let stampsNow = newStamps, usageNow = usageByPath
             await MainActor.run { [weak self] in

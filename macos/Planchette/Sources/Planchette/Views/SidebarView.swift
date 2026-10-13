@@ -968,6 +968,11 @@ struct SidebarView: View {
                         if let usage = appState.contextUsage[session.id] {
                             if appState.shows(.model) { ModelLabel(model: usage.model) }
                             if appState.shows(.contextUsage) { ContextRing(usage: usage) }
+                            // A running turn keeps the cache warm — no clock then.
+                            if appState.shows(.cacheTimer), session.state != .running,
+                               let expires = usage.cacheExpiresAt {
+                                CacheTimer(expiresAt: expires)
+                            }
                         }
                     }
                     if showBranch, let branch = appState.branches[session.id] {
