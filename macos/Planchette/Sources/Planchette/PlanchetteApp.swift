@@ -17,14 +17,17 @@ struct PlanchetteApp: App {
         }
         .commands {
             CommandGroup(after: .newItem) {
+                Button(L10n.t(.newProject)) { delegate.appState.promptNewProjectInKeyWindow() }
+                    .keyboardShortcut("n")
                 Button(L10n.t(.newWindow)) {
                     openWindow(value: delegate.appState.newWindow())
                 }
-                .keyboardShortcut("n")
+                .keyboardShortcut("n", modifiers: [.command, .shift])
             }
             CommandMenu(L10n.t(.sessionMenu)) {
-                Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
+                Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
                     .keyboardShortcut("t")
+                Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
                 Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button(L10n.t(.quickSwitcher)) { delegate.appState.showQuickSwitcher() }
@@ -880,11 +883,30 @@ extension AppState {
         TerminalRegistry.shared.view(for: session, appState: self)?.sendText(command)
     }
 
-    /// ⌘T from the menu: target whichever window is key.
+    /// "New terminal…" from the menu: target whichever window is key.
     func promptNewTerminalInKeyWindow() {
         let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
         guard let windowID else { return }
         promptNewTerminal(inWindow: windowID)
+    }
+
+    /// ⌘T: a new tab in the project the key window shows, in its folder — the
+    /// tab bar's +. A window without a project has nothing to add a tab to,
+    /// so it starts the new-project flow instead.
+    func addTerminalInKeyWindow() {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
+        if let groupID = window(for: windowID)?.selectedGroupID,
+           groups.contains(where: { $0.id == groupID }) {
+            addTerminalToGroup(groupID)
+        } else {
+            promptNewProject(inWindow: windowID)
+        }
+    }
+
+    /// ⌘N: the new-project flow (folder picker) in whichever window is key.
+    func promptNewProjectInKeyWindow() {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id else { return }
+        promptNewProject(inWindow: windowID)
     }
 
     /// Folder picker → always create a NEW project (group) with a first terminal.

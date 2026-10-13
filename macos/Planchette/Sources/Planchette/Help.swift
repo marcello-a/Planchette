@@ -46,7 +46,7 @@ enum Help {
 
     static let sections: [Section] = [
         Section(titleKey: .projects, entries: [
-            Entry(.newProject, .newProjectHelp, shortcut: nil, where: .helpWhereSidebar),
+            Entry(.newProject, .newProjectHelp, shortcut: "⌘N", where: .helpWhereSidebar),
             Entry(.newFolder, .newFolderHelp, where: .helpWhereSidebar),
             Entry(.newProjectInFolderShort, .newProjectInFolderHelp, where: .helpWhereSidebar),
             Entry(.folderOverviewTitle, .folderOverviewHelp, where: .helpWhereSidebar),
@@ -67,8 +67,8 @@ enum Help {
             Entry(.helpPullRequestTitle, .helpPullRequestDetail, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .helpSectionTerminals, entries: [
-            Entry(.newTerminal, .newTerminalHelp, shortcut: "⌘T"),
-            Entry(.addTerminalHelp, nil, where: .helpWhereTabBar),
+            Entry(.newTerminal, .newTerminalHelp, where: .helpWhereMenuBar),
+            Entry(.addTerminalHelp, nil, shortcut: "⌘T", where: .helpWhereTabBar),
             Entry(.addTerminal, .addTerminalHelp, where: .helpWhereProjectOverview),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
@@ -106,7 +106,7 @@ enum Help {
         ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
-            Entry(.newWindow, .newWindowHelp, shortcut: "⌘N"),
+            Entry(.newWindow, .newWindowHelp, shortcut: "⌘⇧N"),
             Entry(.moveToNewWindow, .moveToNewWindowHelp, where: .helpWhereContextMenu),
             Entry(.mergeIntoMain, .mergeIntoMainHelp, where: .helpWhereToolbar),
             Entry(.settingsTitle, .settingsHelp, shortcut: "⌘,"),
