@@ -182,6 +182,14 @@ private struct ProjectPanelTab: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Picker(L10n.t(.doneExpiryTitle), selection: $appState.doneExpiry) {
+                    ForEach(DoneExpiry.allCases) { Text($0.label).tag($0) }
+                }
+                .help(L10n.t(.doneExpiryHelp))
+                Text(L10n.t(.doneExpiryHelp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)

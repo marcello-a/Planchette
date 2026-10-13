@@ -2809,3 +2809,35 @@ final class ProjectOverviewTests: XCTestCase {
         XCTAssertFalse(window.showsProjectOverview)
     }
 }
+
+final class DoneExpiryTests: XCTestCase {
+    func testDefaultIsOneDay() throws {
+        XCTAssertEqual(DoneExpiry.default, .oneDay)
+        let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
+        XCTAssertEqual(state.doneExpiry, .oneDay)
+    }
+
+    func testUnknownValueFallsBackToDefault() throws {
+        let json = #"{"doneExpiry": "fortnight"}"#
+        let state = try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
+        XCTAssertEqual(state.doneExpiry, .oneDay)
+    }
+
+    func testExpiresAtTheBoundary() {
+        let since = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertFalse(DoneExpiry.oneDay.isExpired(since: since, now: since.addingTimeInterval(86_399)))
+        XCTAssertTrue(DoneExpiry.oneDay.isExpired(since: since, now: since.addingTimeInterval(86_400)))
+        XCTAssertTrue(DoneExpiry.oneHour.isExpired(since: since, now: since.addingTimeInterval(3600)))
+    }
+
+    func testNeverExpires() {
+        let since = Date(timeIntervalSince1970: 0)
+        XCTAssertFalse(DoneExpiry.never.isExpired(since: since, now: Date()))
+    }
+
+    func testEveryOptionHasALabel() {
+        for option in DoneExpiry.allCases {
+            XCTAssertFalse(option.label.isEmpty, option.rawValue)
+        }
+    }
+}

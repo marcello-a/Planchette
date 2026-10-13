@@ -60,6 +60,7 @@ enum Help {
             Entry(.deleteArrangement, .deleteArrangementBody, where: .helpWhereMenuBar),
             Entry(.collapseAllProjects, nil, where: .helpWhereSidebar),
             Entry(.peekCollapsedTitle, .peekCollapsedHelp, where: .helpWhereSettings),
+            Entry(.doneExpiryTitle, .doneExpiryHelp, where: .helpWhereSettings),
             Entry(.projectPanelTab, .projectPanelIntro, where: .helpWhereSettings),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),

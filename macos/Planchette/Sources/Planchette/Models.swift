@@ -760,6 +760,8 @@ struct PersistedState: Codable {
     /// Whether a collapsed sidebar project still lists its terminals with an
     /// unread question or error. On by default, like every other setting.
     var peekCollapsedProjects: Bool = true
+    /// How long a terminal keeps its done check before it goes back to free.
+    var doneExpiry: DoneExpiry = .default
     /// Which extra details the project panel shows (Settings → Project panel).
     var sidebarDetails = SidebarDetails()
     /// The IDE the "look at code" button always opens, once chosen in its
@@ -779,6 +781,7 @@ struct PersistedState: Codable {
         durableTerminals: Bool,
         durableDefaultApplied: Bool = true,
         peekCollapsedProjects: Bool = true,
+        doneExpiry: DoneExpiry = .default,
         sidebarDetails: SidebarDetails = SidebarDetails(),
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false
@@ -793,6 +796,7 @@ struct PersistedState: Codable {
         self.autoUpdateCheck = autoUpdateCheck
         self.durableTerminals = durableTerminals
         self.peekCollapsedProjects = peekCollapsedProjects
+        self.doneExpiry = doneExpiry
         self.sidebarDetails = sidebarDetails
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
@@ -813,6 +817,8 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
         peekCollapsedProjects =
             try c.decodeIfPresent(Bool.self, forKey: .peekCollapsedProjects) ?? true
+        // An unknown raw value (a newer build's option) falls back, not the decode.
+        doneExpiry = (try? c.decodeIfPresent(DoneExpiry.self, forKey: .doneExpiry)) ?? .default
         sidebarDetails =
             try c.decodeIfPresent(SidebarDetails.self, forKey: .sidebarDetails) ?? SidebarDetails()
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)

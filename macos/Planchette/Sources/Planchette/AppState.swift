@@ -49,6 +49,14 @@ final class AppState: ObservableObject {
     @Published var peekCollapsedProjects = true {
         didSet { scheduleSave() }
     }
+    /// How long a terminal keeps its done check before it goes back to free
+    /// (Settings → Project panel). Applied by the housekeeping tick.
+    @Published var doneExpiry: DoneExpiry = .default {
+        didSet {
+            scheduleSave()
+            if doneExpiry != oldValue { expireDoneChecks() }
+        }
+    }
     /// Which extra details the project panel shows (Settings → Project panel).
     @Published var sidebarDetails = SidebarDetails() {
         didSet {
@@ -138,6 +146,7 @@ final class AppState: ObservableObject {
             autoUpdateCheck = saved.autoUpdateCheck
             durableTerminals = saved.durableTerminals
             peekCollapsedProjects = saved.peekCollapsedProjects
+            doneExpiry = saved.doneExpiry
             sidebarDetails = saved.sidebarDetails
             // Load the opt-in AI flag early too: a launch with a saved-but-
             // sessionless state runs startFresh(archiving: nil), which keeps the
@@ -183,6 +192,7 @@ final class AppState: ObservableObject {
     /// counts on in the badges. State changes reset the spell (see setState).
     private func attentionHousekeeping() {
         checkSnoozeExpiry()
+        expireDoneChecks()
         refreshDockBadge()
         for session in sessions.values
         where session.state.needsAttention && !isMuted(session)
@@ -196,6 +206,16 @@ final class AppState: ObservableObject {
                 body: session.lastMessage ?? session.state.label,
                 sessionID: session.id
             )
+        }
+    }
+
+    /// A done check older than `doneExpiry` goes back to free — read or not,
+    /// a turn that finished that long ago is no longer news. Only `ready`:
+    /// a question or an error stays until it is answered.
+    func expireDoneChecks(now: Date = Date()) {
+        for session in sessions.values
+        where session.state == .ready && doneExpiry.isExpired(since: session.stateSince, now: now) {
+            setState(session.id, .free)
         }
     }
 
@@ -1914,6 +1934,7 @@ final class AppState: ObservableObject {
             autoUpdateCheck: autoUpdateCheck,
             durableTerminals: durableTerminals,
             peekCollapsedProjects: peekCollapsedProjects,
+            doneExpiry: doneExpiry,
             sidebarDetails: sidebarDetails,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching
@@ -1979,6 +2000,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = state.autoUpdateCheck
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
+        doneExpiry = state.doneExpiry
         sidebarDetails = state.sidebarDetails
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
@@ -2087,6 +2109,7 @@ final class AppState: ObservableObject {
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
+        doneExpiry = previous?.doneExpiry ?? doneExpiry
         sidebarDetails = previous?.sidebarDetails ?? sidebarDetails
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
