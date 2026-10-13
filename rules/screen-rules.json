@@ -7,6 +7,7 @@
           "showing detailed transcript"
         ],
         "id": "claude_transcript_viewer",
+        "interrupted": false,
         "lineRegex": [],
         "none": [],
         "priority": 1000,
@@ -35,6 +36,7 @@
         ],
         "contains": [],
         "id": "claude_permission_prompt",
+        "interrupted": false,
         "lineRegex": [],
         "none": [],
         "priority": 900,
@@ -56,6 +58,7 @@
           "esc to cancel"
         ],
         "id": "claude_selection_prompt",
+        "interrupted": false,
         "lineRegex": [],
         "none": [],
         "priority": 880,
@@ -67,9 +70,30 @@
       {
         "any": [],
         "contains": [
+          "what should claude do instead"
+        ],
+        "id": "claude_interrupted",
+        "interrupted": true,
+        "lineRegex": [],
+        "none": [
+          "esc to interrupt",
+          "enter to interrupt",
+          "esc to cancel",
+          "do you want to"
+        ],
+        "priority": 800,
+        "skipStateUpdate": false,
+        "state": "idle",
+        "tailLines": 10,
+        "visibleBlocker": false
+      },
+      {
+        "any": [],
+        "contains": [
           "? for shortcuts"
         ],
         "id": "claude_idle_footer",
+        "interrupted": false,
         "lineRegex": [],
         "none": [
           "esc to cancel",
@@ -85,5 +109,5 @@
     "codex": []
   },
   "engine": 1,
-  "version": 1
+  "version": 2
 }

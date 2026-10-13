@@ -82,7 +82,9 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   miss a permission prompt, the screen cannot. Without hook authority (no
   integration, or an agent that only claims its session) the screen drives every
   state. Never widen that: a scraped pattern must not be able to overrule a hook
-  that is talking to us.
+  that is talking to us. The one other exception is an Esc-aborted turn: Claude
+  Code fires no hook for it, so the `claude_interrupted` rule may send a
+  `running`/`waiting` terminal to `free` — it ends work no hook will ever end.
 - **Three hook events do not mean what their names suggest.** `SubagentStop`
   fires while the main agent keeps working, so it must not report a finished
   turn; `PreToolUse`/`PostToolUse` are installed only because granting a
