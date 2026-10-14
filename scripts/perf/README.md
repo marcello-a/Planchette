@@ -34,6 +34,13 @@ nothing else: standard library only (no new dependency, AGENTS.md rule 1).
    priority pushed the load average past 200, and the old app's pollers started over 100 `git`
    processes. `slow_machine.sh` keeps the load on the efficiency cores and has a watchdog.
 
+7. **Never script or read a process through System Events without checking which one it means.**
+   Asked about a pid it has not registered yet, `first process whose unix id is N` does not fail: it
+   answered with the installed Planchette (`build.planchette.app`) once, and the isolated instance
+   was a different process. Use `system_events_process(pid)` from `perf_common.py`, which waits
+   until the process it names reports that pid, and take pictures with `screencapture -l <window
+   id>` of the pid's own windows (`tools/windows.swift`) instead of reading the interface tree.
+
 ## Quick start
 
 ```sh
