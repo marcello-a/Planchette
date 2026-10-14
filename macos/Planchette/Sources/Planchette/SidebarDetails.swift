@@ -8,6 +8,7 @@ import Foundation
 /// transcript read and are opinionated about what a row should say.
 enum SidebarDetail: String, CaseIterable, Identifiable {
     case path, branch, pullRequest, task, age, tags, note, finished, snooze, attentionCounts
+    case backgroundTasks
     case model, contextUsage, cacheTimer
 
     var id: String { rawValue }
@@ -31,6 +32,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .finished: .detailFinished
         case .snooze: .detailSnooze
         case .attentionCounts: .detailAttentionCounts
+        case .backgroundTasks: .detailBackgroundTasks
         case .model: .detailModel
         case .contextUsage: .detailContextUsage
         case .cacheTimer: .detailCacheTimer
@@ -50,6 +52,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .finished: .detailFinishedHelp
         case .snooze: .detailSnoozeHelp
         case .attentionCounts: .detailAttentionCountsHelp
+        case .backgroundTasks: .detailBackgroundTasksHelp
         case .model: .detailModelHelp
         case .contextUsage: .detailContextUsageHelp
         case .cacheTimer: .detailCacheTimerHelp

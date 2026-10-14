@@ -436,6 +436,9 @@ final class HookServer {
         // SessionStart tells us *why* a conversation began (startup / clear /
         // resume / compact / fork) — which decides whether it starts out free.
         let source = event["source"] as? String
+        // What the event says about background shells and agents (Claude only:
+        // the other agents' hooks carry none of these fields).
+        let background = BackgroundTasks.signal(from: event)
 
         DispatchQueue.main.async { [weak self] in
             self?.appState?.applyHookEvent(
@@ -446,7 +449,8 @@ final class HookServer {
                 message: message,
                 prompt: prompt,
                 source: source,
-                agent: agent
+                agent: agent,
+                background: background
             )
         }
         return false

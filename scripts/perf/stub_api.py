@@ -3,8 +3,16 @@
 usage: stub_api.py <port> <logfile>
 Every request is logged as one JSON line: method, path and, for /v1/messages, the text of the
 last user message. Replies are valid (streamed) message responses. Binds to 127.0.0.1 only.
+
+Replies are plain text, except when the last user message holds one of these tokens (and the
+request is not the small model's title request): the reply is then a tool call, so the real
+Claude Code starts real background work without any model behind it (`background_tasks.py`).
+  BGSHELL<n>   Bash `sleep <n>` with run_in_background -> a background shell for n seconds
+  BGAGENT<n>   Agent (async) whose work -> a background agent that finishes after n seconds
+  SUBWORK<n>   the launched agent's own prompt: this reply is held back n seconds
+Each token is answered once (see `answered`); a second task needs a different number.
 """
-import json, sys, time
+import json, re, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 port, logfile = int(sys.argv[1]), sys.argv[2]
@@ -27,6 +35,20 @@ def last_user_text(body):
     except Exception as error:
         return f"(unparsed: {error})"
     return ""
+
+# Claude Code does not send a plain transcript: a new prompt arrives in the same user message as the
+# result of the previous tool call, and an earlier prompt's text stays in later requests. "The last
+# user message holds BGSHELL20" therefore cannot tell a new prompt from the follow-up to its tool
+# call, and answering every request that holds the token would call the tool for ever. Each token
+# is answered once; give a second task a different number.
+answered, answered_lock = set(), threading.Lock()
+
+def first_time(token):
+    with answered_lock:
+        if token in answered:
+            return False
+        answered.add(token)
+        return True
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -76,22 +98,46 @@ class Handler(BaseHTTPRequestHandler):
         # message of a conversation starts with long system reminders, so a prefix is useless).
         log({"method": "POST", "path": self.path, "model": body.get("model"), "stream": body.get("stream"),
              "max_tokens": body.get("max_tokens"), "user_text": text[:400], "user_tail": text[-600:],
-             "user_len": len(text), "probes": re.findall(r"[A-Z][A-Z0-9_]{5,}", text[-600:])})
+             "user_len": len(text), "probes": re.findall(r"[A-Z][A-Z0-9_]{5,}", text[-600:]),
+             "shape": [(m.get("role"), [p.get("type") for p in m["content"] if isinstance(p, dict)] if isinstance(m.get("content"), list) else "str")
+                       for m in body.get("messages", [])[-4:]]})
         reply = "STUB-REPLY"
         usage = {"input_tokens": 10, "output_tokens": 3}
+        scripted = None
+        if "haiku" not in (body.get("model") or "") and body.get("stream"):
+            work, shell, agent = (re.search(token + r"(\d+)", text) for token in ("SUBWORK", "BGSHELL", "BGAGENT"))
+            work, shell, agent = (m if m and first_time(m.group(0)) else None for m in (work, shell, agent))
+            if work:
+                time.sleep(int(work.group(1)))
+                reply = "SUBAGENT-DONE"
+            elif shell:
+                scripted = ("Bash", {"command": f"sleep {shell.group(1)}", "description": f"stub shell {shell.group(1)}s",
+                                     "run_in_background": True})
+            elif agent:
+                scripted = ("Agent", {"description": f"stub agent {agent.group(1)}s", "subagent_type": "general-purpose",
+                                      "prompt": f"SUBWORK{agent.group(1)} do the stub work", "run_in_background": True})
         if not body.get("stream"):
             self._send_json(200, {"id": "msg_stub", "type": "message", "role": "assistant", "model": body.get("model", "stub"),
                                   "content": [{"type": "text", "text": reply}], "stop_reason": "end_turn",
                                   "stop_sequence": None, "usage": usage})
             return
+        if scripted:
+            name, tool_input = scripted
+            block = {"type": "tool_use", "id": f"toolu_stub{int(time.time() * 1000)}", "name": name, "input": {}}
+            delta = {"type": "input_json_delta", "partial_json": json.dumps(tool_input)}
+            stop = "tool_use"
+        else:
+            block = {"type": "text", "text": ""}
+            delta = {"type": "text_delta", "text": reply}
+            stop = "end_turn"
         events = [
             ("message_start", {"type": "message_start", "message": {"id": "msg_stub", "type": "message", "role": "assistant",
                                "model": body.get("model", "stub"), "content": [], "stop_reason": None, "stop_sequence": None,
                                "usage": {"input_tokens": 10, "output_tokens": 1}}}),
-            ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
-            ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": reply}}),
+            ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": block}),
+            ("content_block_delta", {"type": "content_block_delta", "index": 0, "delta": delta}),
             ("content_block_stop", {"type": "content_block_stop", "index": 0}),
-            ("message_delta", {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 3}}),
+            ("message_delta", {"type": "message_delta", "delta": {"stop_reason": stop, "stop_sequence": None}, "usage": {"output_tokens": 3}}),
             ("message_stop", {"type": "message_stop"}),
         ]
         payload = "".join(f"event: {name}\ndata: {json.dumps(data)}\n\n" for name, data in events).encode()

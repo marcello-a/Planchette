@@ -88,6 +88,7 @@ enum Help {
             Entry(.helpTerminalRowTitle, .helpTerminalRowDetail, where: .helpWhereSidebar),
             Entry(.helpContextTitle, .helpContextDetail, where: .helpWhereSettings),
             Entry(.detailCacheTimer, .detailCacheTimerHelp, where: .helpWhereSettings),
+            Entry(.detailBackgroundTasks, .detailBackgroundTasksHelp, where: .helpWhereSidebar),
             Entry(.markFinished, .markFinishedHelp, where: .helpWhereContextMenu),
             Entry(.addNote, .noteHelp, where: .helpWhereContextMenu),
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),

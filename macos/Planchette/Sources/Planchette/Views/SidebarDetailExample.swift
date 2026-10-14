@@ -51,6 +51,12 @@ struct SidebarDetailExample: View {
                 StateCountBadge(state: .waiting, count: 1)
                 StateCountBadge(state: .ready, count: 2)
             }
+        case .backgroundTasks:
+            HStack(spacing: 8) {
+                BackgroundTasksBadge(tasks: Self.sampleTasks(1))
+                BackgroundTasksBadge(tasks: Self.sampleTasks(3))
+                BackgroundTasksBadge(tasks: Self.sampleTasks(12))
+            }
         case .model:
             ModelLabel(model: "claude-opus-5-5")
         case .contextUsage:
@@ -68,6 +74,13 @@ struct SidebarDetailExample: View {
                 CacheTimer(expiresAt: Date().addingTimeInterval(3 * 60))
                 CacheTimer(expiresAt: Date().addingTimeInterval(-10 * 60))
             }
+        }
+    }
+
+    private static func sampleTasks(_ count: Int) -> [BackgroundTask] {
+        (1...count).map {
+            BackgroundTask(id: "sample-\($0)", kind: $0 % 2 == 0 ? .agent : .shell,
+                           title: $0 % 2 == 0 ? "Review the diff" : "npm run dev")
         }
     }
 

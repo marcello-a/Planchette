@@ -8,6 +8,21 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Background agents and shells show under the state icon.** When Claude Code
+  runs something in the background — a dev server it started with
+  `run_in_background`, an agent it launched without waiting for it — the
+  terminal's row gets a small terminal symbol under the state icon, with the
+  number inside it from two on. Hover for what runs. A terminal that looks idle
+  is often not: this says so. Planchette uses the list Claude Code itself sends
+  when a turn ends (`background_tasks` in the `Stop` hook), adds a task the
+  moment a tool call starts one, and drops it when its end notice arrives. The
+  tasks belong to the Claude process, so they survive `/clear`. On by default;
+  Settings → Project panel has a switch. It needs a Claude Code that sends that
+  list (2.1.299 does); with an older one the symbol never shows. `session get`
+  reports the same counts as `background_tasks`, so an agent can see that a
+  `ready` terminal is not done yet.
+
 ### Security
 - **The clipboard asks first.** A program in a terminal that asks to read your
   clipboard (OSC 52), and a paste that could run commands the moment it arrives,
@@ -50,6 +65,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   scrollback.
 
 ### Fixed
+- **A finished background task is no longer shown as the terminal's task.** Claude
+  Code announces the end of a shell or an agent as a prompt (`<task-notification>…`),
+  and the sidebar printed that as what the terminal was working on.
 - **`planchette session prompt` submits again.** It typed the text with a carriage
   return inside the paste, and a program that asked for bracketed paste — zsh (the
   macOS default), fish, and Claude Code — took that for a line break in the text:
