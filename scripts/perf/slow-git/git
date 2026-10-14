@@ -1,0 +1,7 @@
+#!/bin/sh
+# Test shim, on PATH for ONE test process only: makes one git subcommand slow, to emulate a machine
+# on which every exec and file access is delayed (endpoint security scanning, CPU starvation).
+if [ -n "$PLT_GIT_SLOW_SUBCOMMAND" ] && [ "$1" = "$PLT_GIT_SLOW_SUBCOMMAND" ]; then
+  sleep "${PLT_GIT_DELAY:-16}"
+fi
+exec /usr/bin/git "$@"

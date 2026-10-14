@@ -220,6 +220,13 @@ Then exercise the actual path you touched (open a terminal, trigger the hook,
 switch language, etc.). The repo history shows end-to-end verification via
 AppleScript UI automation for UI-affecting changes.
 
+**Measure what unit tests cannot see.** A freeze, a dead terminal and an unsent prompt each
+lived in how AppKit, libghostty and the OS behave together, and each was found by running the
+app, not by reading it. `scripts/perf/` (see its README, "Safety" first) runs an isolated
+instance and measures: loop iterations while a dialog is open, the control API under abuse,
+a prompt in zsh and in the real Claude Code, a terminal started with the screens asleep.
+Run the one that matches what you touched.
+
 **Tests must survive a slow machine.** A corporate laptop with endpoint security, or a
 loaded CI runner, can start a process in seconds. Three rules keep the suite green there:
 
