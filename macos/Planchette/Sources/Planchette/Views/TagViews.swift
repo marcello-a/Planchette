@@ -56,8 +56,8 @@ struct TagMenu: View {
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         alert.accessoryView = field
         if alert.runModal() == .alertFirstButtonReturn {
-            let tag = field.stringValue.trimmingCharacters(in: .whitespaces).lowercased()
-            guard !tag.isEmpty else { return }
+            // The same rules as the tag list in Settings: one line, lowercase, short.
+            guard let tag = TagList.normalized(field.stringValue) else { return }
             appState.addTag(tag, on: session.id)
         }
     }

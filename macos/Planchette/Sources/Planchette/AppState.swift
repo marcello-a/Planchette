@@ -67,6 +67,11 @@ final class AppState: ObservableObject {
     }
 
     func shows(_ detail: SidebarDetail) -> Bool { sidebarDetails.shows(detail) }
+    /// The tags a terminal's Tags menu offers, in your order (Settings → Project
+    /// panel → Tags). Starts as the four suggestions.
+    @Published var tagList: [String] = TagList.defaults {
+        didSet { scheduleSave() }
+    }
     /// The IDE the "look at code" button always opens, once one is chosen in
     /// its menu. Nil = no choice made yet: the button falls back to whichever
     /// known IDE is running (see `IDEs.target`).
@@ -148,6 +153,7 @@ final class AppState: ObservableObject {
             peekCollapsedProjects = saved.peekCollapsedProjects
             doneExpiry = saved.doneExpiry
             sidebarDetails = saved.sidebarDetails
+            tagList = saved.tagList
             // Load the opt-in AI flag early too: a launch with a saved-but-
             // sessionless state runs startFresh(archiving: nil), which keeps the
             // *current* value — so without this a user's aiEnabled=false silently
@@ -1735,13 +1741,54 @@ final class AppState: ObservableObject {
 
     // MARK: Tags
 
-    /// All tags in use plus the default suggestions.
+    /// What a terminal's Tags menu offers: your list, then the tags some terminal
+    /// carries that the list does not have.
     var knownTags: [String] {
-        var tags = TerminalSession.suggestedTags
-        for session in sessions.values {
-            for tag in session.tags where !tags.contains(tag) { tags.append(tag) }
+        TagList.known(list: tagList, inUse: sessions.values.map(\.tags))
+    }
+
+    /// Tags terminals carry that are not on your list, for Settings to offer.
+    var strayTags: [String] {
+        TagList.strays(list: tagList, inUse: sessions.values.map(\.tags))
+    }
+
+    /// On how many terminals a tag sits.
+    func tagUsage(_ tag: String) -> Int {
+        TagList.usage(of: tag, in: sessions.values.map(\.tags))
+    }
+
+    func addTagToList(_ name: String) {
+        tagList = TagList.adding(name, to: tagList)
+    }
+
+    /// A rename is meant everywhere — the list, every terminal that carries the
+    /// tag, the saved arrangements (`TagBook` holds the rules).
+    func renameTag(_ old: String, to name: String) {
+        apply(tagBook.renaming(old, to: name))
+    }
+
+    /// A delete is meant everywhere too: the tag comes off every terminal.
+    func deleteTag(_ tag: String) {
+        apply(tagBook.deleting(tag))
+    }
+
+    func restoreDefaultTagList() {
+        tagList = TagList.defaults
+    }
+
+    private var tagBook: TagBook {
+        TagBook(list: tagList, terminals: sessions.mapValues(\.tags), presets: presets)
+    }
+
+    private func apply(_ book: TagBook) {
+        tagList = book.list
+        for (id, tags) in book.terminals where sessions[id]?.tags != tags {
+            update(id) { $0.tags = tags }
         }
-        return tags
+        if book.presets != presets {
+            presets = book.presets
+            PresetStore.save(book.presets)
+        }
     }
 
     func toggleTag(_ tag: String, on sessionID: UUID) {
@@ -2023,6 +2070,7 @@ final class AppState: ObservableObject {
             peekCollapsedProjects: peekCollapsedProjects,
             doneExpiry: doneExpiry,
             sidebarDetails: sidebarDetails,
+            tagList: tagList,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching
         )
@@ -2090,6 +2138,7 @@ final class AppState: ObservableObject {
         peekCollapsedProjects = state.peekCollapsedProjects
         doneExpiry = state.doneExpiry
         sidebarDetails = state.sidebarDetails
+        tagList = state.tagList
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         windowsToOpen = windows.dropFirst().map(\.id)
@@ -2199,6 +2248,7 @@ final class AppState: ObservableObject {
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
         doneExpiry = previous?.doneExpiry ?? doneExpiry
         sidebarDetails = previous?.sidebarDetails ?? sidebarDetails
+        tagList = previous?.tagList ?? tagList
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching

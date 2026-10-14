@@ -75,6 +75,7 @@ enum Help {
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
             Entry(.clipboardHelpTitle, .clipboardHelpDetail),
             Entry(.tags, .tagsHelp, where: .helpWhereContextMenu),
+            Entry(.tagEditorTitle, .tagEditorHelp, where: .helpWhereSettings),
             Entry(.startupCommand, .startupCommandHelp, where: .helpWhereContextMenu),
             Entry(.rename, .renameHelp, where: .helpWhereContextMenu),
             Entry(.color, .colorHelp, where: .helpWhereContextMenu),
