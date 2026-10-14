@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.35] — 2026-10-14
+
 ### Added
 - **Background agents and shells show under the state icon.** When Claude Code
   runs something in the background — a dev server it started with
