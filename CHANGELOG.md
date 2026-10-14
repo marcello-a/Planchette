@@ -22,6 +22,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   list (2.1.299 does); with an older one the symbol never shows. `session get`
   reports the same counts as `background_tasks`, so an agent can see that a
   `ready` terminal is not done yet.
+- **A tag list you can edit.** Settings → Project panel → Tags lists the tags a
+  terminal's Tags menu offers — the four suggestions at first. Add, rename or delete
+  tags there. A rename or a delete reaches every terminal that carries the tag and
+  the saved arrangements, so none of them brings it back; deleting a tag that is in
+  use asks first. A tag made with "New tag…" shows below the list until you add it,
+  and "Restore default list" brings the four suggestions back.
 
 ### Security
 - **The clipboard asks first.** A program in a terminal that asks to read your
@@ -129,6 +135,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   mode.
 
 ### Changed
+- **Settings → Project panel is sorted by what a switch is about.** Three pages —
+  Terminals, Projects, Tags — instead of one long list. A terminal's details come in
+  four groups: where it is, what it is doing, your marks, Claude Code (the three that
+  start off, with the reason). What a project's row shows and how a folded project
+  behaves have their own page; "Clear the done check after" moved to Terminals. The
+  page you were on is remembered.
 - **The "finished" mark ends with `/clear` and with a new Claude, not only with a
   prompt.** A terminal you cleared or restarted kept its seal and its dimmed row,
   though the work they stood for was gone. A resumed conversation — what the app does

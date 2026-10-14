@@ -62,8 +62,9 @@ groups terminals by project. See [README.md](README.md) and
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `Help.swift` | The Help tab's catalogue: every feature, as `LKey` references to the controls' own strings (ground rule 5) |
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
+| `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command

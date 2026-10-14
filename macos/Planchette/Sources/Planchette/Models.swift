@@ -794,6 +794,10 @@ struct PersistedState: Codable {
     var doneExpiry: DoneExpiry = .default
     /// Which extra details the project panel shows (Settings → Project panel).
     var sidebarDetails = SidebarDetails()
+    /// The tags a terminal's Tags menu offers, in the user's order (Settings →
+    /// Project panel → Tags). A state that never carried the key gets the four
+    /// suggestions; an empty list is a choice and stays empty.
+    var tagList: [String] = TagList.defaults
     /// The IDE the "look at code" button always opens, once chosen in its
     /// menu. Nil = never chosen — the button follows whatever IDE is running.
     var defaultIDEBundleID: String?
@@ -813,6 +817,7 @@ struct PersistedState: Codable {
         peekCollapsedProjects: Bool = true,
         doneExpiry: DoneExpiry = .default,
         sidebarDetails: SidebarDetails = SidebarDetails(),
+        tagList: [String] = TagList.defaults,
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false
     ) {
@@ -828,6 +833,7 @@ struct PersistedState: Codable {
         self.peekCollapsedProjects = peekCollapsedProjects
         self.doneExpiry = doneExpiry
         self.sidebarDetails = sidebarDetails
+        self.tagList = tagList
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
     }
@@ -851,6 +857,8 @@ struct PersistedState: Codable {
         doneExpiry = (try? c.decodeIfPresent(DoneExpiry.self, forKey: .doneExpiry)) ?? .default
         sidebarDetails =
             try c.decodeIfPresent(SidebarDetails.self, forKey: .sidebarDetails) ?? SidebarDetails()
+        tagList = try c.decodeIfPresent([String].self, forKey: .tagList).map(TagList.sanitized)
+            ?? TagList.defaults
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
         askedAboutSpaceSwitching =
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
