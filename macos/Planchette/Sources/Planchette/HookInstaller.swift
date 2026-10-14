@@ -81,17 +81,48 @@ enum HookInstaller {
             return
         }
         // One bad config must not stop the other agents from being wired up.
-        do { try mergeSettings() } catch { NSLog("claude hook install failed: \(error)") }
-        do { try installCodex() } catch { NSLog("codex hook install failed: \(error)") }
+        do {
+            // Only wire up settings if the hook script is actually deployed.
+            if FileManager.default.fileExists(atPath: hookScriptURL.path) {
+                let settings = FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".claude/settings.json")
+                try mergeSettings(at: settings, hookCmd: hookCommand(for: .claude))
+            }
+        } catch {
+            NSLog("%@", describeWriteFailure(
+                error, path: FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".claude/settings.json").path))
+        }
+        do { try installCodex() } catch {
+            NSLog("%@", describeWriteFailure(
+                error, path: FileManager.default.homeDirectoryForCurrentUser
+                    .appendingPathComponent(".codex").path))
+        }
     }
 
-    /// Copy the bundled hook script to the stable location and make it
-    /// executable. Refreshed each launch so updates ship the latest script.
-    private static func deployScript() throws {
-        guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("planchette-hook"),
-              FileManager.default.fileExists(atPath: bundled.path)
-        else { return }   // dev run (unbundled) — use hook/install-hooks.sh instead
-        let dest = hookScriptURL
+    /// The copy of `name` (`planchette-hook`, `planchette`) that ships inside the
+    /// app, or nil when this is not the packaged app.
+    ///
+    /// A dev run — `./.build/debug/Planchette`, which is what AGENTS.md tells you to
+    /// do — has no bundle: `Bundle.main.resourceURL` is the folder the executable sits
+    /// in. The file system is case-insensitive, so `<that folder>/planchette` *is* the
+    /// executable `Planchette`, `fileExists` said yes, and every dev run copied the
+    /// 27 MB binary over the installed CLI: agents in the real app's terminals
+    /// (`$PLANCHETTE_CLI`) then started a second Planchette instead of talking to the
+    /// first. Only a real `.app` has bundled resources.
+    static func bundledResource(named name: String, in bundle: Bundle = .main) -> URL? {
+        guard bundle.bundleURL.pathExtension == "app",
+              let url = bundle.resourceURL?.appendingPathComponent(name),
+              FileManager.default.fileExists(atPath: url.path)
+        else { return nil }
+        return url
+    }
+
+    /// Copy the bundled `name` to `dest` and make it executable. Refreshed each
+    /// launch, so updates ship the latest. Does nothing for a dev run (use
+    /// `hook/install-hooks.sh` instead).
+    static func deploy(_ name: String, to dest: URL, from bundle: Bundle = .main) throws {
+        guard let bundled = bundledResource(named: name, in: bundle) else { return }
         let fm = FileManager.default
         try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
         if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
@@ -101,29 +132,69 @@ enum HookInstaller {
         try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
     }
 
+    private static func deployScript() throws { try deploy("planchette-hook", to: hookScriptURL) }
+
     /// Same refresh-every-launch deal as the hook script.
-    private static func deployCLI() throws {
-        guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("planchette"),
-              FileManager.default.fileExists(atPath: bundled.path)
-        else { return }   // dev run (unbundled)
-        let dest = cliURL
-        let fm = FileManager.default
-        try fm.createDirectory(at: planchetteDirectory, withIntermediateDirectories: true)
-        if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
-            try? fm.removeItem(at: dest)
-            try fm.copyItem(at: bundled, to: dest)
-        }
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
-    }
+    private static func deployCLI() throws { try deploy("planchette", to: cliURL) }
 
     // MARK: Claude Code — ~/.claude/settings.json
 
-    private static func mergeSettings() throws {
+    /// Where a config file really lives. Dotfile managers (stow, chezmoi, a bare
+    /// git repo) keep `~/.claude/settings.json` as a symlink into a repository,
+    /// and an atomic write — which renames a temp file over its destination —
+    /// replaces that symlink with a regular file: the user's dotfiles silently
+    /// stop tracking the file, and the hooks never reach the copy they track.
+    /// Writing to the resolved path updates the real file and leaves the link
+    /// where it is.
+    ///
+    /// `resolvingSymlinksInPath` leaves a link whose target does not exist yet (the
+    /// dotfiles checkout has not been cloned, the file has not been created) as
+    /// the link itself, and the write then replaced it. Such a link is followed by
+    /// hand, so the file is created where the link points.
+    static func realLocation(of url: URL) -> URL {
         let fm = FileManager.default
-        // Only wire up settings if the hook script is actually deployed.
-        guard fm.fileExists(atPath: hookScriptURL.path) else { return }
-        let settingsURL = fm.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
-        let hookCmd = hookCommand(for: .claude)
+        var current = url.resolvingSymlinksInPath()
+        for _ in 0..<16 {   // a chain of links, not a loop
+            guard let destination = try? fm.destinationOfSymbolicLink(atPath: current.path) else {
+                return current
+            }
+            current = URL(
+                fileURLWithPath: destination,
+                relativeTo: current.deletingLastPathComponent()
+            ).standardizedFileURL.resolvingSymlinksInPath()
+        }
+        return current
+    }
+
+    /// Say why a config file could not be written, in terms of what to do. A file
+    /// that is read-only — typically a link into a declarative store such as
+    /// home-manager's — is somebody else's to change, and Planchette must not
+    /// "fix" it by replacing the link; the hooks have to be added where it is
+    /// managed. This runs on every launch, so it only logs.
+    static func describeWriteFailure(_ error: Error, path: String) -> String {
+        let code = (error as? CocoaError)?.code
+        let readOnly = code == .fileWriteNoPermission || code == .fileWriteVolumeReadOnly
+            || (error as NSError).domain == NSPOSIXErrorDomain
+                && [Int(EACCES), Int(EROFS), Int(EPERM)].contains((error as NSError).code)
+        return readOnly
+            ? "hook install: \(path) is read-only (managed by something else?) — add the "
+                + "Planchette hooks there by hand (see docs/API.md); nothing was changed"
+            : "hook install: could not write \(path): \(error)"
+    }
+
+    /// Copy the file once, before the first change, next to where the user sees it.
+    /// The source is the *resolved* file: copying a symlink copies the link, which
+    /// would make the "backup" point at the very file about to be rewritten.
+    private static func backUpOnce(_ url: URL, as backup: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path), !fm.fileExists(atPath: backup.path) else { return }
+        try? fm.copyItem(at: realLocation(of: url), to: backup)
+    }
+
+    /// Merge the Planchette hook into a Claude Code `settings.json`, keeping
+    /// every other setting and every foreign hook.
+    static func mergeSettings(at settingsURL: URL, hookCmd: String) throws {
+        let fm = FileManager.default
 
         var settings: [String: Any] = [:]
         let exists = fm.fileExists(atPath: settingsURL.path)
@@ -169,17 +240,16 @@ enum HookInstaller {
 
         // One-time backup before the first modification.
         if exists {
-            let backup = settingsURL.deletingPathExtension().appendingPathExtension("json.planchette-bak")
-            if !fm.fileExists(atPath: backup.path) {
-                try? fm.copyItem(at: settingsURL, to: backup)
-            }
+            backUpOnce(
+                settingsURL,
+                as: settingsURL.deletingPathExtension().appendingPathExtension("json.planchette-bak"))
         }
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         let out = try JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys])
         // Write atomically: this is an unlocked read-modify-write of a file Claude
         // Code also owns, and a crash or power loss mid-write would truncate the
         // user's whole settings.json.
-        try out.write(to: settingsURL, options: .atomic)
+        try out.write(to: realLocation(of: settingsURL), options: .atomic)
         NSLog("hook install: wired Planchette hooks into \(settingsURL.path)")
     }
 
@@ -192,14 +262,13 @@ enum HookInstaller {
         // No ~/.codex → Codex isn't installed. Creating it would be presumptuous.
         guard fm.fileExists(atPath: dir.path) else { return }
 
-        try mergeCodexHooks(dir: dir)
+        try mergeCodexHooks(dir: dir, hookCmd: hookCommand(for: .codex))
         try enableCodexHooksFeature(dir: dir)
     }
 
-    private static func mergeCodexHooks(dir: URL) throws {
+    static func mergeCodexHooks(dir: URL, hookCmd: String) throws {
         let fm = FileManager.default
         let hooksURL = dir.appendingPathComponent("hooks.json")
-        let hookCmd = hookCommand(for: .codex)
 
         var root: [String: Any] = [:]
         let exists = fm.fileExists(atPath: hooksURL.path)
@@ -238,26 +307,25 @@ enum HookInstaller {
         root["hooks"] = hooks
 
         if exists {
-            let backup = hooksURL.deletingPathExtension().appendingPathExtension("json.planchette-bak")
-            if !fm.fileExists(atPath: backup.path) {
-                try? fm.copyItem(at: hooksURL, to: backup)
-            }
+            backUpOnce(
+                hooksURL,
+                as: hooksURL.deletingPathExtension().appendingPathExtension("json.planchette-bak"))
         }
         let out = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         // Atomic for the same reason as settings.json: never leave a half-written
         // config behind if the write is interrupted.
-        try out.write(to: hooksURL, options: .atomic)
+        try out.write(to: realLocation(of: hooksURL), options: .atomic)
         NSLog("hook install: wired Planchette hooks into \(hooksURL.path)")
     }
 
     /// Codex only runs hooks when the feature is switched on in config.toml.
     /// Edited as text, not re-serialized: config.toml is the user's file and a
     /// TOML round-trip would drop their comments and ordering.
-    private static func enableCodexHooksFeature(dir: URL) throws {
+    static func enableCodexHooksFeature(dir: URL) throws {
         let url = dir.appendingPathComponent("config.toml")
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         guard let updated = codexConfigEnablingHooks(existing) else { return }
-        try updated.write(to: url, atomically: true, encoding: .utf8)
+        try updated.write(to: realLocation(of: url), atomically: true, encoding: .utf8)
         NSLog("hook install: enabled codex hooks in \(url.path)")
     }
 

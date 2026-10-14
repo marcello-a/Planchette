@@ -148,6 +148,38 @@ enum ControlAPI {
         return dict
     }
 
+    /// The last `lines` lines of `text` (at least one), joined with "\n".
+    ///
+    /// Found by scanning back from the end for newlines instead of splitting the
+    /// whole text: `session.read --scrollback` hands over a buffer of up to
+    /// several megabytes, on the main actor, and splitting it into one string
+    /// per line only to keep the last sixty was a long hitch for a short answer.
+    /// The result is the same as `text.components(separatedBy: "\n").suffix(n)`
+    /// joined — including the empty last line of a text that ends in a newline.
+    static func tail(of text: String, lines: Int) -> String {
+        let wanted = max(1, lines)
+        let utf8 = text.utf8
+        var index = utf8.endIndex
+        var seen = 0
+        while index > utf8.startIndex {
+            index = utf8.index(before: index)
+            // 0x0A never occurs inside a multi-byte UTF-8 sequence.
+            if utf8[index] == 0x0A {
+                seen += 1
+                if seen == wanted { return String(text[utf8.index(after: index)...]) }
+            }
+        }
+        return text
+    }
+
+    /// The most terminals the API will open. `session.new` starts a real process
+    /// with a real PTY, so an agent stuck in a loop around it would otherwise
+    /// fork until the machine objected. Far above anything a person arranges by
+    /// hand; the user's own "new terminal" is not limited by this.
+    static let maxTerminals = 200
+
+    static func canOpenAnotherTerminal(open count: Int) -> Bool { count < maxTerminals }
+
     /// ISO 8601 with the offset, so a caller in another language and another
     /// timezone can parse a timestamp instead of a formatted date.
     private static let iso: ISO8601DateFormatter = {
@@ -159,8 +191,15 @@ enum ControlAPI {
     // MARK: Dispatch
 
     /// Run a request. Returns the encoded response.
+    ///
+    /// `clientAlive` says whether the caller is still on the other end of the
+    /// connection. Only a request that waits for something consults it: a
+    /// `session.wait` whose caller was killed is not worth finishing.
     @MainActor
-    static func handle(_ request: Request, state: AppState) async -> Data {
+    static func handle(
+        _ request: Request, state: AppState,
+        clientAlive: @escaping @Sendable () -> Bool = { true }
+    ) async -> Data {
         switch request.command {
         case .sessionList:
             let sessions = state.sessions.values
@@ -227,6 +266,11 @@ enum ControlAPI {
             else {
                 return encode(ok: false, error: "cwd is not a directory: \(directory)")
             }
+            guard canOpenAnotherTerminal(open: state.sessions.count) else {
+                return encode(
+                    ok: false,
+                    error: "too many terminals are open (limit \(maxTerminals)); close some first")
+            }
             // Default to the caller's own project, so "another terminal here"
             // does not scatter projects.
             let focus = request.bool("focus") == true
@@ -255,7 +299,12 @@ enum ControlAPI {
             // renders, so a session created into a background project would have
             // no PTY — and the very next `session.prompt` would fail.
             guard liveView(for: session, state: state) != nil else {
-                return encode(ok: false, error: "terminal could not be started")
+                // The caller is told no terminal exists, so none may be left behind
+                // (an empty tab that a retry would start later, unasked).
+                state.closeSession(session.id)
+                return encode(
+                    ok: false,
+                    error: "terminal could not be started (is a display active?)")
             }
             if focus { state.select(session: session) }
             return encode(ok: true, result: ["session": describe(session, in: state)])
@@ -294,10 +343,8 @@ enum ControlAPI {
             guard let view = liveView(for: session, state: state) else {
                 return encode(ok: false, error: "session has no live terminal")
             }
-            // One write: text and the newline must not arrive as two separate
-            // reads, or a TUI can submit an empty line and then type the prompt.
             let submit = request.bool("submit") != false
-            view.sendText(submit ? text + "\r" : text)
+            await deliverPrompt(text, submit: submit, to: view, session: session.id)
             return encode(ok: true, result: ["session": describe(session, in: state)])
 
         case .sessionRead:
@@ -310,9 +357,7 @@ enum ControlAPI {
             let full = request.bool("scrollback") == true
                 ? (view.readScrollback() ?? "")
                 : (view.readViewport() ?? "")
-            let lines = full.components(separatedBy: "\n")
-            let wanted = request.int("lines") ?? 60
-            let tail = lines.suffix(max(1, wanted)).joined(separator: "\n")
+            let tail = Self.tail(of: full, lines: request.int("lines") ?? 60)
             return encode(ok: true, result: ["text": tail, "session": describe(session, in: state)])
 
         case .sessionWait:
@@ -322,7 +367,8 @@ enum ControlAPI {
             let wanted = Set(request.strings("until") ?? ["ready", "waiting", "error", "free"])
             let timeout = TimeInterval(request.int("timeout_ms") ?? 120_000) / 1000
             let result = await waitForState(
-                session.id, until: wanted, timeout: timeout, state: state)
+                session.id, until: wanted, timeout: timeout, state: state,
+                clientAlive: clientAlive)
             switch result {
             case .some(let reached):
                 return encode(
@@ -334,15 +380,53 @@ enum ControlAPI {
         }
     }
 
+    /// The wait between the pasted text and the Enter that submits it, so a TUI has
+    /// taken the paste into its input before Enter arrives. Measured against Claude
+    /// Code 2.1.299: 0, 30 and 100 ms all submitted 30 prompts out of 30, so this is a
+    /// margin for slower programs and a loaded machine, not a requirement.
+    static let submitDelay: TimeInterval = 0.1
+
+    /// Prompts to one terminal run one after the other. Text and Enter are two steps,
+    /// and two prompts must not interleave (text, text, Enter, Enter would submit
+    /// them as one message).
+    @MainActor
+    private static let prompts = KeyedSerializer<UUID>()
+
+    /// Type `text` into the terminal and, unless told not to, submit it.
+    ///
+    /// The text goes in as a paste (that is what `ghostty_surface_text` is), framed in
+    /// bracketed-paste markers when the program asked for that — zsh, fish and Claude
+    /// Code do. A carriage return *inside* the frame is a newline in the text, not
+    /// Enter, so the old `text + "\r"` in one write typed the prompt and left it
+    /// waiting in the input box. Enter is therefore a key press after the paste.
+    @MainActor
+    private static func deliverPrompt(
+        _ text: String, submit: Bool, to view: GhosttySurfaceNSView, session: UUID
+    ) async {
+        await prompts.run(session) {
+            view.sendText(text)
+            guard submit else { return }
+            try? await Task.sleep(nanoseconds: UInt64(submitDelay * 1_000_000_000))
+            view.pressReturn()
+        }
+    }
+
     /// The live terminal for a session, creating it if SwiftUI has not rendered
     /// that session yet. The registry owns surfaces independently of the view
     /// tree, so this is the same object SwiftUI will pick up when it does.
+    ///
+    /// Nil when there is no terminal to talk to — also when the view exists but
+    /// libghostty could not build its surface yet (no display is active). That one
+    /// gets another try right now; typing into it, or reading it, would otherwise
+    /// be silently dropped while the API said "ok".
     @MainActor
     private static func liveView(
         for session: TerminalSession, state: AppState
     ) -> GhosttySurfaceNSView? {
-        TerminalRegistry.shared.existingView(session.id)
+        guard let view = TerminalRegistry.shared.existingView(session.id)
             ?? TerminalRegistry.shared.view(for: session, appState: state)
+        else { return nil }
+        return view.createSurface() ? view : nil
     }
 
     /// A session by id, or the caller's own terminal when none is given.
@@ -358,12 +442,16 @@ enum ControlAPI {
     /// API: no state-change plumbing to leak into the attention engine.
     @MainActor
     private static func waitForState(
-        _ id: UUID, until: Set<String>, timeout: TimeInterval, state: AppState
+        _ id: UUID, until: Set<String>, timeout: TimeInterval, state: AppState,
+        clientAlive: @Sendable () -> Bool
     ) async -> TerminalSession? {
         let deadline = Date().addingTimeInterval(min(max(timeout, 1), 3600))
         while Date() < deadline {
             guard let session = state.sessions[id] else { return nil }
             if until.contains(session.state.rawValue) { return session }
+            // Nobody is left to read the answer: stop holding a task, and the
+            // descriptor, for the rest of the timeout.
+            guard clientAlive() else { return nil }
             try? await Task.sleep(nanoseconds: 250_000_000)
         }
         return nil

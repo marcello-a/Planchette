@@ -22,6 +22,18 @@ final class GhosttySurfaceNSView: NSView {
     /// durable terminals keep the click for the menu instead.
     var isDurableTerminal = false
 
+    // What the surface is made from, kept so a creation that failed can be repeated
+    // (see `createSurface`).
+    private let app: ghostty_app_t
+    private let workingDirectory: String
+    private let initialInput: String?
+    private let command: String?
+    private var retry = SurfaceRetry()
+    private var retryPending = false
+    private var darkLogged = false
+    /// Set by `destroySurface`: a closed terminal must not be started by a retry.
+    private var closed = false
+
     init(
         app: ghostty_app_t,
         sessionID: UUID,
@@ -30,6 +42,10 @@ final class GhosttySurfaceNSView: NSView {
         command: String? = nil
     ) {
         self.sessionID = sessionID
+        self.app = app
+        self.workingDirectory = workingDirectory
+        self.initialInput = initialInput
+        self.command = command
         super.init(frame: .zero)
         wantsLayer = true
 
@@ -65,6 +81,38 @@ final class GhosttySurfaceNSView: NSView {
             self, selector: #selector(windowOcclusionChanged(_:)),
             name: NSWindow.didChangeOcclusionStateNotification, object: nil)
 
+        createSurface()
+    }
+
+    /// Build the libghostty surface — and with it the terminal's process — unless
+    /// there already is one. True when there is a surface afterwards.
+    ///
+    /// libghostty's renderer needs a display link, and
+    /// `CVDisplayLinkCreateWithActiveCGDisplays` fails when no display is active: a
+    /// Mac whose screens are asleep (an agent opening a terminal overnight, the app
+    /// launching at login before the screen is up). The library reports that as
+    /// `error.OutOfMemory`, `ghostty_surface_new` returns nil, and the terminal used
+    /// to stay dead for good — blank, typed commands dropped, the API saying "ok".
+    ///
+    /// Trying again is safe: the renderer is created before the terminal's process,
+    /// so a failed attempt starts nothing. While no display is active the terminal
+    /// only checks, every couple of seconds, whether one is back — a check that costs
+    /// next to nothing, so it can wait through the night. (The system's own
+    /// notifications for a waking display were not delivered when measured, so this
+    /// does not depend on them.)
+    @discardableResult
+    func createSurface() -> Bool {
+        if surface != nil { return true }
+        guard !closed else { return false }
+        guard Self.hasActiveDisplay() else {
+            if !darkLogged {
+                darkLogged = true
+                NSLog("terminal has no surface yet: no display is active; it starts when one is")
+            }
+            scheduleRetry(after: SurfaceRetry.darkDelay)
+            return false
+        }
+
         var cfg = ghostty_surface_config_new()
         cfg.platform_tag = GHOSTTY_PLATFORM_MACOS
         cfg.platform = ghostty_platform_u(
@@ -97,13 +145,55 @@ final class GhosttySurfaceNSView: NSView {
             if let cmd { cfg.command = UnsafePointer(cmd) }
             self.surface = ghostty_surface_new(app, &cfg)
         }
-        if surface == nil { NSLog("ghostty_surface_new failed") }
+        guard let surface else {
+            let delay = retry.failed()
+            if retry.shouldLog {
+                NSLog("ghostty_surface_new failed (attempt \(retry.failures)); trying again")
+            }
+            scheduleRetry(after: delay)
+            return false
+        }
+        retry.succeeded()
+        darkLogged = false
         // Born hidden: the registry creates surfaces that may never attach to a
         // window this session (restore builds all of them eagerly; the control
         // API builds them for background projects). viewDidMoveToWindow flips
         // this the moment the surface actually appears. The terminal itself is
         // unaffected — PTY, state and reads work occluded; only drawing stops.
-        if let surface { ghostty_surface_set_occlusion(surface, false) }
+        ghostty_surface_set_occlusion(surface, false)
+        catchUpWithView()
+        return true
+    }
+
+    /// Whether macOS has a display that is awake. `ghostty_surface_new` needs one.
+    static func hasActiveDisplay() -> Bool {
+        var count: UInt32 = 0
+        return CGGetActiveDisplayList(0, nil, &count) == .success && count > 0
+    }
+
+    private func scheduleRetry(after delay: TimeInterval) {
+        guard !retryPending else { return }
+        retryPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.retryPending = false
+            self.createSurface()
+        }
+    }
+
+    /// What `viewDidMoveToWindow` and the sizing callbacks did while there was no
+    /// surface to tell: a surface that appears late (after the view is already in a
+    /// window) needs the same size, scale, screen, visibility and focus.
+    private func catchUpWithView() {
+        syncSurfaceSize()
+        guard let surface, let window else { return }
+        syncOcclusion()
+        viewDidChangeBackingProperties()
+        if let number = window.screen?.deviceDescription[
+            NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 {
+            ghostty_surface_set_display_id(surface, number)
+        }
+        if window.firstResponder === self { ghostty_surface_set_focus(surface, true) }
     }
 
     /// Renderer visibility = attached to a window AND that window is visible
@@ -143,18 +233,34 @@ final class GhosttySurfaceNSView: NSView {
             // file — is the signal to move on, because a killed instance leaves
             // its socket file behind.
             ("PEON_CLICK_COMMAND",
-             "E='{\"planchette_session\":\"\(sessionID.uuidString)\","
-                + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}';"
-                + " for T in \(HookServer.socketPath)"
-                + " \"$(cat \(HookServer.socketPointerURL.path) 2>/dev/null)\";"
-                + " do [ -S \"$T\" ] || continue;"
-                + " printf '%s' \"$E\" | nc -U \"$T\" >/dev/null 2>&1 && break; done"),
+             clickCommand(
+                sessionID: sessionID, socketPath: HookServer.socketPath,
+                pointerPath: HookServer.socketPointerURL.path)),
             // So an agent in this terminal can drive Planchette (see skills/planchette).
             ("PLANCHETTE_CLI", HookInstaller.cliURL.path),
         ]
     }
 
+    /// The shell line a notification tool runs when its banner is clicked: it
+    /// tells the app to bring this terminal to the front.
+    ///
+    /// Both paths are single-quoted. They come from the user's home (or from
+    /// `PLANCHETTE_STATE_DIR`), and a path with a space in it split the unquoted
+    /// `cat` into two arguments, so the click silently did nothing. The socket must
+    /// be a real socket (not a symlink) this user owns before an event is sent to it
+    /// — the same rule as the hook script, for the same reason: the default path is
+    /// in /tmp.
+    static func clickCommand(sessionID: UUID, socketPath: String, pointerPath: String) -> String {
+        "E='{\"planchette_session\":\"\(sessionID.uuidString)\","
+            + "\"event\":{\"hook_event_name\":\"PlanchetteFocus\"}}';"
+            + " for T in \(Durable.singleQuoted(socketPath))"
+            + " \"$(cat \(Durable.singleQuoted(pointerPath)) 2>/dev/null)\";"
+            + " do [ ! -L \"$T\" ] && [ -S \"$T\" ] && [ -O \"$T\" ] || continue;"
+            + " printf '%s' \"$E\" | nc -U \"$T\" >/dev/null 2>&1 && break; done"
+    }
+
     func destroySurface() {
+        closed = true
         if let surface { ghostty_surface_free(surface) }
         surface = nil
     }
@@ -278,6 +384,9 @@ final class GhosttySurfaceNSView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        // A terminal that is waiting for a display and is now on screen should not
+        // wait out its timer (cheap: a no-op once there is a surface).
+        if window != nil { createSurface() }
         // Covers attach AND detach: window == nil (a background tab, a closed
         // window) reads as not visible.
         syncOcclusion()
@@ -724,6 +833,30 @@ final class GhosttySurfaceNSView: NSView {
         return rep.representation(using: .png, properties: [:])
     }
 
+    /// Press and release the Return key, the way a keyboard would.
+    ///
+    /// For `session.prompt`: text sent with `sendText` is a *paste* — framed in
+    /// bracketed-paste markers when the program asked for that (zsh, fish, Claude
+    /// Code all do) — and a carriage return inside the frame is a newline in the
+    /// text, not Enter, so appending "\r" to the text never submitted anything there.
+    /// A key press after the paste does, and goes through libghostty's key encoder,
+    /// so it is whatever sequence the program's keyboard mode expects.
+    func pressReturn() {
+        guard let surface else { return }
+        pendingValid = false   // injected input isn't tracked prompt typing
+        var key = ghostty_input_key_s()
+        key.mods = GHOSTTY_MODS_NONE
+        key.consumed_mods = GHOSTTY_MODS_NONE
+        key.keycode = 36       // kVK_Return
+        key.text = nil
+        key.unshifted_codepoint = 13
+        key.composing = false
+        key.action = GHOSTTY_ACTION_PRESS
+        _ = ghostty_surface_key(surface, key)
+        key.action = GHOSTTY_ACTION_RELEASE
+        _ = ghostty_surface_key(surface, key)
+    }
+
     /// Synthesize ⌃V for the surface. Injected input has no NSEvent, so the key
     /// is built by hand the way `sendKey` would (keycode + unshifted codepoint
     /// are what ghostty needs to encode a control shortcut).
@@ -1092,4 +1225,32 @@ private struct TerminalSurfaceRepresentable: NSViewRepresentable {
             }
         }
     }
+}
+
+
+/// When to try again after libghostty failed to build a surface although a display
+/// is active (see `GhosttySurfaceNSView.createSurface`): 1 s, 2 s, 4 s, then every
+/// 5 s for about a minute and a half, then every 30 s for as long as it takes. A
+/// failed attempt is cheap enough for that and a dead terminal is not.
+struct SurfaceRetry {
+    /// While no display is active: only a check is needed, and a short wait.
+    static let darkDelay: TimeInterval = 2
+    static let fastAttempts = 16
+    static let fastCeiling: TimeInterval = 5
+    static let slowDelay: TimeInterval = 30
+
+    private(set) var failures = 0
+
+    /// Record a failed attempt; the delay before the next one.
+    mutating func failed() -> TimeInterval {
+        failures += 1
+        guard failures <= Self.fastAttempts else { return Self.slowDelay }
+        return min(Self.fastCeiling, pow(2, Double(failures - 1)))
+    }
+
+    mutating func succeeded() { failures = 0 }
+
+    /// The first failure, then every twelfth: a terminal that cannot start must not
+    /// fill the log.
+    var shouldLog: Bool { failures == 1 || failures % 12 == 0 }
 }

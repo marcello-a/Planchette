@@ -183,9 +183,17 @@ final class AppState: ObservableObject {
 
     /// The dock badge mirrors the menu-bar counters: sessions that need you.
     func refreshDockBadge() {
+        guard let app = NSApp else { return }
         let count = sessions.values.filter { $0.state.needsAttention && !isMuted($0) }.count
-        NSApp?.dockTile.badgeLabel = count > 0 ? "\(count)" : nil
+        let label = count > 0 ? "\(count)" : nil
+        // Called after every state change and every minute: a dock tile that is
+        // told the same label again still redraws, so only a real change is sent.
+        guard label != lastDockBadge else { return }
+        lastDockBadge = label
+        app.dockTile.badgeLabel = label
     }
+
+    private var lastDockBadge: String?
 
     /// Waiting/error longer than the threshold escalates exactly once per
     /// spell: favorites get a reminder notification, everything else only
@@ -579,12 +587,14 @@ final class AppState: ObservableObject {
     /// asking per directory and fanning the answer back out to the sessions
     /// costs no more subprocesses than the old per-project poll did.
     private func refreshBranches() {
+        guard branchFlight.begin() else { return }
         let dirs: [String: [UUID]] = sessions.values.reduce(into: [:]) { acc, session in
             guard !session.currentDirectory.isEmpty else { return }
             acc[session.currentDirectory, default: []].append(session.id)
         }
         guard !dirs.isEmpty else {
             if !branches.isEmpty { branches = [:] }
+            _ = branchFlight.end()   // nothing was started, so nothing can be queued
             return
         }
         Task.detached {
@@ -593,16 +603,22 @@ final class AppState: ObservableObject {
                 for id in entry.value { found[id] = branch }
             }
             await MainActor.run { [weak self] in
+                guard let self else { return }
                 // Publish only a real change: an unconditional assignment
                 // invalidated every observing view on every poll tick.
-                guard let self, self.branches != found else { return }
-                self.branches = found
-                // A new branch may already have a PR — do not make it wait
-                // a whole PR poll interval to show it.
-                self.refreshPullRequests()
+                if self.branches != found {
+                    self.branches = found
+                    // A new branch may already have a PR — do not make it wait
+                    // a whole PR poll interval to show it.
+                    self.refreshPullRequests()
+                }
+                if self.branchFlight.end() { self.refreshBranches() }
             }
         }
     }
+
+    /// One branch poll at a time (see `SingleFlight`).
+    private var branchFlight = SingleFlight()
 
     // MARK: Pull request per terminal
 
@@ -634,6 +650,7 @@ final class AppState: ObservableObject {
     /// trunk branch are skipped (see `PullRequests.trunkBranches`).
     func refreshPullRequests() {
         guard PullRequests.ghPath() != nil else { return }
+        guard pullRequestFlight.begin() else { return }
         let checkouts: [String: (dir: String, branch: String, ids: [UUID])] =
             sessions.values.reduce(into: [:]) { acc, session in
                 guard let branch = branches[session.id], PullRequests.isWorkBranch(branch),
@@ -643,6 +660,7 @@ final class AppState: ObservableObject {
             }
         guard !checkouts.isEmpty else {
             if !pullRequests.isEmpty { pullRequests = [:] }
+            _ = pullRequestFlight.end()
             return
         }
         Task.detached {
@@ -654,11 +672,16 @@ final class AppState: ObservableObject {
             }
             let result = found
             await MainActor.run { [weak self] in
-                guard let self, self.pullRequests != result else { return }
-                self.pullRequests = result
+                guard let self else { return }
+                if self.pullRequests != result { self.pullRequests = result }
+                if self.pullRequestFlight.end() { self.refreshPullRequests() }
             }
         }
     }
+
+    /// One `gh` sweep at a time: each lookup is a network call of up to 20s, so
+    /// a slow connection used to stack a fresh sweep on every minute tick.
+    private var pullRequestFlight = SingleFlight()
 
     /// The PR a project row shows: the one its terminals share, like the branch.
     func sharedPullRequest(of group: SessionGroup) -> PullRequest? {
@@ -700,6 +723,7 @@ final class AppState: ObservableObject {
             if !contextUsage.isEmpty { contextUsage = [:] }
             return
         }
+        guard contextFlight.begin() else { return }
         let stamps = transcriptStamps
         let known = transcriptUsage
         let extended = extendedContextSessions
@@ -707,13 +731,20 @@ final class AppState: ObservableObject {
             let configured = ContextWindow.configuredModel()
             var newStamps = stamps
             var usageByPath = known
-            for path in Set(targets.values.map(\.path)) {
+            let livePaths = Set(targets.values.map(\.path))
+            for path in livePaths {
                 let attrs = try? FileManager.default.attributesOfItem(atPath: path)
                 let stamp = "\((attrs?[.size] as? Int) ?? -1)-\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
                 guard newStamps[path] != stamp else { continue }
                 newStamps[path] = stamp
                 usageByPath[path] = ContextUsageReader.read(path: path)
             }
+            // Every Claude conversation is a new transcript path. Keeping the
+            // readings of conversations that are over would grow these two
+            // tables, and the copy made on every tick, for as long as the app
+            // runs.
+            newStamps = newStamps.filter { livePaths.contains($0.key) }
+            usageByPath = usageByPath.filter { livePaths.contains($0.key) }
             let found: [UUID: ContextUsage] = targets.reduce(into: [:]) { acc, entry in
                 guard let usage = usageByPath[entry.value.path] else { return }
                 let window = ContextWindow.size(
@@ -730,11 +761,16 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 self.transcriptStamps = stampsNow
                 self.transcriptUsage = usageNow
-                guard self.contextUsage != found else { return }
-                self.contextUsage = found
+                if self.contextUsage != found { self.contextUsage = found }
+                // A Stop hook asks for a fresh reading *because* the transcript
+                // just changed: a request that arrived mid-run gets its own run.
+                if self.contextFlight.end() { self.refreshContextUsage() }
             }
         }
     }
+
+    /// One transcript sweep at a time (see `SingleFlight`).
+    private var contextFlight = SingleFlight()
 
     // MARK: Dev servers & IDEs per project
 
@@ -841,9 +877,14 @@ final class AppState: ObservableObject {
             if !ideMarkers.isEmpty { ideMarkers = [:] }
             return
         }
+        guard devServerFlight.begin() else { return }
         let knownSchemes = serverSchemes
         Task.detached {
-            let found = DevServerScanner.scan(projectDirs: dirs)
+            // Nil: `lsof` did not finish. Everything below that depends on its
+            // answer is left as it was rather than blanked for one tick.
+            let scanned = DevServerScanner.scan(projectDirs: dirs)
+            let scanFinished = scanned != nil
+            let found = scanned ?? [:]
             let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
             let installed = IDEs.installed()
             // Ask each new port whether it speaks TLS. Off-main and once per
@@ -866,16 +907,22 @@ final class AppState: ObservableObject {
                 if self.ideMarkers != markers { self.ideMarkers = markers }
                 if self.installedIDEs != installed { self.installedIDEs = installed }
                 if self.projectOpenInIDEs != openIn { self.projectOpenInIDEs = openIn }
-                // Carry over (and complete) the announced URLs before comparing:
-                // the addresses are part of what a chip shows, so resolving one
-                // has to publish.
-                let withURLs = self.resolvingServerURLs(found)
-                // Publish only a real change (see refreshBranches).
-                guard self.devServers != withURLs else { return }
-                self.devServers = withURLs
+                if scanFinished {
+                    // Carry over (and complete) the announced URLs before comparing:
+                    // the addresses are part of what a chip shows, so resolving one
+                    // has to publish.
+                    let withURLs = self.resolvingServerURLs(found)
+                    // Publish only a real change (see refreshBranches).
+                    if self.devServers != withURLs { self.devServers = withURLs }
+                }
+                if self.devServerFlight.end() { self.refreshDevServers() }
             }
         }
     }
+
+    /// One dev-server sweep at a time (see `SingleFlight`): it runs `lsof`, whose
+    /// cost grows with the machine's open sockets.
+    private var devServerFlight = SingleFlight()
 
     /// Addresses already learned, keyed by port. Kept because a banner scrolls
     /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
@@ -1168,7 +1215,8 @@ final class AppState: ObservableObject {
         alert.messageText = L10n.t(.worktreeFailed)
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: L10n.t(.ok))
-        alert.runModal()
+        // Shown after an `await`, i.e. from inside the main queue: see `ModalAlert`.
+        ModalAlert.show(alert)
     }
 
     /// Offer to delete the checkout of a closed worktree project. Git itself
@@ -1908,21 +1956,33 @@ final class AppState: ObservableObject {
             alert.messageText = L10n.t(.importFailed)
             alert.informativeText = detail
         }
-        alert.runModal()
+        // Runs after the import's `await`, i.e. from inside the main queue: see
+        // `ModalAlert`.
+        ModalAlert.show(alert)
     }
 
     // MARK: Persistence
 
     func scheduleSave() {
+        let delay = saveDebounce.delay(changeAt: Date())
         saveTask?.cancel()
         saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             self?.saveNow()
         }
     }
 
+    /// Tracks how long the oldest unsaved change has been waiting, so a steady
+    /// stream of changes cannot postpone the save indefinitely.
+    private var saveDebounce = SaveDebounce()
+
     func saveNow() {
+        // Whatever was pending is being written (or there is nothing to write):
+        // the next change starts a fresh wait, and a timer still sleeping would
+        // only repeat this write.
+        saveDebounce.saved()
+        saveTask?.cancel()
         // Never overwrite a real saved state with an empty one before the
         // restore decision was made.
         guard !groups.isEmpty || !windows.isEmpty else { return }
@@ -1974,9 +2034,10 @@ final class AppState: ObservableObject {
         if state.sessions.contains(where: \.durable), Durable.isAvailable {
             // Off-main: it shells out to tmux. The UI shows the welcome screen
             // for the few milliseconds `list-sessions` takes.
+            let durableIDs = Set(state.sessions.filter(\.durable).map(\.id))
             Task { @MainActor in
                 self.restoreLiveDurableIDs = await Task.detached {
-                    Durable.liveIDs(in: Durable.listSessions())
+                    Durable.liveIDsForRestore(listed: Durable.listSessions(), durableIDs: durableIDs)
                 }.value
                 self.finishRestore(state)
             }
@@ -2125,7 +2186,12 @@ final class AppState: ObservableObject {
         center.addObserver(forName: .planchetteSurfaceTitle, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID,
                   let title = note.userInfo?["title"] as? String else { return }
-            Task { @MainActor in self?.update(id) { $0.oscTitle = title } }
+            // Stored without the status glyph, so an animated one is not a change
+            // (see `TerminalSession.cleanedTitle`).
+            let cleaned = TerminalSession.cleanedTitle(title)
+            Task { @MainActor in
+                self?.update(id) { $0.oscTitle = cleaned.isEmpty ? nil : cleaned }
+            }
         }
         center.addObserver(forName: .planchetteSurfacePwd, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID,

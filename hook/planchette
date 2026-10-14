@@ -25,6 +25,8 @@ import argparse
 import json
 import os
 import socket
+import stat
+import struct
 import sys
 
 COMMANDS = {
@@ -65,6 +67,40 @@ def socket_candidates():
     return out
 
 
+def owned_socket(path):
+    """True when `path` is a unix socket owned by the current user.
+
+    The default socket lives in /tmp, which every user can write to, and a
+    request can carry anything an agent types into a terminal. Talking to a
+    listener someone else put at a predictable name would hand them that text
+    and let them answer with whatever they like — so the owner is checked on
+    this side too, not only enforced by the app's file mode.
+    """
+    try:
+        # lstat, not stat: a symlink to a socket of mine passes `stat`, and can be
+        # swapped for someone else's listener between this check and the connect.
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISSOCK(info.st_mode) and info.st_uid == os.getuid()
+
+
+def peer_is_me(client):
+    """True unless the kernel says the process behind a CONNECTED socket is someone else.
+
+    The path checks above cannot close the gap between checking and connecting on
+    their own, so the answer that counts is the kernel's, after the connect:
+    LOCAL_PEERCRED (macOS) is the uid of whoever is listening. Where it cannot be
+    read, the path checks stand.
+    """
+    try:
+        data = client.getsockopt(0, 1, 76)          # SOL_LOCAL, LOCAL_PEERCRED, sizeof(struct xucred)
+        _version, uid = struct.unpack("=II", data[:8])
+    except (OSError, struct.error):
+        return True
+    return uid == os.getuid()
+
+
 def request(payload, timeout):
     candidates = socket_candidates()
     if not candidates:
@@ -79,10 +115,16 @@ def request(payload, timeout):
 
     chunks, last_error = None, None
     for sock_path in candidates:
+        if not owned_socket(sock_path):
+            last_error = f"{sock_path}: not a socket owned by you"
+            continue
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.settimeout(timeout)
         try:
             client.connect(sock_path)
+            if not peer_is_me(client):
+                last_error = f"{sock_path}: the process listening there is not yours"
+                continue
             client.sendall(json.dumps(payload).encode())
             client.shutdown(socket.SHUT_WR)  # the app answers on EOF
             received = []

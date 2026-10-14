@@ -30,9 +30,34 @@ enum SupportPaths {
             dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("Planchette", isDirectory: true)
         }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(
+            at: dir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        secure(dir)
         return dir
     }()
+
+    /// Make the directory private to this user.
+    ///
+    /// Everything in here is sensitive: working directories, Claude session ids,
+    /// terminal scrollback (which holds whatever was printed, secrets included)
+    /// and unsent prompt text. The files are written 0600, but the directory
+    /// itself used to be created with the default 0755 — and `createDirectory`
+    /// leaves an existing one alone, so every install that predates this keeps
+    /// its old mode until it is tightened here.
+    ///
+    /// Only a directory this user owns is touched: an override that points at
+    /// something shared (or at `/tmp`) must not be chmod'ed out from under
+    /// everyone else.
+    static func secure(_ dir: URL) {
+        let fm = FileManager.default
+        guard let attributes = try? fm.attributesOfItem(atPath: dir.path),
+              (attributes[.ownerAccountID] as? NSNumber)?.uint32Value == geteuid(),
+              let mode = (attributes[.posixPermissions] as? NSNumber)?.intValue,
+              mode & 0o077 != 0
+        else { return }
+        try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+    }
 
     /// A suffix that keeps per-instance resources apart (the tmux server name).
     /// Derived from the directory, so the same override always maps to the same

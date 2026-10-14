@@ -42,8 +42,10 @@ launch, so a fix still needed a restart. Tier A closes that:
 - **Fetched rules.** The update check also looks for a `screen-rules.json` asset
   on the latest release. If its `engine` matches and its `version` is newer than
   what is installed, it is written to Application Support and picked up live.
-  Same trust rules as the binary update: GitHub-only host allowlist plus the
-  release checksum when present.
+  Same trust rules as the binary update: GitHub-only host allowlist (redirects
+  included), and the release's `SHA256SUMS` is required — rules that cannot be
+  checked against it are dropped, never applied unverified. The file is also
+  capped at 256 KB.
 - **Compiled floor.** `ScreenDetector.builtIn` stays in Swift. A failed download
   or a corrupt file can never leave the app with no rules at all.
 

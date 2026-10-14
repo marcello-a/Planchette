@@ -15,12 +15,20 @@ SETTINGS="${CLAUDE_SETTINGS:-$HOME/.claude/settings.json}"
 [ -x "$HOOK_BIN" ] || { echo "planchette-hook not found/executable at $HOOK_BIN" >&2; exit 1; }
 
 python3 - "$SETTINGS" "$HOOK_BIN" <<'PY'
-import json, shutil, sys, time
+import json, os, shutil, stat, sys, time
 from pathlib import Path
 
 settings_path = Path(sys.argv[1])
 hook_bin = sys.argv[2] + " claude"   # agent label, see planchette-hook
-events = ["SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest", "Stop", "SessionEnd"]
+# Keep in step with HookInstaller.events (Swift). PreToolUse/PostToolUse are the
+# only proof that a granted permission moved the turn on, and SubagentStop is
+# deliberately mapped to "no state change" — without them a dev run behaves
+# differently from the packaged app.
+events = [
+    "SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest",
+    "PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionEnd",
+]
+tool_events = {"PreToolUse", "PostToolUse"}   # per-tool entries: matcher "*"
 
 settings = {}
 if settings_path.exists():
@@ -38,13 +46,24 @@ for event in events:
         for h in entry.get("hooks", [])
     )
     if not already:
-        entries.append({"hooks": [{"type": "command", "command": hook_bin}]})
+        entry = {"hooks": [{"type": "command", "command": hook_bin}]}
+        if event in tool_events:
+            entry["matcher"] = "*"
+        entries.append(entry)
         print(f"installed: {event}")
     else:
         print(f"already installed: {event}")
 
 settings_path.parent.mkdir(parents=True, exist_ok=True)
-settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+# Atomic (a crash mid-write must not truncate the user's settings) and through the
+# symlink, if there is one: dotfile managers keep this file as a link.
+real = settings_path.resolve()
+tmp = real.with_name(real.name + ".planchette-tmp")
+tmp.write_text(json.dumps(settings, indent=2) + "\n")
+# A new file gets the umask's mode (0644); settings.json can hold secrets in `env`,
+# so it keeps the mode the old file had (or 0600 when there was none).
+os.chmod(tmp, stat.S_IMODE(real.stat().st_mode) if real.exists() else 0o600)
+os.replace(tmp, real)
 print(f"written: {settings_path}")
 PY
 
