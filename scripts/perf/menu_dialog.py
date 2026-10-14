@@ -3,11 +3,12 @@
 usage: menu_dialog.py <label> <binary> <scratch-folder> <scenario: ai-menu | quit-menu>
 A terminal runs a loop (ticks.log grows ~15/s while the app drains its PTY); the control API is
 probed throughout. The dialog is opened through the real menu bar with System Events (the
-process is addressed by its pid, never by name), left open for a while, then dismissed.
+process is addressed by its pid, never by name - and only after System Events has confirmed
+that the pid is the one it means, see `system_events_process`), left open for a while, then dismissed.
 """
 import json, os, signal, socket, subprocess, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from perf_common import REPO, FocusGuard, UserFilesGuard, scratch_root, tool
+from perf_common import REPO, FocusGuard, UserFilesGuard, scratch_root, system_events_process, tool
 label, binary, scenario = sys.argv[1], sys.argv[2], sys.argv[4]
 root = scratch_root(sys.argv[3])
 binary = os.path.abspath(binary)   # the instance is started with cwd=/, so a relative path would not be found
@@ -51,7 +52,7 @@ def osa(script, wait=True):
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
         return r.returncode, (r.stdout + r.stderr).strip()[:160]
     return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-proc = f'(first process whose unix id is {app.pid})'
+proc = None   # set once System Events has been asked and has answered with this pid (system_events_process)
 menus = {"ai-menu": ('menu item "Group by topic…" of menu 1 of menu bar item "AI" of menu bar 1', "OK"),
          "quit-menu": (f'menu item "Quit Planchette" of menu 1 of menu bar item 2 of menu bar 1', "Cancel")}
 try:
@@ -62,6 +63,7 @@ try:
             if os.path.exists(sock): break
         except OSError: pass
     time.sleep(3)
+    proc = system_events_process(app.pid)
     if scenario == "quit-menu":   # a running, non-durable agent makes the quit ask first
         rpc({"planchette_session": S, "agent": "claude", "event": {"hook_event_name": "UserPromptSubmit", "session_id": "x", "prompt": "hi"}})
         time.sleep(1)

@@ -49,6 +49,26 @@ def frontmost_pid():
     return result.stdout.strip()
 
 
+def system_events_process(pid, timeout=20):
+    """An AppleScript reference to the process with this pid, once System Events really knows it.
+
+    Asked about a pid it has not registered yet, System Events does not fail: `first process
+    whose unix id is N` answered with ANOTHER process - once with the installed Planchette
+    (build.planchette.app) instead of the isolated instance under test, for a pid a few seconds
+    old. A menu click or a keystroke sent that way goes to the real app. The reference is
+    returned only after the process it names reports the pid that was asked for."""
+    ref = f"(first process whose unix id is {pid})"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        r = subprocess.run(
+            ["osascript", "-e", f'tell application "System Events" to get unix id of {ref}'],
+            capture_output=True, text=True)
+        if r.returncode == 0 and r.stdout.strip() == str(pid):
+            return ref
+        time.sleep(0.5)
+    raise SystemExit(f"System Events does not know pid {pid} (yet): not scripting a process it might confuse with another")
+
+
 class FocusGuard:
     """An isolated instance activates itself when it starts, which takes the keyboard from
     whoever is working. Create the guard BEFORE launching the instance, call start(pid) after,
