@@ -1678,8 +1678,9 @@ final class AppState: ObservableObject {
             update(sessionID) { $0.currentTask = task }
         }
         // New work reopens a terminal you had marked finished: the mark was
-        // about the work that is now over.
-        if hookEvent == "UserPromptSubmit", sessions[sessionID]?.isFinished == true {
+        // about the work that is now over (a prompt, a `/clear`, a fresh Claude).
+        if sessions[sessionID]?.isFinished == true,
+           TerminalSession.reopensFinishedWork(hookEvent: hookEvent, source: source, prompt: prompt) {
             update(sessionID) { $0.finishedAt = nil }
         }
         // Context usage follows the agent: gone when it ends, back (and read

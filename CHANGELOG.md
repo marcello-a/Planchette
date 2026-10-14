@@ -129,6 +129,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   mode.
 
 ### Changed
+- **The "finished" mark ends with `/clear` and with a new Claude, not only with a
+  prompt.** A terminal you cleared or restarted kept its seal and its dimmed row,
+  though the work they stood for was gone. A resumed conversation — what the app does
+  for every Claude terminal on launch — and a compaction keep the mark, and so does
+  Claude's own "a background task ended" notice: it reaches Planchette as a prompt,
+  but you gave no work.
 - **Less work in the background.** A terminal's branch is read from `.git/HEAD`
   instead of starting `git` for every directory every ten seconds, and a dev
   server's folder comes from the kernel instead of a second `lsof`.
