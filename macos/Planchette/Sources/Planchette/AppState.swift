@@ -690,6 +690,23 @@ final class AppState: ObservableObject {
         return pr
     }
 
+    // MARK: Background tasks per terminal
+
+    /// What each Claude terminal still runs in the background — shells started
+    /// with `run_in_background`, agents launched without waiting — as its hooks
+    /// report it (see `BackgroundTasks`). A terminal without any has no entry.
+    /// Never persisted: the tasks are processes of a Claude that a restart
+    /// ends, and the next hook says what is true.
+    @Published private(set) var backgroundTasks: [UUID: [BackgroundTask]] = [:]
+
+    private func applyBackground(_ signal: BackgroundTaskSignal, to id: UUID) {
+        let before = backgroundTasks[id] ?? []
+        let after = BackgroundTasks.apply(signal, to: before)
+        // Equal writes stay no-ops: a `Stop` that repeats the list republishes nothing.
+        guard after != before else { return }
+        backgroundTasks[id] = after.isEmpty ? nil : after
+    }
+
     // MARK: Context usage per terminal
 
     /// How full each Claude terminal's context window is, and its model, keyed
@@ -1151,6 +1168,7 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
         liveAgentIDs.remove(id)
+        backgroundTasks[id] = nil
         escalatedIDs.remove(id)
         aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
@@ -1258,6 +1276,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
             liveAgentIDs.remove(sid)
+            backgroundTasks[sid] = nil
             escalatedIDs.remove(sid)
             aiAssist.forget(sid)
         }
@@ -1627,9 +1646,11 @@ final class AppState: ObservableObject {
         message: String?,
         prompt: String? = nil,
         source: String? = nil,
-        agent: AgentKind = .claude
+        agent: AgentKind = .claude,
+        background: BackgroundTaskSignal? = nil
     ) {
         guard sessions[sessionID] != nil else { return }
+        if let background { applyBackground(background, to: sessionID) }
         // A hook firing at all proves the agent is alive in this terminal;
         // SessionEnd is the only event that ends it.
         if hookEvent == "SessionEnd" {
@@ -1648,9 +1669,12 @@ final class AppState: ObservableObject {
                 if let transcriptPath { $0.transcriptPath = transcriptPath }
             }
         }
-        // The submitted prompt is the task this terminal works on from now on.
+        // The submitted prompt is the task this terminal works on from now on —
+        // unless it is Claude Code's own "a background task ended" notice, which
+        // reaches the hook as a prompt but says nothing about the work.
         if hookEvent == "UserPromptSubmit",
-           let task = prompt.flatMap(TerminalSession.taskLine(fromPrompt:)) {
+           let task = prompt.flatMap({ BackgroundTasks.isNotification($0) ? nil : $0 })
+               .flatMap(TerminalSession.taskLine(fromPrompt:)) {
             update(sessionID) { $0.currentTask = task }
         }
         // New work reopens a terminal you had marked finished: the mark was

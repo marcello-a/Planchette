@@ -97,6 +97,10 @@ enum ControlAPI {
         ]
         if let task = session.currentTask { dict["task"] = task }
         if let message = session.lastMessage { dict["message"] = message }
+        // A terminal that is `ready` may still be busy: a dev server, an agent.
+        if let background = BackgroundTasks.summary(state.backgroundTasks[session.id] ?? []) {
+            dict["background_tasks"] = background
+        }
         if let group = state.groups.first(where: { $0.id == session.groupID }) {
             dict["project"] = group.name
             dict["project_id"] = group.id.uuidString

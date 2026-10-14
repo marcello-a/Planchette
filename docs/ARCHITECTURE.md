@@ -120,6 +120,16 @@ session. The inbox, menu-bar badge, and quick switcher are all just sorted views
 over these states (favorites first, `asking` before `done`, longest-waiting
 first). Focusing an `asking`/`done` terminal clears it.
 
+**Background work.** A finished turn does not mean Claude is done: it may still run
+shells (`run_in_background`) or agents it launched without waiting. Claude Code sends
+its own list with the `Stop` hook — `background_tasks`, each with `id`, `type`
+(`shell` or `subagent`), `status` and a `description`. `BackgroundTasks` turns every
+hook into one signal: a snapshot (`Stop`), a start (`PostToolUse` of a background
+`Bash` or an agent that answered `isAsync`), an end (a `<task-notification>` prompt) or
+a reset (a Claude process begins or ends). `AppState.backgroundTasks` holds the result
+per terminal, never persisted — a restart ends the processes the tasks live in. The
+sidebar draws it under the state icon, and `session.get` reports the counts.
+
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).

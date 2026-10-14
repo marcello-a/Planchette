@@ -61,6 +61,10 @@ failed) · `free` (empty prompt, nothing pending).
 `waiting` means a human is needed — do not try to answer another agent's
 permission prompt on the user's behalf. Report it and let them decide.
 
+A Claude terminal can be `ready` and still run shells or agents in the background.
+`session get` then carries `background_tasks` (`{"shells": n, "agents": n}`); the key
+is absent when nothing runs. Check it before you treat that terminal's work as done.
+
 ## Putting a second agent to work
 
 Open a terminal in the caller's own project and working directory, start an

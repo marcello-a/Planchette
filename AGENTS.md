@@ -57,6 +57,7 @@ groups terminals by project. See [README.md](README.md) and
 | `UpdateService.swift` | GitHub-releases update check |
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
+| `BackgroundTasks.swift` | The shells and agents Claude Code runs in the background, read off its hooks (pure, unit-tested) |
 | `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `Help.swift` | The Help tab's catalogue: every feature, as `LKey` references to the controls' own strings (ground rule 5) |
@@ -93,6 +94,17 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   Code's "you left me hanging" nudge after a minute of idling, which is not a
   question and must not turn a terminal blue. All three decisions live in
   `AttentionState.forHookEvent`, with a table test in `LogicTests`.
+- **Background tasks belong to the Claude *process*, not to the conversation.**
+  `BackgroundTasks` reads them off the hooks, and three facts — all observed on
+  Claude Code 2.1.299, not documented — decide its rules. `/clear` ends the
+  session and starts another (new id), yet the same shell is still listed
+  afterwards, so a `SessionEnd`/`SessionStart` for `clear` must not reset the list
+  (`startup`, `resume` and any other end do). `SubagentStop` carries
+  `background_tasks` too but still lists the agent that is stopping, so only `Stop`
+  is a snapshot. And a task's end reaches the hook as a `UserPromptSubmit` whose
+  prompt is a `<task-notification>`: Claude's own notice, not something the user
+  typed — it must never become the task line or reopen work marked finished.
+  `scripts/perf/background_tasks.py` re-checks all of it against the installed `claude`.
 - **A parked project is filtered exactly like a snoozed one.** `AppState.isMuted`
   is THE filter for anything that counts or announces attention — badge, dock
   count, banner, inbox, notifications panel — and it covers both reasons a
