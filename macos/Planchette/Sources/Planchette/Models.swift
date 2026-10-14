@@ -310,7 +310,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// When you marked the work in this terminal as finished. The hook states
     /// say what the *agent* is doing, and `ready` flips back the moment it runs
     /// again; this says what *you* decided, and stays until you give the
-    /// terminal new work (the next submitted prompt reopens it) or undo it.
+    /// terminal new work (see `reopensFinishedWork`) or undo it.
     var finishedAt: Date?
     var isFinished: Bool { finishedAt != nil }
 
@@ -442,6 +442,25 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var promptLine: String? {
         let line = currentTask ?? lastMessage ?? aiSummary
         return (line?.isEmpty ?? true) ? nil : line
+    }
+
+    /// Whether a hook event gives a terminal new work, which ends the "finished"
+    /// mark you put on it: the mark was about the work that is now over.
+    ///
+    /// - a prompt you send reopens it — but not Claude's own "a background task
+    ///   ended" notice, which reaches the hook as a prompt nobody typed;
+    /// - `/clear` does (`source == "clear"`): the conversation that carried the
+    ///   work is gone;
+    /// - a Claude that starts fresh does (`startup`);
+    /// - `resume` does not. The app restores a Claude terminal with `--resume` on
+    ///   every launch, and a mark you set must survive a restart; a compaction or
+    ///   a fork carries the same work on.
+    static func reopensFinishedWork(hookEvent: String, source: String?, prompt: String?) -> Bool {
+        switch hookEvent {
+        case "UserPromptSubmit": !(prompt.map(BackgroundTasks.isNotification) ?? false)
+        case "SessionStart": source == "clear" || source == "startup"
+        default: false
+        }
     }
 
     /// Condense a submitted prompt to a one-line task label ("working on …").

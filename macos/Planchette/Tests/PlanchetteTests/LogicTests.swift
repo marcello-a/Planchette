@@ -2724,6 +2724,43 @@ final class NoteAndFinishedTests: XCTestCase {
         XCTAssertEqual(back.note, "waits for the API fix")
         XCTAssertEqual(back.finishedAt, Date(timeIntervalSince1970: 1_000))
     }
+
+    // MARK: What gives a finished terminal new work
+
+    private func reopens(_ event: String, source: String? = nil, prompt: String? = nil) -> Bool {
+        TerminalSession.reopensFinishedWork(hookEvent: event, source: source, prompt: prompt)
+    }
+
+    func testAPromptYouSendReopensIt() {
+        XCTAssertTrue(reopens("UserPromptSubmit", prompt: "fix the build"))
+        XCTAssertTrue(reopens("UserPromptSubmit"), "an agent that reports no text still got work")
+    }
+
+    func testClaudesOwnTaskNoticeIsNoNewWork() {
+        // It arrives as a prompt when a background shell ends; nobody typed it.
+        let notice = "<task-notification>\n<task-id>b1</task-id>\n<status>completed</status>\n</task-notification>"
+        XCTAssertFalse(reopens("UserPromptSubmit", prompt: notice))
+    }
+
+    func testAClearOrAFreshClaudeReopensIt() {
+        XCTAssertTrue(reopens("SessionStart", source: "clear"))
+        XCTAssertTrue(reopens("SessionStart", source: "startup"))
+    }
+
+    func testARestoredOrContinuedConversationKeepsTheMark() {
+        // `resume` is what the app itself runs on every launch (claude --resume).
+        XCTAssertFalse(reopens("SessionStart", source: "resume"))
+        XCTAssertFalse(reopens("SessionStart", source: "compact"))
+        XCTAssertFalse(reopens("SessionStart", source: "fork"))
+        XCTAssertFalse(reopens("SessionStart"))
+    }
+
+    func testNothingElseTouchesTheMark() {
+        for event in ["Stop", "SubagentStop", "SessionEnd", "Notification", "PermissionRequest",
+                      "PreToolUse", "PostToolUse"] {
+            XCTAssertFalse(reopens(event, source: "clear", prompt: "text"), event)
+        }
+    }
 }
 
 final class ContextUsageTests: XCTestCase {
