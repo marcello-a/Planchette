@@ -96,24 +96,14 @@ enum PullRequests {
     /// network, not a GitHub remote: all of them mean "no pill", never an alert.
     static func lookup(branch: String, in directory: String) -> PullRequest? {
         guard let gh = ghPath() else { return nil }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: gh)
-        process.arguments = ["pr", "list", "--head", branch, "--state", "all",
-                             "--limit", "5", "--json", jsonFields]
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
-        let out = Pipe()
-        process.standardOutput = out
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return nil }
         // A hung network call must not hold a poll forever.
-        let killer = DispatchWorkItem { [weak process] in
-            if process?.isRunning == true { process?.terminate() }
-        }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 20, execute: killer)
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        killer.cancel()
-        guard process.terminationStatus == 0 else { return nil }
-        return parse(data)
+        guard let result = Subprocess.run(
+            gh,
+            ["pr", "list", "--head", branch, "--state", "all",
+             "--limit", "5", "--json", jsonFields],
+            in: directory, timeout: 20),
+              result.succeeded
+        else { return nil }
+        return parse(result.stdout)
     }
 }

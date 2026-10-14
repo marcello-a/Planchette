@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import UniformTypeIdentifiers
 
 extension Notification.Name {
     static let planchetteSurfaceTitle = Notification.Name("planchette.surface.title")
@@ -67,26 +68,24 @@ final class GhosttyRuntime {
             read_clipboard_cb: { userdata, location, state in
                 GhosttyRuntime.readClipboard(userdata, location: location, state: state, confirmed: false)
             },
-            confirm_read_clipboard_cb: { userdata, _, state, _ in
-                // Skip the confirmation dialog in v1: allow the read. Completing
-                // with `confirmed: true` bypasses libghostty's paste-safety check.
-                // Completing with `false` here re-triggers this callback forever
-                // (an OSC 52 read, or a newline paste into a program without
-                // bracketed paste, spins the CPU and never lands) — see the
-                // matching flag in `readClipboard`.
-                _ = GhosttyRuntime.readClipboard(userdata, location: GHOSTTY_CLIPBOARD_STANDARD, state: state, confirmed: true)
+            confirm_read_clipboard_cb: { userdata, string, state, request in
+                // libghostty is asking whether to let an OSC 52 read, a risky
+                // paste or an OSC 52 write through. It used to be answered "yes"
+                // unconditionally, which switched its protections off; the user
+                // decides now (see `ClipboardConfirmation`). Whatever the answer,
+                // the request is completed with `confirmed: true` — completing
+                // with `false` would re-trigger this callback forever.
+                GhosttyRuntime.confirmClipboard(userdata, string: string, state: state, request: request)
             },
-            write_clipboard_cb: { _, _, content, count, _ in
+            write_clipboard_cb: { userdata, _, content, count, confirm in
                 guard let content, count > 0 else { return }
                 for i in 0..<count {
                     let item = content[i]
                     guard let mime = item.mime, let data = item.data else { continue }
                     if String(cString: mime).hasPrefix("text/") {
-                        let string = String(cString: data)
-                        DispatchQueue.main.async {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(string, forType: .string)
-                        }
+                        // Copied here: the C buffers only live for this call.
+                        GhosttyRuntime.writeClipboard(
+                            userdata, text: String(cString: data), confirm: confirm)
                         return
                     }
                 }
@@ -239,10 +238,17 @@ final class GhosttyRuntime {
             // line wraps). Open it in the default app.
             let u = action.action.open_url
             guard let ptr = u.url, u.len > 0,
-                  let str = String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), encoding: .utf8),
-                  let url = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines))
+                  let str = String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), encoding: .utf8)
             else { return false }
-            DispatchQueue.main.async { openExternalURL(url) }
+            // Handled either way. Returning false makes libghostty run `open` on the
+            // raw string itself, with none of the policy in `openExternalURL` — and
+            // a string `URL` cannot parse (`http://[`, a space in the host) is
+            // exactly what would take that path. It is simply not opened.
+            if let url = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                DispatchQueue.main.async { openExternalURL(url) }
+            } else {
+                NSLog("blocked a link that is not a valid URL")
+            }
             return true
 
         default:
@@ -250,16 +256,142 @@ final class GhosttyRuntime {
         }
     }
 
+    /// What to do with a URL that came out of terminal text.
+    enum URLAction: Equatable {
+        case open
+        /// Show it in Finder instead of opening it.
+        case reveal
+        case block
+    }
+
+    /// File types that start something when they are opened rather than showing
+    /// it: applications, scripts Terminal runs, installers, disk images that
+    /// mount, launchers, bookmarks that open arbitrary URLs.
+    static let launchingExtensions: Set<String> = [
+        "app", "command", "tool", "terminal", "workflow", "action", "scpt", "scptd",
+        "pkg", "mpkg", "dmg", "jar", "webloc", "inetloc", "fileloc", "vncloc",
+        "afploc", "saver", "prefpane", "service", "xpc", "kext",
+    ]
+
+    /// How a URL from terminal output may be opened, and what exactly to open.
+    ///
+    /// Web and mail links open. A `file:` link is a different matter —
+    /// `NSWorkspace.open` on an application, a `.command` file or an executable
+    /// *runs* it, so one ⌘-click on a path a program printed could start whatever
+    /// sits there. Those are revealed in Finder (where launching is the user's
+    /// deliberate second step); documents and ordinary folders still open.
+    ///
+    /// Everything is judged on where the link LEADS, not on what it is called.
+    /// LaunchServices follows a symlink, so a link named `notes.txt` (or `docs`)
+    /// that points at `x.terminal` or `payload.app` was opened as that — and a
+    /// repository can carry both the link and the target. The path is therefore
+    /// resolved first (`realpath`: symlinks, `..`, `/tmp`), and the *resolved* URL is
+    /// what is opened, so the file cannot change between the check and the open.
+    ///
+    /// Whether a plain file would run is decided by its content type, not by the
+    /// execute bit: Mach-O programs and extension-less scripts are executables,
+    /// while a text file with the bit set is still a text file (and every file on
+    /// an exFAT or SMB volume reports the bit).
+    static func resolve(_ url: URL) -> (action: URLAction, target: URL) {
+        guard let scheme = url.scheme?.lowercased() else { return (.block, url) }
+        switch scheme {
+        case "http", "https", "mailto", "ftp", "ftps":
+            return (.open, url)
+        case "file":
+            var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+            guard realpath(url.path, &buffer) != nil else { return (.block, url) }
+            let target = URL(fileURLWithPath: String(cString: buffer))
+            return (fileAction(of: target, linkedAs: url), target)
+        default:
+            return (.block, url)
+        }
+    }
+
+    static func action(for url: URL) -> URLAction { resolve(url).action }
+
+    private static func fileAction(of target: URL, linkedAs link: URL) -> URLAction {
+        // Both names: either could carry the extension that makes it launch.
+        let extensions = [target.pathExtension, link.pathExtension].map { $0.lowercased() }
+        if extensions.contains(where: launchingExtensions.contains) { return .reveal }
+        let values = try? target.resourceValues(
+            forKeys: [.isApplicationKey, .isAliasFileKey, .isDirectoryKey, .contentTypeKey])
+        // A Finder alias is resolved by LaunchServices to who-knows-what.
+        if values?.isAliasFile == true || values?.isApplication == true { return .reveal }
+        if values?.isDirectory == true { return .open }
+        if let type = values?.contentType {
+            if type.conforms(to: .executable) || type.conforms(to: .unixExecutable) {
+                return .reveal
+            }
+            if type.conforms(to: .script),
+               FileManager.default.isExecutableFile(atPath: target.path) {
+                return .reveal
+            }
+        }
+        return .open
+    }
+
     /// Open a URL from terminal content, restricted to safe web/mail schemes so
-    /// untrusted output can't trigger arbitrary URL-scheme handlers. Shared by
+    /// untrusted output can't trigger arbitrary URL-scheme handlers — and, for
+    /// files, to things that show rather than run (see `resolve`). Shared by
     /// ⌘-click (OPEN_URL above) and the context menu's "Open Link" — one policy.
     static func openExternalURL(_ url: URL) {
-        let allowed: Set<String> = ["http", "https", "mailto", "ftp", "ftps", "file"]
-        guard let scheme = url.scheme?.lowercased(), allowed.contains(scheme) else {
+        let (action, target) = resolve(url)
+        switch action {
+        case .open:
+            NSWorkspace.shared.open(target)
+        case .reveal:
+            NSLog("link points at something that would run: revealing it instead")
+            NSWorkspace.shared.activateFileViewerSelecting([target])
+        case .block:
             NSLog("blocked opening url with scheme: \(url.scheme ?? "none")")
+        }
+    }
+
+    /// A program set the clipboard (OSC 52, or a copy). `confirm` is libghostty
+    /// saying the user's config asks first (`clipboard-write = ask`); it used to be
+    /// ignored, so that setting did nothing. Without a surface to attach the
+    /// question to, a write that needs confirming is not performed.
+    private static func writeClipboard(
+        _ userdata: UnsafeMutableRawPointer?, text: String, confirm: Bool
+    ) {
+        let perform = {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        guard confirm else {
+            DispatchQueue.main.async(execute: perform)
             return
         }
-        NSWorkspace.shared.open(url)
+        guard let userdata else { return }
+        let view = Unmanaged<GhosttySurfaceNSView>.fromOpaque(userdata).takeUnretainedValue()
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                ClipboardConfirmation.requestWrite(text: text, view: view, allow: perform)
+            }
+        }
+    }
+
+    /// Hand a libghostty clipboard confirmation to the user.
+    ///
+    /// The string is copied here because the C buffer only lives for this call,
+    /// and the dialog is shown from the next main-queue turn: completing a
+    /// request from inside the callback that reported it would re-enter the
+    /// library.
+    private static func confirmClipboard(
+        _ userdata: UnsafeMutableRawPointer?,
+        string: UnsafePointer<CChar>?,
+        state: UnsafeMutableRawPointer?,
+        request: ghostty_clipboard_request_e
+    ) {
+        guard let userdata else { return }
+        let view = Unmanaged<GhosttySurfaceNSView>.fromOpaque(userdata).takeUnretainedValue()
+        let text = string.map { String(cString: $0) } ?? ""
+        let kind = ClipboardConfirmation.Kind(request)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                ClipboardConfirmation.request(kind: kind, text: text, state: state, view: view)
+            }
+        }
     }
 
     private static func readClipboard(

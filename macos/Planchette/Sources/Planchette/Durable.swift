@@ -192,39 +192,24 @@ enum Durable {
 
     // MARK: Talking to tmux
 
-    /// Run tmux and return its exit status. Cheap and synchronous; used for the
-    /// one-shot `has-session` probe at terminal creation.
+    /// tmux answers in milliseconds, or its server is wedged. Either way the
+    /// caller — a restore, a close, the orphan reaper — must not wait on it
+    /// forever.
+    private static let tmuxTimeout: TimeInterval = 10
+
+    /// Run tmux and return its exit status (-1 when it could not be run or did
+    /// not answer in time).
     @discardableResult
     private static func run(_ tmux: String, _ arguments: [String]) -> Int32 {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tmux)
-        process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus
-        } catch {
-            return -1
-        }
+        guard let result = Subprocess.run(tmux, arguments, timeout: tmuxTimeout) else { return -1 }
+        return result.status
     }
 
     private static func output(_ tmux: String, _ arguments: [String]) -> String? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: tmux)
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            return String(data: data, encoding: .utf8)
-        } catch {
-            return nil
-        }
+        guard let result = Subprocess.run(tmux, arguments, timeout: tmuxTimeout),
+              !result.timedOut
+        else { return nil }
+        return result.stdoutString
     }
 
     /// End a session and everything in it. Called when a terminal or a whole
@@ -239,13 +224,33 @@ enum Durable {
     /// Both questions asked of tmux — "is this terminal's agent still alive?"
     /// and "which sessions are orphans?" — are answered from this list, so a
     /// restore costs one subprocess rather than one per terminal.
-    static func listSessions() -> [(id: UUID, attached: Bool)] {
-        guard let tmux = tmuxPath(),
-              let out = output(
-                tmux,
-                ["-L", serverName, "list-sessions", "-F", "#{session_name} #{session_attached}"])
-        else { return [] }
+    ///
+    /// **nil means tmux did not answer** (it timed out, or could not be started) —
+    /// which says nothing about which agents are alive, and must never be read as
+    /// "none". An empty list is a real answer: tmux replied, there is no server, so
+    /// no agent survived. The two used to be the same `[]`, which was harmless while
+    /// the call could not time out; with a deadline, a slow tmux would have made a
+    /// restore conclude that every live agent was dead and type a scrollback replay
+    /// and `claude --resume` into the terminal of each one (see AGENTS.md).
+    static func listSessions() -> [(id: UUID, attached: Bool)]? {
+        guard let tmux = tmuxPath() else { return [] }   // no tmux at all: nothing lives in it
+        guard let out = output(
+            tmux,
+            ["-L", serverName, "list-sessions", "-F", "#{session_name} #{session_attached}"])
+        else { return nil }
         return parseSessionList(out)
+    }
+
+    /// Pure: which durable terminals a restore must treat as having a LIVE agent.
+    /// When tmux did not answer, all of them: the cost of assuming wrongly is a
+    /// terminal that comes back without its scrollback replay (the user resumes by
+    /// hand); the cost of the opposite mistake is a second agent started next to
+    /// the one that is running, and a snapshot written over its TUI.
+    static func liveIDsForRestore(
+        listed: [(id: UUID, attached: Bool)]?, durableIDs: Set<UUID>
+    ) -> Set<UUID> {
+        guard let listed else { return durableIDs }
+        return liveIDs(in: listed)
     }
 
     /// Pure: every terminal tmux still holds a session for — i.e. whose agent
@@ -265,7 +270,12 @@ enum Durable {
         Set(sessions.filter { !$0.attached }.map(\.id))
     }
 
-    static func unattachedSessionIDs() -> Set<UUID> { unattachedIDs(in: listSessions()) }
+    /// Nothing is reaped when tmux did not answer: an unknown session list is no
+    /// licence to kill anything.
+    static func unattachedSessionIDs() -> Set<UUID> {
+        guard let listed = listSessions() else { return [] }
+        return unattachedIDs(in: listed)
+    }
 
     /// Pure: parse `tmux list-sessions -F '#{session_name} #{session_attached}'`.
     /// Anything that is not one of ours is ignored — the user's own tmux sessions

@@ -346,8 +346,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hookServer = server
 
         // Auto-install the Claude Code hooks so attention events work with no
-        // manual setup (idempotent; merges into ~/.claude/settings.json).
-        DispatchQueue.global(qos: .utility).async { HookInstaller.installIfNeeded() }
+        // manual setup (idempotent; merges into ~/.claude/settings.json). Not from an
+        // isolated instance: a demo or a test must keep away from the user's own
+        // setup (see `SupportPaths.isIsolated`), and these are files in their home.
+        if !SupportPaths.isIsolated {
+            DispatchQueue.global(qos: .utility).async { HookInstaller.installIfNeeded() }
+        }
 
         MainActor.assumeIsolated {
             // A run that was killed rather than quit may have left a verified

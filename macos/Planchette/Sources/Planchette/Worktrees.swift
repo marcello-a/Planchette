@@ -53,28 +53,35 @@ enum Worktrees {
         var errorDescription: String? { message }
     }
 
+    /// How long a read-only git question may take. Every one of them is answered
+    /// in milliseconds on a healthy checkout; a hang means a dead mount or a held
+    /// lock, and waiting longer only stacks threads behind the poll timer.
+    static let queryTimeout: TimeInterval = 15
+    /// Creating or removing a worktree checks files out and runs the repository's
+    /// own hooks (a `post-checkout` that installs dependencies takes as long as an
+    /// install does). It is one user-started operation, not a poll, so nothing piles
+    /// up behind it — the deadline is only a backstop against a truly stuck git, and
+    /// killing git at five minutes left half a worktree and a hook still running.
+    static let mutationTimeout: TimeInterval = 3600
+
     /// Run git in `directory`, returning trimmed stdout. Throws with git's own
     /// stderr, which is the only useful message when a worktree op fails.
     @discardableResult
-    static func git(_ arguments: [String], in directory: String) throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
-        process.currentDirectoryURL = URL(fileURLWithPath: directory)
-        let out = Pipe(), err = Pipe()
-        process.standardOutput = out
-        process.standardError = err
-        try process.run()
-        let stdout = out.fileHandleForReading.readDataToEndOfFile()
-        let stderr = err.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let message = String(data: stderr, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw GitError(message: message?.isEmpty == false ? message! : "git \(arguments.first ?? "") failed")
+    static func git(
+        _ arguments: [String], in directory: String, timeout: TimeInterval = queryTimeout
+    ) throws -> String {
+        guard let result = Subprocess.run(
+            "/usr/bin/env", ["git"] + arguments, in: directory,
+            timeout: timeout, stderr: .capture)
+        else { throw GitError(message: "git could not be started") }
+        if result.timedOut {
+            throw GitError(message: "git \(arguments.first ?? "") did not answer in time")
         }
-        return String(data: stdout, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard result.status == 0 else {
+            let message = result.stderrString.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw GitError(message: message.isEmpty ? "git \(arguments.first ?? "") failed" : message)
+        }
+        return result.stdoutString.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The main checkout for a directory, or nil when it isn't in a git repo.
@@ -90,11 +97,23 @@ enum Worktrees {
     /// The checked-out branch of a directory, or nil outside a repo / on a
     /// detached HEAD (`--show-current` prints nothing there — no branch is the
     /// honest answer, and a bare sha in the sidebar would only look like noise).
+    ///
+    /// Answered by reading `HEAD` (see `Titles.headState`): the branch poll runs
+    /// per distinct directory every few seconds for as long as the app lives, and
+    /// a subprocess per tick was its whole cost. Git is asked only when the file
+    /// cannot say (the reftable format).
     static func currentBranch(of directory: String) -> String? {
-        guard let branch = try? git(["branch", "--show-current"], in: directory),
-              !branch.isEmpty
-        else { return nil }
-        return branch
+        switch Titles.headState(forDirectory: directory, maxLevels: 64) {
+        case .branch(let name):
+            return name
+        case .detached, .notARepository:
+            return nil
+        case .unknown:
+            guard let branch = try? git(["branch", "--show-current"], in: directory),
+                  !branch.isEmpty
+            else { return nil }
+            return branch
+        }
     }
 
     /// The one branch a set of terminals share, or nil when they disagree.
@@ -123,7 +142,7 @@ enum Worktrees {
             args += ["-b", branch, path]
             if let base, !base.isEmpty { args.append(base) }
         }
-        try git(args, in: repoRoot)
+        try git(args, in: repoRoot, timeout: mutationTimeout)
         // Ask git where the checkout actually landed. On macOS /tmp and /var are
         // symlinks that Foundation refuses to resolve, so a hand-built path can
         // differ from the one git reports — and then nothing we store would ever
@@ -139,7 +158,7 @@ enum Worktrees {
         var args = ["worktree", "remove"]
         if force { args.append("--force") }
         args.append(path)
-        try git(args, in: repoRoot)
+        try git(args, in: repoRoot, timeout: mutationTimeout)
     }
 
     /// Paths of every worktree of a repo (the main checkout included).

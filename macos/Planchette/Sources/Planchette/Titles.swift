@@ -56,24 +56,71 @@ enum Titles {
     }
 
     private static func readGitBranch(forDirectory dir: String) -> String? {
-        var url = URL(fileURLWithPath: dir)
-        // Walk up to find the repo root (max 10 levels).
-        for _ in 0..<10 {
-            if let gitDir = resolveGitDir(url.appendingPathComponent(".git")) {
+        if case .branch(let name) = headState(forDirectory: dir) { return name }
+        return nil
+    }
+
+    /// What the `HEAD` file of the repository around a directory says.
+    enum HeadState: Equatable {
+        case branch(String)
+        /// A repository, but HEAD names a commit (or a ref outside `refs/heads`):
+        /// there is no branch, which is also what `git branch --show-current`
+        /// prints.
+        case detached
+        /// No repository above this directory.
+        case notARepository
+        /// HEAD holds a placeholder, so only git itself can answer. The reftable
+        /// ref format keeps `HEAD` as the stub `ref: refs/heads/.invalid`.
+        case unknown
+    }
+
+    /// Read HEAD straight off disk — no subprocess. The sidebar's branch poll used
+    /// to spawn `git branch --show-current` per distinct directory every 10
+    /// seconds, around the clock and with the app in the background; a file read
+    /// answers the same question in microseconds.
+    ///
+    /// `maxLevels` bounds the walk up from `dir` to the repository root. The
+    /// title code keeps its historical 10; the branch poll asks for more so that
+    /// a deep package directory is still recognised as part of its repository
+    /// (git itself has no limit).
+    static func headState(forDirectory dir: String, maxLevels: Int = 10) -> HeadState {
+        // The PHYSICAL path, as git sees it: a terminal reports the logical one, and
+        // walking up a symlink's own name goes through its parent's directory, not
+        // the real parent's. `~/code -> /Volumes/work/code` with the terminal in
+        // `~/code/app` would otherwise climb `~/code` -> `~`, miss the repository
+        // and — worse — find an unrelated one on the way (a dotfiles repo in `~`).
+        var url = URL(fileURLWithPath: physicalPath(of: dir))
+        for _ in 0..<max(1, maxLevels) {
+            let dotGit = url.appendingPathComponent(".git")
+            if let gitDir = resolveGitDir(dotGit) {
                 let head = gitDir.appendingPathComponent("HEAD")
                 if let content = try? String(contentsOf: head, encoding: .utf8) {
                     let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
                     if trimmed.hasPrefix("ref: refs/heads/") {
-                        return String(trimmed.dropFirst("ref: refs/heads/".count))
+                        let name = String(trimmed.dropFirst("ref: refs/heads/".count))
+                        return name == ".invalid" ? .unknown : .branch(name)
                     }
-                    return nil // detached HEAD
+                    return .detached
                 }
+                return .unknown   // a git dir whose HEAD cannot be read: let git say
             }
+            // A `.git` that is there but is no usable git dir (a worktree whose
+            // gitdir was deleted): git stops here with an error rather than
+            // climbing into the repository around it, and so must we.
+            if FileManager.default.fileExists(atPath: dotGit.path) { return .unknown }
             let parent = url.deletingLastPathComponent()
             if parent.path == url.path { break }
             url = parent
         }
-        return nil
+        return .notARepository
+    }
+
+    /// `realpath(3)`: every symlink resolved, `/tmp` and `/var` included (which
+    /// Foundation's `resolvingSymlinksInPath` leaves alone). A path that does not
+    /// exist is returned as it came.
+    private static func physicalPath(of path: String) -> String {
+        var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
+        return realpath(path, &buffer) != nil ? String(cString: buffer) : path
     }
 
     /// The directory that actually holds `HEAD` for the repo whose `.git` entry

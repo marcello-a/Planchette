@@ -12,8 +12,15 @@ direction: an agent asks Planchette for things. Two surfaces, one protocol:
 | `"$PLANCHETTE_CLI"` | you are an agent in a terminal, or writing a shell script |
 | the unix socket | you are a program that speaks JSON (status bar, Stream Deck, editor plugin) |
 
-Both are local only. There is no network listener, no token, no remote access:
-the socket's permissions are the whole security model.
+Both are local only. There is no network listener, no token, no remote access.
+Access control is the socket, enforced from both ends:
+
+- the socket file is private to the user (mode 0600);
+- the app asks the kernel who is on the other end of every connection and drops
+  anyone who is not the same user — the socket lives in `/tmp`, where a file name
+  is not proof of anything;
+- the CLI and the hook script refuse to talk to a socket that another user owns,
+  because a request carries whatever an agent types into a terminal.
 
 ## Reaching it
 
@@ -67,6 +74,28 @@ EOF), and reads until EOF.
 macOS `nc` cannot half-close a unix socket, so it can never read the reply. Use
 python, socat, or the CLI.
 
+### Limits
+
+The socket is not a place to stream data, and it is bounded accordingly.
+
+| | Limit |
+|---|---|
+| size of a request | 4 MiB; a bigger one is dropped, not truncated |
+| time to deliver a request | 5 s in total. A client that never closes its side is still served — with what it sent when the 5 s end |
+| connections being read at once | 64; the 65th is refused. A connection counts only while its request is being read, not while it waits for the answer |
+| requests waiting for their answer | 64 (a `session.wait` is one until it ends); the 65th gets `ok: false` with `too many requests in flight; try again shortly` |
+| terminals opened through `session.new` | 200 |
+
+A response is written with a 15 s timeout per write, so a client that stops
+reading cannot hold the app's thread. `session.read` always answers with the last
+`lines` lines (at least one) of the buffer.
+
+A request that waits for its answer (`session.wait`) ends as soon as its caller
+goes away — Ctrl-C, a timeout in the calling tool, a killed process. The app sees
+the close; it does not wait out the timeout. A client that only finished sending
+(`shutdown(SHUT_WR)`, which is what the CLI does) is still waiting for its answer,
+and gets it.
+
 ### CLI exit codes
 
 | Code | Meaning |
@@ -118,7 +147,14 @@ Returns `{"session": session}`.
 Creates the terminal *and starts its PTY*, so the next `session.prompt` has
 something to type into. Without `project_id` it lands in the caller's own
 project, so "another terminal here" does not scatter projects across the sidebar.
-It does not steal focus unless you ask: leave the user where they are.
+It does not steal focus unless you ask: leave the user where they are. At 200 open
+terminals it answers `ok: false` ("too many terminals are open") instead of
+opening another. While no display is awake (a Mac whose screens are asleep) a
+terminal cannot be started at all — libghostty's renderer needs a display — so the
+answer is `ok: false` ("terminal could not be started (is a display active?)") and
+no tab is left behind; try again once a display is back. `session.prompt` and
+`session.read` answer `ok: false` ("session has no live terminal") for a terminal
+that has not started yet, rather than dropping what was typed.
 
 Returns `{"session": session}`.
 
@@ -158,8 +194,15 @@ Refuses with `session is running; wait for it or pass force` while a turn is in
 flight: typing into a running turn interrupts it, and that turn is the user's
 work, not yours to discard. `force` overrides it — be sure.
 
-Text and the newline are written together, so a TUI cannot submit an empty line
-and then receive the prompt.
+The text is delivered as a paste — framed in bracketed-paste markers when the
+program asked for that, as zsh, fish and Claude Code do — and then Enter is pressed
+as a key, about 100 ms later, so the program has taken the text into its input
+first. (A carriage return inside the paste frame is only a newline in the text. An
+earlier version appended one to the text and, with such a program, typed the prompt
+and left it waiting unsent.) Text with line breaks arrives as one multi-line input
+and is submitted once. Prompts to the same terminal are delivered one after the
+other, so two callers cannot mix their text; the call returns when Enter has been
+pressed.
 
 ### session.read
 
@@ -180,7 +223,8 @@ Returns `{"text": "…", "session": session}` — the last `lines` lines.
 | `timeout_ms` | int | `120000` (capped at 3600 s) |
 
 Returns `{"session": session, "timed_out": false}` on arrival, or `ok: false`
-with a timeout error. **It only works for an agent whose state Planchette can
+with a timeout error. The wait stops early, without an answer, when the caller's
+connection closes. **It only works for an agent whose state Planchette can
 see** — Claude Code reports every transition through hooks; an agent that only
 claims its session will never change state and the wait will time out. For those,
 `session.read` and judge the output yourself.

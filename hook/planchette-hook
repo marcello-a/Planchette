@@ -43,7 +43,17 @@ event=$(printf '{"planchette_session":"%s","agent":"%s","event":%s}' \
 # does. Try each candidate in turn and stop at the first that accepts.
 for target in "$SOCKET" "$POINTER"; do
     [ -n "$target" ] || continue
+    # Only a real socket this user owns — never a symlink to one. The default path
+    # lives in /tmp, which every user on the machine can write to: after an app
+    # dies its pid can be reused and the old name taken by someone else, and an
+    # event carries the prompt you just typed. `-S` and `-O` follow a symlink, so a
+    # link to MY OWN live socket passes both tests and can then be swapped for the
+    # link-maker's listener before `nc` connects. /tmp is sticky: nobody can
+    # replace or rename a file that belongs to someone else, so a plain file that
+    # passes these tests is still the same file when `nc` opens it.
+    [ -L "$target" ] && continue
     [ -S "$target" ] || continue
+    [ -O "$target" ] || continue
     if printf '%s' "$event" | nc -U "$target" >/dev/null 2>&1; then
         break
     fi

@@ -56,8 +56,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "→ downloading Planchette ($LABEL)"
-curl -fsSL "$BASE/Planchette.dmg" -o "$TMP/Planchette.dmg"
-curl -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
+# HTTPS only, including across redirects: GitHub answers these URLs with a
+# redirect to its CDN, and a plain `-L` would follow one to any scheme.
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$BASE/Planchette.dmg" -o "$TMP/Planchette.dmg"
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
 
 echo "→ verifying checksum"
 ( cd "$TMP" && grep ' Planchette\.dmg$' SHA256SUMS | shasum -a 256 -c - ) || {

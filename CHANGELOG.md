@@ -8,6 +8,120 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Security
+- **The clipboard asks first.** A program in a terminal that asks to read your
+  clipboard (OSC 52), and a paste that could run commands the moment it arrives,
+  now ask for your OK — as they do in Ghostty itself. Both were approved without
+  asking, so running `cat` on an untrusted file or opening an `ssh` session to a
+  hostile host was enough to read out whatever you had last copied. The question
+  is a sheet on the window of the terminal that asked; a program in a background
+  tab, which you could not connect to the question, is refused without asking. The
+  safe button is the default, a program you refused is not allowed to ask again for
+  30 seconds, the preview shows invisible characters (escape codes, right-to-left
+  overrides, zero-width characters) instead of hiding them, and an ordinary
+  bracketed paste (what your shell and Claude Code use) is not interrupted. With
+  `clipboard-write = ask` in your Ghostty config, a program that wants to *replace*
+  your clipboard asks too — that setting was ignored.
+- **Only you can talk to Planchette's socket.** The app now checks who is on the
+  other end of every connection instead of trusting the file mode of a socket in
+  `/tmp`, and the hook, the `planchette` CLI and the notification click refuse a
+  socket that another user owns — or a symlink to one, which could be swapped for
+  another listener between the check and the connect; the CLI also asks the kernel
+  who is listening. An event carries the prompt you just typed. Connections are
+  bounded too: one 5-second deadline for a request, 4 MiB at most, 64 being read
+  at a time and 64 requests waiting for an answer.
+- **An update has to prove it is an update.** Redirects stay on GitHub over HTTPS, the
+  download must answer 200 and stay under 250 MB, and the in-app install needs the
+  release's `SHA256SUMS` (without it you get the manual download instead). The
+  unpacked app must have the same identity, the version of the release and a newer
+  one than the running app, and an intact signature — before the running app is
+  touched.
+- **A link that would run something is shown, not run.** ⌘-clicking a `file:` path in
+  terminal output opens documents and folders as before, but an application, a
+  `.command` script or an executable is revealed in Finder instead of started —
+  also when the link goes through a symlink or a Finder alias, which are looked
+  through before the decision.
+- **The AI summaries cannot be steered into your files.** The summarizer reads
+  transcript text that came from web pages and files; it now runs in an empty
+  directory of its own with all tools switched off (where your `claude` supports
+  that), and is told to treat that text as data.
+- **Planchette's support folder is private** (mode 0700), including on installs that
+  predate this release: it holds working directories, session ids and terminal
+  scrollback.
+
+### Fixed
+- **`planchette session prompt` submits again.** It typed the text with a carriage
+  return inside the paste, and a program that asked for bracketed paste — zsh (the
+  macOS default), fish, and Claude Code — took that for a line break in the text:
+  the prompt sat in the input box, with an extra empty line, unsent. Enter is now a
+  key press after the paste. Measured with Claude Code 2.1.299 against a stand-in
+  API: 30 of 30 prompts submitted (none before), multi-line and special characters
+  arrive intact, and three prompts sent at once stay three messages. Shells without
+  bracketed paste (bash 3.2) work as before. The call now takes about 100 ms.
+- **A terminal no longer stays dead when the screens were asleep.** With no display
+  awake, libghostty cannot build a terminal (its renderer needs a display link). The
+  app logged that and left a blank terminal for good — after a launch at login, or
+  when an agent opened one overnight with `planchette session new`, which still
+  answered "ok" and swallowed whatever was typed into it. The terminal now waits and
+  starts by itself within a few seconds of a display coming back. `session.new` with
+  no display awake says so and leaves no empty tab behind, and `session.prompt` and
+  `session.read` refuse a terminal that has not started instead of dropping the text.
+- **A development run no longer overwrites the installed `planchette` CLI.** Started
+  from the build folder (`./.build/debug/Planchette`), the app took its own
+  executable for the bundled CLI — the file system ignores case, so `planchette`
+  found `Planchette` — and copied 27 MB of binary over `~/.planchette/planchette`.
+  Agents in the installed app's terminals then started a second Planchette instead
+  of reaching the first. Only the packaged app deploys the hook and the CLI now, and
+  an instance with its own `PLANCHETTE_STATE_DIR` leaves your agent configuration
+  alone.
+- **Your agents no longer freeze while a dialog is open.** The update dialog stopped
+  everything dispatched to the main thread (the worktree and import alerts were
+  opened the same way): no terminal's output was processed, hook events and the
+  `planchette` CLI got no answer, and an agent that kept writing blocked on its next
+  write. Measured with the update dialog left open: a loop in a terminal ran about
+  140 iterations and stood still until the dialog was closed. Alerts now run in a
+  way that keeps the app running.
+- **A `session.wait` ends when its caller is gone.** Ctrl-C, a timeout in the
+  calling tool or a killed process left the wait — and its connection — in place
+  for the rest of its timeout, up to an hour.
+- **A symlinked `~/.claude/settings.json` stays a symlink.** Wiring up the hooks
+  replaced a dotfile-managed settings file with a regular file, so the dotfiles repo
+  stopped tracking it. The same goes for Codex's `hooks.json` and `config.toml`, and
+  the one-time backup is now a copy of the file rather than a second link to it. A
+  link whose file does not exist yet (dotfiles not checked out) is followed and the
+  file created; a link into a read-only store (nix, home-manager) is left alone and
+  the error says why.
+- **A busy agent no longer starves the autosave.** Saving waited for a quiet second,
+  and a running turn never has one, so every change since it began was lost in a
+  crash. The oldest unsaved change now waits at most ten seconds.
+- **Clicking a notification works from a home folder with a space** in its path.
+- **The update window no longer freezes while it unpacks.** Hashing and unpacking
+  the download ran on the main thread, spinner included.
+- **Updates leave nothing behind.** The downloaded zip, the unpacked copy and the
+  swap script stayed in the temp folder (about 35 MB per update); they are removed
+  once the update is applied or fails, and leftovers from earlier versions are swept
+  at launch.
+- **A stuck `git`, `gh`, `lsof` or `tmux` can no longer pile up.** Each of them now
+  has a deadline (15 seconds; an hour for the commands that change a worktree,
+  which can be slow on a large repository), and no poll starts while its previous
+  run is still going. A restore that gets no answer from `tmux` assumes the agents
+  are alive instead of replaying a restore command into them.
+- **`hook/install-hooks.sh` installs the same nine events as the app** (it was
+  missing the tool and sub-agent ones) and writes the file atomically, keeping its
+  mode.
+
+### Changed
+- **Less work in the background.** A terminal's branch is read from `.git/HEAD`
+  instead of starting `git` for every directory every ten seconds, and a dev
+  server's folder comes from the kernel instead of a second `lsof`.
+- **An animated terminal title no longer repaints the window.** A program that
+  spins a glyph in its title made every frame a "change" — a window refresh and a
+  state file write per frame, per busy terminal.
+- **`session.read` answers faster on a long scrollback** (the last lines are found by
+  scanning back from the end instead of splitting the whole buffer), and `session.new`
+  stops at 200 open terminals instead of forking without end.
+- Everything the update dialog says when it refuses an update is translated.
+
 ## [0.2.34] — 2026-09-24
 
 ### Changed

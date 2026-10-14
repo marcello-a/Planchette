@@ -392,13 +392,24 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// says nothing worth showing.
     private var reportedTitle: String? {
         guard let oscTitle else { return nil }
-        // Strip a leading status glyph (Claude Code prefixes "✳ "/"●", which
-        // reads as a stray star/dot next to the name).
-        let cleaned = String(oscTitle.drop(while: { $0.isSymbol || $0.isWhitespace }))
-            .trimmingCharacters(in: .whitespaces)
+        let cleaned = Self.cleanedTitle(oscTitle)
         // Skip the shell's default prompt (user@host:path) — it's not a name.
         guard !cleaned.isEmpty, !Titles.looksLikeShellPrompt(cleaned) else { return nil }
         return cleaned
+    }
+
+    /// A reported title without its leading status glyph (Claude Code prefixes
+    /// "✳ "/"●", which reads as a stray star/dot next to the name).
+    ///
+    /// Applied when the title is *stored*, not only when it is shown: programs
+    /// animate that glyph (a braille spinner is the usual one) while they work,
+    /// and every frame arrived as a "changed" title — a full SwiftUI refresh and
+    /// a state.json rewrite per frame, per busy terminal, for a name that never
+    /// changed. Cleaned first, a glyph-only change is equal to what is stored and
+    /// `AppState.update` drops it.
+    static func cleanedTitle(_ raw: String) -> String {
+        String(raw.drop(while: { $0.isSymbol || $0.isWhitespace }))
+            .trimmingCharacters(in: .whitespaces)
     }
 
     /// Last two path components, full path shown on hover.

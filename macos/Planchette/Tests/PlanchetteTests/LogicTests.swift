@@ -688,13 +688,13 @@ final class WorktreeGitTests: XCTestCase {
             .appendingPathComponent("planchette-wt-\(UUID().uuidString)/repo")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         repo = dir.path
-        try Worktrees.git(["init", "-q", "-b", "main"], in: repo)
-        try Worktrees.git(["config", "user.email", "test@example.com"], in: repo)
-        try Worktrees.git(["config", "user.name", "Test"], in: repo)
+        try fixtureGit(["init", "-q", "-b", "main"], in: repo)
+        try fixtureGit(["config", "user.email", "test@example.com"], in: repo)
+        try fixtureGit(["config", "user.name", "Test"], in: repo)
         try "hello".write(
             to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
-        try Worktrees.git(["add", "."], in: repo)
-        try Worktrees.git(["commit", "-qm", "init"], in: repo)
+        try fixtureGit(["add", "."], in: repo)
+        try fixtureGit(["commit", "-qm", "init"], in: repo)
     }
 
     override func tearDownWithError() throws {
@@ -711,16 +711,16 @@ final class WorktreeGitTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: path + "/README.md"))
         // The checkout is on the new branch, and the repo knows about it.
         XCTAssertEqual(
-            try Worktrees.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "feat/drop")
+            try fixtureGit(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "feat/drop")
         XCTAssertTrue(Worktrees.list(repoRoot: repo).contains(path))
         XCTAssertEqual(Worktrees.repoRoot(of: path), path)
     }
 
     func testCreateChecksOutAnExistingBranch() throws {
-        try Worktrees.git(["branch", "existing"], in: repo)
+        try fixtureGit(["branch", "existing"], in: repo)
         let path = try Worktrees.create(repoRoot: repo, branch: "existing", base: nil)
         XCTAssertEqual(
-            try Worktrees.git(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "existing")
+            try fixtureGit(["rev-parse", "--abbrev-ref", "HEAD"], in: path), "existing")
     }
 
     func testCreateRefusesToOverwriteAnExistingPath() throws {

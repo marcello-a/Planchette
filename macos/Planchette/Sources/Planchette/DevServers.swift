@@ -242,36 +242,67 @@ enum DevServerScanner {
         }
     }
 
-    /// The impure end: two `lsof` calls, then the pure match. Call off the
-    /// main thread — each `lsof` costs ~100ms.
-    static func scan(projectDirs: [UUID: [String]]) -> [UUID: [DevServer]] {
+    /// The impure end: one `lsof` for the listening sockets, an in-process lookup
+    /// for each listener's working directory, then the pure match. Call off the
+    /// main thread — the `lsof` costs ~50ms.
+    ///
+    /// The working directories used to be a second `lsof -p <pids>`, i.e. a second
+    /// process spawn on every tick. `proc_pidinfo` answers the same question for
+    /// every process of this user in about a microsecond each.
+    ///
+    /// Nil when `lsof` did not finish: a listing cut off by the deadline can end in
+    /// the middle of a record (`n*:3000` read as port 30, `p12345` as pid 123) and
+    /// would attribute servers to the wrong project, and "no answer" must not
+    /// look like "no servers" either — the caller keeps what it showed before.
+    static func scan(projectDirs: [UUID: [String]]) -> [UUID: [DevServer]]? {
         guard !projectDirs.isEmpty else { return [:] }
-        let listing = run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"])
+        guard let listing = run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"]) else {
+            return nil
+        }
         let listeners = parseListeners(listing)
         guard !listeners.isEmpty else { return [:] }
-        let pids = Set(listeners.map(\.pid)).map(String.init).joined(separator: ",")
-        let cwdListing = run("/usr/sbin/lsof", ["-a", "-d", "cwd", "-p", pids, "-Fpn"])
+        let pids = Set(listeners.map(\.pid))
+        var cwds: [Int: String] = [:]
+        for pid in pids {
+            if let cwd = workingDirectory(ofPID: pid) { cwds[pid] = cwd }
+        }
+        // libproc unavailable for every listener (a restricted environment):
+        // ask lsof, which sees exactly what libproc would have.
+        if cwds.isEmpty {
+            let list = pids.map(String.init).joined(separator: ",")
+            guard let cwdListing = run("/usr/sbin/lsof", ["-a", "-d", "cwd", "-p", list, "-Fpn"]) else {
+                return nil
+            }
+            cwds = parseCwds(cwdListing)
+        }
         return match(
             listeners: listeners,
-            cwds: parseCwds(cwdListing),
+            cwds: cwds,
             projectDirs: projectDirs,
             isProjectRoot: looksLikeProjectRoot)
     }
 
-    private static func run(_ launchPath: String, _ args: [String]) -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: launchPath)
-        process.arguments = args
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-        } catch {
-            return ""
+    /// A process's current directory, read from the kernel — no subprocess. Nil
+    /// for a process that is gone or that belongs to another user.
+    static func workingDirectory(ofPID pid: Int) -> String? {
+        guard pid > 0, pid <= Int(Int32.max) else { return nil }
+        var info = proc_vnodepathinfo()
+        let size = Int32(MemoryLayout<proc_vnodepathinfo>.size)
+        guard proc_pidinfo(Int32(pid), PROC_PIDVNODEPATHINFO, 0, &info, size) == size else {
+            return nil
         }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return String(data: data, encoding: .utf8) ?? ""
+        let path = withUnsafePointer(to: &info.pvi_cdir.vip_path) {
+            $0.withMemoryRebound(to: CChar.self, capacity: Int(MAXPATHLEN)) { String(cString: $0) }
+        }
+        return path.isEmpty ? nil : path
+    }
+
+    /// `lsof` on a machine with thousands of open sockets takes a while; if it
+    /// ever hangs it must cost one poll, not the app.
+    private static func run(_ launchPath: String, _ args: [String]) -> String? {
+        guard let result = Subprocess.run(launchPath, args, timeout: 10), !result.timedOut else {
+            return nil
+        }
+        return result.stdoutString
     }
 }
