@@ -26,3 +26,7 @@ dist/
 
 # Local agent state (Claude Code worktrees, settings)
 .claude/
+
+# Python bytecode from scripts/perf
+__pycache__/
+*.pyc
