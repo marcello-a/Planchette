@@ -856,6 +856,204 @@ final class ScreenDetectionTests: XCTestCase {
                 detection, agent: .claude, hookAuthority: true, current: .running))
     }
 
+    // MARK: Captured from Claude Code 2.1.300 (tmux, a stand-in API)
+
+    /// Esc or Ctrl+C before anything was printed: the prompt text goes back into the
+    /// input, no "Interrupted" line, no hook. The footer is the mode label alone.
+    private let promptRestoredAfterAbort = """
+         ▐▛███▛█   Claude Code v2.1.300
+        ▝▜██████▀  Opus 5.5 · API Usage Billing
+         ▝▝   ▝▝   /work
+        ──────────────────────────────────────────────────────────────────────
+        ❯ SLOW please take your time
+        ──────────────────────────────────────────────────────────────────────
+          ⏸ manual mode on
+        """
+
+    private let turnRunning = """
+        ❯ SLOW please take your time
+        ✻ Gitifying…
+        ──────────────────────────────────────────────────────────────────────
+        ❯
+        ──────────────────────────────────────────────────────────────────────
+          ⏸ manual mode on · esc to interrupt · ← for agents
+        """
+
+    private func read(_ screen: String) -> ScreenDetection? {
+        ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules)
+    }
+
+    // The abort that leaves no trace text: an idle open prompt is the only sign.
+    func testPromptRestoredAfterAnAbortIsAnIdlePrompt() {
+        let detection = read(promptRestoredAfterAbort)
+        XCTAssertEqual(detection?.state, .idle)
+        XCTAssertEqual(detection?.ruleID, "claude_idle_footer")
+        XCTAssertTrue(detection?.idlePrompt == true)
+        // …and under hook authority it ends a turn the hooks still call running.
+        XCTAssertEqual(
+            AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .running),
+            .free)
+    }
+
+    // "esc to interrupt" in the footer is what a live turn says.
+    func testARunningTurnIsNotAnIdlePrompt() {
+        let detection = read(turnRunning)
+        XCTAssertNil(detection, "no rule may read a running turn as idle")
+        XCTAssertNil(
+            AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .running))
+    }
+
+    // Every permission mode words its footer differently; none of them may hide
+    // an idle prompt, and "esc to interrupt" must make each of them a running turn.
+    func testEveryPermissionModeFooterIsRead() {
+        let footers = [
+            "⏸ manual mode on · ? for shortcuts · ← for agents",
+            "⏸ manual mode on",
+            "⏵⏵ auto mode on (shift+tab to cycle) · ← for agents",
+            "⏸ plan mode on (shift+tab to cycle)",
+            "⏵⏵ accept edits on (shift+tab to cycle)",
+            "⏵⏵ bypass permissions on (shift+tab to cycle)",
+            "? for shortcuts",
+        ]
+        for footer in footers {
+            let idle = read("❯ draft\n──────────\n  \(footer)")
+            XCTAssertTrue(idle?.idlePrompt == true, "idle: \(footer)")
+            let busy = read("✻ Thinking…\n❯\n──────────\n  \(footer) · esc to interrupt")
+            XCTAssertNil(busy, "running: \(footer)")
+        }
+    }
+
+    // The idle prompt only ends a *running* turn. A question lives in a dialog,
+    // so a waiting terminal is never freed by it; a finished turn stays to review.
+    func testIdlePromptEndsOnlyARunningTurn() {
+        let detection = read(promptRestoredAfterAbort)
+        for current in [AttentionState.waiting, .ready, .free, .error] {
+            XCTAssertNil(
+                AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: current),
+                "\(current)")
+        }
+    }
+
+    // Without hooks the idle prompt keeps its old meaning: a turn that ran and is
+    // back at the prompt left something to look at.
+    func testWithoutHooksTheIdlePromptStillMeansReady() {
+        let detection = read(promptRestoredAfterAbort)
+        XCTAssertEqual(
+            AttentionState.fromScreen(detection, agent: .claude, hookAuthority: false, current: .running),
+            .ready)
+    }
+
+    // A dialog's own footer must never read as an idle prompt.
+    func testADialogIsNotAnIdlePrompt() {
+        let dialogs = [
+            "Do you want to proceed?\n❯ 1. Yes\n  2. No\n  Esc to cancel · Tab to amend",
+            "Select an option\n❯ 1. One\n  2. Two\n  Enter to select · ↑/↓ to navigate · Esc to cancel",
+        ]
+        for dialog in dialogs {
+            XCTAssertNotEqual(read(dialog)?.state, .idle)
+            XCTAssertFalse(read(dialog)?.idlePrompt == true)
+        }
+    }
+
+    // In a narrow pane the marker wraps over two lines; a phrase that wraps is
+    // still the phrase (this left a terminal running for ever after Ctrl+C).
+    func testAWrappedInterruptMarkerIsStillRead() {
+        let narrow = """
+            ❯ STREAM please answer at length
+            ⏺ Here is the beginning of a long answer
+              that never ends quickly.
+              ⎿  Interrupted· What should Claude do
+            instead?
+            ────────────────────────────────────
+            ❯
+            ────────────────────────────────────
+              ⏸ manual mode on · ? for shortcuts
+            """
+        let detection = read(narrow)
+        XCTAssertEqual(detection?.ruleID, "claude_interrupted")
+        XCTAssertTrue(detection?.interrupted == true)
+    }
+
+    // A narrower pane still clips the line: only "What should Claude do" is left
+    // of it, and that is enough to know the turn was interrupted.
+    func testAClippedInterruptMarkerIsStillRead() {
+        let clipped = """
+            ❯ ASKPERM please list the folder
+            ⏺ Bash(touch permtest.txt)
+              ⎿  Interrupted· What should Claude do
+            ✻ Crunched for 0s · done 13:05
+            ────────────────────────────────────
+            ❯
+            ────────────────────────────────────
+              ⏸ manual mode on · ? for shortcuts · ←
+            """
+        let detection = read(clipped)
+        XCTAssertEqual(detection?.ruleID, "claude_interrupted")
+        // …which ends the question of a permission dialog that was dismissed with Esc.
+        XCTAssertEqual(
+            AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .waiting),
+            .free)
+    }
+
+    func testAWrappedBlockerIsStillRead() {
+        let narrow = "Do you want to\nproceed?\n❯ 1. Yes\n  2. No"
+        XCTAssertTrue(read(narrow)?.visibleBlocker == true)
+    }
+
+    // …and a wrapped "esc to interrupt" still says the turn is live.
+    func testAWrappedEscToInterruptStillMeansRunning() {
+        let narrow = "✻ Thinking…\n❯\n──────\n  ⏸ manual mode on · esc to\ninterrupt"
+        XCTAssertNil(read(narrow))
+    }
+
+    // Claude's patterns read whatever a plain shell prints: a leftover `claude`
+    // claim must not make "Do you want to continue? (y/n)" from brew a question
+    // that returns after every command.
+    func testScreenRulesApplyOnlyWhereClaudeCanBe() {
+        XCTAssertTrue(AttentionState.screenRulesApply(hookAuthority: true, durable: false), "a live agent")
+        XCTAssertTrue(AttentionState.screenRulesApply(hookAuthority: false, durable: true),
+                      "a durable terminal's Claude may have outlived a restart")
+        XCTAssertTrue(AttentionState.screenRulesApply(hookAuthority: true, durable: true))
+        XCTAssertFalse(AttentionState.screenRulesApply(hookAuthority: false, durable: false),
+                       "a plain shell that once ran Claude")
+    }
+
+    // MARK: A question the screen raised may leave the screen
+
+    func testAQuestionTheScreenRaisedIsTakenBackWhenNoRuleSeesIt() {
+        // No hooks, the terminal shows waiting because the screen said so, and the
+        // screen now shows nothing a rule knows.
+        XCTAssertEqual(
+            AttentionState.fromScreen(nil, agent: .claude, hookAuthority: false,
+                                      current: .waiting, raisedByScreen: true),
+            .free)
+    }
+
+    func testOnlyAWaitingTheScreenRaisedIsTakenBack() {
+        // A hook's question is the hook's to end.
+        XCTAssertNil(AttentionState.fromScreen(nil, agent: .claude, hookAuthority: false,
+                                               current: .waiting, raisedByScreen: false))
+        XCTAssertNil(AttentionState.fromScreen(nil, agent: .claude, hookAuthority: true,
+                                               current: .waiting, raisedByScreen: true))
+        // Nothing else is touched.
+        for current in [AttentionState.running, .ready, .free, .error] {
+            XCTAssertNil(AttentionState.fromScreen(nil, agent: .claude, hookAuthority: false,
+                                                   current: current, raisedByScreen: true))
+        }
+    }
+
+    func testAPagerIsNotEvidenceThatTheQuestionIsGone() {
+        let pager = ScreenDetection(state: .unknown, ruleID: "t", skipStateUpdate: true)
+        XCTAssertNil(AttentionState.fromScreen(pager, agent: .claude, hookAuthority: false,
+                                               current: .waiting, raisedByScreen: true))
+    }
+
+    func testAQuestionStillOnTheScreenStays() {
+        let blocker = ScreenDetection(state: .blocked, ruleID: "t", visibleBlocker: true)
+        XCTAssertNil(AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: false,
+                                               current: .waiting, raisedByScreen: true))
+    }
+
     func testUnrelatedOutputMatchesNothing() {
         let screen = "$ ls -la\ntotal 42\ndrwxr-xr-x  5 me  staff  160 Jul 31 12:00 ."
         XCTAssertNil(
@@ -985,8 +1183,9 @@ final class StateArbitrationTests: XCTestCase {
     private let idle = ScreenDetection(state: .idle, ruleID: "t")
     private let working = ScreenDetection(state: .working, ruleID: "t")
 
-    // While hooks are authoritative the screen may do exactly one thing:
-    // escalate to waiting when something is visibly blocked.
+    // While hooks are authoritative the screen may raise a question they missed
+    // (a blocker) and end a turn no hook closed (an interrupt, an idle prompt) —
+    // nothing else. A plain idle reading and a working one are the hooks' business.
     func testHookAuthorityOnlyAllowsBlockerEscalation() {
         XCTAssertEqual(
             AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: true, current: .running),
@@ -1293,51 +1492,31 @@ final class StatusColorTests: XCTestCase {
         }
     }
 
-    // The command-finish matrix in full: exit code × current state. An agent
-    // turn always wins; at the prompt the exit code decides.
-    func testCommandFinishTable() {
-        let all: [AttentionState] = [.ready, .running, .waiting, .error, .free]
-        for current in all {
-            for code in [0, 1, 2, 130] {
-                let result = AttentionState.afterCommandFinish(exitCode: code, current: current)
-                switch (current, code) {
-                case (.running, _), (.waiting, _):
-                    XCTAssertNil(result, "agent turn must own the indicator (\(current), \(code))")
-                case (_, 130):
-                    XCTAssertEqual(result, .free, "⌃C is a deliberate stop (\(current))")
-                case (_, 0):
-                    XCTAssertEqual(result, .ready, "clean exit leaves a result (\(current))")
-                default:
-                    XCTAssertEqual(result, .error, "non-zero exit is an error (\(current))")
-                }
-            }
+    // The exit code decides, and nothing else: not the state the terminal had.
+    // (An earlier rule ignored a finished command while the terminal was running
+    // or waiting, which left a "?" on the screen for ever after `brew install`
+    // had asked its question and ended — or after Ctrl+C.)
+    func testCommandFinishIsDecidedByTheExitCodeAlone() {
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0), .ready, "a clean exit leaves a result")
+        for code in [1, 2, 3, 127, 137] {
+            XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: code), .error, "exit \(code)")
         }
+        // Exit 130 (Ctrl+C) is a deliberate stop — not an error, nothing to review.
+        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130), .free)
     }
 
-    // A shell command result must never stomp an active agent turn, but at the
-    // prompt the exit code decides idle (green) vs error (red).
-    func testCommandFinishHonorsAgentTurn() {
-        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 0, current: .running))
-        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .running))
-        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 1, current: .waiting))
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .ready), .ready)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 2, current: .ready), .error)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 1, current: .error), .error)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .error), .ready)
-    }
-
-    // Exit 130 (Ctrl+C) is a deliberate stop — not an error, nothing to
-    // review: the terminal is free.
-    func testCommandFinishTreatsCtrlCAsFree() {
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .ready), .free)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 130, current: .error), .free)
-        XCTAssertNil(AttentionState.afterCommandFinish(exitCode: 130, current: .running))
-    }
-
-    // A command finishing in a free terminal produced a result to look at.
-    func testCommandFinishInFreeTerminal() {
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 0, current: .free), .ready)
-        XCTAssertEqual(AttentionState.afterCommandFinish(exitCode: 3, current: .free), .error)
+    // A restart ended every process a saved state describes, except a durable
+    // agent that is still alive inside tmux.
+    func testNothingRunsAfterARestartThatTheRestartDidNotStart() {
+        for saved in [AttentionState.running, .waiting] {
+            XCTAssertEqual(AttentionState.afterRestart(saved, agentSurvived: false), .free, "\(saved)")
+            XCTAssertEqual(AttentionState.afterRestart(saved, agentSurvived: true), saved, "\(saved) in tmux")
+        }
+        // A result nobody has looked at is still a result.
+        for saved in [AttentionState.ready, .error, .free] {
+            XCTAssertEqual(AttentionState.afterRestart(saved, agentSurvived: false), saved)
+            XCTAssertEqual(AttentionState.afterRestart(saved, agentSurvived: true), saved)
+        }
     }
 
     // Inbox ordering: error is most urgent, free least.
@@ -3099,5 +3278,47 @@ final class DoneExpiryTests: XCTestCase {
         for option in DoneExpiry.allCases {
             XCTAssertFalse(option.label.isEmpty, option.rawValue)
         }
+    }
+}
+
+
+final class ScreenConfirmationTests: XCTestCase {
+    private let one = UUID(), two = UUID()
+
+    func testAReadingMustHoldOnTwoPollsInARow() {
+        var confirmation = ScreenConfirmation()
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one), "the first poll could be a blink")
+        XCTAssertTrue(confirmation.confirm(.idlePrompt, for: one), "the second is the abort")
+    }
+
+    // A turn that has just begun shows an idle-looking prompt for a split second.
+    func testABlinkBetweenTwoPollsNeverCounts() {
+        var confirmation = ScreenConfirmation()
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
+        XCTAssertFalse(confirmation.confirm(nil, for: one), "the spinner came back")
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one), "a new streak starts over")
+        XCTAssertTrue(confirmation.confirm(.idlePrompt, for: one))
+    }
+
+    func testTwoDifferentReadingsDoNotAddUp() {
+        var confirmation = ScreenConfirmation()
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
+        XCTAssertFalse(confirmation.confirm(.questionGone, for: one))
+        XCTAssertTrue(confirmation.confirm(.questionGone, for: one))
+    }
+
+    func testTerminalsAreCountedApart() {
+        var confirmation = ScreenConfirmation()
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: two))
+        XCTAssertTrue(confirmation.confirm(.idlePrompt, for: one))
+        XCTAssertTrue(confirmation.confirm(.idlePrompt, for: two))
+    }
+
+    func testAForgottenTerminalStartsOver() {
+        var confirmation = ScreenConfirmation()
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
+        confirmation.forget(one)
+        XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
     }
 }

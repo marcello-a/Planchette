@@ -39,21 +39,27 @@ struct ScreenRule: Codable, Equatable {
     /// No hook fires for that — Claude Code's `Stop` skips user interrupts — so
     /// without this a hooked terminal would show `running` until the next turn.
     var interrupted: Bool = false
+    /// The agent sits at an idle, open prompt — nothing is running. Under hook
+    /// authority that frees a terminal the hooks still call `running`: a turn can
+    /// end without a hook (Esc or Ctrl+C before anything was printed puts the
+    /// prompt text back into the input and prints no "Interrupted" line; a `Stop`
+    /// can be lost). Never `waiting`: a question is a dialog, not an idle prompt.
+    var idlePrompt: Bool = false
 
     private enum CodingKeys: String, CodingKey {
         case id, state, priority, tailLines, contains, any, none, lineRegex
-        case visibleBlocker, skipStateUpdate, interrupted
+        case visibleBlocker, skipStateUpdate, interrupted, idlePrompt
     }
 
     init(id: String, state: ScreenState, priority: Int, tailLines: Int = 6,
          contains: [String] = [], any: [[String]] = [], none: [String] = [],
          lineRegex: [String] = [], visibleBlocker: Bool = false,
-         skipStateUpdate: Bool = false, interrupted: Bool = false) {
+         skipStateUpdate: Bool = false, interrupted: Bool = false, idlePrompt: Bool = false) {
         self.id = id; self.state = state; self.priority = priority
         self.tailLines = tailLines; self.contains = contains; self.any = any
         self.none = none; self.lineRegex = lineRegex
         self.visibleBlocker = visibleBlocker; self.skipStateUpdate = skipStateUpdate
-        self.interrupted = interrupted
+        self.interrupted = interrupted; self.idlePrompt = idlePrompt
     }
 
     // Hand-written so the in-line defaults apply during decode. Synthesized
@@ -73,6 +79,7 @@ struct ScreenRule: Codable, Equatable {
         visibleBlocker = try c.decodeIfPresent(Bool.self, forKey: .visibleBlocker) ?? false
         skipStateUpdate = try c.decodeIfPresent(Bool.self, forKey: .skipStateUpdate) ?? false
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted) ?? false
+        idlePrompt = try c.decodeIfPresent(Bool.self, forKey: .idlePrompt) ?? false
     }
 }
 
@@ -83,6 +90,7 @@ struct ScreenDetection: Equatable {
     var visibleBlocker: Bool = false
     var skipStateUpdate: Bool = false
     var interrupted: Bool = false
+    var idlePrompt: Bool = false
 }
 
 /// Rules per agent, versioned so an override file can be recognized (and
@@ -109,7 +117,11 @@ enum ScreenDetector {
         for rule in rules.sorted(by: { $0.priority > $1.priority }) {
             let region = Array(nonEmpty.suffix(rule.tailLines))
             guard !region.isEmpty else { continue }
-            let haystack = region.joined(separator: "\n").lowercased()
+            // One line of single spaces: in a narrow pane "What should Claude do
+            // instead?" wraps over two lines, and a phrase that wraps must still
+            // be the phrase (a marker that fails to match leaves a terminal stuck).
+            let haystack = region.joined(separator: " ")
+                .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
 
             if !rule.contains.allSatisfy({ haystack.contains($0.lowercased()) }) { continue }
             if rule.none.contains(where: { haystack.contains($0.lowercased()) }) { continue }
@@ -133,7 +145,8 @@ enum ScreenDetector {
                 state: rule.state, ruleID: rule.id,
                 visibleBlocker: rule.visibleBlocker,
                 skipStateUpdate: rule.skipStateUpdate,
-                interrupted: rule.interrupted)
+                interrupted: rule.interrupted,
+                idlePrompt: rule.idlePrompt)
         }
         return nil
     }
@@ -228,7 +241,9 @@ enum ScreenDetector {
     static let builtIn = ScreenRuleSet(
         // 2: claude_interrupted — a newer version, so installs holding the
         // fetched v1 file take the release asset that carries it.
-        version: 2,
+        // 3: claude_idle_footer reads every permission mode's footer and frees a
+        // turn the hooks never closed (an abort before the first output).
+        version: 3,
         engine: ScreenRuleSet.engineVersion,
         agents: [
             AgentKind.claude.rawValue: [
@@ -260,17 +275,36 @@ enum ScreenDetector {
                 // What should Claude do instead?" and returns to its prompt,
                 // without a hook. The spinner's "esc to interrupt" means a new
                 // turn already runs below a stale marker.
+                // "What should Claude do" and no further: a narrow pane clips the
+                // line (it does not wrap it), and the question mark is not needed
+                // to know whose line it is.
                 ScreenRule(
                     id: "claude_interrupted", state: .idle, priority: 800,
-                    tailLines: 10, contains: ["what should claude do instead"],
+                    tailLines: 10, contains: ["what should claude do"],
                     none: ["esc to interrupt", "enter to interrupt", "esc to cancel",
                            "do you want to"],
                     interrupted: true),
-                // The idle prompt footer, with no prompt open.
+                // The idle prompt: the footer under an open input box, nothing
+                // running. "esc to interrupt" is what the footer says while a
+                // turn is live, so its absence is the evidence. The label differs
+                // per permission mode ("manual mode on", "auto mode on (shift+tab
+                // to cycle)", "accept edits on", …), and the empty input adds
+                // "? for shortcuts" — which an input with text in it (a prompt put
+                // back after an abort) does not show, so that alone is not enough.
+                // Verified against Claude Code 2.1.300.
                 ScreenRule(
                     id: "claude_idle_footer", state: .idle, priority: 700,
-                    tailLines: 6, contains: ["? for shortcuts"],
-                    none: ["esc to cancel", "do you want to"]),
+                    tailLines: 6,
+                    any: [
+                        ["? for shortcuts"],
+                        ["mode on"],
+                        ["shift+tab to cycle"],
+                        ["accept edits on"],
+                        ["bypass permissions on"],
+                    ],
+                    none: ["esc to cancel", "do you want to", "esc to interrupt",
+                           "enter to interrupt"],
+                    idlePrompt: true),
             ],
             AgentKind.codex.rawValue: [],
         ])
@@ -287,13 +321,35 @@ extension AttentionState {
     ///   session, a plain shell running an agent we don't hook) the screen is
     ///   all we have, so it drives every state.
     ///
+    /// Whether the screen rules are worth applying to this terminal at all.
+    ///
+    /// Claude's patterns describe Claude's screen. Where no Claude is live — a
+    /// plain shell in a terminal Claude once ran in, which keeps its `claude`
+    /// claim for good — they read whatever any program prints, and "Do you want
+    /// to continue? (y/n)" from `apt` or `brew` raised a question that the
+    /// finished command left on the screen, over and over, on every poll. So: a
+    /// live agent, or a durable terminal, whose Claude may have outlived a restart
+    /// and has not sent a hook yet. Nothing else.
+    static func screenRulesApply(hookAuthority: Bool, durable: Bool) -> Bool {
+        hookAuthority || durable
+    }
+
+    /// - `raisedByScreen`: the `waiting` this terminal shows came from the screen
+    ///   (no hook said so). The screen may then take it back: the question left
+    ///   the screen — answered, scrolled away, the program gone — and no rule
+    ///   sees one any more. A `waiting` a hook raised is the hook's to end.
+    ///
     /// Returns nil to keep the current state.
     static func fromScreen(
         _ screen: ScreenDetection?,
         agent: AgentKind,
         hookAuthority: Bool,
-        current: AttentionState
+        current: AttentionState,
+        raisedByScreen: Bool = false
     ) -> AttentionState? {
+        if !hookAuthority, raisedByScreen, current == .waiting, screen == nil {
+            return .free
+        }
         guard let screen, !screen.skipStateUpdate else { return nil }
 
         // An aborted turn is the one end of work no hook reports, so the screen
@@ -305,6 +361,11 @@ extension AttentionState {
         }
 
         if hookAuthority {
+            // An idle, open prompt while the hooks say a turn runs: the turn ended
+            // without a hook (an abort before any output, a lost Stop). Nothing
+            // was produced to review, so it is free, not ready — and only a
+            // running turn: a waiting one asks through a dialog.
+            if screen.idlePrompt { return current == .running ? .free : nil }
             // The one case the screen knows better: something is visibly waiting
             // on the human while the hooks think otherwise.
             guard screen.visibleBlocker, !current.needsAttention else { return nil }
@@ -323,5 +384,42 @@ extension AttentionState {
         case .unknown:
             return nil
         }
+    }
+}
+
+/// A reading of the screen that moves a terminal on its own word has to hold on
+/// consecutive polls before it counts.
+///
+/// Two readings are that bold: "the prompt is idle, so the turn you call running
+/// is over" and "the question I raised is gone". Each can be true for a moment
+/// without being true — a turn that has just begun shows an idle-looking prompt
+/// for a split second before its spinner, a program redraws — and a wrong "free"
+/// would hide a turn that is still running. Two polls (1.5 s apart or more) rule
+/// the blink out, and an abort that is real is still there on the second.
+struct ScreenConfirmation {
+    enum Reading: Equatable {
+        case idlePrompt
+        case questionGone
+    }
+
+    /// Polls in a row a reading must hold.
+    static let polls = 2
+
+    private var streaks: [UUID: (reading: Reading, polls: Int)] = [:]
+
+    /// Feed this poll's reading of a terminal (nil = nothing bold to say, which
+    /// ends any streak). True once the reading has held on `polls` polls in a row.
+    mutating func confirm(_ reading: Reading?, for id: UUID) -> Bool {
+        guard let reading else {
+            streaks[id] = nil
+            return false
+        }
+        let held = (streaks[id]?.reading == reading ? streaks[id]?.polls ?? 0 : 0) + 1
+        streaks[id] = (reading, held)
+        return held >= Self.polls
+    }
+
+    mutating func forget(_ id: UUID) {
+        streaks[id] = nil
     }
 }
