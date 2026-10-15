@@ -62,6 +62,11 @@ struct SidebarDetailExample: View {
                 BackgroundTasksBadge(tasks: Self.sampleTasks(3))
                 BackgroundTasksBadge(tasks: Self.sampleTasks(12))
             }
+        case .progress:
+            ProgressLine(progress: TerminalProgress(
+                steps: ["Read", "Plan", "Build", "Review", "CI"], total: 5, step: 4,
+                label: "round 2", since: Date()), tint: AttentionState.running.tint)
+                .frame(maxWidth: 190, alignment: .leading)
         case .model:
             ModelLabel(model: "claude-opus-5-5")
         case .contextUsage:

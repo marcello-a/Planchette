@@ -101,6 +101,10 @@ Notes that matter:
 - `session read` returns the viewport by default (what a human would see).
   `--scrollback` reads the history instead; `--lines` bounds it. If a long answer
   is cut off, ask that agent to write its output to a file and read the file.
+- For work that spans many turns or agents, report your step so the user sees it
+  on the row: `session progress --steps Plan,Build,Review --step 1 --label "…"`
+  once, then `--step N` (and `--label`) as you move on. It is display only and
+  never changes the state.
 
 ## Rules
 

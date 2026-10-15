@@ -12,6 +12,7 @@ one JSON request per connection, one JSON response back.
     planchette session wait --id <uuid> --until ready --timeout-ms 120000
     planchette session read --id <uuid> --lines 80
     planchette notification list --unread-only
+    planchette session progress --steps Plan,Build,Review --step 2 --label "round 1"
 
 Only works inside a Planchette terminal: the socket path and the calling
 terminal's own id arrive as env vars ($PLANCHETTE_SOCKET, $PLANCHETTE_SESSION).
@@ -30,7 +31,7 @@ import struct
 import sys
 
 COMMANDS = {
-    "session": ["list", "get", "new", "focus", "prompt", "read", "wait"],
+    "session": ["list", "get", "new", "focus", "prompt", "read", "wait", "progress"],
     "project": ["list"],
     # The read side of the notifications panel: the same rows, the same order,
     # every fact the panel prints (state, prompt, age, branch, tags, project).
@@ -191,6 +192,15 @@ def main(argv):
         help="notification list: only terminals that are running, asking or failed")
     parser.add_argument(
         "--limit", type=int, help="notification list: stop after this many rows")
+    parser.add_argument(
+        "--step", type=int, help="session progress: the current step, 1-based")
+    parser.add_argument(
+        "--steps", help="session progress: comma-separated step names")
+    parser.add_argument(
+        "--total", type=int, help="session progress: number of steps, when they have no names")
+    parser.add_argument("--label", help="session progress: one line about the current step")
+    parser.add_argument(
+        "--clear", action="store_true", help="session progress: remove the progress")
     args = parser.parse_args(argv)
 
     if not args.group or not args.action:
@@ -234,6 +244,16 @@ def main(argv):
         payload["only_active"] = True
     if args.limit is not None:
         payload["limit"] = args.limit
+    if args.step is not None:
+        payload["step"] = args.step
+    if args.steps is not None:
+        payload["steps"] = [name.strip() for name in args.steps.split(",")]
+    if args.total is not None:
+        payload["total"] = args.total
+    if args.label is not None:
+        payload["label"] = args.label
+    if args.clear:
+        payload["clear"] = True
 
     # A wait blocks in the app, so the socket timeout must outlive it.
     wait_ms = args.timeout_ms or (120000 if args.action == "wait" else 10000)

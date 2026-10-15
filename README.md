@@ -107,6 +107,8 @@ Also worth a second:
   anything else you want to show it in ([manual](docs/API.md))
 - So an agent can start a reviewer beside itself and block on its verdict
   ([skill](skills/planchette/SKILL.md))
+- Long-running pipelines report their step (`session progress`) and the row
+  shows a step bar: `7/13 Verify · round 2`
 - Optional AI assist: one-line summaries per session via headless `claude -p`
 
 ### One project at a time, or all of it at once

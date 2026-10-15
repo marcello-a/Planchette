@@ -160,6 +160,7 @@ enum LKey: String, CaseIterable {
     case doneExpiryTitle, doneExpiryHelp, doneExpiryNever
     case detailCacheTimer, detailCacheTimerHelp, cacheTimerCleared, cacheTimerTooltip, cacheTimerClearedTooltip
     case detailBackgroundTasks, detailBackgroundTasksHelp, backgroundTasksTooltip, backgroundShell, backgroundAgent, backgroundTasksMore
+    case detailProgress, detailProgressHelp, progressTooltip
 
     // Notifications panel (right sidebar)
     case notificationsPanel, notificationsPanelHelp, onlyActive
@@ -434,6 +435,7 @@ enum L10n {
         .detailContextUsageHelp: "How full the context window is — orange from 70 %, red from 90 %.",
         .detailCacheTimer: "Prompt cache timer", .detailCacheTimerHelp: "Minutes until Claude's prompt cache clears (1 h on Opus 5.5). After that, the next prompt sends the whole context again, at full price.", .cacheTimerCleared: "cleared", .cacheTimerTooltip: "Prompt cache clears at %@ unless you send something", .cacheTimerClearedTooltip: "Prompt cache cleared at %@ — the next prompt writes the whole context again",
         .detailBackgroundTasks: "Background agents and shells", .detailBackgroundTasksHelp: "A small terminal symbol under the state icon while Claude runs agents or shells in the background. With more than one, a number shows how many.", .backgroundTasksTooltip: "Running in the background:", .backgroundShell: "Shell", .backgroundAgent: "Agent", .backgroundTasksMore: "… and %d more",
+        .detailProgress: "Progress of long work", .detailProgressHelp: "A step bar under the prompt when a script or agent in the terminal reports how far it has come (planchette session progress). Display only: the state icon still comes from the agent.", .progressTooltip: "Step %d of %d",
     ]
 
     // MARK: German
@@ -610,6 +612,7 @@ enum L10n {
         .detailContextUsageHelp: "Wie voll das Kontextfenster ist — orange ab 70 %, rot ab 90 %.",
         .detailCacheTimer: "Prompt-Cache-Timer", .detailCacheTimerHelp: "Minuten, bis Claudes Prompt-Cache verfällt (1 h bei Opus 5.5). Danach schickt der nächste Prompt den ganzen Kontext neu, zum vollen Preis.", .cacheTimerCleared: "verfallen", .cacheTimerTooltip: "Prompt-Cache verfällt um %@, wenn du nichts schickst", .cacheTimerClearedTooltip: "Prompt-Cache um %@ verfallen — der nächste Prompt schreibt den ganzen Kontext neu",
         .detailBackgroundTasks: "Hintergrund-Agents und -Shells", .detailBackgroundTasksHelp: "Ein kleines Terminal-Symbol unter dem Status-Symbol, solange Claude Agents oder Shells im Hintergrund laufen lässt. Bei mehr als einem zeigt eine Zahl, wie viele es sind.", .backgroundTasksTooltip: "Läuft im Hintergrund:", .backgroundShell: "Shell", .backgroundAgent: "Agent", .backgroundTasksMore: "… und %d weitere",
+        .detailProgress: "Fortschritt langer Arbeit", .detailProgressHelp: "Eine Schrittleiste unter dem Prompt, wenn ein Skript oder Agent im Terminal meldet, wie weit er ist (planchette session progress). Nur Anzeige: das Status-Symbol kommt weiter vom Agent.", .progressTooltip: "Schritt %d von %d",
     ]
 
     // MARK: French
@@ -786,6 +789,7 @@ enum L10n {
         .detailContextUsageHelp: "Le remplissage de la fenêtre de contexte — orange dès 70 %, rouge dès 90 %.",
         .detailCacheTimer: "Minuteur du cache de prompt", .detailCacheTimerHelp: "Minutes avant que le cache de prompt de Claude expire (1 h sur Opus 5.5). Ensuite, le prochain prompt renvoie tout le contexte, au plein tarif.", .cacheTimerCleared: "expiré", .cacheTimerTooltip: "Le cache de prompt expire à %@ si vous n'envoyez rien", .cacheTimerClearedTooltip: "Cache de prompt expiré à %@ — le prochain prompt réécrit tout le contexte",
         .detailBackgroundTasks: "Agents et shells en arrière-plan", .detailBackgroundTasksHelp: "Un petit symbole de terminal sous l’icône d’état tant que Claude exécute des agents ou des shells en arrière-plan. À partir de deux, un nombre indique combien il y en a.", .backgroundTasksTooltip: "S’exécute en arrière-plan :", .backgroundShell: "Shell", .backgroundAgent: "Agent", .backgroundTasksMore: "… et %d de plus",
+        .detailProgress: "Progression d’un long travail", .detailProgressHelp: "Une barre d’étapes sous le prompt quand un script ou un agent du terminal indique où il en est (planchette session progress). Affichage seul : l’icône d’état vient toujours de l’agent.", .progressTooltip: "Étape %d sur %d",
     ]
 
     // MARK: Spanish
@@ -962,6 +966,7 @@ enum L10n {
         .detailContextUsageHelp: "Lo lleno que está la ventana de contexto — naranja desde 70 %, rojo desde 90 %.",
         .detailCacheTimer: "Temporizador de la caché de prompt", .detailCacheTimerHelp: "Minutos hasta que caduca la caché de prompt de Claude (1 h en Opus 5.5). Después, el siguiente prompt vuelve a enviar todo el contexto, a precio completo.", .cacheTimerCleared: "caducada", .cacheTimerTooltip: "La caché de prompt caduca a las %@ si no envías nada", .cacheTimerClearedTooltip: "Caché de prompt caducada a las %@ — el siguiente prompt reescribe todo el contexto",
         .detailBackgroundTasks: "Agentes y shells en segundo plano", .detailBackgroundTasksHelp: "Un pequeño símbolo de terminal bajo el icono de estado mientras Claude ejecuta agentes o shells en segundo plano. Con más de uno, un número indica cuántos hay.", .backgroundTasksTooltip: "Se ejecuta en segundo plano:", .backgroundShell: "Shell", .backgroundAgent: "Agente", .backgroundTasksMore: "… y %d más",
+        .detailProgress: "Progreso de trabajos largos", .detailProgressHelp: "Una barra de pasos bajo el prompt cuando un script o agente del terminal informa de su avance (planchette session progress). Solo se muestra: el icono de estado sigue viniendo del agente.", .progressTooltip: "Paso %d de %d",
     ]
 
     // MARK: Italian
@@ -1138,6 +1143,7 @@ enum L10n {
         .detailContextUsageHelp: "Quanto è piena la finestra di contesto — arancione dal 70 %, rosso dal 90 %.",
         .detailCacheTimer: "Timer della cache del prompt", .detailCacheTimerHelp: "Minuti prima che la cache del prompt di Claude scada (1 h su Opus 5.5). Dopo, il prompt successivo reinvia tutto il contesto, a prezzo pieno.", .cacheTimerCleared: "scaduta", .cacheTimerTooltip: "La cache del prompt scade alle %@ se non invii nulla", .cacheTimerClearedTooltip: "Cache del prompt scaduta alle %@ — il prompt successivo riscrive tutto il contesto",
         .detailBackgroundTasks: "Agenti e shell in background", .detailBackgroundTasksHelp: "Un piccolo simbolo di terminale sotto l’icona di stato mentre Claude esegue agenti o shell in background. Con più di uno, un numero indica quanti sono.", .backgroundTasksTooltip: "In esecuzione in background:", .backgroundShell: "Shell", .backgroundAgent: "Agente", .backgroundTasksMore: "… e altri %d",
+        .detailProgress: "Avanzamento di lavori lunghi", .detailProgressHelp: "Una barra dei passi sotto il prompt quando uno script o un agente nel terminale comunica a che punto è (planchette session progress). Solo visualizzazione: l’icona di stato viene sempre dall’agente.", .progressTooltip: "Passo %d di %d",
     ]
 
     // MARK: Dutch
@@ -1314,6 +1320,7 @@ enum L10n {
         .detailContextUsageHelp: "Hoe vol het contextvenster is — oranje vanaf 70 %, rood vanaf 90 %.",
         .detailCacheTimer: "Promptcache-timer", .detailCacheTimerHelp: "Minuten tot Claudes promptcache verloopt (1 u bij Opus 5.5). Daarna stuurt de volgende prompt de hele context opnieuw, tegen de volle prijs.", .cacheTimerCleared: "verlopen", .cacheTimerTooltip: "Promptcache verloopt om %@ als je niets stuurt", .cacheTimerClearedTooltip: "Promptcache verlopen om %@ — de volgende prompt schrijft de hele context opnieuw",
         .detailBackgroundTasks: "Achtergrondagents en -shells", .detailBackgroundTasksHelp: "Een klein terminalsymbool onder het statuspictogram zolang Claude agents of shells op de achtergrond laat draaien. Bij meer dan één toont een getal hoeveel het er zijn.", .backgroundTasksTooltip: "Draait op de achtergrond:", .backgroundShell: "Shell", .backgroundAgent: "Agent", .backgroundTasksMore: "… en nog %d",
+        .detailProgress: "Voortgang van lang werk", .detailProgressHelp: "Een stappenbalk onder de prompt wanneer een script of agent in de terminal meldt hoe ver hij is (planchette session progress). Alleen weergave: het statuspictogram komt nog steeds van de agent.", .progressTooltip: "Stap %d van %d",
     ]
 
     // MARK: Portuguese
@@ -1490,5 +1497,6 @@ enum L10n {
         .detailContextUsageHelp: "Quão cheia está a janela de contexto — laranja a partir de 70 %, vermelho a partir de 90 %.",
         .detailCacheTimer: "Temporizador da cache de prompt", .detailCacheTimerHelp: "Minutos até a cache de prompt do Claude expirar (1 h no Opus 5.5). Depois, o próximo prompt volta a enviar todo o contexto, a preço total.", .cacheTimerCleared: "expirada", .cacheTimerTooltip: "A cache de prompt expira às %@ se não enviares nada", .cacheTimerClearedTooltip: "Cache de prompt expirada às %@ — o próximo prompt reescreve todo o contexto",
         .detailBackgroundTasks: "Agentes e shells em segundo plano", .detailBackgroundTasksHelp: "Um pequeno símbolo de terminal sob o ícone de estado enquanto o Claude executa agentes ou shells em segundo plano. Com mais de um, um número mostra quantos são.", .backgroundTasksTooltip: "Em execução em segundo plano:", .backgroundShell: "Shell", .backgroundAgent: "Agente", .backgroundTasksMore: "… e mais %d",
+        .detailProgress: "Progresso de trabalhos longos", .detailProgressHelp: "Uma barra de etapas sob o prompt quando um script ou agente no terminal informa até onde chegou (planchette session progress). Apenas exibição: o ícone de estado continua vindo do agente.", .progressTooltip: "Etapa %d de %d",
     ]
 }
