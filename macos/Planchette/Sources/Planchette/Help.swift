@@ -106,7 +106,7 @@ enum Help {
         Section(titleKey: .notificationsPanel, entries: [
             Entry(.notificationsPanel, .notificationsPanelHelp),
             Entry(.onlyUnread, .onlyUnreadHelp),
-            Entry(.onlyActive, nil),
+            Entry(.onlyActive, .onlyActiveHelp),
             Entry(.markAllRead, nil),
             Entry(.markRead, nil, where: .helpWhereContextMenu),
             Entry(.markUnread, nil, where: .helpWhereContextMenu),

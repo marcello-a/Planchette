@@ -66,6 +66,14 @@ enum AttentionState: String, Codable {
     /// Is this terminal actively doing / holding something (not idle)?
     var isActive: Bool { self != .ready && self != .free }
 
+    /// What "Only active" keeps in the notifications panel: whatever is running, waiting or
+    /// failed, and a finished turn for as long as its done check is fresh. A result is not idle
+    /// until the check clears itself (`DoneExpiry`) and the terminal is free again — until then
+    /// it is still news, so a filter for "what is going on" must not hide it.
+    func isCurrent(since: Date, expiry: DoneExpiry, now: Date) -> Bool {
+        isActive || (self == .ready && !expiry.isExpired(since: since, now: now))
+    }
+
     /// Does reaching this state report something to you? Those are the states
     /// that arrive as a notification and can therefore be unread — a question,
     /// an error, a finished turn. `running` is the terminal accepting work you

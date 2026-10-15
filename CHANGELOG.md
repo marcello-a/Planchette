@@ -72,6 +72,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   them are there, in a list that scrolls inside the dialog so the buttons stay in
   reach, each closed to its headline with the kind of change above it (Added, Fixed,
   Security). Click a point to read its whole entry, or "Expand all".
+- **"Only active" in the Notifications panel keeps fresh results.** It hid every finished
+  (green) terminal, so a turn that ended a minute ago dropped out of the list the moment you
+  ticked it. Now it keeps what is running, waiting or failed, and the finished terminals whose
+  done check has not cleared yet; only the terminals that are free again are left out. How long
+  a done check lasts is still Settings → Project panel → "Clear the done check after". The
+  checkbox has a tooltip now, and `only_active` of `notification list` follows the same rule.
 
 ### Fixed
 - **A finished command ends its question.** `brew install` asks "(y/n)", the icon

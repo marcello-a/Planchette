@@ -57,6 +57,7 @@ struct AttentionPanel: View {
                     Toggle(L10n.t(.onlyActive), isOn: $onlyActive)
                         .toggleStyle(.checkbox)
                         .font(.caption)
+                        .help(L10n.t(.onlyActiveHelp))
                     Spacer()
                 }
             }
