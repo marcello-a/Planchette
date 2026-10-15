@@ -29,6 +29,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   scrollback included. A durable terminal keeps its history in tmux, where libghostty
   cannot see it, so there the search runs in tmux's copy mode — the bar is the same,
   and tmux does the highlighting. Edit → Find… has the same commands.
+- **Settings → Tabs.** What a tab is named after — the summary, the last prompt, the
+  first prompt, or the old ticket and last prompt — and what else it carries: the
+  folder, the branch, the tags. The branch is off by default. An example at the top
+  shows the result of each choice as you make it.
 - **After an update, a one-time offer of durable terminals.** If tmux is missing or the
   switch is off, the first launch of each new version says in a few lines what durable
   terminals do and why they help, with the install command and one click to a terminal
@@ -45,6 +49,22 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   The matched letters are bold, and when the best match is not on the row (a note, a
   summary, a PR title) one line under it says where it was found. An empty result says
   so, and the footer lists the keys.
+- **A tab is named after the session's summary, not after the branch.** The name Claude
+  Code gives the conversation, else the AI summary, else your last prompt. The ticket
+  of the branch is no longer part of the name, so three terminals in one checkout no
+  longer wear the same one; "ticket and last prompt" is a choice in Settings → Tabs.
+  The cluster tiles and the project overview use the same name. The `title` a program
+  reads with `planchette session list` is unchanged.
+- **The tab bar scrolls, and the + stays.** With more tabs than fit, the bar scrolls with
+  a swipe and with the mouse wheel (up and down turns it sideways), keeps the tab you
+  are in on screen, and the + that adds a terminal no longer scrolls away with the tabs.
+- **A project wears its color as a gradient.** The color picked in the project's Color menu,
+  and the violet of the app icon until you pick one: strongest at the left, fading out to the
+  right. It tints the project's header (the tab bar and the project overview) and its label in
+  the project panel; under an open label, one soft wash of the same color lies behind all of
+  its terminals. A collapsed panel shows the project as a tile of the same color. The icon's
+  violet is dark, so it is shown at full strength on a dark window and as a lighter tint of
+  the same hue on a light one.
 - **The gear opens the Project panel settings**, not Information. Settings opens on
   the tab you used last.
 - **The update dialog lists every change, and each point opens to its full text.** It

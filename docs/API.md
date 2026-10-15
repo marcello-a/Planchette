@@ -290,7 +290,7 @@ Returned by every `session.*` command.
 | Field | Type | Meaning |
 |---|---|---|
 | `id` | string | terminal id |
-| `title` | string | the name shown in the tab bar |
+| `title` | string | the name the app derives: a name you typed, else the ticket of the branch and the last prompt (`NIE-1902 · Add the switch`). The tab bar shows what Settings → Tabs says (the conversation's summary, by default), so the two can differ |
 | `path` | string | live working directory |
 | `state` | string | `running` · `waiting` · `ready` · `error` · `free` |
 | `agent` | string | `claude` · `codex` · `none` |

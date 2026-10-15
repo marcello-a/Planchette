@@ -185,6 +185,32 @@ first; any key, click or scroll in between ends the attempt, and it fires on the
 release, so a Shift held to select never opens it. ⌘K stays a menu item whatever Settings
 says.
 
+## Tabs
+
+A tab's name is `AppState.tabName(for:)`, from the source Settings → Tabs picks
+(`TabLayout.name`; `TabNaming` holds the order the sources give way to each other, pure
+and tested): the summary — the conversation title Claude Code writes into its transcript
+(`AgentTitle`, in `agentTitles`), else the AI summary, else the last prompt — the last
+prompt, the first prompt, or the classic ticket and prompt. A manual name beats all of
+them. The cluster tiles and the project overview use it too. The control API's `title`
+does not: it is `displayTitle`, a contract other programs read, and a setting here must
+not change it. The transcript sweep (`refreshContextUsage`) runs for the summary name as
+it does for the context ring, and for nothing else.
+
+The strip of tabs is a plain row while it fits (`ViewThatFits`) and a horizontal
+`ScrollView` once it does not, with the + outside it so it never scrolls away. A mouse
+wheel only turns vertically, so `WheelToHorizontalScroll` finds the `NSScrollView`
+behind the strip and turns a mostly vertical wheel event into a sideways offset
+(`WheelScroll.offset`, pure). A project is washed by `ProjectGradient` — its header, its label
+in the project panel — in the color it was given, or in the violet of the app icon
+(`Color.planchettePurple`, #3A2861) when it has none; the icon's violet is dark, so a light
+window gets a lighter tint of the same hue. Under an open label the terminals share one
+softer fade. The list gives every terminal row a background of its own
+(`.listRowBackground`), so each row paints the slice of the fade that lies at its place
+(`ProjectWash.slice`, pure): a row ends exactly as strong as the next one starts. A background
+on the project's `DisclosureGroup` would not do: it is handed to every row of the group, and
+each row runs the whole fade.
+
 ## Find in a terminal
 
 ⌘F (Edit → Find…, Find Next, Find Previous) opens `TerminalFindBar` over the terminal in

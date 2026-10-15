@@ -80,7 +80,7 @@ private struct PaneView: View {
     private var header: some View {
         HStack(spacing: 5) {
             StateIcon(state: session.state, size: 12)
-            Text(session.displayTitle).font(.caption.weight(.medium)).lineLimit(1)
+            Text(appState.tabName(for: session)).font(.caption.weight(.medium)).lineLimit(1)
             Text(session.shortPath).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             Spacer()
             Image(systemName: "line.3.horizontal")
@@ -109,7 +109,7 @@ private struct PaneView: View {
         }, preview: {
             HStack(spacing: 5) {
                 Image(systemName: "rectangle.split.2x1")
-                Text(session.displayTitle).lineLimit(1)
+                Text(appState.tabName(for: session)).lineLimit(1)
             }
             .font(.caption.weight(.medium))
             .padding(.horizontal, 10).padding(.vertical, 6)

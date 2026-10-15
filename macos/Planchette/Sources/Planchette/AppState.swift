@@ -79,6 +79,14 @@ final class AppState: ObservableObject {
             searchShortcutMonitor.shortcut = searchShortcut
         }
     }
+    /// What names a tab and what else it carries (Settings → Tabs).
+    @Published var tabLayout = TabLayout() {
+        didSet {
+            scheduleSave()
+            // The conversation's name is read out of the transcripts only while a tab shows it.
+            if tabLayout.readsTranscripts != oldValue.readsTranscripts { refreshContextUsage() }
+        }
+    }
     /// What the user has already been told: the welcome screen of a first launch and the
     /// durable terminals prompt after an update. Persisted — asking twice is nagging.
     @Published var onboarding = OnboardingState() {
@@ -178,6 +186,7 @@ final class AppState: ObservableObject {
             defaultIDEBundleID = saved.defaultIDEBundleID
             askedAboutSpaceSwitching = saved.askedAboutSpaceSwitching
             onboarding = saved.onboarding
+            tabLayout = saved.tabLayout
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -792,7 +801,7 @@ final class AppState: ObservableObject {
     /// Re-read the transcripts that changed and publish the usage and the
     /// conversation title of every Claude terminal. The file reads run off-main.
     func refreshContextUsage() {
-        guard sidebarDetails.readsTranscripts else {
+        guard sidebarDetails.readsTranscripts || tabLayout.readsTranscripts else {
             forgetTranscriptReadings()
             return
         }
@@ -874,6 +883,27 @@ final class AppState: ObservableObject {
         case .agentTitle: agentTitles[session.id]
         }
         return (chosen ?? session.currentTask).flatMap { Titles.taskLabel($0, max: max) }
+    }
+
+    /// What a tab (and a cluster tile, and a project overview card) calls a terminal:
+    /// the source chosen in Settings → Tabs, the manual name above all of them.
+    ///
+    /// Deliberately *not* what the control API hands out as `title`: that is the
+    /// ticket-and-task name by contract (docs/API.md), and a setting in this app must
+    /// not change what another program reads.
+    func tabName(for session: TerminalSession) -> String {
+        TabNaming.name(
+            TabNaming.Inputs(
+                customTitle: session.customTitle,
+                conversationTitle: agentTitles[session.id],
+                aiSummary: session.aiSummary,
+                firstPrompt: session.firstTask,
+                lastPrompt: session.currentTask,
+                reportedTitle: session.reportedTitle,
+                // A filesystem probe: only for the one name that uses it.
+                ticket: tabLayout.name == .ticketAndPrompt ? session.ticket : nil,
+                fallback: session.fallbackTitle),
+            source: tabLayout.name)
     }
 
     /// Drop everything the transcripts told us — nothing is being read any more,
@@ -2421,7 +2451,8 @@ final class AppState: ObservableObject {
             searchShortcut: searchShortcut,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching,
-            onboarding: onboarding
+            onboarding: onboarding,
+            tabLayout: tabLayout
         )
         do {
             let encoder = JSONEncoder()
@@ -2504,6 +2535,7 @@ final class AppState: ObservableObject {
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         onboarding = state.onboarding
+        tabLayout = state.tabLayout
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -2617,6 +2649,7 @@ final class AppState: ObservableObject {
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching
         onboarding = previous?.onboarding ?? onboarding
+        tabLayout = previous?.tabLayout ?? tabLayout
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

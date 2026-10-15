@@ -65,10 +65,11 @@ groups terminals by project. See [README.md](README.md) and
 | `SearchRanking.swift` | What the search matches and how it ranks it: `SearchEntry`, the tiers (whole word, start, inside, initials, letters in order), the field weights, the hint line. Pure, unit-tested |
 | `SearchShortcut.swift`, `SearchShortcutMonitor.swift` | The keys that open the search (a modifier tapped twice, or a chord): the value type, the pure `DoubleTapDetector`, and the local event monitor that feeds it |
 | `TerminalFind.swift` | What a terminal's find bar knows (`TerminalFind`) and says. The tmux side of the search is `Durable`'s Search extension: pure argument lists, tested |
+| `TabLayout.swift` | What names a tab and what else it carries (`TabName`, `TabLayout`, persisted), and the order the name sources give way to each other (`TabNaming`). Pure, unit-tested |
 | `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command
@@ -147,6 +148,14 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   `SessionGroup.active == false`. `isSnoozed` alone is only for the snooze
   *badge* and the expiry reminder. A new counter that reaches for `isSnoozed`
   starts shouting from a project the user parked.
+- **A background on a `DisclosureGroup` is given to every row of it.** The project panel's
+  open project is a group, and a `.background` on it came out as one whole gradient *per
+  terminal* — a band each, restarting at every row — not one over the body. One wash over
+  several rows is drawn row by row: each terminal's `.listRowBackground` paints the slice of
+  the fade at its place (`ProjectWash`). Row backgrounds meet without a gap; a background
+  inside the row's content does not, because the list's own row padding shows between them.
+  Measured in a throwaway window, not guessed — the cheap way to check what a `List` does
+  with a modifier is to render it offscreen (`NSHostingView.cacheDisplay`), not to run the app.
 - **SwiftUI steals the NSView first responder** on structural updates.
   `GhosttySurfaceView.viewDidMoveToWindow` reclaims it for the active session.
   If keyboard input silently stops working, look there.
