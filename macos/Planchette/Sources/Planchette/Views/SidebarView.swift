@@ -1152,6 +1152,12 @@ struct SidebarBottomBar: View {
 /// A checked-out branch, wherever one is named: the project row while its
 /// terminals agree on it, a terminal row when they do not. One view so both read
 /// the same and the full name is always on hover.
+///
+/// It ends in an ellipsis rather than losing its middle: a branch is read from
+/// the front — the prefix and the ticket (`feature/mvt/VOLL-1234-…`) are what
+/// name the work, while the slug at the end only repeats what the ticket already
+/// said. Dropping the middle cut the ticket in half and left two checkouts
+/// reading the same from the left.
 struct BranchText: View {
     let branch: String
 
@@ -1160,7 +1166,7 @@ struct BranchText: View {
             .font(.caption2)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .truncationMode(.middle)
+            .truncationMode(.tail)
             .help(branch)
     }
 }
