@@ -65,11 +65,12 @@ groups terminals by project. See [README.md](README.md) and
 | `SearchRanking.swift` | What the search matches and how it ranks it: `SearchEntry`, the tiers (whole word, start, inside, initials, letters in order), the field weights, the hint line. Pure, unit-tested |
 | `SearchShortcut.swift`, `SearchShortcutMonitor.swift` | The keys that open the search (a modifier tapped twice, or a chord): the value type, the pure `DoubleTapDetector`, and the local event monitor that feeds it |
 | `TerminalFind.swift` | What a terminal's find bar knows (`TerminalFind`) and says. The tmux side of the search is `Durable`'s Search extension: pure argument lists, tested |
+| `ProjectColorLook.swift` | Where a project's color shows (`ProjectColorScope`: off, label, whole project) and how strong it is (`ProjectColorStrength`: colorful, subtle, faint), persisted as `PersistedState.projectColor`. The numbers behind it are `ProjectWash.strengths` in `Views/ProjectGradient.swift`. Pure, unit-tested |
 | `TabLayout.swift` | What names a tab and what else it carries (`TabName`, `TabLayout`, persisted), and the order the name sources give way to each other (`TabNaming`). Pure, unit-tested |
 | `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `ProjectColorSettings` (Settings → General → Project color), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command
@@ -311,7 +312,14 @@ deadline failure with no load at all.
 ## Commit conventions
 
 Conventional-commit style (`feat:`, `fix:`, `chore:`, `docs:`), imperative,
-with a short body explaining *why*. End with:
+with a short body explaining *why*.
+
+**The type is the release switch.** A merge to `main` whose commits carry a `feat:`,
+`fix:` or `perf:` publishes a patch release by itself; `chore:`, `docs:`, `test:`,
+`style:` and `refactor:` alone do not (CONTRIBUTING.md, "Releasing"). So pick the type
+for what a user sees, and put the user-facing entry under `## [Unreleased]` in
+`CHANGELOG.md` in the same change — it becomes the release notes. `[skip release]` in
+the head commit's message holds a release back. End with:
 
 ```
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

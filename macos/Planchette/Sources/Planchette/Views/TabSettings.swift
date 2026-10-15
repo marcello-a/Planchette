@@ -46,7 +46,7 @@ struct TabSettings: View {
     }
 }
 
-/// What the choices above make of a tab: a bar in the default project color with the tab you are
+/// What the choices above make of a tab: a bar in a project's color with the tab you are
 /// in, built with the tab bar's own pieces and sample words. Not interactive.
 private struct TabExample: View {
     @EnvironmentObject var appState: AppState
@@ -60,7 +60,8 @@ private struct TabExample: View {
         }
         .padding(.horizontal, 8).padding(.vertical, 5)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background { ProjectGradient(color: .none).clipShape(RoundedRectangle(cornerRadius: 6)) }
+        // A project that has a color: with none there would be nothing to show.
+        .background { ProjectGradient(color: .blue, look: appState.projectColor).clipShape(RoundedRectangle(cornerRadius: 6)) }
         .allowsHitTesting(false)
     }
 

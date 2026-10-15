@@ -202,9 +202,11 @@ The strip of tabs is a plain row while it fits (`ViewThatFits`) and a horizontal
 wheel only turns vertically, so `WheelToHorizontalScroll` finds the `NSScrollView`
 behind the strip and turns a mostly vertical wheel event into a sideways offset
 (`WheelScroll.offset`, pure). A project is washed by `ProjectGradient` — its header, its label
-in the project panel — in the color it was given, or in the violet of the app icon
-(`Color.planchettePurple`, #3A2861) when it has none; the icon's violet is dark, so a light
-window gets a lighter tint of the same hue. Under an open label the terminals share one
+in the project panel — in the color it was given; a project with no color is not tinted at
+all. Settings → General → Project color (`ProjectColorLook`, persisted) decides where the
+wash shows (off, the label, the whole project) and how strong it is (`ProjectColorStrength`:
+colorful is the look 0.2.36 shipped, subtle the default, faint the quietest); the numbers
+are `ProjectWash.strengths`, pure and tested. Under an open label the terminals share one
 softer fade. The list gives every terminal row a background of its own
 (`.listRowBackground`), so each row paints the slice of the fade that lies at its place
 (`ProjectWash.slice`, pure): a row ends exactly as strong as the next one starts. A background

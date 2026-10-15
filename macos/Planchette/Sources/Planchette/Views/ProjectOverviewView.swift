@@ -79,7 +79,7 @@ struct ProjectOverviewView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(ProjectGradient(color: group.color))
+        .background(ProjectGradient(color: group.color, look: appState.projectColor))
     }
 }
 

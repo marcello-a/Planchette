@@ -73,7 +73,7 @@ struct TerminalAreaView: View {
             .padding(.trailing, 8)
         }
         .padding(.vertical, 5)
-        .background(ProjectGradient(color: group.color))
+        .background(ProjectGradient(color: group.color, look: appState.projectColor))
     }
 
     /// The tabs as a plain row while they fit, and a strip that scrolls once they
