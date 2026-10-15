@@ -2878,6 +2878,57 @@ final class ContextUsageTests: XCTestCase {
     }
 }
 
+final class AgentTitleTests: XCTestCase {
+    private func title(_ value: String) -> String {
+        #"{"type":"ai-title","aiTitle":"\#(value)","sessionId":"abc"}"#
+    }
+
+    // Claude Code rewrites the title as the topic of the session moves, so the
+    // newest one in the file is the one the row shows.
+    func testNewestTitleWins() {
+        let text = [
+            title("Merch feed snapshot recherche"),
+            #"{"type":"user","message":{"content":"und jetzt das backend"}}"#,
+            title("merch-feed-snapshot-backend"),
+        ].joined(separator: "\n")
+        XCTAssertEqual(AgentTitle.latest(inJSONL: text[...]), "merch-feed-snapshot-backend")
+    }
+
+    // The line exists before Claude Code has a title to put in it.
+    func testEmptyTitlesAreSkipped() {
+        let text = [title("VOLL-2735 testimonial merge status"), title(""), title("   ")]
+            .joined(separator: "\n")
+        XCTAssertEqual(AgentTitle.latest(inJSONL: text[...]), "VOLL-2735 testimonial merge status")
+    }
+
+    // Nothing here is promised by Claude Code: a transcript without the line, an
+    // unreadable one, or a renamed field all mean "no title", never a crash and
+    // never a wrong one.
+    func testATranscriptThatNamesNoTitle() {
+        XCTAssertNil(AgentTitle.latest(inJSONL: ""[...]))
+        XCTAssertNil(AgentTitle.latest(inJSONL: #"{"type":"ai-title","#[...]))
+        XCTAssertNil(AgentTitle.latest(inJSONL: #"{"type":"ai-title","aiTopic":"x"}"#[...]))
+        XCTAssertNil(AgentTitle.latest(inJSONL: #"{"type":"assistant","message":{}}"#[...]))
+    }
+
+    // Usage and title come out of one read of the tail (`TranscriptScan`).
+    func testOneReadYieldsBothReadings() throws {
+        let path = NSTemporaryDirectory() + "planchette-scan-\(UUID().uuidString).jsonl"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let text = [
+            #"{"type":"assistant","message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"cache_read_input_tokens":90,"cache_creation_input_tokens":0}}}"#,
+            title("Branch name truncation"),
+        ].joined(separator: "\n")
+        try text.write(toFile: path, atomically: true, encoding: .utf8)
+
+        let scan = ContextUsageReader.scan(path: path)
+        XCTAssertEqual(scan.usage?.usedTokens, 100)
+        XCTAssertEqual(scan.title, "Branch name truncation")
+        XCTAssertEqual(ContextUsageReader.scan(path: path + "-gone"), TranscriptScan(),
+                       "a transcript that is not there reads as nothing, not as a crash")
+    }
+}
+
 final class SidebarDetailsTests: XCTestCase {
     func testDefaultsAreOnExceptTheClaudeDetails() {
         let details = SidebarDetails()
@@ -2914,6 +2965,60 @@ final class SidebarDetailsTests: XCTestCase {
     func testOldStateHasDefaultDetails() throws {
         let state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
         XCTAssertEqual(state.sidebarDetails, SidebarDetails())
+    }
+
+    // The two choices are new in a file format that has been written for
+    // months: a state.json from before them has to come back as the defaults,
+    // and a value this version does not know must not take the whole state down
+    // with it.
+    func testTheChoicesDefaultAndSurviveAnUnknownValue() throws {
+        let old = try JSONDecoder().decode(SidebarDetails.self, from: Data(#"{"overrides":{}}"#.utf8))
+        XCTAssertEqual(old.branchTrim, .back)
+        XCTAssertEqual(old.promptSource, .lastPrompt)
+
+        let json = #"{"overrides":{},"branchTrim":"middle","promptSource":"agentTitle"}"#
+        let chosen = try JSONDecoder().decode(SidebarDetails.self, from: Data(json.utf8))
+        XCTAssertEqual(chosen.branchTrim, .middle)
+        XCTAssertEqual(chosen.promptSource, .agentTitle)
+
+        let strange = #"{"overrides":{},"branchTrim":"sideways"}"#
+        XCTAssertEqual(try JSONDecoder().decode(SidebarDetails.self, from: Data(strange.utf8)).branchTrim,
+                       .back, "a trim no version knows falls back instead of failing the state")
+    }
+
+    // A round trip, because the choices are stored next to the switches and a
+    // forgotten encode would only show up after a restart.
+    func testTheChoicesAreStored() throws {
+        var details = SidebarDetails()
+        details.branchTrim = .front
+        details.promptSource = .firstPrompt
+        let back = try JSONDecoder().decode(SidebarDetails.self,
+                                            from: try JSONEncoder().encode(details))
+        XCTAssertEqual(back, details)
+    }
+
+    // The transcript sweep runs for what is actually on a row — the title is
+    // read only while the prompt line is set to it, and the line is shown.
+    func testTheSweepFollowsWhatIsShown() {
+        var details = SidebarDetails()
+        XCTAssertFalse(details.readsTranscripts, "the defaults read nothing")
+        details.promptSource = .agentTitle
+        XCTAssertTrue(details.readsTranscripts)
+        details.set(.task, false)
+        XCTAssertFalse(details.readsTranscripts, "no prompt line, no reading")
+        details.set(.contextUsage, true)
+        XCTAssertTrue(details.readsTranscripts)
+    }
+
+    func testEveryChoiceHasATranslatedTitle() {
+        L10n.current = .en
+        let keys = BranchTrim.allCases.map(\.titleKey)
+            + PromptSource.allCases.map(\.titleKey)
+            + PromptSource.allCases.map(\.helpKey)
+            + [.branchTrimTitle, .promptSourceTitle]
+        for key in keys {
+            XCTAssertNotEqual(L10n.t(key), key.rawValue, "\(key)")
+        }
     }
 }
 

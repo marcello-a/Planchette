@@ -100,12 +100,93 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
     }
 }
 
-/// Which details are shown. Stored as the choices that differ from the
-/// defaults, keyed by raw value, so a detail added later starts at its own
-/// default instead of an old file's silence, and a renamed or removed one is
-/// ignored rather than breaking the decode.
+/// Where a branch name gives way when the row is too narrow for it. Three
+/// answers because there is no one right one: which part of a branch identifies
+/// a checkout depends on how the branches are named.
+///
+/// The default drops the end: `feature/mvt/VOLL-1234-…` keeps the prefix and
+/// the ticket, which is what names the work, while the slug at the end only
+/// repeats the ticket. Teams whose branches differ only in their last segment
+/// want `.front`, and `.middle` is the compromise that keeps both ends.
+enum BranchTrim: String, Codable, CaseIterable, Identifiable {
+    /// Cut at the front — `…/VOLL-1234-poster-frame`.
+    case front
+    /// Cut in the middle — `feature/mvt/VOL…ce-poster-frame`.
+    case middle
+    /// Cut at the end — `feature/mvt/VOLL-1234-…`.
+    case back
+
+    var id: String { rawValue }
+
+    var titleKey: LKey {
+        switch self {
+        case .front: .branchTrimFront
+        case .middle: .branchTrimMiddle
+        case .back: .branchTrimBack
+        }
+    }
+}
+
+/// What the line under a terminal says it is working on. All three are there
+/// already — the only question is which one answers "what is this terminal for"
+/// best for the way you work.
+enum PromptSource: String, Codable, CaseIterable, Identifiable {
+    /// The prompt that opened the session: the assignment, which does not move
+    /// when the conversation does.
+    case firstPrompt
+    /// The prompt you last sent — the default, and what the row said before
+    /// there was a choice.
+    case lastPrompt
+    /// The name Claude Code gives the conversation itself (`AgentTitle`): read
+    /// from the transcript, so it costs nothing, and it is the only one of the
+    /// three that keeps up with a session that moved on from both prompts.
+    case agentTitle
+
+    var id: String { rawValue }
+
+    var titleKey: LKey {
+        switch self {
+        case .firstPrompt: .promptSourceFirst
+        case .lastPrompt: .promptSourceLast
+        case .agentTitle: .promptSourceAgentTitle
+        }
+    }
+
+    var helpKey: LKey {
+        switch self {
+        case .firstPrompt: .promptSourceFirstHelp
+        case .lastPrompt: .promptSourceLastHelp
+        case .agentTitle: .promptSourceAgentTitleHelp
+        }
+    }
+}
+
+/// Which details are shown, and the two that are not a yes/no — how a branch is
+/// trimmed and where the prompt line gets its text.
+///
+/// The switches are stored as the choices that differ from the defaults, keyed
+/// by raw value, so a detail added later starts at its own default instead of
+/// an old file's silence, and a renamed or removed one is ignored rather than
+/// breaking the decode. The two choices decode the same way: absent (every
+/// state file written before them) means the default, and a value no version
+/// knows any more falls back to it instead of failing the whole state.
 struct SidebarDetails: Codable, Equatable {
     var overrides: [String: Bool] = [:]
+    var branchTrim: BranchTrim = .back
+    var promptSource: PromptSource = .lastPrompt
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        overrides = try c.decodeIfPresent([String: Bool].self, forKey: .overrides) ?? [:]
+        // `try?`, not `decodeIfPresent`: that one throws on a value it cannot
+        // name, which would take the whole state.json down when a file written
+        // by a newer version is opened by an older one. A choice we cannot read
+        // is a choice we do not have — the default stands.
+        branchTrim = (try? c.decode(BranchTrim.self, forKey: .branchTrim)) ?? .back
+        promptSource = (try? c.decode(PromptSource.self, forKey: .promptSource)) ?? .lastPrompt
+    }
 
     func shows(_ detail: SidebarDetail) -> Bool {
         overrides[detail.rawValue] ?? detail.defaultOn
@@ -113,5 +194,12 @@ struct SidebarDetails: Codable, Equatable {
 
     mutating func set(_ detail: SidebarDetail, _ on: Bool) {
         overrides[detail.rawValue] = on == detail.defaultOn ? nil : on
+    }
+
+    /// Whether anything on a row is read out of a transcript — the sweep runs
+    /// only for what is actually shown (see `AppState.refreshContextUsage`).
+    var readsTranscripts: Bool {
+        shows(.model) || shows(.contextUsage) || shows(.cacheTimer)
+            || (shows(.task) && promptSource == .agentTitle)
     }
 }
