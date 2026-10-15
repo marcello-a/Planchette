@@ -2878,6 +2878,36 @@ final class ContextUsageTests: XCTestCase {
     }
 }
 
+final class AgentEnvironmentTests: XCTestCase {
+    // What a terminal inherits decides whether a Claude in it writes a
+    // transcript at all — and four features read that file.
+    func testTheMarkersOfARunningSessionAreFound() {
+        let env = [
+            "CLAUDECODE": "1",
+            "CLAUDE_CODE_CHILD_SESSION": "1",
+            "CLAUDE_CODE_SESSION_ID": "abc",
+            "CLAUDE_CODE_MESSAGING_TOKEN": "secret",
+            "CLAUDE_PID": "321",
+            "AI_AGENT": "claude",
+        ]
+        XCTAssertEqual(AgentEnvironment.markers(in: env).count, env.count,
+                       "every marker, including the ones a later version adds under the prefix")
+    }
+
+    // Configuration is not a marker: a terminal stripped of its API key cannot
+    // reach the API at all, and the user's own shell config sets its variables
+    // again anyway.
+    func testConfigurationAndUnrelatedVariablesSurvive() {
+        let env = [
+            "ANTHROPIC_API_KEY": "sk-…", "ANTHROPIC_BASE_URL": "https://…",
+            "ANTHROPIC_MODEL": "claude-opus-5-5", "CLAUDE_CONFIG_DIR": "~/.claude",
+            "PATH": "/usr/bin", "PLANCHETTE_SESSION": "…", "TERM": "xterm-ghostty",
+        ]
+        XCTAssertEqual(AgentEnvironment.markers(in: env), [])
+        XCTAssertEqual(AgentEnvironment.markers(in: [:]), [])
+    }
+}
+
 final class AgentTitleTests: XCTestCase {
     private func title(_ value: String) -> String {
         #"{"type":"ai-title","aiTitle":"\#(value)","sessionId":"abc"}"#
