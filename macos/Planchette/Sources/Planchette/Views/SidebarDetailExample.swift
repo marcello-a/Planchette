@@ -5,6 +5,7 @@ import SwiftUI
 /// the real thing and changes with it. Not interactive: a sample PR pill must
 /// not open a browser.
 struct SidebarDetailExample: View {
+    @EnvironmentObject var appState: AppState
     let detail: SidebarDetail
 
     var body: some View {
@@ -26,7 +27,11 @@ struct SidebarDetailExample: View {
             Text("mp/designer-library")
                 .font(.caption2).foregroundStyle(.secondary)
         case .branch:
-            BranchText(branch: "marcello/feat/NIE-2008-gallery-wall-menu")
+            // Shortened the way the sidebar will shorten it: the example is
+            // what the choice above it does, not a picture of one setting.
+            BranchText(branch: "marcello/feat/NIE-2008-gallery-wall-menu",
+                       trim: appState.sidebarDetails.branchTrim)
+                .frame(maxWidth: 190, alignment: .leading)
         case .pullRequest:
             HStack(spacing: 4) {
                 PullRequestPill(pr: Self.samplePR(.open, .approved, 5576))
@@ -34,7 +39,7 @@ struct SidebarDetailExample: View {
                 PullRequestPill(pr: Self.samplePR(.merged, nil, 5579))
             }
         case .task:
-            Text("Fix preview proportions for the reland")
+            Text(Self.samplePrompt(appState.sidebarDetails.promptSource))
                 .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
         case .age:
             WaitingTimeText(since: Date().addingTimeInterval(-4 * 60))
@@ -74,6 +79,15 @@ struct SidebarDetailExample: View {
                 CacheTimer(expiresAt: Date().addingTimeInterval(3 * 60))
                 CacheTimer(expiresAt: Date().addingTimeInterval(-10 * 60))
             }
+        }
+    }
+
+    /// The same terminal, said three ways — so the picker shows what it picks.
+    private static func samplePrompt(_ source: PromptSource) -> String {
+        switch source {
+        case .firstPrompt: "Add a gallery wall to the designer"
+        case .lastPrompt: "Fix preview proportions for the reland"
+        case .agentTitle: "NIE-2008 gallery wall menu"
         }
     }
 

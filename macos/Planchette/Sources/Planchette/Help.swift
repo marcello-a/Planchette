@@ -64,6 +64,7 @@ enum Help {
             Entry(.projectPanelTab, .projectPanelIntro, where: .helpWhereSettings),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
+            Entry(.branchTrimTitle, .detailBranchHelp, where: .helpWhereSettings),
             Entry(.helpPullRequestTitle, .helpPullRequestDetail, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .helpSectionTerminals, entries: [
@@ -90,6 +91,7 @@ enum Help {
             Entry(.helpContextTitle, .helpContextDetail, where: .helpWhereSettings),
             Entry(.detailCacheTimer, .detailCacheTimerHelp, where: .helpWhereSettings),
             Entry(.detailBackgroundTasks, .detailBackgroundTasksHelp, where: .helpWhereSidebar),
+            Entry(.promptSourceTitle, .promptSourceAgentTitleHelp, where: .helpWhereSettings),
             Entry(.markFinished, .markFinishedHelp, where: .helpWhereContextMenu),
             Entry(.addNote, .noteHelp, where: .helpWhereContextMenu),
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),

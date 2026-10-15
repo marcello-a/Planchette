@@ -122,24 +122,60 @@ private struct ProjectPage: View {
 
 /// The switch, what it means in one line, and what it looks like — drawn with
 /// the sidebar's own views, so the example cannot drift from the row.
+///
+/// Two details are not only a yes/no: a branch can give way at either end, and
+/// the prompt line has three things it could say. Their choice sits under the
+/// switch it belongs to, and greys out with it — an option for a detail you
+/// turned off is not a question worth asking.
 private struct DetailSwitch: View {
     @EnvironmentObject var appState: AppState
     let detail: SidebarDetail
 
     var body: some View {
-        Toggle(isOn: Binding(
-            get: { appState.shows(detail) },
-            set: { appState.sidebarDetails.set(detail, $0) })
-        ) {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: Binding(
+                get: { appState.shows(detail) },
+                set: { appState.sidebarDetails.set(detail, $0) })
+            ) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.t(detail.titleKey))
+                    Text(L10n.t(detail.helpKey))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SidebarDetailExample(detail: detail)
+                        .opacity(appState.shows(detail) ? 1 : 0.4)
+                }
+            }
+            choice
+                .disabled(!appState.shows(detail))
+                .opacity(appState.shows(detail) ? 1 : 0.4)
+        }
+    }
+
+    @ViewBuilder
+    private var choice: some View {
+        switch detail {
+        case .branch:
+            Picker(L10n.t(.branchTrimTitle), selection: $appState.sidebarDetails.branchTrim) {
+                ForEach(BranchTrim.allCases) { Text(L10n.t($0.titleKey)).tag($0) }
+            }
+            .pickerStyle(.segmented)
+        case .task:
             VStack(alignment: .leading, spacing: 4) {
-                Text(L10n.t(detail.titleKey))
-                Text(L10n.t(detail.helpKey))
+                Picker(L10n.t(.promptSourceTitle), selection: $appState.sidebarDetails.promptSource) {
+                    ForEach(PromptSource.allCases) { Text(L10n.t($0.titleKey)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                // What the chosen source means — one line that changes with the
+                // picker, instead of three the eye has to match up itself.
+                Text(L10n.t(appState.sidebarDetails.promptSource.helpKey))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                SidebarDetailExample(detail: detail)
-                    .opacity(appState.shows(detail) ? 1 : 0.4)
             }
+        default:
+            EmptyView()
         }
     }
 }

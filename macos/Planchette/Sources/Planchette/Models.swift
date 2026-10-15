@@ -307,6 +307,13 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// What I asked the agent to do — first line of the last submitted prompt.
     /// The instant, deterministic answer to "working on WHAT?".
     var currentTask: String?
+    /// The prompt this conversation opened with — the assignment. Kept beside
+    /// the last one because they answer different questions: a session that has
+    /// been going for an hour has long stopped repeating what it is *for*, and
+    /// "ja, mach" is a poor name for a terminal. Set once per conversation and
+    /// cleared with `currentTask` when the conversation ends (`SessionEnd`, a
+    /// `/clear`), so it can never name work that is over.
+    var firstTask: String?
     /// False when this terminal finished something you have not looked at yet.
     /// `ready` alone means "a turn ended at some point"; unseen `ready` is the
     /// honest answer to "what is waiting for my review?" (herdr calls it `done`
@@ -367,6 +374,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         stateSince = try c.decodeIfPresent(Date.self, forKey: .stateSince) ?? Date()
         lastMessage = try c.decodeIfPresent(String.self, forKey: .lastMessage)
         currentTask = try c.decodeIfPresent(String.self, forKey: .currentTask)
+        firstTask = try c.decodeIfPresent(String.self, forKey: .firstTask)
         seen = try c.decodeIfPresent(Bool.self, forKey: .seen) ?? true
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)

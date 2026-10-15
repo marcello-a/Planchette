@@ -762,6 +762,12 @@ final class AppState: ObservableObject {
     /// `ContextUsageReader`), never persisted, and only read while the model or
     /// the context usage is switched on in Settings → Project panel.
     @Published var contextUsage: [UUID: ContextUsage] = [:]
+    /// What each Claude terminal's conversation is about: the title Claude Code
+    /// writes into its own transcript (`AgentTitle`), keyed by session id. Read
+    /// in the same sweep as the usage above, never persisted — the transcript
+    /// is the truth, and a title kept across a restart could name a
+    /// conversation that is over.
+    @Published var agentTitles: [UUID: String] = [:]
     /// Claude sessions whose terminal showed the "1M context" banner.
     private var extendedContextSessions: Set<String> = []
     /// Terminals whose agent ended (SessionEnd) — their transcript is history.
@@ -769,13 +775,13 @@ final class AppState: ObservableObject {
     /// Size and mtime of each transcript at its last read, so an idle session
     /// costs one stat per tick, not a 512 KB read.
     private var transcriptStamps: [String: String] = [:]
-    private var transcriptUsage: [String: TranscriptUsage] = [:]
+    private var transcriptScans: [String: TranscriptScan] = [:]
 
-    /// Re-read the transcripts that changed and publish the usage of every
-    /// Claude terminal. The file reads run off-main.
+    /// Re-read the transcripts that changed and publish the usage and the
+    /// conversation title of every Claude terminal. The file reads run off-main.
     func refreshContextUsage() {
-        guard shows(.model) || shows(.contextUsage) || shows(.cacheTimer) else {
-            if !contextUsage.isEmpty { contextUsage = [:] }
+        guard sidebarDetails.readsTranscripts else {
+            forgetTranscriptReadings()
             return
         }
         let targets: [UUID: (path: String, claudeID: String?)] = sessions.reduce(into: [:]) { acc, entry in
@@ -785,33 +791,36 @@ final class AppState: ObservableObject {
             acc[entry.key] = (path, session.claudeSessionID)
         }
         guard !targets.isEmpty else {
-            if !contextUsage.isEmpty { contextUsage = [:] }
+            forgetTranscriptReadings()
             return
         }
         guard contextFlight.begin() else { return }
         let stamps = transcriptStamps
-        let known = transcriptUsage
+        let known = transcriptScans
         let extended = extendedContextSessions
         Task.detached {
             let configured = ContextWindow.configuredModel()
             var newStamps = stamps
-            var usageByPath = known
+            var scanByPath = known
             let livePaths = Set(targets.values.map(\.path))
             for path in livePaths {
                 let attrs = try? FileManager.default.attributesOfItem(atPath: path)
                 let stamp = "\((attrs?[.size] as? Int) ?? -1)-\((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0)"
                 guard newStamps[path] != stamp else { continue }
                 newStamps[path] = stamp
-                usageByPath[path] = ContextUsageReader.read(path: path)
+                scanByPath[path] = ContextUsageReader.scan(path: path)
             }
             // Every Claude conversation is a new transcript path. Keeping the
             // readings of conversations that are over would grow these two
             // tables, and the copy made on every tick, for as long as the app
             // runs.
             newStamps = newStamps.filter { livePaths.contains($0.key) }
-            usageByPath = usageByPath.filter { livePaths.contains($0.key) }
+            scanByPath = scanByPath.filter { livePaths.contains($0.key) }
+            let titles: [UUID: String] = targets.reduce(into: [:]) { acc, entry in
+                acc[entry.key] = scanByPath[entry.value.path]?.title
+            }
             let found: [UUID: ContextUsage] = targets.reduce(into: [:]) { acc, entry in
-                guard let usage = usageByPath[entry.value.path] else { return }
+                guard let usage = scanByPath[entry.value.path]?.usage else { return }
                 let window = ContextWindow.size(
                     usedTokens: usage.usedTokens,
                     sawExtendedBanner: entry.value.claudeID.map(extended.contains) ?? false,
@@ -821,17 +830,45 @@ final class AppState: ObservableObject {
                     cacheTouchedAt: usage.at,
                     cacheTTL: usage.cacheTTL ?? PromptCache.defaultTTL)
             }
-            let stampsNow = newStamps, usageNow = usageByPath
+            let stampsNow = newStamps, scansNow = scanByPath
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.transcriptStamps = stampsNow
-                self.transcriptUsage = usageNow
+                self.transcriptScans = scansNow
                 if self.contextUsage != found { self.contextUsage = found }
+                if self.agentTitles != titles { self.agentTitles = titles }
                 // A Stop hook asks for a fresh reading *because* the transcript
                 // just changed: a request that arrived mid-run gets its own run.
                 if self.contextFlight.end() { self.refreshContextUsage() }
             }
         }
+    }
+
+    /// What the line under a terminal says it works on: the source chosen in
+    /// Settings → Project panel, and the last prompt whenever that source has
+    /// nothing to say. A row that falls blank because a conversation has no
+    /// title yet, or because this one was resumed and never got a first prompt
+    /// from us, would be worse than one that repeats itself.
+    ///
+    /// Here rather than in the row because two views draw it, and because the
+    /// choice behind it lives here. It is deliberately *not* what the control
+    /// API hands out: `task` there is the last prompt, by contract
+    /// (docs/API.md), and a setting in this app must not change what another
+    /// program reads.
+    func rowPrompt(for session: TerminalSession, max: Int = 48) -> String? {
+        let chosen: String? = switch sidebarDetails.promptSource {
+        case .firstPrompt: session.firstTask
+        case .lastPrompt: session.currentTask
+        case .agentTitle: agentTitles[session.id]
+        }
+        return (chosen ?? session.currentTask).flatMap { Titles.taskLabel($0, max: max) }
+    }
+
+    /// Drop everything the transcripts told us — nothing is being read any more,
+    /// so nothing may keep standing in a row.
+    private func forgetTranscriptReadings() {
+        if !contextUsage.isEmpty { contextUsage = [:] }
+        if !agentTitles.isEmpty { agentTitles = [:] }
     }
 
     /// One transcript sweep at a time (see `SingleFlight`).
@@ -1801,7 +1838,12 @@ final class AppState: ObservableObject {
         if hookEvent == "UserPromptSubmit",
            let task = prompt.flatMap({ BackgroundTasks.isNotification($0) ? nil : $0 })
                .flatMap(TerminalSession.taskLine(fromPrompt:)) {
-            update(sessionID) { $0.currentTask = task }
+            update(sessionID) {
+                $0.currentTask = task
+                // The assignment is the first prompt of *this* conversation —
+                // whatever is there already belongs to it, not to a new one.
+                if $0.firstTask == nil { $0.firstTask = task }
+            }
         }
         // New work reopens a terminal you had marked finished: the mark was
         // about the work that is now over (a prompt, a `/clear`, a fresh Claude).
@@ -1814,6 +1856,7 @@ final class AppState: ObservableObject {
         if hookEvent == "SessionEnd" {
             endedAgentIDs.insert(sessionID)
             contextUsage[sessionID] = nil
+            agentTitles[sessionID] = nil
         } else {
             endedAgentIDs.remove(sessionID)
             if hookEvent == "Stop" || hookEvent == "SessionStart" { refreshContextUsage() }
@@ -1822,7 +1865,10 @@ final class AppState: ObservableObject {
         // that carried the task no longer exists. A resumed or compacted
         // session keeps working on the same thing, so its task survives.
         if hookEvent == "SessionEnd" || (hookEvent == "SessionStart" && source == "clear") {
-            update(sessionID) { $0.currentTask = nil }
+            update(sessionID) {
+                $0.currentTask = nil
+                $0.firstTask = nil
+            }
         }
         // State transition (pure, tested). Message only carried for `waiting`.
         if let newState = AttentionState.forHookEvent(

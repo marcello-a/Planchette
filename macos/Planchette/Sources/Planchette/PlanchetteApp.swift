@@ -256,6 +256,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything forks: a terminal must not inherit the markers of the
+        // agent that started this app, or the Claude inside it writes no
+        // transcript (`AgentEnvironment`).
+        AgentEnvironment.scrubInherited()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         MainActor.assumeIsolated { appState.appearance.apply() }
