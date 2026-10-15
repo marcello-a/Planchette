@@ -10,6 +10,9 @@ Claude Code starts real background work without any model behind it (`background
   BGSHELL<n>   Bash `sleep <n>` with run_in_background -> a background shell for n seconds
   BGAGENT<n>   Agent (async) whose work -> a background agent that finishes after n seconds
   SUBWORK<n>   the launched agent's own prompt: this reply is held back n seconds
+  SLOW<n>      the reply is held back n seconds: a turn that stays "running" (state_sync.py)
+  STREAM<n>    the answer starts at once (text on screen) and then stalls for n seconds
+  ASKPERM<n>   Bash `touch permtest.txt`: a command that needs a permission, so a dialog opens
 Each token is answered once (see `answered`); a second task needs a different number.
 """
 import json, re, sys, threading, time
@@ -77,6 +80,38 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("content-length", "0")
         self.end_headers()
 
+    def _stream_then_stall(self, body, seconds):
+        """An answer that has started (a line of text is on screen) and then stops arriving."""
+        model = body.get("model", "stub")
+
+        def chunk(events):
+            data = "".join(f"event: {name}\ndata: {json.dumps(payload)}\n\n" for name, payload in events).encode()
+            return f"{len(data):x}\r\n".encode() + data + b"\r\n"
+        first = chunk([
+            ("message_start", {"type": "message_start", "message": {"id": "msg_stall", "type": "message", "role": "assistant",
+                               "model": model, "content": [], "stop_reason": None, "stop_sequence": None,
+                               "usage": {"input_tokens": 10, "output_tokens": 1}}}),
+            ("content_block_start", {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}),
+            ("content_block_delta", {"type": "content_block_delta", "index": 0,
+                                     "delta": {"type": "text_delta", "text": "The beginning of a long answer."}}),
+        ])
+        rest = chunk([
+            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+            ("message_delta", {"type": "message_delta", "delta": {"stop_reason": "end_turn", "stop_sequence": None}, "usage": {"output_tokens": 3}}),
+            ("message_stop", {"type": "message_stop"}),
+        ])
+        self.send_response(200)
+        self.send_header("content-type", "text/event-stream")
+        self.send_header("cache-control", "no-cache")
+        self.send_header("transfer-encoding", "chunked")
+        self.end_headers()
+        try:
+            self.wfile.write(first); self.wfile.flush()
+            time.sleep(seconds)
+            self.wfile.write(rest + b"0\r\n\r\n"); self.wfile.flush()
+        except Exception:
+            pass   # the client gave up (an Esc or Ctrl+C): that is the point
+
     def do_POST(self):
         length = int(self.headers.get("content-length") or 0)
         raw = self.rfile.read(length) if length else b""
@@ -105,9 +140,19 @@ class Handler(BaseHTTPRequestHandler):
         usage = {"input_tokens": 10, "output_tokens": 3}
         scripted = None
         if "haiku" not in (body.get("model") or "") and body.get("stream"):
-            work, shell, agent = (re.search(token + r"(\d+)", text) for token in ("SUBWORK", "BGSHELL", "BGAGENT"))
-            work, shell, agent = (m if m and first_time(m.group(0)) else None for m in (work, shell, agent))
-            if work:
+            work, shell, agent, slow, stall, perm = (
+                re.search(token + r"(\d+)", text) for token in ("SUBWORK", "BGSHELL", "BGAGENT", "SLOW", "STREAM", "ASKPERM"))
+            work, shell, agent, slow, stall, perm = (
+                m if m and first_time(m.group(0)) else None for m in (work, shell, agent, slow, stall, perm))
+            if slow:
+                time.sleep(int(slow.group(1)))
+                reply = "SLOW-DONE"
+            elif stall:
+                self._stream_then_stall(body, int(stall.group(1)))
+                return
+            elif perm:
+                scripted = ("Bash", {"command": "touch permtest.txt", "description": "make a file"})
+            elif work:
                 time.sleep(int(work.group(1)))
                 reply = "SUBAGENT-DONE"
             elif shell:

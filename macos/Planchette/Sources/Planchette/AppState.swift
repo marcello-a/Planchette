@@ -275,13 +275,18 @@ final class AppState: ObservableObject {
             // Nothing to match against (e.g. a plain shell, or an agent whose
             // patterns aren't verified yet) → don't even read the surface.
             guard !rules.isEmpty else { continue }
-            // Under hook authority the screen may only escalate to waiting —
-            // and only while the terminal does not already need attention
-            // (see AttentionState.fromScreen). When it does, no reading can
-            // change anything, so skip the read: it locks the renderer and
-            // dumps the viewport, per terminal, on every tick.
+            // Under hook authority the screen may raise a missed question and end
+            // a turn nobody reported (see AttentionState.fromScreen) — for a
+            // running or a waiting terminal, that is. An error it cannot change,
+            // so skip the read there: it locks the renderer and dumps the
+            // viewport, per terminal, on every tick. (A waiting terminal used to
+            // be skipped too, which kept an Esc at a permission dialog from ever
+            // being seen.)
             let hookAuthority = hasHookAuthority(id)
-            if hookAuthority && session.state.needsAttention { continue }
+            guard AttentionState.screenRulesApply(
+                hookAuthority: hookAuthority, durable: session.durable)
+            else { continue }
+            if hookAuthority && session.state == .error { continue }
             guard let view = TerminalRegistry.shared.existingView(id),
                   let text = view.readViewport()
             else { continue }
@@ -297,17 +302,45 @@ final class AppState: ObservableObject {
             }
             let detection = ScreenDetector.detect(
                 lines: text.components(separatedBy: "\n"), rules: rules)
-            guard let newState = AttentionState.fromScreen(
+            let raised = screenRaisedIDs.contains(id)
+            let newState = AttentionState.fromScreen(
                 detection,
                 agent: session.agentKind,
                 hookAuthority: hookAuthority,
-                current: session.state)
-            else { continue }
+                current: session.state,
+                raisedByScreen: raised)
+            // Two readings move a terminal on the screen's word alone and must
+            // hold on two polls in a row (see ScreenConfirmation): an idle
+            // prompt over a turn the hooks call running, and a question that
+            // is no longer on the screen.
+            let bold: ScreenConfirmation.Reading?
+            if hookAuthority, session.state == .running, detection?.idlePrompt == true {
+                bold = .idlePrompt
+            } else if !hookAuthority, raised, session.state == .waiting, detection == nil {
+                bold = .questionGone
+            } else {
+                bold = nil
+            }
+            if bold != nil {
+                guard screenConfirmation.confirm(bold, for: id) else { continue }
+                screenConfirmation.forget(id)
+            } else {
+                _ = screenConfirmation.confirm(nil, for: id)
+            }
+            guard let newState else { continue }
+            // Without hooks the screen is the only one who can take its own
+            // question back, so remember whose word the "waiting" is.
+            if newState == .waiting && !hookAuthority { screenRaisedIDs.insert(id) }
             // No message: the screen knows a prompt is up, not what it asks.
             // Carrying the previous one over would show a stale question.
             setState(id, newState)
         }
     }
+
+    /// Terminals whose `waiting` the screen raised (no hook did), which the
+    /// screen may therefore end again.
+    private var screenRaisedIDs: Set<UUID> = []
+    private var screenConfirmation = ScreenConfirmation()
 
     /// Pick up an edited or freshly downloaded ruleset. One stat per tick; the
     /// file is only parsed when its mtime moved.
@@ -1175,6 +1208,8 @@ final class AppState: ObservableObject {
         sessions[id] = nil
         liveAgentIDs.remove(id)
         backgroundTasks[id] = nil
+        screenRaisedIDs.remove(id)
+        screenConfirmation.forget(id)
         escalatedIDs.remove(id)
         aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
@@ -1283,6 +1318,8 @@ final class AppState: ObservableObject {
             sessions[sid] = nil
             liveAgentIDs.remove(sid)
             backgroundTasks[sid] = nil
+            screenRaisedIDs.remove(sid)
+            screenConfirmation.forget(sid)
             escalatedIDs.remove(sid)
             aiAssist.forget(sid)
         }
@@ -1591,17 +1628,29 @@ final class AppState: ObservableObject {
         refreshDockBadge()
     }
 
-    /// OSC 133: the last shell command finished. Non-zero exit → error (red),
-    /// otherwise ready (green). Ignored while an agent turn is active so it
-    /// doesn't stomp running/waiting.
+    /// OSC 133: the last shell command finished — the foreground job is over and
+    /// the shell is at its prompt. The exit code decides the state: non-zero →
+    /// error (red), Ctrl+C → free, otherwise ready (green), whatever the terminal
+    /// showed before (see `AttentionState.afterCommandFinish`).
+    ///
+    /// Hooks that still call an agent live here are stale then: it was killed or
+    /// crashed and could not say SessionEnd, or its last hooks arrived out of
+    /// order. The prompt is the better witness, so that session ends now — its
+    /// task, context ring and background tasks go with it. Should the agent turn
+    /// out to run (in the background, say), its next hook brings it all back.
     func commandFinished(_ id: UUID, exitCode: Int) {
-        guard let session = sessions[id],
-              let newState = AttentionState.afterCommandFinish(exitCode: exitCode, current: session.state)
-        else { return }
-        setState(id, newState)
+        guard let session = sessions[id] else { return }
+        if liveAgentIDs.contains(id) {
+            applyHookEvent(
+                sessionID: id, hookEvent: "SessionEnd", claudeSessionID: nil,
+                transcriptPath: nil, message: nil, agent: session.agentKind,
+                background: .reset)
+        }
+        setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
     }
 
     private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
+        if state != .waiting { screenRaisedIDs.remove(id) }
         // Anything that happened while you were looking elsewhere is unread: a
         // turn that finished, a question, an error. What happened in front of you
         // has been read by definition — and `running` is not a report at all, it
@@ -2124,6 +2173,18 @@ final class AppState: ObservableObject {
     private func finishRestore(_ state: PersistedState) {
         groups = state.groups
         sessions = Dictionary(uniqueKeysWithValues: state.sessions.map { ($0.id, $0) })
+        // Nothing runs after a restart that the restart did not start: a state
+        // saved as running or waiting belongs to a process that is gone. Only a
+        // durable agent that is still alive in tmux keeps it — its hooks say.
+        for id in Array(sessions.keys) {
+            guard let saved = sessions[id]?.state else { continue }
+            let agentSurvived = sessions[id]?.durable == true && restoreLiveDurableIDs.contains(id)
+            let restored = AttentionState.afterRestart(saved, agentSurvived: agentSurvived)
+            if restored != saved {
+                sessions[id]?.state = restored
+                sessions[id]?.stateSince = Date()
+            }
+        }
         windows = state.windows
         // Legacy states (pre-multi-window) had a flat selectedGroupID.
         sanitizeWindows()

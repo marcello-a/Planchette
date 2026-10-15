@@ -84,9 +84,27 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   miss a permission prompt, the screen cannot. Without hook authority (no
   integration, or an agent that only claims its session) the screen drives every
   state. Never widen that: a scraped pattern must not be able to overrule a hook
-  that is talking to us. The one other exception is an Esc-aborted turn: Claude
-  Code fires no hook for it, so the `claude_interrupted` rule may send a
-  `running`/`waiting` terminal to `free` — it ends work no hook will ever end.
+  that is talking to us. The one other exception is a turn that ended without any
+  hook, which the screen may close because no hook ever will: Claude Code fires
+  none for an Esc or Ctrl+C, so the `claude_interrupted` rule ("What should Claude
+  do", clipped or wrapped in a narrow pane) frees a `running`/`waiting` terminal,
+  and an abort before anything was printed — the prompt text goes back into the
+  input, no marker at all — is the idle prompt (`claude_idle_footer`, footer without
+  "esc to interrupt") over a `running` terminal. That second reading must hold on two
+  polls (`ScreenConfirmation`): a turn that has just begun shows an idle-looking
+  prompt for a split second. And the rules only apply where a Claude can be: a live
+  agent, or a durable terminal (`AttentionState.screenRulesApply`) — in a plain shell
+  that once ran Claude, they read every program's "Do you want to continue?".
+- **A finished shell command ends `running` and `waiting`.** OSC 133 `D` is printed
+  right before the shell's prompt, so the foreground job is over — a question the
+  screen raised, a command you aborted with Ctrl+C, and an agent that hooks still call
+  live but that was killed (no `SessionEnd` comes): `commandFinished` ends that session
+  and sets the state the exit code names. An agent in the foreground keeps the shell
+  from printing a prompt, so there is no overlap to protect. tmux does not forward
+  OSC 133 (`allow-passthrough` only carries wrapped sequences), so a durable terminal
+  never hears of its commands' results. A restart ends the processes a saved
+  `running`/`waiting` described: `AttentionState.afterRestart` frees them, except a
+  durable agent that is still alive in tmux.
 - **Three hook events do not mean what their names suggest.** `SubagentStop`
   fires while the main agent keeps working, so it must not report a finished
   turn; `PreToolUse`/`PostToolUse` are installed only because granting a

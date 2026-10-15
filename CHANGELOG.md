@@ -73,6 +73,25 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   scrollback.
 
 ### Fixed
+- **A finished command ends its question.** `brew install` asks "(y/n)", the icon
+  turns into a blue "?", the command ends — and the "?" stayed, as did a purple robot
+  after a command you stopped with Ctrl+C. The prompt coming back means the foreground
+  job is over, so a finished or aborted command now sets the state its exit code names
+  (a check for success, red for a failure, gray for Ctrl+C) whatever the icon showed.
+  A Claude that was killed (`kill -9`, a crash) shows an error instead of running for
+  ever, and a restart no longer brings back a purple or blue terminal whose process is
+  gone. (A durable terminal still hears nothing of its commands: tmux does not pass
+  that signal on.)
+- **Claude's screen patterns no longer read other programs.** In a terminal where
+  Claude once ran, the "Do you want to continue?" of `apt` or `brew` raised the
+  question again after every command. The patterns now apply only while a Claude is
+  live, and in durable terminals, whose Claude can outlive a restart.
+- **Stopping Claude frees the icon in every case.** Ctrl+C or Esc before Claude has
+  printed anything puts your prompt back into the input and prints no "Interrupted"
+  line, and Claude Code sends no hook either: the icon ran on. An idle prompt that
+  holds on two readings now ends such a turn (every permission mode's footer is read,
+  not only "? for shortcuts"). Esc at a permission dialog no longer leaves the "?",
+  and the "Interrupted" marker is found when a narrow pane clips or wraps it.
 - **A finished background task is no longer shown as the terminal's task.** Claude
   Code announces the end of a shell or an agent as a prompt (`<task-notification>…`),
   and the sidebar printed that as what the terminal was working on.

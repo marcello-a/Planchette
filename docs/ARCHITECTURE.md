@@ -120,6 +120,15 @@ session. The inbox, menu-bar badge, and quick switcher are all just sorted views
 over these states (favorites first, `asking` before `done`, longest-waiting
 first). Focusing an `asking`/`done` terminal clears it.
 
+**What ends `running` and `waiting`.** Claude's own hooks, first (`Stop`,
+`SessionEnd`, the tool events). Two things they cannot say are said by others: the
+shell, with OSC 133 `D` right before its prompt (the foreground job is over — a command
+that asked a question and ended, an abort with Ctrl+C, an agent that was killed), and
+the screen (`claude_interrupted` and an idle prompt over a turn no hook closed — an
+abort leaves no hook — each read on its own terms, the second only after two polls).
+A restart ends whatever a saved state described. Everything else a screen pattern could
+decide it must not: it only applies where a Claude can be.
+
 **Background work.** A finished turn does not mean Claude is done: it may still run
 shells (`run_in_background`) or agents it launched without waiting. Claude Code sends
 its own list with the `Stop` hook — `background_tasks`, each with `id`, `type`

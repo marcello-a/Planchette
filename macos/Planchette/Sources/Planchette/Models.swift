@@ -137,15 +137,34 @@ enum AttentionState: String, Codable {
         return message.range(of: "waiting for your input", options: .caseInsensitive) != nil
     }
 
-    /// The state after a shell command finishes (OSC 133). Returns nil to keep
-    /// the current state — an active agent turn (running/waiting) owns the
-    /// indicator and a plain command result must not stomp it. Exit 130
-    /// (Ctrl+C) is a deliberate stop — e.g. killing a dev server — not an
-    /// error and nothing to review: the terminal is free again.
-    static func afterCommandFinish(exitCode: Int, current: AttentionState) -> AttentionState? {
-        if current == .running || current == .waiting { return nil }
+    /// The state after a shell command finishes (OSC 133). The shell prints that
+    /// mark right before its prompt, so the foreground job is over — and with it
+    /// whatever `running` or `waiting` said about that job. A question the screen
+    /// raised ("Do you want to continue? (y/n)"), a command you aborted: both end
+    /// here, in the state the exit code names. Exit 130 (Ctrl+C) is a deliberate
+    /// stop — e.g. killing a dev server — not an error and nothing to review: the
+    /// terminal is free again.
+    ///
+    /// An earlier version kept `running`/`waiting` "so a command result does not
+    /// stomp an agent turn". No such overlap exists — an agent in the foreground
+    /// keeps the shell from printing a prompt — and the guard left a "?" on the
+    /// screen for ever once a command had finished or been aborted.
+    static func afterCommandFinish(exitCode: Int) -> AttentionState {
         if exitCode == 130 { return .free }
         return exitCode > 0 ? .error : .ready
+    }
+
+    /// The state a saved terminal starts with after a restart. `running` and
+    /// `waiting` describe a live process — a turn in flight, a question on its
+    /// screen — and a restart ended it (a resumed Claude says what is true with
+    /// its first hook), so they come back free instead of purple or blue for ever.
+    /// A durable terminal whose agent survived in tmux keeps what it had. A saved
+    /// report (`ready`, `error`) is a result nobody has looked at: it stays.
+    static func afterRestart(_ saved: AttentionState, agentSurvived: Bool) -> AttentionState {
+        switch saved {
+        case .running, .waiting: agentSurvived ? saved : .free
+        default: saved
+        }
     }
 }
 
