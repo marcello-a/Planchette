@@ -132,6 +132,7 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
                 .help(L10n.t(.appearanceHelp))
             }
+            ProjectColorSection()
             Section(L10n.t(.searchSection)) {
                 SearchShortcutSetting()
             }

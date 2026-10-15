@@ -1,29 +1,15 @@
 import SwiftUI
 
-extension Color {
-    /// The violet of the app icon, #3A2861: what a project is tinted with until it has a color
-    /// of its own, so an uncolored project says "Planchette" and not "unset".
-    static let planchettePurple = Color(red: 0x3A / 255, green: 0x28 / 255, blue: 0x61 / 255)
-
-    /// The same hue, light enough to tint a light window without making black text hard to read.
-    static let planchettePurpleLight = Color(red: 0x8C / 255, green: 0x74 / 255, blue: 0xD0 / 255)
-}
-
-extension SessionColor {
-    /// The color the user chose, or Planchette purple when there is none.
-    var accent: Color { color ?? .planchettePurple }
-}
-
-/// The wash behind a project: its color — the one picked in the project's Color menu, the violet of
-/// the app icon until then — strongest where the project starts and fading out from there.
+/// The wash behind a project: the color picked in the project's Color menu, strongest
+/// where the project starts and fading out from there. A project without a color has no
+/// wash at all — "none" means none — and Settings → General → Project color
+/// (`ProjectColorLook`) decides where the wash shows and how strong it is.
 ///
-/// Two shapes. A **strip** is the label of a project and the header of its tab bar: it runs sideways,
-/// strongest at the left, gone before the dev-server links and the view switch at the right. A
-/// **body** is what lies under an open label in the project panel, behind the terminals: much softer
-/// than the label it hangs from, and one gradient for all of them.
-///
-/// The icon's violet is dark: it needs full strength to show on a dark window, where the system
-/// colors need a third of it, and a lighter tint of its hue on a light one.
+/// Two shapes. A **strip** is the label of a project and the header of its tab bar: it
+/// runs sideways, strongest at the left, gone before the dev-server links and the view
+/// switch at the right. A **body** is what lies under an open label in the project panel,
+/// behind the terminals: much softer than the label it hangs from, and one gradient for
+/// all of them.
 struct ProjectGradient: View {
     enum Shape {
         /// A label or a header: left to right.
@@ -35,28 +21,31 @@ struct ProjectGradient: View {
     }
 
     let color: SessionColor
+    let look: ProjectColorLook
     var shape: Shape = .strip
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let look = look
-        switch shape {
-        case .strip:
-            LinearGradient(
-                colors: [look.base.opacity(look.lead), look.base.opacity(look.tail)],
-                startPoint: .leading, endPoint: .trailing)
-        case .body(let row, let count):
-            let edge = ProjectWash.slice(row: row, of: count, lead: look.lead, tail: look.tail)
-            LinearGradient(
-                colors: [look.base.opacity(edge.top), look.base.opacity(edge.bottom)],
-                startPoint: .top, endPoint: .bottom)
-                // The label fades out sideways; so does what hangs from it.
-                .mask(LinearGradient(
-                    colors: [.black, .black.opacity(ProjectWash.sideFade)],
-                    startPoint: .leading, endPoint: .trailing))
-                .clipShape(ProjectWash.outline(row: row, of: count))
-                .padding(.leading, ProjectWash.leadingInset)
-                .padding(.trailing, ProjectWash.trailingInset)
+        if let base = color.color, let power = ProjectWash.strengths(isLabel: isStrip, look: look) {
+            switch shape {
+            case .strip:
+                LinearGradient(
+                    colors: [base.opacity(power.lead), base.opacity(power.tail)],
+                    startPoint: .leading, endPoint: .trailing)
+            case .body(let row, let count):
+                let edge = ProjectWash.slice(row: row, of: count, lead: power.lead, tail: power.tail)
+                LinearGradient(
+                    colors: [base.opacity(edge.top), base.opacity(edge.bottom)],
+                    startPoint: .top, endPoint: .bottom)
+                    // The label fades out sideways; so does what hangs from it.
+                    .mask(LinearGradient(
+                        colors: [.black, .black.opacity(ProjectWash.sideFade)],
+                        startPoint: .leading, endPoint: .trailing))
+                    .clipShape(ProjectWash.outline(row: row, of: count))
+                    .padding(.leading, ProjectWash.leadingInset)
+                    .padding(.trailing, ProjectWash.trailingInset)
+            }
+        } else {
+            Color.clear
         }
     }
 
@@ -64,28 +53,34 @@ struct ProjectGradient: View {
         if case .strip = shape { return true }
         return false
     }
-
-    private var look: (base: Color, lead: Double, tail: Double) {
-        switch (color.color, scheme) {
-        case (.some(let chosen), _):
-            return (chosen, isStrip ? 0.34 : 0.12, isStrip ? 0.05 : 0.03)
-        case (.none, .dark):
-            return (.planchettePurple, isStrip ? 1.0 : 0.34, isStrip ? 0.12 : 0.07)
-        case (.none, _):
-            return (.planchettePurpleLight, isStrip ? 0.5 : 0.18, isStrip ? 0.06 : 0.04)
-        }
-    }
 }
 
-/// What it takes to draw one gradient over several rows of a list, each of which paints its own
-/// background: every row gets the part of the fade that lies at its place, so a row ends exactly as
-/// strong as the next one starts. (A background put on the project's `DisclosureGroup` instead is
-/// handed to every row of it, and each one then runs the whole fade — a band per terminal.)
+/// What it takes to draw the wash: how strong it is, and how one gradient is drawn over
+/// several rows of a list, each of which paints its own background. Pure, so the numbers
+/// are tested rather than remembered.
 enum ProjectWash {
+    /// The strength of a label's wash at its left end and at its right end, in the colorful
+    /// look — the one 0.2.36 shipped, and what every other strength is a share of.
+    static let colorfulLabel = (lead: 0.34, tail: 0.05)
+    /// The same for the wash behind the terminals, at its top and at its bottom.
+    static let colorfulBody = (lead: 0.12, tail: 0.03)
+
+    /// The strength at the start and at the end of a wash, or nil when nothing is drawn:
+    /// the project has no color, or the setting leaves this place out.
+    static func strengths(isLabel: Bool, hasColor: Bool = true, look: ProjectColorLook) -> (lead: Double, tail: Double)? {
+        guard hasColor, isLabel ? look.showsLabel : look.showsBody else { return nil }
+        let full = isLabel ? colorfulLabel : colorfulBody
+        let share = look.strength.factor(isLabel: isLabel)
+        return (full.lead * share, full.tail * share)
+    }
+
     /// How strong the fade is at the top and at the bottom of row `row` of `count`: one straight line
     /// from `lead`, at the top of the first row, to `tail`, at the bottom of the last, cut in equal
     /// parts. Rows are not all equally tall, so the slope varies a little from row to row — the
     /// strength never jumps, which is what makes it read as one.
+    ///
+    /// Drawn in slices because a background put on the project's `DisclosureGroup` is handed to
+    /// every row of it, and each one then runs the whole fade — a band per terminal.
     static func slice(row: Int, of count: Int, lead: Double, tail: Double) -> (top: Double, bottom: Double) {
         let rows = max(count, 1)
         let row = min(max(row, 0), rows - 1)

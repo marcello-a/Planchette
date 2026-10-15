@@ -87,6 +87,10 @@ final class AppState: ObservableObject {
             if tabLayout.readsTranscripts != oldValue.readsTranscripts { refreshContextUsage() }
         }
     }
+    /// Where a project's color shows and how strong it is (Settings → General → Project color).
+    @Published var projectColor = ProjectColorLook() {
+        didSet { scheduleSave() }
+    }
     /// What the user has already been told: the welcome screen of a first launch and the
     /// durable terminals prompt after an update. Persisted — asking twice is nagging.
     @Published var onboarding = OnboardingState() {
@@ -187,6 +191,7 @@ final class AppState: ObservableObject {
             askedAboutSpaceSwitching = saved.askedAboutSpaceSwitching
             onboarding = saved.onboarding
             tabLayout = saved.tabLayout
+            projectColor = saved.projectColor
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -2472,7 +2477,8 @@ final class AppState: ObservableObject {
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching,
             onboarding: onboarding,
-            tabLayout: tabLayout
+            tabLayout: tabLayout,
+            projectColor: projectColor
         )
         do {
             let encoder = JSONEncoder()
@@ -2556,6 +2562,7 @@ final class AppState: ObservableObject {
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         onboarding = state.onboarding
         tabLayout = state.tabLayout
+        projectColor = state.projectColor
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -2670,6 +2677,7 @@ final class AppState: ObservableObject {
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching
         onboarding = previous?.onboarding ?? onboarding
         tabLayout = previous?.tabLayout ?? tabLayout
+        projectColor = previous?.projectColor ?? projectColor
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

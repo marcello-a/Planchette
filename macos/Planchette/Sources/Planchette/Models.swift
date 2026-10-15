@@ -855,6 +855,8 @@ struct PersistedState: Codable {
     var onboarding = OnboardingState()
     /// What names a tab and what else it carries (Settings → Tabs).
     var tabLayout = TabLayout()
+    /// Where a project's color shows and how strong it is (Settings → General → Project color).
+    var projectColor = ProjectColorLook()
 
     init(
         groups: [SessionGroup],
@@ -874,7 +876,8 @@ struct PersistedState: Codable {
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false,
         onboarding: OnboardingState = OnboardingState(),
-        tabLayout: TabLayout = TabLayout()
+        tabLayout: TabLayout = TabLayout(),
+        projectColor: ProjectColorLook = ProjectColorLook()
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -894,6 +897,7 @@ struct PersistedState: Codable {
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
         self.onboarding = onboarding
         self.tabLayout = tabLayout
+        self.projectColor = projectColor
     }
 
     init(from decoder: Decoder) throws {
@@ -925,5 +929,6 @@ struct PersistedState: Codable {
         // No key = a state from before this existed = somebody who already uses the app.
         onboarding = (try? c.decodeIfPresent(OnboardingState.self, forKey: .onboarding)) ?? OnboardingState()
         tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
+        projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
     }
 }

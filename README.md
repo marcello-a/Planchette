@@ -140,7 +140,8 @@ Also worth a second:
   names a tab and what else it shows (folder, branch, tags). The tab bar scrolls with a swipe or
   the mouse wheel, and the **+** stays in reach.
 - **Each project wears its color** — the tab bar, the project panel, the overview — as a gradient
-  in the color you pick, Planchette purple until you pick one.
+  in the color you pick; a project without a color stays plain. *Settings → General → Project
+  color* turns it off, keeps it on the label, or makes it colorful, subtle (the default) or faint.
 
 ### Organise work
 
