@@ -73,6 +73,7 @@ enum Help {
             Entry(.addTerminal, .addTerminalHelp, where: .helpWhereProjectOverview),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
+            Entry(.helpFindTitle, .helpFindDetail, shortcut: "⌘F", where: .helpWhereMenuBar),
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
             Entry(.clipboardHelpTitle, .clipboardHelpDetail),
             Entry(.tags, .tagsHelp, where: .helpWhereContextMenu),

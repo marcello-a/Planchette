@@ -35,6 +35,15 @@ struct PlanchetteApp: App {
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
             }
+            // Find in the terminal in front: Edit menu, after the text editing group.
+            CommandGroup(after: .textEditing) {
+                Button(L10n.t(.findMenu)) { delegate.appState.findInKeyWindow() }
+                    .keyboardShortcut("f")
+                Button(L10n.t(.findNextMenu)) { delegate.appState.findNextInKeyWindow(forward: true) }
+                    .keyboardShortcut("g")
+                Button(L10n.t(.findPreviousMenu)) { delegate.appState.findNextInKeyWindow(forward: false) }
+                    .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
             CommandMenu(L10n.t(.arrangements)) {
                 ArrangementsMenu()
                     .environmentObject(delegate.appState)

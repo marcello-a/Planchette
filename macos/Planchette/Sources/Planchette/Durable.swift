@@ -295,3 +295,86 @@ enum Durable {
         return sessions
     }
 }
+
+// MARK: Search
+
+/// A durable terminal's history lives in tmux: the pane sits in the alternate screen,
+/// so libghostty never sees a line that scrolled off it and cannot search them. The
+/// find bar (⌘F) therefore drives tmux's own copy mode for a durable terminal — which
+/// also highlights every match — and libghostty's search for a plain one.
+///
+/// Every command here is a pure argument list, so the quoting that matters (the
+/// target, a needle that starts with `-` or ends with `;`) is tested; the runners
+/// block for as long as tmux takes, with a deadline, and belong off the main thread.
+extension Durable {
+    /// What a pane command takes as its target for this terminal: the session, exactly
+    /// (`=`), and its current window. The colon is not decoration: `=name` alone names
+    /// a session, and a pane command asked for a pane answers "can't find pane".
+    static func paneTarget(for id: UUID) -> String {
+        "=\(sessionName(for: id)):"
+    }
+
+    /// The needle as tmux has to be given it. An argument that ends in `;` ends the
+    /// command there; `\;` is the literal.
+    static func escapedNeedle(_ needle: String) -> String {
+        needle.hasSuffix(";") ? String(needle.dropLast()) + "\\;" : needle
+    }
+
+    /// Pure: one tmux invocation that searches the history from the newest line
+    /// backward and prints `present:count`. The `--` keeps a needle that starts with
+    /// `-` from being read as a flag; the needle is literal text, never a pattern.
+    static func searchArguments(_ needle: String, session id: UUID) -> [String] {
+        let target = paneTarget(for: id)
+        return [
+            "-L", serverName,
+            "copy-mode", "-t", target, ";",
+            "send-keys", "-X", "-t", target, "history-bottom", ";",
+            "send-keys", "-X", "-t", target, "search-backward-text", "--", escapedNeedle(needle), ";",
+            "display-message", "-p", "-t", target, "#{search_present}:#{search_count}",
+        ]
+    }
+
+    /// Pure: on to the next match — the older one, the way the search started — or back
+    /// to the previous, newer one.
+    static func stepArguments(older: Bool, session id: UUID) -> [String] {
+        ["-L", serverName, "send-keys", "-X", "-t", paneTarget(for: id),
+         older ? "search-again" : "search-reverse"]
+    }
+
+    /// Pure: leave copy mode, which takes the highlights with it.
+    static func endSearchArguments(session id: UUID) -> [String] {
+        ["-L", serverName, "send-keys", "-X", "-t", paneTarget(for: id), "cancel"]
+    }
+
+    /// Pure: the number of matches out of `present:count`. `0:` is a real answer —
+    /// nothing found — and anything that is not that shape is no answer at all.
+    static func parseSearchReply(_ text: String) -> Int? {
+        let parts = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        if parts[0] == "0" { return 0 }
+        guard parts[0] == "1", let count = Int(parts[1]) else { return nil }
+        return count
+    }
+
+    /// Search the history of a durable terminal and highlight the matches: how many
+    /// there are, or nil when tmux is not there or did not answer. Blocking.
+    static func search(_ needle: String, in id: UUID) -> Int? {
+        guard let tmux = tmuxPath(), !needle.isEmpty,
+              let reply = output(tmux, searchArguments(needle, session: id))
+        else { return nil }
+        return parseSearchReply(reply)
+    }
+
+    /// Blocking.
+    static func step(older: Bool, in id: UUID) {
+        guard let tmux = tmuxPath() else { return }
+        run(tmux, stepArguments(older: older, session: id))
+    }
+
+    /// Blocking. Harmless when the pane is not in copy mode.
+    static func endSearch(in id: UUID) {
+        guard let tmux = tmuxPath() else { return }
+        run(tmux, endSearchArguments(session: id))
+    }
+}
