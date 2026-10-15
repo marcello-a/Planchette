@@ -36,8 +36,8 @@ git push origin "$TAG"
 sh scripts/package.sh "$VERSION"
 
 # Release notes = this version's CHANGELOG section. The app reads them back off
-# the release body and shows the entry titles in the update dialog
-# (ReleaseNotes.swift), so "what's new" has exactly one source.
+# the release body and lists every entry in the update dialog, each opening to its
+# whole text (ReleaseNotes.swift), so "what's new" has exactly one source.
 NOTES="$(mktemp)"
 trap 'rm -f "$NOTES"' EXIT INT TERM
 awk -v ver="$VERSION" '

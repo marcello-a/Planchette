@@ -249,17 +249,14 @@ final class UpdateService: ObservableObject {
 
     // MARK: - Offer
 
-    /// "What's new", appended to whatever the dialog already says: the titles of
-    /// the new version's changelog entries, cut short. Empty when the release
-    /// carries no notes we can read — then the dialog reads exactly as before.
-    private func whatsNew(_ release: Release) -> String {
-        guard let body = release.body else { return "" }
-        let (items, more) = ReleaseNotes.highlights(from: body)
-        guard !items.isEmpty else { return "" }
-        var lines = ["", L10n.t(.whatsNew)]
-        lines.append(contentsOf: items.map { "• \($0)" })
-        if more > 0 { lines.append(L10n.t(.andMoreChanges, more)) }
-        return lines.joined(separator: "\n")
+    /// "What's new" as the dialog's accessory: every point of the new version's
+    /// changelog, each opening to its whole text (`ReleaseNotesView`). Nil when the
+    /// release carries no notes we can read — then the dialog reads exactly as before.
+    private func whatsNew(_ release: Release) -> NSView? {
+        guard let body = release.body else { return nil }
+        let entries = ReleaseNotes.entries(from: body)
+        guard !entries.isEmpty else { return nil }
+        return ReleaseNotesView.accessory(for: entries)
     }
 
     private func offerUpdate(version: String, release: Release) async {
@@ -277,7 +274,8 @@ final class UpdateService: ObservableObject {
            canReplaceBundle {
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
-            alert.informativeText = L10n.t(.updateInstallBody) + whatsNew(release)
+            alert.informativeText = L10n.t(.updateInstallBody)
+            alert.accessoryView = whatsNew(release)
             // Staging first: it is the choice that costs the user nothing, and
             // relaunching now ends every running turn.
             alert.addButton(withTitle: L10n.t(.updateInstallOnQuit))
@@ -309,7 +307,8 @@ final class UpdateService: ObservableObject {
             let target = dmg ?? URL(string: release.htmlURL)
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
-            alert.informativeText = L10n.t(.updateAvailableBody) + whatsNew(release)
+            alert.informativeText = L10n.t(.updateAvailableBody)
+            alert.accessoryView = whatsNew(release)
             alert.addButton(withTitle: L10n.t(.updateDownload))
             alert.addButton(withTitle: L10n.t(.cancel))
             if await ModalAlert.run(alert) == .alertFirstButtonReturn, let target,

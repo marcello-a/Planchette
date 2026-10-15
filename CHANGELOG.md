@@ -28,6 +28,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   so, and the footer lists the keys.
 - **The gear opens the Project panel settings**, not Information. Settings opens on
   the tab you used last.
+- **The update dialog lists every change, and each point opens to its full text.** It
+  showed five headlines and "…and 7 more", and nothing more of any entry. Now all of
+  them are there, in a list that scrolls inside the dialog so the buttons stay in
+  reach, each closed to its headline with the kind of change above it (Added, Fixed,
+  Security). Click a point to read its whole entry, or "Expand all".
 
 ### Fixed
 - **A finished command ends its question.** `brew install` asks "(y/n)", the icon

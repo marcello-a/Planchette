@@ -3,29 +3,101 @@ import Foundation
 /// "What's new" for the update dialog, read off a release body that is a slice
 /// of CHANGELOG.md (see scripts/release.sh).
 ///
-/// Only the *titles* of the entries: a changelog entry explains itself over five
-/// lines, which is the right length to read afterwards and the wrong length to
-/// read inside a modal deciding whether to restart. And the list is cut short —
-/// an update with twelve entries would push the buttons off a small screen, and
-/// nobody reads the twelfth line of a dialog anyway.
+/// Every entry is a point the dialog lists by its *title*; clicking a point opens
+/// its whole text. The two lengths are different on purpose: a changelog entry
+/// explains itself over five lines, which is the right length to read once you
+/// care and the wrong length to scan inside a modal deciding whether to restart.
+/// So the list is complete, every point starts closed, and the list scrolls
+/// inside a fixed height — twelve entries must never push the buttons off a
+/// small screen.
 ///
 /// Pure and unit-tested, because it parses text we do not control at runtime.
 enum ReleaseNotes {
-    /// Titles of the top-level bullets in `body`, at most `limit` of them, plus
-    /// how many were left out.
-    static func highlights(from body: String, limit: Int = 5) -> (items: [String], more: Int) {
-        let bullets = body
-            .split(whereSeparator: \.isNewline)
-            .filter { line in
-                // Top level only: an indented bullet is a detail of the one
-                // above it, not an entry of its own.
-                guard line.first != " ", line.first != "\t" else { return false }
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                return trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
+    /// One point of the list.
+    struct Entry: Identifiable, Equatable {
+        let id: Int
+        /// The `###` heading it sits under in the changelog (`Added`, `Fixed`…).
+        let section: String?
+        /// The headline: the bold lead-in, or the first sentence.
+        let title: String
+        /// The entry's text without its headline, markdown stripped and the lines
+        /// joined. Empty when the entry is nothing but a headline.
+        let detail: String
+    }
+
+    /// The top-level bullets of `body`, in order, with the heading each sits under.
+    static func entries(from body: String) -> [Entry] {
+        var entries: [Entry] = []
+        var section: String?
+        var current: (section: String?, lines: [String])?
+
+        func finish() {
+            guard let open = current else { return }
+            current = nil
+            guard let made = makeEntry(id: entries.count, section: open.section, lines: open.lines) else { return }
+            entries.append(made)
+        }
+
+        for raw in body.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
+            let line = String(raw)
+            if line.hasPrefix("#") {
+                finish()
+                let heading = line.drop(while: { $0 == "#" }).trimmingCharacters(in: .whitespaces)
+                // `###` names a kind of change; a `##` is the release itself.
+                section = line.hasPrefix("###") && !heading.isEmpty ? heading : nil
+            } else if isBullet(line), line.first != " ", line.first != "\t" {
+                finish()
+                current = (section, [line])
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                continue
+            } else if line.first == " " || line.first == "\t" {
+                // Indented: the rest of the bullet above, or a detail bullet of it.
+                current?.lines.append(line)
+            } else {
+                // Unindented text that is no bullet ends the one above.
+                finish()
             }
-            .compactMap { title(ofBullet: String($0)) }
-        guard !bullets.isEmpty else { return ([], 0) }
-        return (Array(bullets.prefix(limit)), max(0, bullets.count - limit))
+        }
+        finish()
+        return entries
+    }
+
+    private static func isBullet(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        return trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ")
+    }
+
+    private static func makeEntry(id: Int, section: String?, lines: [String]) -> Entry? {
+        guard let first = lines.first, let title = title(ofBullet: first) else { return nil }
+
+        // The text after the marker, in reading order. A nested bullet keeps its own
+        // line, so a list inside an entry stays a list.
+        var paragraph = String(first.trimmingCharacters(in: .whitespaces).dropFirst(2))
+        var tail: [String] = []
+        for line in lines.dropFirst() {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if isBullet(trimmed) {
+                tail.append("• " + trimmed.dropFirst(2))
+            } else if tail.isEmpty {
+                paragraph += " " + trimmed
+            } else {
+                tail[tail.count - 1] += " " + trimmed
+            }
+        }
+
+        // With a bold lead-in the headline is not repeated in the text; without
+        // one the headline is only the first sentence cut short, so the text is all of it.
+        var body = paragraph
+        if paragraph.hasPrefix("**"),
+           let close = paragraph.range(of: "**", range: paragraph.index(paragraph.startIndex, offsetBy: 2)..<paragraph.endIndex) {
+            body = String(paragraph[close.upperBound...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: " —–-:"))
+        }
+        let detail = ([body] + tail)
+            .map { unbold(plain($0)).split(whereSeparator: \.isWhitespace).joined(separator: " ") }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        return Entry(id: id, section: section, title: title, detail: detail)
     }
 
     /// The headline of one bullet: the bold lead-in when there is one, otherwise
@@ -62,11 +134,15 @@ enum ReleaseNotes {
     }
 
     /// Strip the markdown that would otherwise be read out as punctuation:
-    /// inline code, links (keep the text), and stray emphasis markers.
+    /// inline code and links (keep the text). Bold markers stay: the title is found by
+    /// them (`boldLeadIn`), and `unbold` removes the rest where text is shown.
     private static func plain(_ text: String) -> String {
-        var out = text.replacingOccurrences(
+        let out = text.replacingOccurrences(
             of: #"\[([^\]]+)\]\([^)]*\)"#, with: "$1", options: .regularExpression)
-        out = out.replacingOccurrences(of: "`", with: "")
-        return out
+        return out.replacingOccurrences(of: "`", with: "")
+    }
+
+    private static func unbold(_ text: String) -> String {
+        text.replacingOccurrences(of: "**", with: "")
     }
 }

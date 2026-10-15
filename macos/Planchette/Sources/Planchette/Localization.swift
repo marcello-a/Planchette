@@ -146,7 +146,7 @@ enum LKey: String, CaseIterable {
     case updateAvailable, updateAvailableBody, updateDownload
     case updateUpToDate, updateCurrentVersion, updateFailed
     case updateInstallRelaunch, updateInstallBody, updateInstalling, updateLater, updateNoReleases, updateDownloading
-    case whatsNew, andMoreChanges
+    case whatsNew, expandAll, collapseAll
 
     // Status colors / states
     case stateReady, stateRunning, stateWaiting, stateError, stateFree, free
@@ -334,7 +334,7 @@ enum L10n {
         .updateAvailable: "Version %@ is available", .updateAvailableBody: "Download the new version and drag it into Applications.", .updateDownload: "Download",
         .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
         .updateInstallRelaunch: "Install & Relaunch", .updateInstallBody: "Planchette will download the new version, install it, and relaunch itself.", .updateInstalling: "Installing update…", .updateLater: "Later", .updateNoReleases: "Couldn't find any releases yet.", .updateDownloading: "Downloading update… %d%%",
-        .whatsNew: "What's new", .andMoreChanges: "…and %d more",
+        .whatsNew: "What's new", .expandAll: "Expand all", .collapseAll: "Collapse all",
         .stateReady: "Done", .stateFree: "Free", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .free: "free",
         .generalTab: "General", .infoTab: "Information", .colorLegendTitle: "Status colors", .colorLegendIntro: "Each terminal shows a colored status dot:",
         .readyDesc: "the turn or command finished — a result awaits your review", .freeDesc: "empty prompt, nothing to review — this terminal is up for grabs", .waitingSince: "waiting for %d min", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
@@ -524,7 +524,7 @@ enum L10n {
         .updateAvailable: "Version %@ ist verfügbar", .updateAvailableBody: "Lade die neue Version herunter und ziehe sie in „Programme“.", .updateDownload: "Herunterladen",
         .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
         .updateInstallRelaunch: "Installieren & Neustart", .updateInstallBody: "Planchette lädt die neue Version herunter, installiert sie und startet sich neu.", .updateInstalling: "Update wird installiert…", .updateLater: "Später", .updateNoReleases: "Noch keine Releases gefunden.", .updateDownloading: "Update wird geladen… %d%%",
-        .whatsNew: "Das ist neu", .andMoreChanges: "…und %d weitere",
+        .whatsNew: "Das ist neu", .expandAll: "Alle aufklappen", .collapseAll: "Alle zuklappen",
         .stateReady: "Fertig", .stateFree: "Frei", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .free: "frei",
         .generalTab: "Allgemein", .infoTab: "Information", .colorLegendTitle: "Status-Farben", .colorLegendIntro: "Jedes Terminal zeigt einen farbigen Statuspunkt:",
         .readyDesc: "Turn oder Befehl beendet — ein Ergebnis wartet auf deinen Blick", .freeDesc: "leerer Prompt, nichts zu reviewen — dieses Terminal ist zu haben", .waitingSince: "wartet seit %d min", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
@@ -714,7 +714,7 @@ enum L10n {
         .updateAvailable: "La version %@ est disponible", .updateAvailableBody: "Téléchargez la nouvelle version et glissez-la dans Applications.", .updateDownload: "Télécharger",
         .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
         .updateInstallRelaunch: "Installer et relancer", .updateInstallBody: "Planchette va télécharger la nouvelle version, l'installer et se relancer.", .updateInstalling: "Installation de la mise à jour…", .updateLater: "Plus tard", .updateNoReleases: "Aucune version trouvée pour l'instant.", .updateDownloading: "Téléchargement… %d%%",
-        .whatsNew: "Nouveautés", .andMoreChanges: "…et %d autres",
+        .whatsNew: "Nouveautés", .expandAll: "Tout développer", .collapseAll: "Tout réduire",
         .stateReady: "Terminé", .stateFree: "Libre", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .free: "libre",
         .generalTab: "Général", .infoTab: "Informations", .colorLegendTitle: "Couleurs d'état", .colorLegendIntro: "Chaque terminal affiche une pastille d'état colorée :",
         .readyDesc: "le tour ou la commande est terminé — un résultat attend votre regard", .freeDesc: "prompt vide, rien à relire — ce terminal est disponible", .waitingSince: "en attente depuis %d min", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
@@ -904,7 +904,7 @@ enum L10n {
         .updateAvailable: "La versión %@ está disponible", .updateAvailableBody: "Descarga la nueva versión y arrástrala a Aplicaciones.", .updateDownload: "Descargar",
         .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
         .updateInstallRelaunch: "Instalar y reiniciar", .updateInstallBody: "Planchette descargará la nueva versión, la instalará y se reiniciará.", .updateInstalling: "Instalando actualización…", .updateLater: "Más tarde", .updateNoReleases: "Aún no se encontraron versiones.", .updateDownloading: "Descargando… %d%%",
-        .whatsNew: "Novedades", .andMoreChanges: "…y %d más",
+        .whatsNew: "Novedades", .expandAll: "Expandir todo", .collapseAll: "Contraer todo",
         .stateReady: "Hecho", .stateFree: "Libre", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .free: "libre",
         .generalTab: "General", .infoTab: "Información", .colorLegendTitle: "Colores de estado", .colorLegendIntro: "Cada terminal muestra un punto de estado de color:",
         .readyDesc: "el turno o comando terminó — un resultado espera tu revisión", .freeDesc: "prompt vacío, nada que revisar — este terminal está disponible", .waitingSince: "esperando desde hace %d min", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
@@ -1094,7 +1094,7 @@ enum L10n {
         .updateAvailable: "La versione %@ è disponibile", .updateAvailableBody: "Scarica la nuova versione e trascinala in Applicazioni.", .updateDownload: "Scarica",
         .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
         .updateInstallRelaunch: "Installa e riavvia", .updateInstallBody: "Planchette scaricherà la nuova versione, la installerà e si riavvierà.", .updateInstalling: "Installazione dell'aggiornamento…", .updateLater: "Più tardi", .updateNoReleases: "Nessuna versione trovata per ora.", .updateDownloading: "Download… %d%%",
-        .whatsNew: "Novità", .andMoreChanges: "…e altre %d",
+        .whatsNew: "Novità", .expandAll: "Espandi tutto", .collapseAll: "Comprimi tutto",
         .stateReady: "Fatto", .stateFree: "Libero", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .free: "libero",
         .generalTab: "Generale", .infoTab: "Informazioni", .colorLegendTitle: "Colori di stato", .colorLegendIntro: "Ogni terminale mostra un pallino di stato colorato:",
         .readyDesc: "il turno o comando è terminato — un risultato attende la tua revisione", .freeDesc: "prompt vuoto, niente da rivedere — questo terminale è disponibile", .waitingSince: "in attesa da %d min", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
@@ -1284,7 +1284,7 @@ enum L10n {
         .updateAvailable: "Versie %@ is beschikbaar", .updateAvailableBody: "Download de nieuwe versie en sleep die naar Programma's.", .updateDownload: "Downloaden",
         .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
         .updateInstallRelaunch: "Installeren en herstarten", .updateInstallBody: "Planchette downloadt de nieuwe versie, installeert die en start opnieuw op.", .updateInstalling: "Update installeren…", .updateLater: "Later", .updateNoReleases: "Nog geen releases gevonden.", .updateDownloading: "Update downloaden… %d%%",
-        .whatsNew: "Wat is er nieuw", .andMoreChanges: "…en %d meer",
+        .whatsNew: "Wat is er nieuw", .expandAll: "Alles uitklappen", .collapseAll: "Alles inklappen",
         .stateReady: "Klaar", .stateFree: "Vrij", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .free: "vrij",
         .generalTab: "Algemeen", .infoTab: "Informatie", .colorLegendTitle: "Statuskleuren", .colorLegendIntro: "Elk terminal toont een gekleurde statusstip:",
         .readyDesc: "de beurt of opdracht is klaar — een resultaat wacht op je blik", .freeDesc: "lege prompt, niets te reviewen — deze terminal is beschikbaar", .waitingSince: "wacht al %d min", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
@@ -1474,7 +1474,7 @@ enum L10n {
         .updateAvailable: "A versão %@ está disponível", .updateAvailableBody: "Descarrega a nova versão e arrasta-a para Aplicações.", .updateDownload: "Descarregar",
         .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
         .updateInstallRelaunch: "Instalar e reiniciar", .updateInstallBody: "O Planchette vai descarregar a nova versão, instalá-la e reiniciar.", .updateInstalling: "A instalar atualização…", .updateLater: "Mais tarde", .updateNoReleases: "Ainda não foram encontradas versões.", .updateDownloading: "A descarregar… %d%%",
-        .whatsNew: "Novidades", .andMoreChanges: "…e %d mais",
+        .whatsNew: "Novidades", .expandAll: "Expandir tudo", .collapseAll: "Recolher tudo",
         .stateReady: "Concluído", .stateFree: "Livre", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .free: "livre",
         .generalTab: "Geral", .infoTab: "Informação", .colorLegendTitle: "Cores de estado", .colorLegendIntro: "Cada terminal mostra um ponto de estado colorido:",
         .readyDesc: "o turno ou comando terminou — um resultado aguarda a tua revisão", .freeDesc: "prompt vazio, nada para rever — este terminal está disponível", .waitingSince: "à espera há %d min", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",

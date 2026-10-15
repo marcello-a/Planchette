@@ -64,7 +64,7 @@ final class ReleaseNotesTests: XCTestCase {
     ### Added
     - **Terminals name themselves.** A tab is now called `NIE-1902 · Add the
       switch`: the ticket of its checkout plus the task you last sent it.
-      - a nested detail nobody needs in a dialog
+      - a nested detail that belongs to this entry
     - **A folder is a page, not just a box** — click it and the main area shows
       what is inside.
 
@@ -74,45 +74,80 @@ final class ReleaseNotesTests: XCTestCase {
     """
 
     func testTakesTheBoldLeadInAsTheTitle() {
-        let (items, _) = ReleaseNotes.highlights(from: body)
-        XCTAssertEqual(items.first, "Terminals name themselves")
-        XCTAssertEqual(items[1], "A folder is a page, not just a box")
+        let entries = ReleaseNotes.entries(from: body)
+        XCTAssertEqual(entries.first?.title, "Terminals name themselves")
+        XCTAssertEqual(entries[1].title, "A folder is a page, not just a box")
     }
 
     // A plain bullet has no bold lead-in: its first sentence is the title.
     func testFallsBackToTheFirstSentence() {
-        let (items, _) = ReleaseNotes.highlights(from: body)
-        XCTAssertEqual(items[2], "A project row's click and its drag no longer fight over the…")
+        let entries = ReleaseNotes.entries(from: body)
+        XCTAssertEqual(entries[2].title, "A project row's click and its drag no longer fight over the…")
     }
 
-    func testSkipsNestedBulletsAndHeadings() {
-        let (items, _) = ReleaseNotes.highlights(from: body)
-        XCTAssertEqual(items.count, 3)
-        XCTAssertFalse(items.contains { $0.contains("nested") })
-        XCTAssertFalse(items.contains { $0.contains("Added") })
+    // A heading is no entry, but it names the kind of change under it.
+    func testHeadingsAreNotEntriesButNameTheirSection() {
+        let entries = ReleaseNotes.entries(from: body)
+        XCTAssertEqual(entries.count, 3)
+        XCTAssertEqual(entries.map(\.section), ["Added", "Added", "Fixed"])
+        XCTAssertEqual(entries.map(\.id), [0, 1, 2])
     }
 
-    // The dialog has room for a few lines, not for a whole changelog.
-    func testCutsTheListAndCountsTheRest() {
-        let long = (1...9).map { "- **Entry \($0).** Details." }.joined(separator: "\n")
-        let (items, more) = ReleaseNotes.highlights(from: long, limit: 4)
-        XCTAssertEqual(items, ["Entry 1", "Entry 2", "Entry 3", "Entry 4"])
-        XCTAssertEqual(more, 5)
+    // What a point opens to: everything after its headline, the lines of one
+    // paragraph joined, a bullet inside the entry kept on its own line.
+    func testTheDetailIsTheRestOfTheEntry() {
+        let entries = ReleaseNotes.entries(from: body)
+        XCTAssertEqual(
+            entries[0].detail,
+            "A tab is now called NIE-1902 · Add the switch: the ticket of its checkout plus the task you last sent it.\n• a nested detail that belongs to this entry")
+        XCTAssertEqual(entries[1].detail, "click it and the main area shows what is inside.")
+    }
+
+    // Without a bold lead-in the headline is only a cut-short first sentence, so the
+    // text is the whole entry.
+    func testAPlainEntryOpensToItsWholeText() {
+        let entries = ReleaseNotes.entries(from: body)
+        XCTAssertEqual(entries[2].detail, "A project row's click and its drag no longer fight over the gesture. See the PR for why.")
+    }
+
+    func testAnEntryThatIsOnlyAHeadlineHasNothingToOpen() {
+        let entries = ReleaseNotes.entries(from: "- **Small fix.**\n- **Other.** With text.")
+        XCTAssertEqual(entries.map(\.detail), ["", "With text."])
+    }
+
+    // Every entry is listed — the dialog scrolls instead of cutting the list.
+    func testKeepsEveryEntry() {
+        let long = (1...9).map { "- **Entry \($0).** Details \($0)." }.joined(separator: "\n")
+        let entries = ReleaseNotes.entries(from: long)
+        XCTAssertEqual(entries.count, 9)
+        XCTAssertEqual(entries.last?.title, "Entry 9")
+        XCTAssertEqual(entries.last?.detail, "Details 9.")
     }
 
     func testMarkdownIsNotReadOutAsPunctuation() {
-        let (items, _) = ReleaseNotes.highlights(from: "- **A `code` name.** rest")
-        XCTAssertEqual(items, ["A code name"])
-        let (links, _) = ReleaseNotes.highlights(from: "- Fixed [the thing](http://x/y) at last.")
-        XCTAssertEqual(links, ["Fixed the thing at last"])
+        let code = ReleaseNotes.entries(from: "- **A `code` name.** rest of **bold** text")
+        XCTAssertEqual(code.first?.title, "A code name")
+        XCTAssertEqual(code.first?.detail, "rest of bold text")
+        let link = ReleaseNotes.entries(from: "- Fixed [the thing](http://x/y) at last.")
+        XCTAssertEqual(link.first?.title, "Fixed the thing at last")
+    }
+
+    // Text that is not indented and not a bullet is not part of the entry above it.
+    func testAnUnindentedLineEndsTheEntry() {
+        let entries = ReleaseNotes.entries(from: "- **A.** one\nstray line\n- **B.** two")
+        XCTAssertEqual(entries.map(\.detail), ["one", "two"])
+    }
+
+    // The release's own `##` heading is not a kind of change.
+    func testTheReleaseHeadingIsNotASection() {
+        let entries = ReleaseNotes.entries(from: "## [0.3.0] — 2026-10-16\n- **First.** x\n### Fixed\n- **Second.** y")
+        XCTAssertEqual(entries.map(\.section), [nil, "Fixed"])
     }
 
     // A release published by hand may have no list at all — then the dialog must
-    // simply say nothing new, not show an empty "What's new" block.
-    func testNoBulletsMeansNoHighlights() {
-        let (items, more) = ReleaseNotes.highlights(from: "Stable release 0.2.16.")
-        XCTAssertTrue(items.isEmpty)
-        XCTAssertEqual(more, 0)
+    // show no "What's new" block, not an empty one.
+    func testNoBulletsMeansNoEntries() {
+        XCTAssertTrue(ReleaseNotes.entries(from: "Stable release 0.2.16.").isEmpty)
     }
 }
 
