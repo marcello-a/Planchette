@@ -72,6 +72,13 @@ final class AppState: ObservableObject {
     @Published var tagList: [String] = TagList.defaults {
         didSet { scheduleSave() }
     }
+    /// The keys that open the search from anywhere in the app (Settings → General).
+    @Published var searchShortcut: SearchShortcut = .default {
+        didSet {
+            scheduleSave()
+            searchShortcutMonitor.shortcut = searchShortcut
+        }
+    }
     /// The IDE the "look at code" button always opens, once one is chosen in
     /// its menu. Nil = no choice made yet: the button falls back to whichever
     /// known IDE is running (see `IDEs.target`).
@@ -154,6 +161,7 @@ final class AppState: ObservableObject {
             doneExpiry = saved.doneExpiry
             sidebarDetails = saved.sidebarDetails
             tagList = saved.tagList
+            searchShortcut = saved.searchShortcut
             // Load the opt-in AI flag early too: a launch with a saved-but-
             // sessionless state runs startFresh(archiving: nil), which keeps the
             // *current* value — so without this a user's aiEnabled=false silently
@@ -163,6 +171,7 @@ final class AppState: ObservableObject {
             askedAboutSpaceSwitching = saved.askedAboutSpaceSwitching
         }
         observeSurfaceNotifications()
+        _ = searchShortcutMonitor   // listening from the first moment
         startAttentionHousekeeping()
         startScreenDetection()
         startBranchPolling()
@@ -1519,6 +1528,68 @@ final class AppState: ObservableObject {
         quickSwitcherWindowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
     }
 
+    /// What the search knows about every terminal right now. A snapshot: the
+    /// switcher takes one when it opens and ranks against it, so a state change
+    /// while it is open cannot reorder the list under the user's hand.
+    func searchEntries() -> [SearchEntry] {
+        sessions.values.map { session in
+            let pullRequest = pullRequests[session.id]
+            return SearchEntry(
+                id: session.id,
+                title: session.displayTitle,
+                project: group(of: session)?.name ?? "",
+                // The cached branch — never a filesystem walk per terminal per keystroke.
+                branch: branches[session.id] ?? "",
+                path: session.currentDirectory,
+                tags: session.tags,
+                note: session.note ?? "",
+                task: session.currentTask ?? "",
+                summary: session.aiSummary ?? "",
+                message: session.lastMessage ?? "",
+                pullRequest: pullRequest?.number,
+                pullRequestTitle: pullRequest?.title ?? "",
+                background: backgroundTasks[session.id]?.map(\.title) ?? [],
+                urgency: searchUrgency(session),
+                stateSince: session.stateSince)
+        }
+    }
+
+    /// An error or a question first, in a favorite project before any other, then the
+    /// favorites, then the rest — the order the switcher has always opened in.
+    private func searchUrgency(_ session: TerminalSession) -> Int {
+        let favorite = group(of: session)?.favorite == true
+        switch (session.state, favorite) {
+        case (.error, true): return 6
+        case (.waiting, true): return 5
+        case (.error, false): return 4
+        case (.waiting, false): return 3
+        default: return favorite ? 1 : 0
+        }
+    }
+
+    /// The keys that open the search, for a tooltip: the one Settings holds, and ⌘K, which
+    /// the menu keeps whatever Settings says.
+    var searchShortcutLabels: String {
+        let menu = SearchShortcut.chord(key: "k", modifiers: [.command])
+        return searchShortcut == menu ? menu.label : "\(searchShortcut.label) · \(menu.label)"
+    }
+
+    /// Watches for the search shortcut (Settings → General); see `SearchShortcutMonitor`.
+    private(set) lazy var searchShortcutMonitor = SearchShortcutMonitor(shortcut: searchShortcut) { [weak self] in
+        self?.searchShortcutPressed()
+    }
+
+    /// The shortcut opens the search over the window you are in, and the same keys
+    /// close it again. From Settings, or with no window in front, there is nothing to
+    /// search from: it does nothing.
+    func searchShortcutPressed() {
+        if quickSwitcherWindowID != nil {
+            quickSwitcherWindowID = nil
+        } else if WindowRegistry.shared.keyWindowID() != nil {
+            showQuickSwitcher()
+        }
+    }
+
     /// Focusing a terminal does NOT clear its attention state — a glance isn't
     /// an answer. `waiting`/`error` persist until the agent moves on (a hook or
     /// command result) or the user explicitly marks it free ("nothing for me
@@ -2120,6 +2191,7 @@ final class AppState: ObservableObject {
             doneExpiry: doneExpiry,
             sidebarDetails: sidebarDetails,
             tagList: tagList,
+            searchShortcut: searchShortcut,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching
         )
@@ -2200,6 +2272,7 @@ final class AppState: ObservableObject {
         doneExpiry = state.doneExpiry
         sidebarDetails = state.sidebarDetails
         tagList = state.tagList
+        searchShortcut = state.searchShortcut
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         windowsToOpen = windows.dropFirst().map(\.id)
@@ -2310,6 +2383,7 @@ final class AppState: ObservableObject {
         doneExpiry = previous?.doneExpiry ?? doneExpiry
         sidebarDetails = previous?.sidebarDetails ?? sidebarDetails
         tagList = previous?.tagList ?? tagList
+        searchShortcut = previous?.searchShortcut ?? searchShortcut
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching

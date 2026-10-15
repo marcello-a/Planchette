@@ -8,6 +8,48 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Search from anywhere with Shift twice.** Tap Shift two times in a Planchette
+  window, whatever has the focus, and the search opens over it; the same keys close
+  it again. Settings → General → Search changes the keys: tap another modifier twice
+  (⌃, ⌥ or ⌘), or press a key with ⌘, ⌃ or ⌥ held — the terminal never sees that
+  chord. Keys the app or macOS already uses are refused, with the reason. ⌘K stays in
+  the Session menu. The magnifier in the bottom bar of the Project panel names the
+  keys in its tooltip.
+
+### Changed
+- **The search finds what you mean.** It takes words in any order and matches each one
+  against the title, path, project, branch, tags, note, task, summary, last message,
+  the pull request's title and number, and what runs in the background: whole words
+  first, then the start of a word, then the middle of one, then initials (`gwm`) and
+  letters in order. `#2093` goes straight to the ticket or the PR with that number.
+  The matched letters are bold, and when the best match is not on the row (a note, a
+  summary, a PR title) one line under it says where it was found. An empty result says
+  so, and the footer lists the keys.
+- **The gear opens the Project panel settings**, not Information. Settings opens on
+  the tab you used last.
+
+### Fixed
+- **A finished command ends its question.** `brew install` asks "(y/n)", the icon
+  turns into a blue "?", the command ends — and the "?" stayed, as did a purple robot
+  after a command you stopped with Ctrl+C. The prompt coming back means the foreground
+  job is over, so a finished or aborted command now sets the state its exit code names
+  (a check for success, red for a failure, gray for Ctrl+C) whatever the icon showed.
+  A Claude that was killed (`kill -9`, a crash) shows an error instead of running for
+  ever, and a restart no longer brings back a purple or blue terminal whose process is
+  gone. (A durable terminal still hears nothing of its commands: tmux does not pass
+  that signal on.)
+- **Claude's screen patterns no longer read other programs.** In a terminal where
+  Claude once ran, the "Do you want to continue?" of `apt` or `brew` raised the
+  question again after every command. The patterns now apply only while a Claude is
+  live, and in durable terminals, whose Claude can outlive a restart.
+- **Stopping Claude frees the icon in every case.** Ctrl+C or Esc before Claude has
+  printed anything puts your prompt back into the input and prints no "Interrupted"
+  line, and Claude Code sends no hook either: the icon ran on. An idle prompt that
+  holds on two readings now ends such a turn (every permission mode's footer is read,
+  not only "? for shortcuts"). Esc at a permission dialog no longer leaves the "?",
+  and the "Interrupted" marker is found when a narrow pane clips or wraps it.
+
 ## [0.2.35] — 2026-10-14
 
 ### Added
@@ -73,25 +115,6 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   scrollback.
 
 ### Fixed
-- **A finished command ends its question.** `brew install` asks "(y/n)", the icon
-  turns into a blue "?", the command ends — and the "?" stayed, as did a purple robot
-  after a command you stopped with Ctrl+C. The prompt coming back means the foreground
-  job is over, so a finished or aborted command now sets the state its exit code names
-  (a check for success, red for a failure, gray for Ctrl+C) whatever the icon showed.
-  A Claude that was killed (`kill -9`, a crash) shows an error instead of running for
-  ever, and a restart no longer brings back a purple or blue terminal whose process is
-  gone. (A durable terminal still hears nothing of its commands: tmux does not pass
-  that signal on.)
-- **Claude's screen patterns no longer read other programs.** In a terminal where
-  Claude once ran, the "Do you want to continue?" of `apt` or `brew` raised the
-  question again after every command. The patterns now apply only while a Claude is
-  live, and in durable terminals, whose Claude can outlive a restart.
-- **Stopping Claude frees the icon in every case.** Ctrl+C or Esc before Claude has
-  printed anything puts your prompt back into the input and prints no "Interrupted"
-  line, and Claude Code sends no hook either: the icon ran on. An idle prompt that
-  holds on two readings now ends such a turn (every permission mode's footer is read,
-  not only "? for shortcuts"). Esc at a permission dialog no longer leaves the "?",
-  and the "Interrupted" marker is found when a narrow pane clips or wraps it.
 - **A finished background task is no longer shown as the terminal's task.** Claude
   Code announces the end of a shell or an agent as a prompt (`<task-notification>…`),
   and the sidebar printed that as what the terminal was working on.

@@ -1,7 +1,10 @@
 import SwiftUI
 
-/// ⌘K quick switcher. Sessions needing attention come first (favorites on
-/// top), then everything else fuzzy-matched by title / path / group.
+/// The search: type what you remember — a word of the name, the branch, a tag, a
+/// pull request number, the note — and open the terminal. Opened with the search
+/// shortcut (Shift twice, unless Settings says otherwise) or ⌘K.
+///
+/// What it finds and in what order is `SearchRanking`, which is pure and tested.
 struct QuickSwitcherView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -9,60 +12,17 @@ struct QuickSwitcherView: View {
     @State private var highlighted = 0
     @FocusState private var fieldFocused: Bool
 
-    /// The ranking, frozen the moment the switcher opens. Ranking live would
-    /// re-order the list under the user's hands: any state change (the screen
-    /// poll ticks every 1.5s) republished AppState, `stateSince` moved a
-    /// session up, and the Enter/click resolved its row index against a list
-    /// the user never saw — opening the wrong terminal. Closed sessions drop
-    /// out (`compactMap`); a session created while the switcher is open simply
-    /// isn't listed.
-    @State private var rankedIDs: [UUID] = []
+    /// What the search knows, taken the moment the switcher opens. Ranking against
+    /// live data would re-order the list under the user's hands: any state change
+    /// (the screen poll ticks every 1.5s) republished AppState, `stateSince` moved a
+    /// terminal up, and the Enter or the click resolved its row against a list the
+    /// user never saw — opening the wrong terminal. Closed terminals drop out
+    /// (`compactMap`); one created while the switcher is open simply isn't listed.
+    @State private var snapshot: [SearchEntry] = []
+    @State private var hits: [SearchHit] = []
 
-    private var results: [TerminalSession] {
-        let ranked = rankedIDs.compactMap { appState.sessions[$0] }
-        guard !query.isEmpty else { return Array(ranked.prefix(12)) }
-        let q = query.lowercased()
-        return ranked.filter { session in
-            let haystack = ([
-                session.displayTitle,
-                session.currentDirectory,
-                appState.group(of: session)?.name ?? "",
-                // The published branch cache — never a filesystem walk per
-                // session per keystroke.
-                appState.branches[session.id] ?? "",
-                session.aiSummary ?? "",
-            ] + session.tags).joined(separator: " ").lowercased()
-            return fuzzyMatch(needle: q, haystack: haystack)
-        }
-    }
-
-    private func rank() -> [UUID] {
-        appState.sessions.values.sorted { a, b in
-            let aScore = urgencyScore(a)
-            let bScore = urgencyScore(b)
-            if aScore != bScore { return aScore > bScore }
-            return a.stateSince > b.stateSince
-        }.map(\.id)
-    }
-
-    private func urgencyScore(_ session: TerminalSession) -> Int {
-        let favorite = appState.group(of: session)?.favorite == true
-        switch (session.state, favorite) {
-        case (.error, true): return 6
-        case (.waiting, true): return 5
-        case (.error, false): return 4
-        case (.waiting, false): return 3
-        default: return favorite ? 1 : 0
-        }
-    }
-
-    private func fuzzyMatch(needle: String, haystack: String) -> Bool {
-        var index = haystack.startIndex
-        for char in needle {
-            guard let found = haystack[index...].firstIndex(of: char) else { return false }
-            index = haystack.index(after: found)
-        }
-        return true
+    private var results: [(hit: SearchHit, session: TerminalSession)] {
+        hits.compactMap { hit in appState.sessions[hit.id].map { (hit, $0) } }
     }
 
     var body: some View {
@@ -73,25 +33,48 @@ struct QuickSwitcherView: View {
                 .padding(12)
                 .focused($fieldFocused)
                 .onSubmit { open(at: highlighted) }
-                .onChange(of: query) { highlighted = 0 }
+                .onChange(of: query) {
+                    hits = SearchRanking.rank(query, in: snapshot)
+                    highlighted = 0
+                }
             Divider()
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(results.enumerated()), id: \.element.id) { index, session in
-                        row(session, highlighted: index == highlighted)
-                            .onTapGesture { open(at: index) }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        let rows = results
+                        if rows.isEmpty, !query.isEmpty {
+                            Text(L10n.t(.switcherEmpty, query.trimmingCharacters(in: .whitespaces)))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                        }
+                        ForEach(Array(rows.enumerated()), id: \.element.session.id) { index, row in
+                            resultRow(row.session, hit: row.hit, highlighted: index == highlighted)
+                                .id(row.session.id)
+                                .onTapGesture { open(at: index) }
+                        }
                     }
                 }
+                .frame(maxHeight: 320)
+                .onChange(of: highlighted) {
+                    if let id = results[safe: highlighted]?.session.id { proxy.scrollTo(id) }
+                }
             }
-            .frame(maxHeight: 320)
+            Divider()
+            Text(L10n.t(.switcherHint))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12).padding(.vertical, 5)
         }
         .frame(width: 480)
         .onAppear {
             fieldFocused = true
-            rankedIDs = rank()
+            snapshot = appState.searchEntries()
+            hits = SearchRanking.rank(query, in: snapshot)
         }
         .onKeyPress(.downArrow) {
-            highlighted = min(highlighted + 1, results.count - 1); return .handled
+            highlighted = min(highlighted + 1, max(results.count - 1, 0)); return .handled
         }
         .onKeyPress(.upArrow) {
             highlighted = max(highlighted - 1, 0); return .handled
@@ -100,27 +83,45 @@ struct QuickSwitcherView: View {
     }
 
     private func open(at index: Int) {
-        guard results.indices.contains(index) else { return }
-        appState.select(session: results[index])
+        guard let row = results[safe: index] else { return }
+        appState.select(session: row.session)
         dismiss()
     }
 
-    private func row(_ session: TerminalSession, highlighted: Bool) -> some View {
-        HStack(spacing: 8) {
+    private func resultRow(_ session: TerminalSession, hit: SearchHit, highlighted: Bool) -> some View {
+        let entry = snapshot.first { $0.id == session.id }
+        let shortPath = session.shortPath
+        // The row shows the last two folders; the ranges are into the whole path.
+        let pathRanges: [Range<Int>] = {
+            guard let path = entry?.path, path.hasSuffix(shortPath) else { return [] }
+            return SearchRanking.shifted(hit.matches[.path] ?? [], by: shortPath.count - path.count, within: shortPath.count)
+        }()
+        return HStack(spacing: 8) {
             StateIcon(state: session.state)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
-                    Text(session.displayTitle).bold()
+                    Text(Highlight.attributed(session.displayTitle, hit.matches[.title] ?? [])).bold()
                     if appState.group(of: session)?.favorite == true {
                         PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                     }
                 }
                 HStack(spacing: 4) {
-                    Text(session.shortPath).font(.caption).foregroundStyle(.secondary)
+                    Text(Highlight.attributed(shortPath, pathRanges)).font(.caption).foregroundStyle(.secondary)
                     TagChips(tags: session.tags)
                 }
-                if let summary = session.aiSummary {
-                    Text(summary).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
+                // Where the match is when the row does not show it: the branch, the
+                // pull request, the note, the prompt, what runs in the background.
+                if let field = hit.hint, let entry {
+                    HStack(spacing: 4) {
+                        Image(systemName: field.symbol).font(.system(size: 9))
+                        Text(Highlight.attributed(SearchRanking.text(of: field, in: entry), hit.matches[field] ?? []))
+                            .lineLimit(1)
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                } else if let summary = session.aiSummary {
+                    Text(Highlight.attributed(summary, hit.matches[.summary] ?? []))
+                        .font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer()
@@ -136,5 +137,27 @@ struct QuickSwitcherView: View {
         .padding(.vertical, 7)
         .background(highlighted ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear))
         .contentShape(Rectangle())
+    }
+}
+
+/// A string with the found characters in the accent color and bold.
+enum Highlight {
+    static func attributed(_ text: String, _ ranges: [Range<Int>]) -> AttributedString {
+        var result = AttributedString(text)
+        for range in ranges {
+            let lower = max(0, range.lowerBound), upper = min(text.count, range.upperBound)
+            guard lower < upper else { continue }
+            let start = result.characters.index(result.characters.startIndex, offsetBy: lower)
+            let end = result.characters.index(start, offsetBy: upper - lower)
+            result[start..<end].foregroundColor = .accentColor
+            result[start..<end].inlinePresentationIntent = .stronglyEmphasized
+        }
+        return result
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
