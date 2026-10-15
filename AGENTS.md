@@ -154,6 +154,17 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   and screen detection keep updating its actual state. Any new place that counts
   or announces attention has to apply the same filter, or a terminal the user
   sent away starts shouting from a corner nobody thought about.
+- **A terminal must not inherit the agent that started the app.** Claude Code
+  marks its own processes (`CLAUDECODE`, `CLAUDE_CODE_*`, …), and a Claude that
+  finds those markers set treats itself as a child session and writes **no
+  transcript**. Every dev run starts the app from inside such a terminal, so
+  without `AgentEnvironment.scrubInherited()` (called first in
+  `applicationDidFinishLaunching`) every PTY inherits them and the context ring,
+  the cache timer, the AI summary and the conversation title all go quiet at
+  once — for a reason only Claude Code's own output mentions, in one line. Keep
+  the list to markers of a *running* session: `ANTHROPIC_*` configures an agent
+  rather than identifying one, and a terminal stripped of it cannot reach the
+  API at all.
 - **Never assume `$PLANCHETTE_SOCKET` is live.** A durable terminal's environment
   is frozen at the moment its tmux session was created, so it names the socket of
   an app instance that may be long dead. Anything talking to us from inside a
