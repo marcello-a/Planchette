@@ -185,6 +185,21 @@ first; any key, click or scroll in between ends the attempt, and it fires on the
 release, so a Shift held to select never opens it. ⌘K stays a menu item whatever Settings
 says.
 
+## Find in a terminal
+
+⌘F (Edit → Find…, Find Next, Find Previous) opens `TerminalFindBar` over the terminal in
+front; `AppState.finds` holds what each open bar knows (`TerminalFind`). Two engines
+answer, chosen per terminal. A plain one is searched by libghostty (`start_search`,
+`search:<text>`, `navigate_search:next|previous`, `end_search` as binding actions on the
+surface), which highlights the matches and reports the count and the selected match
+back as actions (`GhosttyRuntime` turns them into `planchetteSurfaceSearch` events).
+A durable terminal is searched in tmux, because its history lives there and libghostty
+never sees it: the bar enters copy mode, goes to the newest line and runs
+`search-backward-text`, one tmux call per pause in the typing (`Durable`'s Search
+extension, pure argument lists), reads `#{search_count}` for the number, and leaves copy
+mode on close. While the bar is open the terminal's surface does not take the keyboard
+back (`TerminalSurfaceRepresentable.focusIfActive`).
+
 ## AI assist (on by default, can be switched off)
 
 Settings explains what it does and has the switch. Stage 1 is deterministic:

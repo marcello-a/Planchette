@@ -671,7 +671,9 @@ final class GhosttySurfaceNSView: NSView {
         // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus.
         guard event.modifierFlags.contains(.command) else { return false }
         let chars = event.charactersIgnoringModifiers ?? ""
-        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ","]
+        // ⌘F, ⌘G and ⌘⇧G are the menu's too: the find bar is the app's, and it has to
+        // answer for a durable terminal, whose history libghostty cannot see.
+        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g"]
         // charactersIgnoringModifiers still applies Shift, so a shifted app
         // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree") arrives here as
         // "K"/"T". Lowercase before matching so those reach the menu instead of
@@ -713,6 +715,13 @@ final class GhosttySurfaceNSView: NSView {
         guard len > 0 else { return false }
         return action.withCString { ghostty_surface_binding_action(surface, $0, UInt(len - 1)) }
     }
+
+    // The find bar of a plain terminal. libghostty searches its own scrollback, shows
+    // every match highlighted, and reports the count back (`GhosttyRuntime`).
+    func startSearch() { performBindingAction("start_search") }
+    func search(_ needle: String) { performBindingAction("search:\(needle)") }
+    func navigateSearch(next: Bool) { performBindingAction("navigate_search:\(next ? "next" : "previous")") }
+    func endSearch() { performBindingAction("end_search") }
 
     // Font zoom, driven by the header buttons and ⌘+/⌘-/⌘0.
     func increaseFontSize() { performBindingAction("increase_font_size:1") }
@@ -1184,6 +1193,7 @@ struct TerminalHostView: View {
         GeometryReader { geo in
             TerminalSurfaceRepresentable(session: session, autoFocus: autoFocus, size: geo.size)
         }
+        .overlay(alignment: .topTrailing) { TerminalFindBar(sessionID: session.id) }
     }
 }
 
@@ -1209,7 +1219,7 @@ private struct TerminalSurfaceRepresentable: NSViewRepresentable {
     }
 
     private func focusIfActive(_ view: NSView) {
-        guard autoFocus, let surfaceView = view as? GhosttySurfaceNSView else { return }
+        guard autoFocus, appState.finds[session.id] == nil, let surfaceView = view as? GhosttySurfaceNSView else { return }
         DispatchQueue.main.async {
             guard let window = surfaceView.window, surfaceView.isActive() else { return }
             // Ensure a key window exists so keystrokes are delivered at all

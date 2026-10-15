@@ -64,6 +64,7 @@ groups terminals by project. See [README.md](README.md) and
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
 | `SearchRanking.swift` | What the search matches and how it ranks it: `SearchEntry`, the tiers (whole word, start, inside, initials, letters in order), the field weights, the hint line. Pure, unit-tested |
 | `SearchShortcut.swift`, `SearchShortcutMonitor.swift` | The keys that open the search (a modifier tapped twice, or a chord): the value type, the pure `DoubleTapDetector`, and the local event monitor that feeds it |
+| `TerminalFind.swift` | What a terminal's find bar knows (`TerminalFind`) and says. The tmux side of the search is `Durable`'s Search extension: pure argument lists, tested |
 | `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
@@ -127,6 +128,13 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   prompt is a `<task-notification>`: Claude's own notice, not something the user
   typed — it must never become the task line or reopen work marked finished.
   `scripts/perf/background_tasks.py` re-checks all of it against the installed `claude`.
+- **A durable terminal is searched in tmux, not in libghostty.** The pane sits in the
+  alternate screen, so libghostty never holds a line that scrolled off it: its search
+  would find only what is on screen. `AppState.startFind`/`updateFind` choose the engine
+  per terminal (`searchesInTmux`). The tmux commands go to the pane as `=planchette-<id>:`
+  — with the colon, or tmux answers "can't find pane" — the needle after `--` (it may
+  start with `-`) and with a trailing `;` escaped, since a bare one ends the command.
+  Anything new that reads terminal text has the same two cases to answer for.
 - **First launch is "no state file", nothing else.** `AppState.init` sets
   `OnboardingState.firstLaunch` only when `state.json` does not exist: a file that
   fails to decode (a downgrade) is somebody's workspace and reads as seen. A message

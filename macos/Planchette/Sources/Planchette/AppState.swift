@@ -1264,6 +1264,9 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
+        finds[id] = nil
+        findTasks[id]?.cancel()
+        findTasks[id] = nil
         liveAgentIDs.remove(id)
         backgroundTasks[id] = nil
         screenRaisedIDs.remove(id)
@@ -1636,6 +1639,139 @@ final class AppState: ObservableObject {
             quickSwitcherWindowID = nil
         } else if WindowRegistry.shared.keyWindowID() != nil {
             showQuickSwitcher()
+        }
+    }
+
+    // MARK: Find in a terminal (⌘F)
+
+    /// The find bar of every terminal that has one open, and what it knows.
+    @Published private(set) var finds: [UUID: TerminalFind] = [:]
+    private var findTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Who searches: libghostty looks through its own scrollback, but a durable
+    /// terminal runs inside tmux, whose history it never sees — there tmux's copy
+    /// mode does the searching, and highlights the matches itself.
+    private func searchesInTmux(_ session: TerminalSession) -> Bool {
+        session.durable && Durable.isAvailable
+    }
+
+    private func surfaceView(of id: UUID) -> GhosttySurfaceNSView? {
+        sessions[id].flatMap { TerminalRegistry.shared.view(for: $0, appState: self) } as? GhosttySurfaceNSView
+    }
+
+    /// The terminal ⌘F means: the one the key window shows, when it shows one.
+    func findTargetID() -> UUID? {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
+              let window = window(for: windowID), window.selectedFolderID == nil,
+              !window.showsProjectOverview, let groupID = window.selectedGroupID,
+              let group = groups.first(where: { $0.id == groupID })
+        else { return nil }
+        if let active = group.activeSessionID, sessions[active] != nil { return active }
+        return group.sessionIDs.first { sessions[$0] != nil }
+    }
+
+    /// ⌘F: open the find bar over this terminal — or, when it is open, take the keyboard
+    /// back into it.
+    func startFind(in id: UUID) {
+        guard let session = sessions[id] else { return }
+        guard finds[id] != nil else {
+            finds[id] = TerminalFind()
+            if !searchesInTmux(session) { surfaceView(of: id)?.startSearch() }
+            return
+        }
+        finds[id]?.focusRequests += 1
+    }
+
+    /// The text in the field changed.
+    func updateFind(_ needle: String, in id: UUID) {
+        guard let session = sessions[id], finds[id] != nil, finds[id]?.needle != needle else { return }
+        finds[id]?.needle = needle
+        findTasks[id]?.cancel()
+        findTasks[id] = nil
+        if searchesInTmux(session) {
+            guard !needle.isEmpty else {
+                finds[id]?.total = nil
+                Task.detached { Durable.endSearch(in: id) }
+                return
+            }
+            // One tmux call per pause in the typing, not per key: it is a process each.
+            findTasks[id] = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+                let total = await Task.detached { Durable.search(needle, in: id) }.value
+                guard !Task.isCancelled, let self, self.finds[id]?.needle == needle else { return }
+                self.finds[id]?.total = total
+            }
+        } else {
+            if needle.isEmpty {
+                finds[id]?.total = nil
+                finds[id]?.selected = nil
+            }
+            surfaceView(of: id)?.search(needle)
+        }
+    }
+
+    /// Enter / ⌘G steps to the next match, ⇧Enter / ⌘⇧G to the previous one. "Next" is
+    /// the order the search presents them in: tmux starts at the newest line and goes
+    /// back, so its next match is the older one.
+    func stepFind(in id: UUID, forward: Bool) {
+        guard let session = sessions[id], let find = finds[id], !find.needle.isEmpty else { return }
+        if searchesInTmux(session) {
+            Task.detached { Durable.step(older: forward, in: id) }
+        } else {
+            surfaceView(of: id)?.navigateSearch(next: forward)
+        }
+    }
+
+    /// Esc or the close button: the bar goes, the highlights with it, and the keyboard
+    /// goes back to the terminal.
+    func endFind(in id: UUID) {
+        findTasks[id]?.cancel()
+        findTasks[id] = nil
+        guard finds[id] != nil else { return }
+        finds[id] = nil
+        if let session = sessions[id] {
+            if searchesInTmux(session) {
+                Task.detached { Durable.endSearch(in: id) }
+            } else {
+                surfaceView(of: id)?.endSearch()
+            }
+            focusTerminal(id)
+        }
+    }
+
+    private func focusTerminal(_ id: UUID) {
+        guard let view = surfaceView(of: id), let window = view.window else { return }
+        window.makeFirstResponder(view)
+    }
+
+    /// The menu: Find…, Find Next, Find Previous.
+    func findInKeyWindow() {
+        if let id = findTargetID() { startFind(in: id) }
+    }
+
+    func findNextInKeyWindow(forward: Bool) {
+        guard let id = findTargetID() else { return }
+        if finds[id] == nil { startFind(in: id) } else { stepFind(in: id, forward: forward) }
+    }
+
+    /// What libghostty says about the search of a plain terminal.
+    func applySearchEvent(_ event: String, for id: UUID, value: Int?, needle: String?) {
+        switch event {
+        case "start":
+            if finds[id] == nil { finds[id] = TerminalFind(needle: needle ?? "") }
+        case "end":
+            if finds[id] != nil {
+                finds[id] = nil
+                focusTerminal(id)
+            }
+        case "total":
+            finds[id]?.total = (value ?? -1) >= 0 ? value : nil
+        case "selected":
+            // libghostty counts from 0.
+            finds[id]?.selected = (value ?? -1) >= 0 ? (value ?? 0) + 1 : nil
+        default:
+            break
         }
     }
 
@@ -2505,6 +2641,13 @@ final class AppState: ObservableObject {
         center.addObserver(forName: .planchetteSurfaceChildExited, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID else { return }
             Task { @MainActor in self?.closeSession(id) }
+        }
+        center.addObserver(forName: .planchetteSurfaceSearch, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["sessionID"] as? UUID,
+                  let event = note.userInfo?["event"] as? String else { return }
+            let value = note.userInfo?["value"] as? Int
+            let needle = note.userInfo?["needle"] as? String
+            Task { @MainActor in self?.applySearchEvent(event, for: id, value: value, needle: needle) }
         }
         center.addObserver(forName: .planchetteCommandFinished, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID,

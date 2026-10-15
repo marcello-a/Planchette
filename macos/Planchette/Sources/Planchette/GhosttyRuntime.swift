@@ -7,6 +7,7 @@ extension Notification.Name {
     static let planchetteSurfacePwd = Notification.Name("planchette.surface.pwd")
     static let planchetteSurfaceChildExited = Notification.Name("planchette.surface.childExited")
     static let planchetteCommandFinished = Notification.Name("planchette.surface.commandFinished")
+    static let planchetteSurfaceSearch = Notification.Name("planchette.surface.search")
 }
 
 /// libghostty runtime: one app instance, ticked on the main thread on wakeup.
@@ -214,6 +215,31 @@ final class GhosttyRuntime {
                 NotificationCenter.default.post(
                     name: .planchetteCommandFinished, object: nil,
                     userInfo: ["sessionID": sessionID, "exitCode": exitCode])
+            }
+            return true
+
+        case GHOSTTY_ACTION_START_SEARCH, GHOSTTY_ACTION_END_SEARCH,
+             GHOSTTY_ACTION_SEARCH_TOTAL, GHOSTTY_ACTION_SEARCH_SELECTED:
+            // The find bar of a plain terminal: libghostty searches its own scrollback
+            // and says how many matches there are and which one is selected. Strings
+            // are built HERE: the C buffer only lives for this callback.
+            guard let view = view(for: target) else { return false }
+            var info: [String: Any] = ["sessionID": view.sessionID]
+            switch action.tag {
+            case GHOSTTY_ACTION_START_SEARCH:
+                info["event"] = "start"
+                info["needle"] = action.action.start_search.needle.map { String(cString: $0) } ?? ""
+            case GHOSTTY_ACTION_END_SEARCH:
+                info["event"] = "end"
+            case GHOSTTY_ACTION_SEARCH_TOTAL:
+                info["event"] = "total"
+                info["value"] = Int(action.action.search_total.total)
+            default:
+                info["event"] = "selected"
+                info["value"] = Int(action.action.search_selected.selected)
+            }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .planchetteSurfaceSearch, object: nil, userInfo: info)
             }
             return true
 

@@ -23,6 +23,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   notifications, the durable terminals with the install command right there (copy it, or
   open a terminal with it typed), and where the settings are. After the first project an
   empty window is the small start screen again.
+- **Find in a terminal: ⌘F.** A bar opens over the terminal in front; as you type it
+  highlights every match, says how many there are, and Enter and ⇧Enter (or ⌘G and
+  ⌘⇧G) step through them. Esc closes it. A plain terminal is searched by libghostty,
+  scrollback included. A durable terminal keeps its history in tmux, where libghostty
+  cannot see it, so there the search runs in tmux's copy mode — the bar is the same,
+  and tmux does the highlighting. Edit → Find… has the same commands.
 - **After an update, a one-time offer of durable terminals.** If tmux is missing or the
   switch is off, the first launch of each new version says in a few lines what durable
   terminals do and why they help, with the install command and one click to a terminal
