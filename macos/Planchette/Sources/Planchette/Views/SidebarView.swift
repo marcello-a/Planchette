@@ -117,7 +117,8 @@ struct SidebarView: View {
                     // Selecting a project — by keyboard, or by a click anywhere
                     // in its block — opens its active tab, as it always did.
                     // Only a click on the project's own row opens the overview
-                    // (the tap gesture on the row label).
+                    // (the tap gesture on the row label) — and not even that for
+                    // a project of one terminal, which opens the terminal.
                     appState.select(group: group)
                 }
             }
@@ -774,12 +775,13 @@ struct SidebarView: View {
             //
             // The overview is set on the next turn of the run loop, so it lands
             // after the selection change above (which opens the active tab)
-            // whichever of the two the List delivers first.
+            // whichever of the two the List delivers first. A project of one
+            // terminal has no overview worth a stop: the click opens the terminal.
             .simultaneousGesture(TapGesture().onEnded {
                 guard !NSEvent.modifierFlags.contains(.command),
                       !NSEvent.modifierFlags.contains(.shift) else { return }
                 DispatchQueue.main.async {
-                    appState.updateWindow(windowID) { $0.showProjectOverview(group.id) }
+                    appState.openProject(group, inWindow: windowID)
                 }
             })
             .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }

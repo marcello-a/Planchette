@@ -714,9 +714,10 @@ struct WindowModel: Identifiable, Codable, Equatable {
     /// project you came from.
     var selectedFolderID: UUID?
     /// The selected project shows its overview page (every tab as a card)
-    /// instead of a terminal. Set by clicking the project row itself, cleared by
-    /// anything that picks a tab — the same pass-through rule as the folder
-    /// overview.
+    /// instead of a terminal. Set by clicking the project row itself — unless
+    /// the project holds one terminal, which that click opens (`AppState.openProject`)
+    /// — and cleared by anything that picks a tab: the same pass-through rule as
+    /// the folder overview.
     var showsProjectOverview: Bool = false
 
     init(id: UUID = UUID()) {
@@ -737,6 +738,11 @@ struct WindowModel: Identifiable, Codable, Equatable {
         selectedFolderID = nil
         showsProjectOverview = true
     }
+
+    /// Does a click on a project's own row open its overview page? Not when the project holds a
+    /// single terminal: the page would be one card standing between you and that terminal. A project
+    /// with none yet (the page has the button that adds one) or with several gets the page.
+    static func opensOverview(terminalCount: Int) -> Bool { terminalCount != 1 }
 
     // Custom, so a state written before folders existed still decodes (the
     // synthesized decoder would demand the key).

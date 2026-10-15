@@ -78,6 +78,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   done check has not cleared yet; only the terminals that are free again are left out. How long
   a done check lasts is still Settings → Project panel → "Clear the done check after". The
   checkbox has a tooltip now, and `only_active` of `notification list` follows the same rule.
+- **A project with one terminal opens that terminal.** Clicking the row of a project that
+  holds a single terminal opened its overview page, which was one card between you and the
+  terminal. The click now opens the terminal. A project with several terminals, or with none
+  yet, still opens its overview.
 
 ### Fixed
 - **A finished command ends its question.** `brew install` asks "(y/n)", the icon

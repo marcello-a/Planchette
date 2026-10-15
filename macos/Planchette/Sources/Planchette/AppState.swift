@@ -1573,6 +1573,18 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// A click on a project's own row: its overview page — every terminal as a card — or, when the
+    /// project holds a single terminal, that terminal. The page would be one card between you and
+    /// the terminal (`WindowModel.opensOverview`).
+    func openProject(_ group: SessionGroup, inWindow windowID: UUID) {
+        let terminals = sessions(in: group)
+        if WindowModel.opensOverview(terminalCount: terminals.count) {
+            updateWindow(windowID) { $0.showProjectOverview(group.id) }
+        } else if let only = terminals.first {
+            select(session: only)
+        }
+    }
+
     /// Show a folder's overview instead of a terminal — what is in this box,
     /// what each project is doing, and what it reported last.
     func select(folder folderID: UUID, inWindow windowID: UUID) {
