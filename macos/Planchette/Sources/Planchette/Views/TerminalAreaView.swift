@@ -5,6 +5,9 @@ import SwiftUI
 struct TerminalAreaView: View {
     @EnvironmentObject var appState: AppState
     let group: SessionGroup
+    /// The tab the user just clicked: it is under their pointer already, so the strip
+    /// must not slide it somewhere else to make it visible.
+    @State private var clickedTab: UUID?
 
     var body: some View {
         let sessions = appState.sessions(in: group)
@@ -36,24 +39,21 @@ struct TerminalAreaView: View {
 
     private func header(sessions: [TerminalSession]) -> some View {
         HStack(spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 4) {
-                    ForEach(sessions) { session in
-                        tab(session, isActive: session.id == activeSession(sessions)?.id)
-                    }
-                    // Add a terminal in this project's folder.
-                    Button {
-                        appState.addTerminalToGroup(group.id)
-                    } label: {
-                        Image(systemName: "plus")
-                            .padding(.horizontal, 6).padding(.vertical, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .help(L10n.t(.addTerminalHelp))
+            // The tabs and the +, which take whatever the controls on the right leave.
+            HStack(spacing: 4) {
+                tabStrip(sessions, activeID: activeSession(sessions)?.id)
+                // Add a terminal in this project's folder. Outside the scrolling
+                // strip, so it is in reach however many tabs there are.
+                Button {
+                    appState.addTerminalToGroup(group.id)
+                } label: {
+                    Image(systemName: "plus")
+                        .padding(.horizontal, 6).padding(.vertical, 4)
                 }
-                .padding(.horizontal, 8)
+                .buttonStyle(.plain)
+                .help(L10n.t(.addTerminalHelp))
             }
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
             // Dev servers running in this checkout — the link is always here.
             DevServerChips(groupID: group.id)
                 .padding(.trailing, 6)
@@ -73,7 +73,53 @@ struct TerminalAreaView: View {
             .padding(.trailing, 8)
         }
         .padding(.vertical, 5)
-        .background(group.color.color?.opacity(0.12) ?? Color.clear)
+        .background(ProjectGradient(color: group.color))
+    }
+
+    /// The tabs as a plain row while they fit, and a strip that scrolls once they
+    /// do not: with a wheel, a swipe, or — to keep the one you are in on screen —
+    /// by itself when the active tab changes.
+    @ViewBuilder
+    private func tabStrip(_ sessions: [TerminalSession], activeID: UUID?) -> some View {
+        let row = HStack(spacing: 4) {
+            ForEach(sessions) { session in
+                tab(session, isActive: session.id == activeID).id(session.id)
+            }
+        }
+        .padding(.horizontal, 8)
+        ViewThatFits(in: .horizontal) {
+            row
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    row.background(WheelToHorizontalScroll())
+                }
+                .onAppear { reveal(activeID, with: proxy, animated: false) }
+                .onChange(of: activeID) { _, id in
+                    // A click keeps the tab where it is; a shortcut, the search or a new
+                    // terminal brings the tab into view.
+                    let byClick = id == clickedTab
+                    clickedTab = nil
+                    if !byClick { reveal(id, with: proxy, animated: true) }
+                }
+                .onChange(of: sessions.count) { _, _ in reveal(activeID, with: proxy, animated: true) }
+                // The strip's width settles after the first frame, and changes when a
+                // panel is dragged: the tab you are in stays on screen through both.
+                .background(GeometryReader { geometry in
+                    Color.clear.onChange(of: geometry.size.width) { _, _ in
+                        reveal(activeID, with: proxy, animated: false)
+                    }
+                })
+            }
+        }
+    }
+
+    private func reveal(_ id: UUID?, with proxy: ScrollViewProxy, animated: Bool) {
+        guard let id else { return }
+        if animated {
+            withAnimation(.easeInOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .center) }
+        } else {
+            proxy.scrollTo(id, anchor: .center)
+        }
     }
 
     private var viewModeBinding: Binding<GroupViewMode> {
@@ -85,6 +131,7 @@ struct TerminalAreaView: View {
 
     private func tab(_ session: TerminalSession, isActive: Bool) -> some View {
         Button {
+            clickedTab = session.id
             appState.updateGroup(group.id) { $0.activeSessionID = session.id }
         } label: {
             HStack(spacing: 5) {
@@ -92,13 +139,21 @@ struct TerminalAreaView: View {
                 if let color = session.color.color {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }
-                Text(session.displayTitle)
+                Text(appState.tabName(for: session))
                     .lineLimit(1)
                     .frame(maxWidth: 200, alignment: .leading)
-                Text(session.shortPath)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                TagChips(tags: session.tags)
+                if appState.tabLayout.showsPath {
+                    Text(session.shortPath)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if appState.tabLayout.showsBranch, let branch = appState.branches[session.id] {
+                    BranchText(branch: branch, trim: appState.sidebarDetails.branchTrim)
+                        .frame(maxWidth: 140, alignment: .leading)
+                }
+                if appState.tabLayout.showsTags {
+                    TagChips(tags: session.tags)
+                }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 6)
@@ -119,7 +174,7 @@ struct TerminalAreaView: View {
         .onDrag {
             NSItemProvider(object: session.id.uuidString as NSString)
         } preview: {
-            Text(session.displayTitle).lineLimit(1)
+            Text(appState.tabName(for: session)).lineLimit(1)
                 .padding(.horizontal, 8).padding(.vertical, 4)
         }
         .onDrop(of: [.plainText, .text], isTargeted: nil) { providers in

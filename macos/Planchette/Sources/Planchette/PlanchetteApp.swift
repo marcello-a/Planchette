@@ -84,7 +84,7 @@ struct PlanchetteApp: App {
 /// opens on the one you used last, and the gear at the foot of the project panel
 /// opens it on the Project panel.
 enum SettingsTab: String {
-    case general, projectPanel, info, help
+    case general, projectPanel, tabs, info, help
 }
 
 struct SettingsView: View {
@@ -100,6 +100,9 @@ struct SettingsView: View {
             ProjectPanelSettings()
                 .tabItem { Label(L10n.t(.projectPanelTab), systemImage: "sidebar.left") }
                 .tag(SettingsTab.projectPanel)
+            TabSettings()
+                .tabItem { Label(L10n.t(.tabsTab), systemImage: "rectangle.topthird.inset.filled") }
+                .tag(SettingsTab.tabs)
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
                 .tag(SettingsTab.info)

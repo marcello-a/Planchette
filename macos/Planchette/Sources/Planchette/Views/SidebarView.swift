@@ -581,7 +581,7 @@ struct SidebarView: View {
         let badge: AttentionState? = states.contains(.error) ? .error
             : (states.contains(.waiting) ? .waiting : nil)
         let initial = String(group.name.prefix(1)).uppercased()
-        let fill = group.color.color ?? Color.secondary.opacity(0.22)
+        let accent = group.color.accent
         return Button {
             if let active = sessions.first(where: { $0.id == group.activeSessionID }) ?? sessions.first {
                 appState.select(session: active)
@@ -590,12 +590,13 @@ struct SidebarView: View {
             }
         } label: {
             RoundedRectangle(cornerRadius: 9)
-                .fill(fill)
+                .fill(LinearGradient(colors: [accent.opacity(0.95), accent.opacity(0.6)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
                 .frame(width: Self.railTile, height: Self.railTile)
                 .overlay(
                     Text(initial)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(group.color.color != nil ? .white : .primary)
+                        .foregroundStyle(.white)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 9)
@@ -705,11 +706,18 @@ struct SidebarView: View {
             window.selectedFolderID == nil && !window.showsProjectOverview
                 && window.selectedGroupID == group.id
         } ?? false
+        let sessions = appState.sessions(in: group)
         return DisclosureGroup(isExpanded: expansion(of: group)) {
-            ForEach(appState.sessions(in: group)) { session in
+            ForEach(Array(sessions.enumerated()), id: \.element.id) { row, session in
                 sessionRow(session,
                            isActive: visible && session.id == group.activeSessionID,
                            showBranch: shared == nil)
+                    // An open project carries its color down over its terminals: one soft wash for
+                    // all of them, each row painting its own part of it (see `ProjectWash`). It
+                    // belongs on the row — a background on the DisclosureGroup is given to every row
+                    // of it and comes out as a band per terminal. A closed project has no rows, so
+                    // it is its label alone.
+                    .listRowBackground(ProjectGradient(color: group.color, shape: .body(row: row, of: sessions.count)))
             }
         } label: {
             HStack(spacing: 6) {
@@ -755,6 +763,10 @@ struct SidebarView: View {
                     attentionSummary(group)
                 }
             }
+            // The project's color — the violet of the app icon until it has one: the same wash the
+            // project's header has in the main area, so the two read as one thing.
+            .padding(.horizontal, 4).padding(.vertical, 2)
+            .background(ProjectGradient(color: group.color).clipShape(RoundedRectangle(cornerRadius: 5)))
             .contentShape(Rectangle())
             // The List only reports a *change* of selection, so a click on the
             // project you are already in (looking at one of its terminals)

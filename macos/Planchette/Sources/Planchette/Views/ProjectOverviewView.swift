@@ -79,7 +79,7 @@ struct ProjectOverviewView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(group.color.color?.opacity(0.12) ?? Color.clear)
+        .background(ProjectGradient(color: group.color))
     }
 }
 
@@ -104,7 +104,7 @@ struct OverviewTabRow: View {
                         if let color = session.color.color {
                             Circle().fill(color).frame(width: 7, height: 7)
                         }
-                        Text(session.displayTitle)
+                        Text(appState.tabName(for: session))
                             .fontWeight(isActive ? .semibold : .regular)
                             .lineLimit(1)
                         Text(session.shortPath)

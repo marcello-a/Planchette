@@ -398,8 +398,12 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         if let customTitle, !customTitle.isEmpty { return customTitle }
         let work = currentTask.flatMap { Titles.taskLabel($0) } ?? reportedTitle
         if let auto = Titles.autoTitle(ticket: ticket, work: work) { return auto }
-        // Nothing to go on: a free terminal says so, otherwise the folder name.
-        return state == .free ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
+        return fallbackTitle
+    }
+
+    /// Nothing to go on: a free terminal says so, otherwise it is its folder.
+    var fallbackTitle: String {
+        state == .free ? L10n.t(.free) : (currentDirectory as NSString).lastPathComponent
     }
 
     /// The ticket of the checkout this terminal sits in, when its branch names
@@ -417,7 +421,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
 
     /// The title the running program reports (OSC 0/2), cleaned up — nil when it
     /// says nothing worth showing.
-    private var reportedTitle: String? {
+    var reportedTitle: String? {
         guard let oscTitle else { return nil }
         let cleaned = Self.cleanedTitle(oscTitle)
         // Skip the shell's default prompt (user@host:path) — it's not a name.
@@ -835,6 +839,8 @@ struct PersistedState: Codable {
     var askedAboutSpaceSwitching: Bool = false
     /// What the user has already been told (welcome, durable terminals prompt).
     var onboarding = OnboardingState()
+    /// What names a tab and what else it carries (Settings → Tabs).
+    var tabLayout = TabLayout()
 
     init(
         groups: [SessionGroup],
@@ -853,7 +859,8 @@ struct PersistedState: Codable {
         searchShortcut: SearchShortcut = .default,
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false,
-        onboarding: OnboardingState = OnboardingState()
+        onboarding: OnboardingState = OnboardingState(),
+        tabLayout: TabLayout = TabLayout()
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -872,6 +879,7 @@ struct PersistedState: Codable {
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
         self.onboarding = onboarding
+        self.tabLayout = tabLayout
     }
 
     init(from decoder: Decoder) throws {
@@ -902,5 +910,6 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
         // No key = a state from before this existed = somebody who already uses the app.
         onboarding = (try? c.decodeIfPresent(OnboardingState.self, forKey: .onboarding)) ?? OnboardingState()
+        tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
     }
 }
