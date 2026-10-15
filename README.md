@@ -1,13 +1,53 @@
-# Planchette 🔮
+<p align="center">
+  <img src="docs/images/icon.png" width="128" height="128" alt="Planchette">
+</p>
 
-> Run many AI coding agents at once and always know which one needs you.
+<h1 align="center">Planchette</h1>
 
-A native macOS terminal built on [Ghostty](https://ghostty.org) (libghostty).
-Terminals are grouped into projects, projects into folders, and every terminal
-carries a state: **running · waiting · error · done · free**. Layouts survive
-restarts and reboots.
+<p align="center">
+  <b>Run many AI coding agents at once and always know which one needs you.</b>
+</p>
 
-![Planchette: projects in folders, a folder's overview page, and the notifications panel](docs/images/folder-overview.png)
+<p align="center">
+  A native macOS terminal built on <a href="https://ghostty.org">Ghostty</a> (libghostty).<br>
+  Terminals are grouped into projects, projects into folders, and every terminal carries a state:
+  <b>running · waiting · error · done · free</b>.
+</p>
+
+<p align="center">
+  <img src="docs/images/overview.png" width="900" alt="Planchette: projects in folders with their own colors, a project's tabs named after what each session is about, and the notifications panel listing who needs you">
+</p>
+
+## Everything stays
+
+**This is the feature the rest is built around: whatever happens to the app or the Mac, the next
+launch puts your work back.** Every project and folder; every terminal in its working directory,
+with what it had printed and the line you were halfway through typing; every Claude conversation,
+resumed where it stopped; your tags, colors, notes, window layout and settings. One dialog at
+launch — *Restore* or *Start fresh* — and a fresh start archives the old workspace
+(`state-previous.json`) instead of deleting it. Saved arrangements are never touched.
+
+| | Quit, update (*Install & Relaunch*), crash | Reboot or logout |
+|---|---|---|
+| Projects, folders, tabs, clusters, windows, tags, colors, notes, settings | kept | kept |
+| What each terminal printed, and the line you were typing at its prompt | kept | kept |
+| A Claude conversation | resumed with `claude --resume` — in a durable terminal it never stopped | resumed with `claude --resume` |
+| A dev server or other startup command | started again — in a durable terminal it never stopped | started again |
+
+No terminal app can keep a process alive through a reboot. What *can* survive an update or a crash
+is a running agent, and that is what [durable terminals](#setup--what-unlocks-what) are for: with
+tmux installed the agent keeps working while Planchette is gone, and reopening re-attaches to the
+**live** session instead of resuming a conversation. Planchette offers them on the first launch,
+and once after each update until you have them.
+
+## See it work
+
+<p align="center">
+  <img src="docs/images/tour.gif" width="900" alt="A 20-second tour: a question arrives in another project, search finds it, Enter jumps there, and find highlights text in its terminal">
+</p>
+
+<p align="center"><sub>Recorded from the app itself. A question arrives in another project; search
+(⇧⇧) finds it and Enter jumps there; ⌘F finds text in the terminal, every match highlighted.</sub></p>
 
 ## Install
 
@@ -50,10 +90,11 @@ one prerequisite exists — nothing to configure:
 
 | You have | You get |
 |---|---|
-| **tmux** — `brew install tmux` | **Durable terminals.** Agents survive quit, crash and *Install & Relaunch*: the shell runs in a private tmux server that outlives the app, and reopening re-attaches to the **live** session — the turn keeps running — instead of merely resuming a conversation. On by default as soon as tmux is found. |
-| **Claude Code** | **Live states with zero setup.** Planchette installs its hooks into `~/.claude/settings.json` on first launch. Every color in the sidebar — running, waiting, error, done — comes straight from the agent. |
+| **tmux** — `brew install tmux` | **Durable terminals.** Agents survive quit, crash and *Install & Relaunch*: the shell runs in a private tmux server that outlives the app, and reopening re-attaches to the **live** session — the turn keeps running — instead of merely resuming a conversation. On by default as soon as tmux is found. ⌘F searches tmux's history for them. |
+| **Claude Code** | **Live states with zero setup.** Planchette installs its hooks into `~/.claude/settings.json` on first launch. Every color in the sidebar — running, waiting, error, done — comes straight from the agent. Tabs take their names from Claude's own name for the conversation. |
 | **Codex** | Recognized too: a hook claims the terminal (auto-installed into `~/.codex/hooks.json` when `~/.codex` exists), and screen detection reads the states off its TUI. |
 | **`claude` on your PATH** | **AI summaries** — one line per terminal saying what it is actually doing, via headless `claude -p` on your existing login. On by default; toggle in Settings → AI. |
+| **`gh`** (GitHub CLI) | **Pull request pills.** The PR of each terminal's branch and its review state, on its row; click it to open the PR. |
 
 Also worth a second:
 
@@ -66,53 +107,102 @@ Also worth a second:
   created from then on; existing ones keep what they were created as. A reboot
   still ends everything — tmux's server dies with the machine.
 
-## Features
+## What it does
 
-**Attention**
-- States come from agent hooks: running / waiting / error / done / free
-- Screen fallback every 1.5s when hooks stay silent — rules in editable JSON
-- Notifications panel: "Needs you" first, errors before questions, oldest first
-- Read/unread per report, with an *Only unread* filter
-- Menu-bar + dock badges, ⌘⇧K jumps to the most urgent waiting terminal
-- Snooze a terminal or a project (1h / 2h / tomorrow 9:00), reminder on expiry
+### Know who needs you
 
-**Organising work**
-- Projects in folders; drag one into a folder and drop it into an exact slot
-- Click a folder for an overview: every project, its state, its terminals
-- Tab view or cluster grid per project; drag panes to split
-- Terminals name themselves: `APP-142 · Add the express checkout button`
-- Tags, colors, favorites, multi-select (⌘/⇧-click) for batch actions
-- Quick switcher ⌘K over title / path / branch / tags
-- Multiple windows, and merging them back
-- Saved arrangements — rebuild a whole workspace in one click
+- Every terminal shows what it is doing: **running · waiting · error · done · free**. The states
+  come from agent hooks, with a screen fallback every 1.5 s when the hooks stay silent — rules in
+  editable JSON.
+- A finished or interrupted command ends its state: the "?" of a `brew install` question goes
+  when the command does.
+- Notifications panel: "Needs you" first, errors before questions, oldest first; read and unread,
+  menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
+- Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
+  a project you are not working on.
+- Background agents and shells show under the state icon, so a terminal that looks idle but still
+  works says so. Optional per terminal: context ring, model, prompt-cache timer, and the pull
+  request with its review state.
 
-**Terminals**
-- Persistence across restart and reboot, incl. `claude --resume` and startup commands
-- Durable terminals (needs tmux, then on by default): agents survive quit, crash and update
-- Git worktrees as projects (⌘⇧T), with cleanup on close
-- Dev servers show as clickable port chips on their project, opening the
-  address the server announced (`https://vite.myposter.de:8082`, network URL
-  first) — found by process, so a server started in an IDE terminal counts too
-- *Look at code*: jumps to the window an IDE already has the project open in —
-  otherwise opens it in the IDE the checkout belongs to (`.idea` → JetBrains,
-  `.vscode` → VS Code), else the one you last worked in; the chevron picks
-  another or sets a default
-- Drop a screenshot onto a Claude terminal → pasted as an image, not a path
-- Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder
-- 7 UI languages, light/dark/system
+### Find your way
 
-**For agents**
-- Socket API + `planchette` CLI in every terminal: list, open, focus, prompt,
-  wait, read, and `notification list` — the notifications panel as JSON for
-  anything else you want to show it in ([manual](docs/API.md))
+<p align="center">
+  <img src="docs/images/search.png" width="900" alt="The search over the whole workspace: words in any order, the matched letters in bold, and the line where each hit was found">
+</p>
+
+- **Search from anywhere with ⇧⇧** (or ⌘K; change the keys in Settings). Words in any order across
+  title, path, project, branch, tags, notes, summary, last message and pull request; `#2093`
+  jumps to a ticket or PR number; matched letters are bold and a line says where each hit was found.
+- **Find in a terminal with ⌘F.** Every match is highlighted and counted, Enter steps through them.
+  For a durable terminal the search runs in tmux, which keeps its history.
+- **Tabs are named after what the session is about** — Claude's own name for the conversation,
+  else the AI summary, else your last prompt — not after the branch. *Settings → Tabs* changes what
+  names a tab and what else it shows (folder, branch, tags). The tab bar scrolls with a swipe or
+  the mouse wheel, and the **+** stays in reach.
+- **Each project wears its color** — the tab bar, the project panel, the overview — as a gradient
+  in the color you pick, Planchette purple until you pick one.
+
+### Organise work
+
+<p align="center">
+  <img src="docs/images/folder.png" width="900" alt="A folder's overview page: every project in it, its state and its terminals">
+</p>
+
+- Projects in folders; drag one into a folder and drop it into an exact slot. Click a folder for an
+  overview: every project, its state, its terminals.
+- Tab view or cluster grid per project; drag panes to split.
+- Tags (with a list you edit), colors, favorites, notes, "mark as finished"; multi-select (⌘/⇧-click)
+  for batch actions.
+- Choose what every row of the project panel shows — path, branch, pull request, prompt, age,
+  tags — in *Settings → Project panel*.
+- Multiple windows, and merging them back. Saved arrangements rebuild a whole workspace in one click.
+
+<p align="center">
+  <img src="docs/images/cluster.png" width="900" alt="Cluster view: every terminal of a project at once">
+</p>
+
+### Terminals
+
+- Durable terminals (needs tmux, then on by default): agents survive quit, crash and update.
+- Git worktrees as projects (⌘⇧T), with cleanup on close.
+- Dev servers show as clickable port chips on their project, opening the address the server
+  announced (`https://vite.myposter.de:8082`, network URL first) — found by process, so a server
+  started in an IDE terminal counts too.
+- *Look at code*: jumps to the window an IDE already has the project open in — otherwise opens it
+  in the IDE the checkout belongs to (`.idea` → JetBrains, `.vscode` → VS Code), else the one you
+  last worked in; the chevron picks another or sets a default.
+- Drop a screenshot onto a Claude terminal → pasted as an image, not a path.
+- Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder.
+- Links open with ⌘-click; a link that would run something is shown, not run. A program that asks
+  for your clipboard, or a paste that could run commands, asks you first.
+- 7 UI languages, light, dark or system.
+
+### First launch, updates, settings
+
+<p align="center">
+  <img src="docs/images/welcome.png" width="900" alt="The welcome screen: what Planchette keeps for you, the durable terminals with the install command, and where the settings are">
+</p>
+
+- **A welcome for a first launch** says what the app is for and sets up durable terminals on the
+  spot: the install command to copy, or a terminal with it typed.
+- **After an update**, if you do not have durable terminals, one offer — with "don't show this
+  again".
+- **The update dialog lists every change**, each opening to its full text, with "Expand all".
+
+<p align="center">
+  <img src="docs/images/settings.png" width="340" alt="Settings, Tabs: what names a tab, with an example">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/images/update.png" width="340" alt="The update dialog: every change of the release as a list, each opening to its full text">
+</p>
+
+### For agents
+
+- Socket API + `planchette` CLI in every terminal: list, open, focus, prompt, wait, read, and
+  `notification list` — the notifications panel as JSON for anything else you want to show it in
+  ([manual](docs/API.md)). `session get` also says what an agent still runs in the background.
 - So an agent can start a reviewer beside itself and block on its verdict
-  ([skill](skills/planchette/SKILL.md))
-- Optional AI assist: one-line summaries per session via headless `claude -p`
-
-### One project at a time, or all of it at once
-
-![Tab view](docs/images/project-tabs.png)
-![Cluster view](docs/images/cluster-view.png)
+  ([skill](skills/planchette/SKILL.md)).
+- Optional AI assist: one-line summaries per session via headless `claude -p`.
 
 ## Develop
 
@@ -147,11 +237,19 @@ echo '{"hook_event_name":"Notification","message":"needs permission"}' \
   | PLANCHETTE_SESSION=<terminal-uuid> hook/planchette-hook
 ```
 
+The pictures in `docs/images` come from the running app — a made-up workspace in an isolated
+instance, captured window by window. Take them again after a UI change:
+
+```sh
+scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
+  macos/Planchette/.build/debug/Planchette
+```
+
 | Where | What |
 |---|---|
 | `macos/Planchette` | the app (Swift/SwiftUI) |
 | `hook/` | `planchette-hook`, forwards Claude Code hook events to the socket |
-| `scripts/` | install, package, release |
+| `scripts/` | install, package, release; `perf/` measures and photographs the running app |
 | `skills/` | the planchette skill for agents |
 | `docs/` | concept, architecture, the API manual |
 | `core/`, `linux/` | reserved for the shared Zig core and a GTK4 app — empty |

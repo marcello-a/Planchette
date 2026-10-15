@@ -292,7 +292,7 @@ lived in how AppKit, libghostty and the OS behave together, and each was found b
 app, not by reading it. `scripts/perf/` (see its README, "Safety" first) runs an isolated
 instance and measures: loop iterations while a dialog is open, the control API under abuse,
 a prompt in zsh and in the real Claude Code, a terminal started with the screens asleep.
-Run the one that matches what you touched.
+Run the one that matches what you touched. `scripts/perf/screenshots.py` retakes the pictures in `docs/images` after a UI change.
 
 **Tests must survive a slow machine.** A corporate laptop with endpoint security, or a
 loaded CI runner, can start a process in seconds. Three rules keep the suite green there:
