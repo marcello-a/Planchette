@@ -1,10 +1,18 @@
 name: Build & Release
 
 # Builds GhosttyKit + the app and runs tests on every push to the default
-# branch. When the VERSION file names a version whose tag doesn't exist yet, it
-# also cuts that release (tag + DMG/zip/checksums) — so a merge to main that
-# bumps VERSION publishes automatically. Releasing locally still works too:
-# `scripts/release.sh` (reads the same VERSION file).
+# branch, then scripts/auto-release.sh decides whether the push releases (tag +
+# DMG/zip/checksums):
+#
+#   - VERSION names a version that is not published yet: that version goes out as
+#     written (a release commit written by hand — a minor or major bump).
+#   - VERSION is already published, and the commits since the last release carry a
+#     feat, fix or perf: the patch number goes up by one, on a commit of its own,
+#     and that goes out. So a merge to main publishes without anyone touching VERSION.
+#
+# A push that carries only chore, docs, test, style or refactor is a build and
+# nothing more; `[skip release]` in the head commit's message opts a push out.
+# Releasing locally still works too: `scripts/release.sh` (reads the same VERSION).
 
 on:
   push:
@@ -62,25 +70,20 @@ jobs:
       - name: Test
         run: cd macos/Planchette && swift test
 
-      - name: Release (only if this version isn't published yet)
+      - name: Test the release rules
+        run: sh scripts/test-auto-release.sh
+
+      - name: Release (when this push carries something to release)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          VERSION="${{ steps.ver.outputs.version }}"
-          TAG="v$VERSION"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "≡ $TAG already published — build + test only, no release."
-            exit 0
-          fi
-          echo "→ publishing $TAG"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # The same script a maintainer runs by hand — deliberately, so an
+          # The same release script a maintainer runs by hand — deliberately, so an
           # automated release and a local one cannot differ. It carries the one
-          # thing a hand-written `gh release create` here kept losing: the
-          # release body IS this version's CHANGELOG section, and the app reads
-          # it back to show "What's new" in the update dialog
-          # (ReleaseNotes.swift). A generic "Automated release 0.2.32" left
-          # every updating user with nothing to read.
-          sh scripts/release.sh "$VERSION"
+          # thing a hand-written `gh release create` here kept losing: the release
+          # body IS this version's CHANGELOG section, and the app reads it back to
+          # show "What's new" in the update dialog (ReleaseNotes.swift). A generic
+          # "Automated release 0.2.32" left every updating user with nothing to read.
+          sh scripts/auto-release.sh
