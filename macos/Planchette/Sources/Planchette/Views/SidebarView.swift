@@ -933,10 +933,11 @@ struct SidebarView: View {
     /// opening the project.
     private func sessionRow(_ session: TerminalSession, isActive: Bool = false,
                             showBranch: Bool = false) -> some View {
-        // What I last sent this terminal to do. Its own row, so the line above
-        // can stay the fixed answer to "which checkout is this?" while this one
-        // changes with every prompt.
-        let task = session.currentTask.flatMap { Titles.taskLabel($0, max: 48) }
+        // What this terminal is on: the first prompt, the last one, or the name
+        // Claude Code gave the conversation — whichever Settings → Project panel
+        // asks for. Its own row, so the line above can stay the fixed answer to
+        // "which checkout is this?" while this one changes with the work.
+        let task = appState.rowPrompt(for: session)
         return Button {
             appState.select(session: session)
         } label: {
@@ -1066,7 +1067,7 @@ struct SidebarView: View {
         let shownPR = appState.shows(.pullRequest) ? pr : nil
         if showsBranch || shownPR != nil {
             HStack(spacing: 4) {
-                if showsBranch { BranchText(branch: branch) }
+                if showsBranch { BranchText(branch: branch, trim: appState.sidebarDetails.branchTrim) }
                 if let shownPR { PullRequestPill(pr: shownPR) }
             }
         }
@@ -1160,14 +1161,29 @@ struct SidebarBottomBar: View {
 /// reading the same from the left.
 struct BranchText: View {
     let branch: String
+    /// Which end gives way when the row is too narrow (Settings → Project
+    /// panel). Defaulted, so a preview or an example needs no store.
+    var trim: BranchTrim = .back
 
     var body: some View {
         Text(branch)
             .font(.caption2)
             .foregroundStyle(.secondary)
             .lineLimit(1)
-            .truncationMode(.tail)
+            .truncationMode(trim.truncationMode)
             .help(branch)
+    }
+}
+
+extension BranchTrim {
+    /// "Where is it shortened" in the terms SwiftUI uses, which name the part
+    /// that survives rather than the part that goes.
+    var truncationMode: Text.TruncationMode {
+        switch self {
+        case .front: .head
+        case .middle: .middle
+        case .back: .tail
+        }
     }
 }
 

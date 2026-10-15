@@ -103,6 +103,15 @@ struct TranscriptUsage: Equatable {
     var cacheTTL: TimeInterval?
 }
 
+/// What one read of a transcript's tail yields: how full the context window of
+/// its newest assistant line is, and the name Claude Code gave the conversation
+/// (`AgentTitle`). Either half can be absent — a fresh transcript has no usage
+/// yet, a short one no title.
+struct TranscriptScan: Equatable {
+    var usage: TranscriptUsage?
+    var title: String?
+}
+
 enum ContextUsageReader {
     private static let timestampFormat: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -145,17 +154,23 @@ enum ContextUsageReader {
         return found
     }
 
-    /// Read the last `window` bytes of a transcript and find the newest usage.
-    /// 512 KB, because one assistant line with a large tool call can be long,
-    /// and the usage we need may sit behind several of them.
-    static func read(path: String, window: UInt64 = 512 * 1024) -> TranscriptUsage? {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+    /// Read the last `window` bytes of a transcript and parse everything the
+    /// sidebar reads out of it. 512 KB, because one assistant line with a large
+    /// tool call can be long, and the usage we need may sit behind several of
+    /// them.
+    ///
+    /// One read for both answers: the sweep that wants them runs per changed
+    /// transcript, and reading the same half megabyte a second time to find a
+    /// line that sits in it already would buy nothing.
+    static func scan(path: String, window: UInt64 = 512 * 1024) -> TranscriptScan {
+        guard let handle = FileHandle(forReadingAtPath: path) else { return TranscriptScan() }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > window ? size - window : 0)
-        guard let data = try? handle.readToEnd() else { return nil }
+        guard let data = try? handle.readToEnd() else { return TranscriptScan() }
         let text = String(decoding: data, as: UTF8.self)
-        return latest(inJSONL: text[...])
+        return TranscriptScan(usage: latest(inJSONL: text[...]),
+                              title: AgentTitle.latest(inJSONL: text[...]))
     }
 }
 

@@ -113,7 +113,7 @@ struct OverviewTabRow: View {
                     }
                     if showsDetails, let branch = appState.branches[session.id] {
                         HStack(spacing: 4) {
-                            BranchText(branch: branch)
+                            BranchText(branch: branch, trim: appState.sidebarDetails.branchTrim)
                             if let pr = appState.pullRequests[session.id] {
                                 PullRequestPill(pr: pr)
                             }
