@@ -134,12 +134,13 @@ enum PromptSource: String, Codable, CaseIterable, Identifiable {
     /// The prompt that opened the session: the assignment, which does not move
     /// when the conversation does.
     case firstPrompt
-    /// The prompt you last sent — the default, and what the row said before
-    /// there was a choice.
+    /// The prompt you last sent — what the row said before there was a choice. Two
+    /// hours into a session that is "ja, mach", a poor name for what the terminal is for.
     case lastPrompt
     /// The name Claude Code gives the conversation itself (`AgentTitle`): read
     /// from the transcript, so it costs nothing, and it is the only one of the
-    /// three that keeps up with a session that moved on from both prompts.
+    /// three that keeps up with a session that moved on from both prompts. The
+    /// default; a terminal without a title yet shows its last prompt.
     case agentTitle
 
     var id: String { rawValue }
@@ -173,7 +174,7 @@ enum PromptSource: String, Codable, CaseIterable, Identifiable {
 struct SidebarDetails: Codable, Equatable {
     var overrides: [String: Bool] = [:]
     var branchTrim: BranchTrim = .back
-    var promptSource: PromptSource = .lastPrompt
+    var promptSource: PromptSource = .agentTitle
 
     init() {}
 
@@ -185,7 +186,25 @@ struct SidebarDetails: Codable, Equatable {
         // by a newer version is opened by an older one. A choice we cannot read
         // is a choice we do not have — the default stands.
         branchTrim = (try? c.decode(BranchTrim.self, forKey: .branchTrim)) ?? .back
-        promptSource = (try? c.decode(PromptSource.self, forKey: .promptSource)) ?? .lastPrompt
+        promptSource = (try? c.decode(PromptSource.self, forKey: .promptSource)) ?? .agentTitle
+    }
+
+    /// The version that wrote the old default into every state file.
+    static let versionThatStoredTheOldDefault = "0.2.36"
+
+    /// 0.2.36 stored its default prompt source — "last prompt" — as if it were a choice, so a
+    /// file it wrote cannot tell the default from a pick. The session title is the default now,
+    /// and a file last written by 0.2.36 moves to it once: from the next launch the stored value
+    /// is a choice again, and stays. Anything else stays as it is — an older file has no such
+    /// key (it reads as the new default anyway), and a development build, which is "0.0.0",
+    /// must not have its choice undone at every start.
+    func migrated(lastLaunchedVersion: String?) -> SidebarDetails {
+        guard lastLaunchedVersion == Self.versionThatStoredTheOldDefault, promptSource == .lastPrompt else {
+            return self
+        }
+        var moved = self
+        moved.promptSource = .agentTitle
+        return moved
     }
 
     func shows(_ detail: SidebarDetail) -> Bool {

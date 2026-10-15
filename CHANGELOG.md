@@ -18,6 +18,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   read as heavy, so what you get now is "subtle", about half as strong; "colorful" is the old
   look. A project whose color is None is no longer tinted in the violet of the app icon: it
   stays plain, in the panel, above its terminal and on its overview page.
+- **The line under a terminal says the session title by default.** The name Claude Code
+  gives the conversation still says what a terminal is for hours into it, when the last
+  prompt has become "ja, mach". A terminal without a title yet shows its last prompt.
+  Settings → Project panel → Terminals → Source picks another one. If you ran 0.2.36 and
+  never changed the source, it moves to the session title once.
+- **Settings → Project panel → Behavior shows the done check** in front of "Clear the done
+  check after": the icon that setting is about.
 
 ## [0.2.36] — 2026-10-15
 

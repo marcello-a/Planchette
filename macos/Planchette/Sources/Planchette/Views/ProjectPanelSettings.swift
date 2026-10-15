@@ -78,8 +78,14 @@ private struct TerminalPage: View {
                 }
             }
             Section(L10n.t(.projectPanelBehavior)) {
-                Picker(L10n.t(.doneExpiryTitle), selection: $appState.doneExpiry) {
+                // The check this is about, in front of its name: the one in the terminal's row.
+                Picker(selection: $appState.doneExpiry) {
                     ForEach(DoneExpiry.allCases) { Text($0.label).tag($0) }
+                } label: {
+                    HStack(spacing: 6) {
+                        StateIcon(state: .ready, size: 14)
+                        Text(L10n.t(.doneExpiryTitle))
+                    }
                 }
                 .help(L10n.t(.doneExpiryHelp))
                 Text(L10n.t(.doneExpiryHelp))

@@ -928,6 +928,8 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
         // No key = a state from before this existed = somebody who already uses the app.
         onboarding = (try? c.decodeIfPresent(OnboardingState.self, forKey: .onboarding)) ?? OnboardingState()
+        // The version that last wrote this file decides whether a stored prompt source was a choice.
+        sidebarDetails = sidebarDetails.migrated(lastLaunchedVersion: onboarding.lastLaunchedVersion)
         tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
         projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
     }
