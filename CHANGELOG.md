@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.36] — 2026-10-15
+
 ### Added
 - **Search from anywhere with Shift twice.** Tap Shift two times in a Planchette
   window, whatever has the focus, and the search opens over it; the same keys close
