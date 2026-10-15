@@ -3282,6 +3282,21 @@ final class ProjectOverviewTests: XCTestCase {
         let window = try JSONDecoder().decode(WindowModel.self, from: Data(json.utf8))
         XCTAssertFalse(window.showsProjectOverview)
     }
+
+    // One terminal: the page would be a single card between the click and the terminal.
+    func testAProjectOfOneTerminalHasNoOverviewToOpen() {
+        XCTAssertFalse(WindowModel.opensOverview(terminalCount: 1))
+    }
+
+    func testAProjectOfSeveralTerminalsOpensItsOverview() {
+        XCTAssertTrue(WindowModel.opensOverview(terminalCount: 2))
+        XCTAssertTrue(WindowModel.opensOverview(terminalCount: 9))
+    }
+
+    // Without a terminal there is nothing to open, and the page has the button that adds one.
+    func testAProjectWithoutTerminalsStillOpensItsOverview() {
+        XCTAssertTrue(WindowModel.opensOverview(terminalCount: 0))
+    }
 }
 
 final class DoneExpiryTests: XCTestCase {

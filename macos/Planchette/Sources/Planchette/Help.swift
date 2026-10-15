@@ -50,6 +50,7 @@ enum Help {
             Entry(.newFolder, .newFolderHelp, where: .helpWhereSidebar),
             Entry(.newProjectInFolderShort, .newProjectInFolderHelp, where: .helpWhereSidebar),
             Entry(.folderOverviewTitle, .folderOverviewHelp, where: .helpWhereSidebar),
+            Entry(.helpWhereProjectOverview, .helpProjectOverviewDetail, where: .helpWhereSidebar),
             Entry(.moveToFolder, .dropIntoFolderHelp, where: .helpWhereSidebar),
             Entry(.dissolveFolder, .dissolveFolderHelp, where: .helpWhereSidebar),
             Entry(.makeFavorite, .favoriteHelp, where: .helpWhereSidebar),
