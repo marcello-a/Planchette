@@ -254,7 +254,8 @@ the rows print. Answered from the same list the panel renders
 | Argument | Type | Meaning |
 |---|---|---|
 | `unread_only` | bool | only terminals whose last report is unread |
-| `only_active` | bool | only what is going on: running / waiting / error, and done terminals whose done check has not cleared yet (a done terminal that is free again is left out) |
+| `only_active` | bool | only what wants you: waiting / error, and done terminals whose done check has not cleared yet. Running terminals are left out unless `include_running`; a terminal that is free again is left out |
+| `include_running` | bool | with `only_active`, the running terminals too. Without `only_active` it changes nothing: that list holds every terminal |
 | `project_id` | UUID string | one project |
 | `limit` | int | stop after this many rows |
 

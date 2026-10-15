@@ -8,6 +8,9 @@ import SwiftUI
 struct AttentionPanel: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("inboxOnlyActive") private var onlyActive = false
+    /// With "Only active": the terminals that are working too. Off, because a terminal that
+    /// works does not need you — and "Only active" is the list of what does.
+    @AppStorage("inboxIncludeRunning") private var includeRunning = false
     /// On by default: the panel's job is "what needs me", and a list that also
     /// holds everything already dealt with buries that. Unticking it shows the
     /// full mirror again, and the choice is remembered.
@@ -23,7 +26,8 @@ struct AttentionPanel: View {
         // control API answers from as well: what another program can read and
         // what this panel shows must be one list (see `ControlAPI`).
         let sections = appState.notificationSections(
-            windowID: windowID, unreadOnly: onlyUnread, activeOnly: onlyActive)
+            windowID: windowID, unreadOnly: onlyUnread, activeOnly: onlyActive,
+            includeRunning: includeRunning)
             .map { (group: $0.group, tabs: $0.sessions) }
 
         VStack(spacing: 0) {
@@ -49,16 +53,10 @@ struct AttentionPanel: View {
                     .disabled(appState.unreadCount == 0)
                     .help(L10n.t(.markAllRead))
                 }
-                HStack(spacing: 10) {
-                    Toggle(L10n.t(.onlyUnread), isOn: $onlyUnread)
-                        .toggleStyle(.checkbox)
-                        .font(.caption)
-                        .help(L10n.t(.onlyUnreadHelp))
-                    Toggle(L10n.t(.onlyActive), isOn: $onlyActive)
-                        .toggleStyle(.checkbox)
-                        .font(.caption)
-                        .help(L10n.t(.onlyActiveHelp))
-                    Spacer()
+                // Three checkboxes in a panel that can be narrow: they wrap rather than clip.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { filters; Spacer(minLength: 0) }
+                    VStack(alignment: .leading, spacing: 4) { filters }
                 }
             }
             .padding(.horizontal, 12)
@@ -89,6 +87,25 @@ struct AttentionPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+    }
+
+    /// The three checkboxes. "Show running" only means something while "Only active" is ticked:
+    /// without it the list holds everything, running terminals included — it dims, but stays in reach.
+    @ViewBuilder
+    private var filters: some View {
+        Toggle(L10n.t(.onlyUnread), isOn: $onlyUnread)
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help(L10n.t(.onlyUnreadHelp))
+        Toggle(L10n.t(.onlyActive), isOn: $onlyActive)
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help(L10n.t(.onlyActiveHelp))
+        Toggle(L10n.t(.includeRunning), isOn: $includeRunning)
+            .toggleStyle(.checkbox)
+            .font(.caption)
+            .help(L10n.t(.includeRunningHelp))
+            .disabled(!onlyActive)
     }
 
     // MARK: Project section header

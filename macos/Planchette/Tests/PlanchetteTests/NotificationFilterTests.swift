@@ -1,19 +1,37 @@
 import XCTest
 @testable import Planchette
 
-/// "Only active" in the notifications panel: what is going on, and the results that are still fresh.
+/// "Only active" in the notifications panel: what wants you, and the results that are still fresh.
 final class OnlyActiveFilterTests: XCTestCase {
     private let since = Date(timeIntervalSince1970: 1_000_000)
 
-    private func current(_ state: AttentionState, after seconds: TimeInterval, _ expiry: DoneExpiry = .oneDay) -> Bool {
-        state.isCurrent(since: since, expiry: expiry, now: since.addingTimeInterval(seconds))
+    private func current(_ state: AttentionState, after seconds: TimeInterval, _ expiry: DoneExpiry = .oneDay,
+                         includeRunning: Bool = false) -> Bool {
+        state.isCurrent(since: since, expiry: expiry, now: since.addingTimeInterval(seconds),
+                        includeRunning: includeRunning)
     }
 
-    func testRunningWaitingAndFailedAreAlwaysCurrent() {
-        for state in [AttentionState.running, .waiting, .error] {
+    func testWaitingAndFailedAreAlwaysCurrent() {
+        for state in [AttentionState.waiting, .error] {
             XCTAssertTrue(current(state, after: 0), "\(state)")
-            XCTAssertTrue(current(state, after: 90 * 86_400), "\(state) a quarter ago is still going on")
+            XCTAssertTrue(current(state, after: 90 * 86_400), "\(state) a quarter ago still wants you")
         }
+    }
+
+    // A terminal that works does not need you: the list of what does leaves it out, until it is asked.
+    func testARunningTerminalIsLeftOutUnlessAsked() {
+        XCTAssertFalse(current(.running, after: 0))
+        XCTAssertFalse(current(.running, after: 90 * 86_400))
+        XCTAssertTrue(current(.running, after: 0, includeRunning: true))
+        XCTAssertTrue(current(.running, after: 90 * 86_400, includeRunning: true))
+    }
+
+    // Asking for the running ones changes nothing about the others.
+    func testIncludingRunningTouchesOnlyRunning() {
+        for state in [AttentionState.waiting, .error, .free] {
+            XCTAssertEqual(current(state, after: 60), current(state, after: 60, includeRunning: true), "\(state)")
+        }
+        XCTAssertEqual(current(.ready, after: 86_400), current(.ready, after: 86_400, includeRunning: true))
     }
 
     // The case the filter used to get wrong: a turn finished minutes ago is not idle yet.

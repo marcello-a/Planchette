@@ -45,7 +45,7 @@ terminal's last prompt), `message`, `age`/`age_seconds`/`state_since`, `path`,
 `short_path`, `branch`, `ticket`, `tags`, and the project (`project`,
 `project_id`, `project_favorite`, `project_active`). `result.counts` carries the
 same totals the panel and the menu bar show. Narrow it with `--unread-only`,
-`--only-active`, `--project-id <uuid>` and `--limit <n>`. Read it to *report*
+`--only-active` (add `--include-running` to list the working terminals too), `--project-id <uuid>` and `--limit <n>`. Read it to *report*
 state; use `session read` when you need a terminal's actual output.
 
 Commands default to **the calling terminal** when `--id` is omitted, because
