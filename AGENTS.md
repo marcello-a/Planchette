@@ -119,6 +119,15 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   Code's "you left me hanging" nudge after a minute of idling, which is not a
   question and must not turn a terminal blue. All three decisions live in
   `AttentionState.forHookEvent`, with a table test in `LogicTests`.
+- **Background work keeps a terminal `running`, in one place.** `AppState.setState` turns a requested
+  `ready` or `free` into `running` while `backgroundTasks[id]` is not empty (`AttentionState.settled`),
+  so no writer — a hook, the screen, a finished command — can undo it; only the user's own "Mark as
+  done" bypasses it. The control API talks about the *turn*: `heldByBackground` remembers the state
+  that was overridden, `turnState(of:)` returns it, and the guard of `session.prompt` and
+  `session.wait` use it. The icon follows the same record: `SessionStateIcon` draws the globe
+  (`StatePixels.globe`) for `runsInBackground` and the robot otherwise, so a view that draws a
+  session's state must use it rather than `StateIcon(state: session.state)`. Without that, a terminal with a dev server in its background could never be
+  prompted without `force`, and a worker whose answer is in could never be waited for.
 - **Background tasks belong to the Claude *process*, not to the conversation.**
   `BackgroundTasks` reads them off the hooks, and three facts — all observed on
   Claude Code 2.1.299, not documented — decide its rules. `/clear` ends the

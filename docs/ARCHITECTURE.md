@@ -146,6 +146,13 @@ a reset (a Claude process begins or ends). `AppState.backgroundTasks` holds the 
 per terminal, never persisted — a restart ends the processes the tasks live in. The
 sidebar draws it under the state icon, and `session.get` reports the counts.
 
+A terminal that has any is shown as `running`: `AppState.setState` turns a requested `ready`
+or `free` into `running` while the list is not empty (`AttentionState.settled`), whoever asked
+— a hook, the screen, a finished command — and only the user's own "Mark as done" passes. The
+turn is still known: `heldByBackground` keeps the state that was overridden, and the control
+API goes by it (`turn_state`; the guard of `session.prompt`, `session.wait`). The icon is a
+globe (`StatePixels.globe`, 13×13, still) instead of the robot while the turn is over
+(`SessionStateIcon`). Settings → Project panel → Behavior turns the mark off.
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).

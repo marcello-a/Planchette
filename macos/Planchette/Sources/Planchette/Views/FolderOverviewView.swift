@@ -168,7 +168,7 @@ struct FolderOverviewView: View {
             appState.select(session: session)
         } label: {
             HStack(spacing: 7) {
-                StateIcon(state: session.state, size: 12)
+                SessionStateIcon(session: session, size: 12)
                 Text(appState.group(of: session)?.name ?? session.displayTitle)
                     .font(.caption.weight(.semibold)).lineLimit(1)
                     .layoutPriority(1)
