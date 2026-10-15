@@ -311,7 +311,14 @@ deadline failure with no load at all.
 ## Commit conventions
 
 Conventional-commit style (`feat:`, `fix:`, `chore:`, `docs:`), imperative,
-with a short body explaining *why*. End with:
+with a short body explaining *why*.
+
+**The type is the release switch.** A merge to `main` whose commits carry a `feat:`,
+`fix:` or `perf:` publishes a patch release by itself; `chore:`, `docs:`, `test:`,
+`style:` and `refactor:` alone do not (CONTRIBUTING.md, "Releasing"). So pick the type
+for what a user sees, and put the user-facing entry under `## [Unreleased]` in
+`CHANGELOG.md` in the same change — it becomes the release notes. `[skip release]` in
+the head commit's message holds a release back. End with:
 
 ```
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>

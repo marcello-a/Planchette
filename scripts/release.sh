@@ -30,8 +30,16 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [ -z "$(git status --porcelain)" ] || { echo "error: working tree not clean" >&2; exit 1; }
 
 TAG="v$VERSION"
-git tag -a "$TAG" -m "Planchette $VERSION"
-git push origin "$TAG"
+# A rerun after a failure further down (the build, the upload) finds its own tag
+# already there, on the commit it is releasing: use it instead of dying on it.
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    [ "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse HEAD)" ] || {
+        echo "error: $TAG exists and points elsewhere than HEAD — delete the tag or bump VERSION" >&2; exit 1; }
+    echo "→ $TAG already points at HEAD — using it"
+else
+    git tag -a "$TAG" -m "Planchette $VERSION"
+    git push origin "$TAG"
+fi
 
 sh scripts/package.sh "$VERSION"
 

@@ -100,13 +100,34 @@ Developer ID identity + notarization — replace the `codesign` line in
 
 Releases are cut from the default branch and drive the in-app updater.
 
-**Normally you only bump `VERSION`.** Every push to `main` builds GhosttyKit,
-runs the tests, and then — if `VERSION` names a version whose tag does not
-exist yet — publishes that release
-([`.github/workflows/release.yml`](.github/workflows/release.yml)). So a merge
-that bumps `VERSION` releases itself, and a merge that doesn't is just a build.
-Write the version's `CHANGELOG.md` section in the same commit: the release body
-is that section, and the app reads it back for "What's new".
+**A merge releases itself.** Every push to `main` builds GhosttyKit, runs the tests,
+and then `scripts/auto-release.sh` decides
+([`.github/workflows/release.yml`](.github/workflows/release.yml)):
+
+- The commits since the last release carry a `feat:`, `fix:` or `perf:` → the patch
+  number goes up by one, in a `chore: release vX.Y.Z` commit the workflow pushes, and
+  that version is published.
+- They carry only `chore:`, `docs:`, `test:`, `style:` or `refactor:` → a build, and
+  nothing is published. A merge that changes nothing a user can see offers no update.
+- `[skip release]` in the head commit's message → a build, and nothing is published.
+
+So the commit type is the switch: write it for what the change does to a user.
+
+For a minor or major bump, or a release with notes of your own, bump `VERSION` by hand
+in the PR and write the version's `CHANGELOG.md` section there. A `VERSION` that names a
+version not published yet is released as written, whatever the commits say.
+
+The release body is the version's `CHANGELOG.md` section, and the app reads it back for
+"What's new". Put your entries under `## [Unreleased]` in the same PR: the workflow
+moves them under the new version. With none there, the notes list the commits instead —
+readable, but yours are better.
+
+The workflow pushes the release commit to `main` with its own token, which needs a
+`main` that does not block it (a branch protection rule would; the run then fails,
+visibly, and nothing is published).
+
+`scripts/test-auto-release.sh` tests these rules in throwaway repositories and runs in
+CI before the release step; run it after any change to `scripts/auto-release.sh`.
 
 To cut one by hand instead — the workflow runs the same script, so the result
 is identical:
