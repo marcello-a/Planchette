@@ -79,6 +79,14 @@ final class AppState: ObservableObject {
             searchShortcutMonitor.shortcut = searchShortcut
         }
     }
+    /// What the user has already been told: the welcome screen of a first launch and the
+    /// durable terminals prompt after an update. Persisted — asking twice is nagging.
+    @Published var onboarding = OnboardingState() {
+        didSet { scheduleSave() }
+    }
+    /// The durable terminals prompt is up (see `evaluateOnboarding`).
+    @Published var durablePromptShown = false
+    private var onboardingEvaluated = false
     /// The IDE the "look at code" button always opens, once one is chosen in
     /// its menu. Nil = no choice made yet: the button falls back to whichever
     /// known IDE is running (see `IDEs.target`).
@@ -169,6 +177,10 @@ final class AppState: ObservableObject {
             aiEnabled = saved.aiEnabled
             defaultIDEBundleID = saved.defaultIDEBundleID
             askedAboutSpaceSwitching = saved.askedAboutSpaceSwitching
+            onboarding = saved.onboarding
+        } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
+            // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
+            onboarding = .firstLaunch
         }
         observeSurfaceNotifications()
         _ = searchShortcutMonitor   // listening from the first moment
@@ -1627,6 +1639,39 @@ final class AppState: ObservableObject {
         }
     }
 
+    // MARK: Onboarding
+
+    /// Once, when the main window is up: is the durable terminals prompt due? It is shown
+    /// after an update to somebody who has no durable terminals and did not ask us to stop
+    /// (`OnboardingState.durablePromptDue`). The running version is recorded either way, so
+    /// the prompt belongs to one update and never to every launch.
+    ///
+    /// Never in an isolated instance: that is a demo or a test, handed its workspace on
+    /// purpose, and a sheet over it would stop whatever drives it.
+    func evaluateOnboarding() {
+        guard !onboardingEvaluated else { return }
+        onboardingEvaluated = true
+        let version = OnboardingState.runningVersion
+        let due = onboarding.durablePromptDue(
+            runningVersion: version, durableOn: durableTerminals && Durable.isAvailable)
+        onboarding.lastLaunchedVersion = version
+        if due, !SupportPaths.isIsolated { durablePromptShown = true }
+    }
+
+    /// The first project exists: the welcome screen has done its job.
+    func markWelcomeSeen() {
+        if !onboarding.welcomeSeen { onboarding.welcomeSeen = true }
+    }
+
+    func closeDurablePrompt() {
+        durablePromptShown = false
+    }
+
+    /// The prompt's "Don't show this again": a setting, applied the moment it is ticked.
+    func hideDurablePrompt(_ hide: Bool) {
+        if onboarding.durablePromptHidden != hide { onboarding.durablePromptHidden = hide }
+    }
+
     /// Focusing a terminal does NOT clear its attention state — a glance isn't
     /// an answer. `waiting`/`error` persist until the agent moves on (a hook or
     /// command result) or the user explicitly marks it free ("nothing for me
@@ -2239,7 +2284,8 @@ final class AppState: ObservableObject {
             tagList: tagList,
             searchShortcut: searchShortcut,
             defaultIDEBundleID: defaultIDEBundleID,
-            askedAboutSpaceSwitching: askedAboutSpaceSwitching
+            askedAboutSpaceSwitching: askedAboutSpaceSwitching,
+            onboarding: onboarding
         )
         do {
             let encoder = JSONEncoder()
@@ -2321,6 +2367,7 @@ final class AppState: ObservableObject {
         searchShortcut = state.searchShortcut
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
+        onboarding = state.onboarding
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -2433,6 +2480,7 @@ final class AppState: ObservableObject {
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching
+        onboarding = previous?.onboarding ?? onboarding
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

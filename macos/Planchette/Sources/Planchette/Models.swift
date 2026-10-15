@@ -833,6 +833,8 @@ struct PersistedState: Codable {
     var defaultIDEBundleID: String?
     /// Whether the one question about the macOS Space setting was asked.
     var askedAboutSpaceSwitching: Bool = false
+    /// What the user has already been told (welcome, durable terminals prompt).
+    var onboarding = OnboardingState()
 
     init(
         groups: [SessionGroup],
@@ -850,7 +852,8 @@ struct PersistedState: Codable {
         tagList: [String] = TagList.defaults,
         searchShortcut: SearchShortcut = .default,
         defaultIDEBundleID: String? = nil,
-        askedAboutSpaceSwitching: Bool = false
+        askedAboutSpaceSwitching: Bool = false,
+        onboarding: OnboardingState = OnboardingState()
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -868,6 +871,7 @@ struct PersistedState: Codable {
         self.searchShortcut = searchShortcut
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
+        self.onboarding = onboarding
     }
 
     init(from decoder: Decoder) throws {
@@ -896,5 +900,7 @@ struct PersistedState: Codable {
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
         askedAboutSpaceSwitching =
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
+        // No key = a state from before this existed = somebody who already uses the app.
+        onboarding = (try? c.decodeIfPresent(OnboardingState.self, forKey: .onboarding)) ?? OnboardingState()
     }
 }
