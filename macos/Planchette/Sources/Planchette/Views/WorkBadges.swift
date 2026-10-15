@@ -160,19 +160,6 @@ struct ContextRing: View {
     }
 }
 
-/// "You closed this one": a check on a terminal whose work you marked finished.
-struct FinishedBadge: View {
-    let since: Date
-
-    var body: some View {
-        Image(systemName: "checkmark.seal.fill")
-            .font(.system(size: 10))
-            .foregroundStyle(.green)
-            .help(L10n.t(.finishedSince,
-                         since.formatted(date: .abbreviated, time: .shortened)))
-    }
-}
-
 /// The note you wrote on a terminal, one line, the whole text on hover.
 struct NoteLine: View {
     let note: String

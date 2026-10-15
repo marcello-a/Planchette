@@ -127,9 +127,6 @@ struct OverviewTabRow: View {
                     }
                 }
                 Spacer(minLength: 4)
-                if let finished = session.finishedAt {
-                    FinishedBadge(since: finished)
-                }
                 if let until = appState.snoozeEnd(for: session), until > Date() {
                     SnoozeBadge(until: until)
                 } else if session.state.needsAttention {
@@ -145,7 +142,6 @@ struct OverviewTabRow: View {
                     .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
                     .padding(.horizontal, 6).padding(.vertical, 3)
             )
-            .opacity(session.isFinished ? 0.6 : 1)
         }
         .buttonStyle(.plain)
         .help(session.currentDirectory)

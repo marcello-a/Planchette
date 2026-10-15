@@ -8,6 +8,17 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **"Mark as ready" is now "Mark as done"** in a terminal's menu, and the same in the other
+  languages. It does what it did: you are done with this terminal, so it goes back to free
+  and counts as read.
+
+### Removed
+- **"Mark as finished" is gone**, and with it the seal on a finished terminal, the dimmed
+  row, and the "Finished mark" switch in Settings → Project panel. "Mark as done" already
+  says you are finished with a terminal. A state file that still holds the mark loads as
+  before and loses it at the next save.
+
 ## [0.2.37] — 2026-10-15
 
 ### Added

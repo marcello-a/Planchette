@@ -98,7 +98,6 @@ enum Help {
             Entry(.detailCacheTimer, .detailCacheTimerHelp, where: .helpWhereSettings),
             Entry(.detailBackgroundTasks, .detailBackgroundTasksHelp, where: .helpWhereSidebar),
             Entry(.promptSourceTitle, .promptSourceAgentTitleHelp, where: .helpWhereSettings),
-            Entry(.markFinished, .markFinishedHelp, where: .helpWhereContextMenu),
             Entry(.addNote, .noteHelp, where: .helpWhereContextMenu),
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),

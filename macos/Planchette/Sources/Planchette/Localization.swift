@@ -238,7 +238,7 @@ enum LKey: String, CaseIterable {
 
     // Pull requests, notes and finished work
     case prDraft, prOpen, prMerged, prClosed, prApproved, prChangesRequested, prReviewRequired, prTooltip, prOpenHelp
-    case finishedSince, markFinished, markFinishedHelp, reopenWork, addNote, editNote, noteHelp, notePrompt
+    case addNote, editNote, noteHelp, notePrompt
     case helpPullRequestTitle, helpPullRequestDetail
 
     // Settings → Project panel (which details the sidebar shows)
@@ -247,13 +247,13 @@ enum LKey: String, CaseIterable {
     case tagEditorTitle, tagEditorHelp, tagEditorEmpty, tagEditorNewPlaceholder, tagEditorAdd, tagUsage, tagUnused
     case tagDeleteHelp, tagDeleteTitle, tagDeleteBody, tagDeleteConfirm, tagStraysTitle, tagStraysHelp, tagKeep
     case tagRestoreDefaults, tagRestoreDefaultsHelp
-    case detailPath, detailBranch, detailPullRequest, detailTask, detailAge, detailTags, detailNote, detailFinished, detailSnooze, detailAttentionCounts, detailModel, detailContextUsage
+    case detailPath, detailBranch, detailPullRequest, detailTask, detailAge, detailTags, detailNote, detailSnooze, detailAttentionCounts, detailModel, detailContextUsage
     case contextTooltip, helpContextTitle, helpContextDetail
     case detailExample, detailPathHelp, detailBranchHelp, detailPullRequestHelp, detailTaskHelp, detailAgeHelp, detailTagsHelp
     case branchTrimTitle, branchTrimFront, branchTrimMiddle, branchTrimBack
     case promptSourceTitle, promptSourceFirst, promptSourceLast, promptSourceAgentTitle
     case promptSourceFirstHelp, promptSourceLastHelp, promptSourceAgentTitleHelp
-    case detailNoteHelp, detailFinishedHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
+    case detailNoteHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -416,7 +416,7 @@ enum L10n {
         .readyDesc: "the turn or command finished — a result awaits your review", .freeDesc: "empty prompt, nothing to review — this terminal is up for grabs", .waitingSince: "waiting for %d min", .runningDesc: "an agent or command is running", .waitingDesc: "the agent is waiting for you to answer or approve", .errorDesc: "the last command or agent exited with an error",
         .newProject: "New project…", .newProjectHelp: "Add a project from a folder (⌘N)", .addTerminalHelp: "Add a terminal in this project's folder (⌘T)", .addTerminal: "Add terminal",
         .fontSmaller: "Smaller font", .fontLarger: "Larger font", .fontReset: "Reset font size",
-        .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .collapseAllProjects: "Collapse all projects", .expandAllProjects: "Expand all projects", .peekCollapsedTitle: "Show requests under collapsed projects", .peekCollapsedHelp: "A collapsed project still lists its terminals with an unread question or error. Off keeps it fully folded.", .doneExpiryTitle: "Clear the done check after", .doneExpiryHelp: "A terminal still marked done (green) after this time goes back to free. A new turn marks it again.", .doneExpiryNever: "Never", .markReady: "Mark as ready", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .onlyActiveHelp: "Hide free terminals. Running, waiting and failed ones stay, and so do finished ones until their done check clears.", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All", .menuOpenLink: "Open Link", .menuOpenLinkHelp: "Right-click a link in the terminal to open it; Copy, Paste and Open Link grey out when they cannot act",
+        .minifySidebar: "Collapse sidebar", .expandSidebar: "Expand sidebar", .collapseAllProjects: "Collapse all projects", .expandAllProjects: "Expand all projects", .peekCollapsedTitle: "Show requests under collapsed projects", .peekCollapsedHelp: "A collapsed project still lists its terminals with an unread question or error. Off keeps it fully folded.", .doneExpiryTitle: "Clear the done check after", .doneExpiryHelp: "A terminal still marked done (green) after this time goes back to free. A new turn marks it again.", .doneExpiryNever: "Never", .markReady: "Mark as done", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Show the notifications panel on the right", .onlyActive: "Only active", .onlyActiveHelp: "Hide free terminals. Running, waiting and failed ones stay, and so do finished ones until their done check clears.", .noProjectsYet: "No projects yet — click + to add one.", .menuCopy: "Copy", .menuPaste: "Paste", .menuSelectAll: "Select All", .menuOpenLink: "Open Link", .menuOpenLinkHelp: "Right-click a link in the terminal to open it; Copy, Paste and Open Link grey out when they cannot act",
         .clipboardPasteTitle: "Paste this text?", .clipboardPasteBody: "This text contains line breaks or control characters. Pasted into a program that does not expect it, it can run commands the moment it arrives. Check it before you continue.", .clipboardPasteConfirm: "Paste", .clipboardReadTitle: "Allow this terminal to read your clipboard?", .clipboardReadBody: "A program running in this terminal asked for the contents of your clipboard. Only allow it if you started that program and trust it.", .clipboardWriteTitle: "Allow this terminal to change your clipboard?", .clipboardWriteBody: "A program running in this terminal wants to replace the contents of your clipboard with the text below.", .clipboardAllow: "Allow", .clipboardDeny: "Don't Allow", .clipboardHelpTitle: "Clipboard safety prompts", .clipboardHelpDetail: "Planchette asks before a program in a terminal reads your clipboard, and before it pastes text that could run commands at once. Say no and nothing is shared or pasted.",
         .clipboardPreviewMore: "… %d more characters",
         .clipboardPasteDeny: "Don't Paste",
@@ -456,10 +456,10 @@ enum L10n {
         .prReviewRequired: "Review required",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Click to open it in the browser",
-        .finishedSince: "Finished since %@",
-        .markFinished: "Mark as finished",
-        .markFinishedHelp: "Your own \"done\": the row steps back and stays like that until you give the terminal new work — a prompt, /clear or a new Claude session",
-        .reopenWork: "Reopen",
+        
+        
+        
+        
         .addNote: "Add note…",
         .editNote: "Edit note…",
         .noteHelp: "A line of your own on this terminal — why it waits, what comes next. Shown under the row and kept until you remove it",
@@ -499,7 +499,7 @@ enum L10n {
         .detailAge: "Time since the last change",
         .detailTags: "Tags",
         .detailNote: "Note",
-        .detailFinished: "Finished mark",
+        
         .detailSnooze: "Snooze badge",
         .detailAttentionCounts: "Attention counts on projects",
         .detailModel: "Model",
@@ -520,7 +520,7 @@ enum L10n {
         .detailAgeHelp: "How long the terminal has been in its current state, for questions and errors.",
         .detailTagsHelp: "The tags you put on the terminal, such as \"review\" or \"wip\".",
         .detailNoteHelp: "The note you wrote on the terminal (context menu → Add note).",
-        .detailFinishedHelp: "A seal on terminals you marked as finished; the row is also dimmed.",
+        
         .detailSnoozeHelp: "The time a snoozed project or terminal comes back.",
         .detailAttentionCountsHelp: "How many terminals of a project ask (blue), fail (red) or finished unread work (green).",
         .detailModelHelp: "The Claude model the terminal runs on.",
@@ -668,7 +668,7 @@ enum L10n {
         .readyDesc: "Turn oder Befehl beendet — ein Ergebnis wartet auf deinen Blick", .freeDesc: "leerer Prompt, nichts zu reviewen — dieses Terminal ist zu haben", .waitingSince: "wartet seit %d min", .runningDesc: "ein Agent oder Befehl läuft", .waitingDesc: "der Agent wartet auf deine Antwort oder Freigabe", .errorDesc: "der letzte Befehl oder Agent endete mit einem Fehler",
         .newProject: "Neues Projekt…", .newProjectHelp: "Projekt aus einem Ordner hinzufügen (⌘N)", .addTerminalHelp: "Terminal im Ordner dieses Projekts hinzufügen (⌘T)", .addTerminal: "Terminal hinzufügen",
         .fontSmaller: "Kleinere Schrift", .fontLarger: "Größere Schrift", .fontReset: "Schriftgröße zurücksetzen",
-        .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .collapseAllProjects: "Alle Projekte einklappen", .expandAllProjects: "Alle Projekte ausklappen", .peekCollapsedTitle: "Anfragen unter eingeklappten Projekten zeigen", .peekCollapsedHelp: "Ein eingeklapptes Projekt zeigt Terminals mit ungelesener Frage oder ungelesenem Fehler weiterhin an. Aus hält es ganz geschlossen.", .doneExpiryTitle: "Fertig-Haken entfernen nach", .doneExpiryHelp: "Ein Terminal, das nach dieser Zeit noch als fertig (grün) markiert ist, wird wieder frei. Ein neuer Turn markiert es erneut.", .doneExpiryNever: "Nie", .markReady: "Als frei markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .onlyActiveHelp: "Freie Terminals ausblenden. Laufende, wartende und fehlgeschlagene bleiben, ebenso fertige, bis ihr Fertig-Haken verschwindet.", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen", .menuOpenLink: "Link öffnen", .menuOpenLinkHelp: "Rechtsklick auf einen Link im Terminal öffnet ihn; Kopieren, Einsetzen und Link öffnen sind ausgegraut, wenn sie nichts tun können",
+        .minifySidebar: "Seitenleiste einklappen", .expandSidebar: "Seitenleiste ausklappen", .collapseAllProjects: "Alle Projekte einklappen", .expandAllProjects: "Alle Projekte ausklappen", .peekCollapsedTitle: "Anfragen unter eingeklappten Projekten zeigen", .peekCollapsedHelp: "Ein eingeklapptes Projekt zeigt Terminals mit ungelesener Frage oder ungelesenem Fehler weiterhin an. Aus hält es ganz geschlossen.", .doneExpiryTitle: "Fertig-Haken entfernen nach", .doneExpiryHelp: "Ein Terminal, das nach dieser Zeit noch als fertig (grün) markiert ist, wird wieder frei. Ein neuer Turn markiert es erneut.", .doneExpiryNever: "Nie", .markReady: "Als erledigt markieren", .notificationsPanel: "Benachrichtigungen", .notificationsPanelHelp: "Benachrichtigungs-Sidebar rechts anzeigen", .onlyActive: "Nur aktive", .onlyActiveHelp: "Freie Terminals ausblenden. Laufende, wartende und fehlgeschlagene bleiben, ebenso fertige, bis ihr Fertig-Haken verschwindet.", .noProjectsYet: "Noch keine Projekte — mit + eines hinzufügen.", .menuCopy: "Kopieren", .menuPaste: "Einsetzen", .menuSelectAll: "Alles auswählen", .menuOpenLink: "Link öffnen", .menuOpenLinkHelp: "Rechtsklick auf einen Link im Terminal öffnet ihn; Kopieren, Einsetzen und Link öffnen sind ausgegraut, wenn sie nichts tun können",
         .clipboardPasteTitle: "Diesen Text einfügen?", .clipboardPasteBody: "Dieser Text enthält Zeilenumbrüche oder Steuerzeichen. In ein Programm eingefügt, das damit nicht rechnet, kann er Befehle ausführen, sobald er ankommt. Prüfe ihn, bevor du fortfährst.", .clipboardPasteConfirm: "Einfügen", .clipboardReadTitle: "Soll dieses Terminal deine Zwischenablage lesen dürfen?", .clipboardReadBody: "Ein Programm in diesem Terminal hat den Inhalt deiner Zwischenablage angefordert. Erlaube das nur, wenn du das Programm selbst gestartet hast und ihm vertraust.", .clipboardWriteTitle: "Soll dieses Terminal deine Zwischenablage ändern dürfen?", .clipboardWriteBody: "Ein Programm in diesem Terminal möchte den Inhalt deiner Zwischenablage durch den folgenden Text ersetzen.", .clipboardAllow: "Erlauben", .clipboardDeny: "Nicht erlauben", .clipboardHelpTitle: "Warnungen zur Zwischenablage", .clipboardHelpDetail: "Planchette fragt nach, bevor ein Programm in einem Terminal deine Zwischenablage liest und bevor Text eingefügt wird, der sofort Befehle ausführen könnte. Wenn du ablehnst, wird nichts weitergegeben oder eingefügt.",
         .clipboardPreviewMore: "… %d weitere Zeichen",
         .clipboardPasteDeny: "Nicht einfügen",
@@ -708,10 +708,10 @@ enum L10n {
         .prReviewRequired: "Review ausstehend",
         .prTooltip: "Pull Request #%d · %@",
         .prOpenHelp: "Klicken öffnet ihn im Browser",
-        .finishedSince: "Fertig seit %@",
-        .markFinished: "Als fertig markieren",
-        .markFinishedHelp: "Dein eigenes „fertig“: die Zeile tritt zurück und bleibt so, bis das Terminal neue Arbeit bekommt — ein Prompt, /clear oder eine neue Claude-Sitzung",
-        .reopenWork: "Wieder öffnen",
+        
+        
+        
+        
         .addNote: "Notiz hinzufügen…",
         .editNote: "Notiz bearbeiten…",
         .noteHelp: "Eine eigene Zeile zu diesem Terminal — warum es wartet, was als Nächstes kommt. Steht unter der Zeile, bis du sie entfernst",
@@ -751,7 +751,7 @@ enum L10n {
         .detailAge: "Zeit seit der letzten Änderung",
         .detailTags: "Tags",
         .detailNote: "Notiz",
-        .detailFinished: "Fertig-Markierung",
+        
         .detailSnooze: "Schlummer-Badge",
         .detailAttentionCounts: "Status-Zähler an Projekten",
         .detailModel: "Modell",
@@ -772,7 +772,7 @@ enum L10n {
         .detailAgeHelp: "Wie lange das Terminal schon im aktuellen Zustand ist, bei Fragen und Fehlern.",
         .detailTagsHelp: "Die Tags am Terminal, etwa „review“ oder „wip“.",
         .detailNoteHelp: "Deine Notiz am Terminal (Kontextmenü → Notiz hinzufügen).",
-        .detailFinishedHelp: "Ein Siegel an Terminals, die du als fertig markiert hast; die Zeile wird zudem blasser.",
+        
         .detailSnoozeHelp: "Wann ein schlummerndes Projekt oder Terminal zurückkommt.",
         .detailAttentionCountsHelp: "Wie viele Terminals eines Projekts fragen (blau), Fehler haben (rot) oder ungelesen fertig sind (grün).",
         .detailModelHelp: "Das Claude-Modell, auf dem das Terminal läuft.",
@@ -920,7 +920,7 @@ enum L10n {
         .readyDesc: "le tour ou la commande est terminé — un résultat attend votre regard", .freeDesc: "prompt vide, rien à relire — ce terminal est disponible", .waitingSince: "en attente depuis %d min", .runningDesc: "un agent ou une commande s'exécute", .waitingDesc: "l'agent attend votre réponse ou approbation", .errorDesc: "la dernière commande ou l'agent s'est terminé avec une erreur",
         .newProject: "Nouveau projet…", .newProjectHelp: "Ajouter un projet depuis un dossier (⌘N)", .addTerminalHelp: "Ajouter un terminal dans le dossier de ce projet (⌘T)", .addTerminal: "Ajouter un terminal",
         .fontSmaller: "Police plus petite", .fontLarger: "Police plus grande", .fontReset: "Réinitialiser la police",
-        .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .collapseAllProjects: "Réduire tous les projets", .expandAllProjects: "Développer tous les projets", .peekCollapsedTitle: "Afficher les demandes sous les projets réduits", .peekCollapsedHelp: "Un projet réduit montre encore les terminaux avec une question ou une erreur non lue. Désactivé, il reste entièrement replié.", .doneExpiryTitle: "Retirer la coche « terminé » après", .doneExpiryHelp: "Un terminal encore marqué terminé (vert) après ce délai redevient libre. Un nouveau tour le marque à nouveau.", .doneExpiryNever: "Jamais", .markReady: "Marquer comme prêt", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .onlyActiveHelp: "Masquer les terminaux libres. Ceux en cours, en attente ou en erreur restent, tout comme les terminés tant que leur coche « terminé » n'a pas disparu.", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner", .menuOpenLink: "Ouvrir le lien", .menuOpenLinkHelp: "Clic droit sur un lien dans le terminal pour l'ouvrir ; Copier, Coller et Ouvrir le lien sont grisés quand ils ne peuvent pas agir",
+        .minifySidebar: "Réduire la barre latérale", .expandSidebar: "Développer la barre latérale", .collapseAllProjects: "Réduire tous les projets", .expandAllProjects: "Développer tous les projets", .peekCollapsedTitle: "Afficher les demandes sous les projets réduits", .peekCollapsedHelp: "Un projet réduit montre encore les terminaux avec une question ou une erreur non lue. Désactivé, il reste entièrement replié.", .doneExpiryTitle: "Retirer la coche « terminé » après", .doneExpiryHelp: "Un terminal encore marqué terminé (vert) après ce délai redevient libre. Un nouveau tour le marque à nouveau.", .doneExpiryNever: "Jamais", .markReady: "Marquer comme terminé", .notificationsPanel: "Notifications", .notificationsPanelHelp: "Afficher le panneau de notifications à droite", .onlyActive: "Actifs seulement", .onlyActiveHelp: "Masquer les terminaux libres. Ceux en cours, en attente ou en erreur restent, tout comme les terminés tant que leur coche « terminé » n'a pas disparu.", .noProjectsYet: "Aucun projet — cliquez sur + pour en ajouter un.", .menuCopy: "Copier", .menuPaste: "Coller", .menuSelectAll: "Tout sélectionner", .menuOpenLink: "Ouvrir le lien", .menuOpenLinkHelp: "Clic droit sur un lien dans le terminal pour l'ouvrir ; Copier, Coller et Ouvrir le lien sont grisés quand ils ne peuvent pas agir",
         .clipboardPasteTitle: "Coller ce texte ?", .clipboardPasteBody: "Ce texte contient des sauts de ligne ou des caractères de contrôle. Collé dans un programme qui ne s'y attend pas, il peut exécuter des commandes dès son arrivée. Vérifiez-le avant de continuer.", .clipboardPasteConfirm: "Coller", .clipboardReadTitle: "Autoriser ce terminal à lire votre presse-papiers ?", .clipboardReadBody: "Un programme exécuté dans ce terminal a demandé le contenu de votre presse-papiers. N'autorisez cet accès que si vous avez lancé ce programme et que vous lui faites confiance.", .clipboardWriteTitle: "Autoriser ce terminal à modifier votre presse-papiers ?", .clipboardWriteBody: "Un programme exécuté dans ce terminal veut remplacer le contenu de votre presse-papiers par le texte ci-dessous.", .clipboardAllow: "Autoriser", .clipboardDeny: "Ne pas autoriser", .clipboardHelpTitle: "Alertes du presse-papiers", .clipboardHelpDetail: "Planchette demande confirmation avant qu'un programme d'un terminal lise votre presse-papiers, et avant de coller un texte qui pourrait exécuter des commandes aussitôt. Si vous refusez, rien n'est partagé ni collé.",
         .clipboardPreviewMore: "… %d caractères de plus",
         .clipboardPasteDeny: "Ne pas coller",
@@ -960,10 +960,10 @@ enum L10n {
         .prReviewRequired: "Revue requise",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Cliquer pour l’ouvrir dans le navigateur",
-        .finishedSince: "Terminé depuis %@",
-        .markFinished: "Marquer comme terminé",
-        .markFinishedHelp: "Votre propre « terminé » : la ligne passe au second plan jusqu’à ce que le terminal reçoive un nouveau travail — un prompt, /clear ou une nouvelle session Claude",
-        .reopenWork: "Rouvrir",
+        
+        
+        
+        
         .addNote: "Ajouter une note…",
         .editNote: "Modifier la note…",
         .noteHelp: "Une ligne à vous sur ce terminal — pourquoi il attend, ce qui suit. Affichée sous la ligne jusqu’à ce que vous la supprimiez",
@@ -1003,7 +1003,7 @@ enum L10n {
         .detailAge: "Temps depuis le dernier changement",
         .detailTags: "Tags",
         .detailNote: "Note",
-        .detailFinished: "Marque « terminé »",
+        
         .detailSnooze: "Badge de rappel",
         .detailAttentionCounts: "Compteurs d’état des projets",
         .detailModel: "Modèle",
@@ -1024,7 +1024,7 @@ enum L10n {
         .detailAgeHelp: "Depuis combien de temps le terminal est dans son état, pour les questions et les erreurs.",
         .detailTagsHelp: "Les tags du terminal, comme « review » ou « wip ».",
         .detailNoteHelp: "La note écrite sur le terminal (menu contextuel → Ajouter une note).",
-        .detailFinishedHelp: "Un sceau sur les terminaux marqués terminés ; la ligne est aussi atténuée.",
+        
         .detailSnoozeHelp: "L’heure à laquelle un projet ou un terminal en rappel revient.",
         .detailAttentionCountsHelp: "Combien de terminaux d’un projet demandent (bleu), échouent (rouge) ou ont fini sans être lus (vert).",
         .detailModelHelp: "Le modèle Claude utilisé par le terminal.",
@@ -1172,7 +1172,7 @@ enum L10n {
         .readyDesc: "el turno o comando terminó — un resultado espera tu revisión", .freeDesc: "prompt vacío, nada que revisar — este terminal está disponible", .waitingSince: "esperando desde hace %d min", .runningDesc: "un agente o comando se está ejecutando", .waitingDesc: "el agente espera tu respuesta o aprobación", .errorDesc: "el último comando o agente terminó con un error",
         .newProject: "Nuevo proyecto…", .newProjectHelp: "Añadir un proyecto desde una carpeta (⌘N)", .addTerminalHelp: "Añadir un terminal en la carpeta de este proyecto (⌘T)", .addTerminal: "Añadir terminal",
         .fontSmaller: "Fuente más pequeña", .fontLarger: "Fuente más grande", .fontReset: "Restablecer tamaño",
-        .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Contraer todos los proyectos", .expandAllProjects: "Expandir todos los proyectos", .peekCollapsedTitle: "Mostrar solicitudes bajo proyectos contraídos", .peekCollapsedHelp: "Un proyecto contraído sigue mostrando terminales con una pregunta o un error sin leer. Desactivado, permanece plegado del todo.", .doneExpiryTitle: "Quitar la marca de terminado tras", .doneExpiryHelp: "Un terminal que sigue marcado como terminado (verde) tras este tiempo vuelve a estar libre. Un nuevo turno lo marca otra vez.", .doneExpiryNever: "Nunca", .markReady: "Marcar como listo", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .onlyActiveHelp: "Oculta los terminales libres. Los que se ejecutan, esperan o fallaron se quedan, y también los terminados mientras no se haya quitado su marca de terminado.", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo", .menuOpenLink: "Abrir enlace", .menuOpenLinkHelp: "Clic derecho en un enlace del terminal para abrirlo; Copiar, Pegar y Abrir enlace se atenúan cuando no pueden actuar",
+        .minifySidebar: "Contraer barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Contraer todos los proyectos", .expandAllProjects: "Expandir todos los proyectos", .peekCollapsedTitle: "Mostrar solicitudes bajo proyectos contraídos", .peekCollapsedHelp: "Un proyecto contraído sigue mostrando terminales con una pregunta o un error sin leer. Desactivado, permanece plegado del todo.", .doneExpiryTitle: "Quitar la marca de terminado tras", .doneExpiryHelp: "Un terminal que sigue marcado como terminado (verde) tras este tiempo vuelve a estar libre. Un nuevo turno lo marca otra vez.", .doneExpiryNever: "Nunca", .markReady: "Marcar como hecho", .notificationsPanel: "Notificaciones", .notificationsPanelHelp: "Mostrar el panel de notificaciones a la derecha", .onlyActive: "Solo activos", .onlyActiveHelp: "Oculta los terminales libres. Los que se ejecutan, esperan o fallaron se quedan, y también los terminados mientras no se haya quitado su marca de terminado.", .noProjectsYet: "Aún no hay proyectos — haz clic en + para añadir uno.", .menuCopy: "Copiar", .menuPaste: "Pegar", .menuSelectAll: "Seleccionar todo", .menuOpenLink: "Abrir enlace", .menuOpenLinkHelp: "Clic derecho en un enlace del terminal para abrirlo; Copiar, Pegar y Abrir enlace se atenúan cuando no pueden actuar",
         .clipboardPasteTitle: "¿Pegar este texto?", .clipboardPasteBody: "Este texto contiene saltos de línea o caracteres de control. Pegado en un programa que no lo espera, puede ejecutar comandos en cuanto llega. Revísalo antes de continuar.", .clipboardPasteConfirm: "Pegar", .clipboardReadTitle: "¿Permitir que este terminal lea tu portapapeles?", .clipboardReadBody: "Un programa que se ejecuta en este terminal ha pedido el contenido de tu portapapeles. Permítelo solo si iniciaste ese programa y confías en él.", .clipboardWriteTitle: "¿Permitir que este terminal cambie tu portapapeles?", .clipboardWriteBody: "Un programa que se ejecuta en este terminal quiere reemplazar el contenido de tu portapapeles por el texto de abajo.", .clipboardAllow: "Permitir", .clipboardDeny: "No permitir", .clipboardHelpTitle: "Avisos del portapapeles", .clipboardHelpDetail: "Planchette pregunta antes de que un programa de un terminal lea tu portapapeles y antes de pegar texto que podría ejecutar comandos de inmediato. Si dices que no, no se comparte ni se pega nada.",
         .clipboardPreviewMore: "… %d caracteres más",
         .clipboardPasteDeny: "No pegar",
@@ -1212,10 +1212,10 @@ enum L10n {
         .prReviewRequired: "Revisión pendiente",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Haz clic para abrirla en el navegador",
-        .finishedSince: "Terminado desde %@",
-        .markFinished: "Marcar como terminado",
-        .markFinishedHelp: "Tu propio «terminado»: la fila pasa a segundo plano hasta que la terminal reciba trabajo nuevo — un prompt, /clear o una sesión nueva de Claude",
-        .reopenWork: "Reabrir",
+        
+        
+        
+        
         .addNote: "Añadir nota…",
         .editNote: "Editar nota…",
         .noteHelp: "Una línea tuya sobre esta terminal: por qué espera, qué viene después. Se muestra bajo la fila hasta que la quites",
@@ -1255,7 +1255,7 @@ enum L10n {
         .detailAge: "Tiempo desde el último cambio",
         .detailTags: "Etiquetas",
         .detailNote: "Nota",
-        .detailFinished: "Marca de terminado",
+        
         .detailSnooze: "Insignia de recordatorio",
         .detailAttentionCounts: "Contadores de estado en proyectos",
         .detailModel: "Modelo",
@@ -1276,7 +1276,7 @@ enum L10n {
         .detailAgeHelp: "Cuánto tiempo lleva la terminal en su estado actual, en preguntas y errores.",
         .detailTagsHelp: "Las etiquetas de la terminal, como «review» o «wip».",
         .detailNoteHelp: "La nota que escribiste en la terminal (menú contextual → Añadir nota).",
-        .detailFinishedHelp: "Un sello en las terminales marcadas como terminadas; la fila además se atenúa.",
+        
         .detailSnoozeHelp: "Cuándo vuelve un proyecto o una terminal con recordatorio.",
         .detailAttentionCountsHelp: "Cuántas terminales de un proyecto preguntan (azul), fallan (rojo) o terminaron sin leer (verde).",
         .detailModelHelp: "El modelo de Claude que usa la terminal.",
@@ -1424,7 +1424,7 @@ enum L10n {
         .readyDesc: "il turno o comando è terminato — un risultato attende la tua revisione", .freeDesc: "prompt vuoto, niente da rivedere — questo terminale è disponibile", .waitingSince: "in attesa da %d min", .runningDesc: "un agente o comando è in esecuzione", .waitingDesc: "l'agente attende la tua risposta o approvazione", .errorDesc: "l'ultimo comando o agente è terminato con un errore",
         .newProject: "Nuovo progetto…", .newProjectHelp: "Aggiungi un progetto da una cartella (⌘N)", .addTerminalHelp: "Aggiungi un terminale nella cartella di questo progetto (⌘T)", .addTerminal: "Aggiungi terminale",
         .fontSmaller: "Carattere più piccolo", .fontLarger: "Carattere più grande", .fontReset: "Reimposta dimensione",
-        .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .collapseAllProjects: "Comprimi tutti i progetti", .expandAllProjects: "Espandi tutti i progetti", .peekCollapsedTitle: "Mostra richieste sotto i progetti compressi", .peekCollapsedHelp: "Un progetto compresso mostra comunque i terminali con una domanda o un errore non letti. Disattivato, resta chiuso del tutto.", .doneExpiryTitle: "Rimuovi il segno di fatto dopo", .doneExpiryHelp: "Un terminale ancora segnato come fatto (verde) dopo questo tempo torna libero. Un nuovo turno lo segna di nuovo.", .doneExpiryNever: "Mai", .markReady: "Segna come pronto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .onlyActiveHelp: "Nasconde i terminali liberi. Restano quelli in esecuzione, in attesa o in errore, e quelli segnati come fatti finché il segno di fatto non sparisce.", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto", .menuOpenLink: "Apri link", .menuOpenLinkHelp: "Clic destro su un link nel terminale per aprirlo; Copia, Incolla e Apri link sono disattivati quando non possono agire",
+        .minifySidebar: "Comprimi barra laterale", .expandSidebar: "Espandi barra laterale", .collapseAllProjects: "Comprimi tutti i progetti", .expandAllProjects: "Espandi tutti i progetti", .peekCollapsedTitle: "Mostra richieste sotto i progetti compressi", .peekCollapsedHelp: "Un progetto compresso mostra comunque i terminali con una domanda o un errore non letti. Disattivato, resta chiuso del tutto.", .doneExpiryTitle: "Rimuovi il segno di fatto dopo", .doneExpiryHelp: "Un terminale ancora segnato come fatto (verde) dopo questo tempo torna libero. Un nuovo turno lo segna di nuovo.", .doneExpiryNever: "Mai", .markReady: "Segna come fatto", .notificationsPanel: "Notifiche", .notificationsPanelHelp: "Mostra il pannello notifiche a destra", .onlyActive: "Solo attivi", .onlyActiveHelp: "Nasconde i terminali liberi. Restano quelli in esecuzione, in attesa o in errore, e quelli segnati come fatti finché il segno di fatto non sparisce.", .noProjectsYet: "Nessun progetto — fai clic su + per aggiungerne uno.", .menuCopy: "Copia", .menuPaste: "Incolla", .menuSelectAll: "Seleziona tutto", .menuOpenLink: "Apri link", .menuOpenLinkHelp: "Clic destro su un link nel terminale per aprirlo; Copia, Incolla e Apri link sono disattivati quando non possono agire",
         .clipboardPasteTitle: "Incollare questo testo?", .clipboardPasteBody: "Questo testo contiene interruzioni di riga o caratteri di controllo. Incollato in un programma che non se lo aspetta, può eseguire comandi non appena arriva. Controllalo prima di continuare.", .clipboardPasteConfirm: "Incolla", .clipboardReadTitle: "Consentire a questo terminale di leggere gli appunti?", .clipboardReadBody: "Un programma in esecuzione in questo terminale ha chiesto il contenuto dei tuoi appunti. Consenti solo se hai avviato tu quel programma e ti fidi.", .clipboardWriteTitle: "Consentire a questo terminale di modificare gli appunti?", .clipboardWriteBody: "Un programma in esecuzione in questo terminale vuole sostituire il contenuto dei tuoi appunti con il testo qui sotto.", .clipboardAllow: "Consenti", .clipboardDeny: "Non consentire", .clipboardHelpTitle: "Avvisi sugli appunti", .clipboardHelpDetail: "Planchette chiede conferma prima che un programma di un terminale legga i tuoi appunti e prima di incollare testo che potrebbe eseguire comandi subito. Se rifiuti, non viene condiviso né incollato nulla.",
         .clipboardPreviewMore: "… altri %d caratteri",
         .clipboardPasteDeny: "Non incollare",
@@ -1464,10 +1464,10 @@ enum L10n {
         .prReviewRequired: "Revisione richiesta",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Clicca per aprirla nel browser",
-        .finishedSince: "Finito dal %@",
-        .markFinished: "Segna come finito",
-        .markFinishedHelp: "Il tuo «finito»: la riga passa in secondo piano finché il terminale non riceve nuovo lavoro — un prompt, /clear o una nuova sessione di Claude",
-        .reopenWork: "Riapri",
+        
+        
+        
+        
         .addNote: "Aggiungi nota…",
         .editNote: "Modifica nota…",
         .noteHelp: "Una riga tua su questo terminale: perché aspetta, cosa viene dopo. Resta sotto la riga finché non la rimuovi",
@@ -1507,7 +1507,7 @@ enum L10n {
         .detailAge: "Tempo dall’ultima modifica",
         .detailTags: "Tag",
         .detailNote: "Nota",
-        .detailFinished: "Segno di finito",
+        
         .detailSnooze: "Badge promemoria",
         .detailAttentionCounts: "Contatori di stato sui progetti",
         .detailModel: "Modello",
@@ -1528,7 +1528,7 @@ enum L10n {
         .detailAgeHelp: "Da quanto il terminale è nello stato attuale, per domande ed errori.",
         .detailTagsHelp: "I tag del terminale, come «review» o «wip».",
         .detailNoteHelp: "La nota scritta sul terminale (menu contestuale → Aggiungi nota).",
-        .detailFinishedHelp: "Un sigillo sui terminali segnati come finiti; la riga è anche attenuata.",
+        
         .detailSnoozeHelp: "Quando torna un progetto o un terminale in pausa.",
         .detailAttentionCountsHelp: "Quanti terminali di un progetto chiedono (blu), falliscono (rosso) o hanno finito senza lettura (verde).",
         .detailModelHelp: "Il modello Claude usato dal terminale.",
@@ -1676,7 +1676,7 @@ enum L10n {
         .readyDesc: "de beurt of opdracht is klaar — een resultaat wacht op je blik", .freeDesc: "lege prompt, niets te reviewen — deze terminal is beschikbaar", .waitingSince: "wacht al %d min", .runningDesc: "een agent of opdracht is actief", .waitingDesc: "de agent wacht op je antwoord of goedkeuring", .errorDesc: "de laatste opdracht of agent eindigde met een fout",
         .newProject: "Nieuw project…", .newProjectHelp: "Een project vanuit een map toevoegen (⌘N)", .addTerminalHelp: "Een terminal in de map van dit project toevoegen (⌘T)", .addTerminal: "Terminal toevoegen",
         .fontSmaller: "Kleiner lettertype", .fontLarger: "Groter lettertype", .fontReset: "Lettergrootte herstellen",
-        .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .collapseAllProjects: "Alle projecten inklappen", .expandAllProjects: "Alle projecten uitklappen", .peekCollapsedTitle: "Verzoeken onder ingeklapte projecten tonen", .peekCollapsedHelp: "Een ingeklapt project toont nog steeds terminals met een ongelezen vraag of fout. Uit houdt het volledig dichtgeklapt.", .doneExpiryTitle: "Klaar-vinkje wissen na", .doneExpiryHelp: "Een terminal die na deze tijd nog als klaar (groen) staat, wordt weer vrij. Een nieuwe beurt markeert hem opnieuw.", .doneExpiryNever: "Nooit", .markReady: "Als gereed markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .onlyActiveHelp: "Verbergt vrije terminals. Actieve, wachtende en mislukte blijven staan, net als klare terminals tot hun klaar-vinkje wordt gewist.", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren", .menuOpenLink: "Link openen", .menuOpenLinkHelp: "Rechtsklik op een link in de terminal om die te openen; Kopieer, Plak en Link openen zijn grijs wanneer ze niets kunnen doen",
+        .minifySidebar: "Zijbalk inklappen", .expandSidebar: "Zijbalk uitklappen", .collapseAllProjects: "Alle projecten inklappen", .expandAllProjects: "Alle projecten uitklappen", .peekCollapsedTitle: "Verzoeken onder ingeklapte projecten tonen", .peekCollapsedHelp: "Een ingeklapt project toont nog steeds terminals met een ongelezen vraag of fout. Uit houdt het volledig dichtgeklapt.", .doneExpiryTitle: "Klaar-vinkje wissen na", .doneExpiryHelp: "Een terminal die na deze tijd nog als klaar (groen) staat, wordt weer vrij. Een nieuwe beurt markeert hem opnieuw.", .doneExpiryNever: "Nooit", .markReady: "Als klaar markeren", .notificationsPanel: "Meldingen", .notificationsPanelHelp: "Toon het meldingenpaneel rechts", .onlyActive: "Alleen actief", .onlyActiveHelp: "Verbergt vrije terminals. Actieve, wachtende en mislukte blijven staan, net als klare terminals tot hun klaar-vinkje wordt gewist.", .noProjectsYet: "Nog geen projecten — klik op + om er een toe te voegen.", .menuCopy: "Kopieer", .menuPaste: "Plak", .menuSelectAll: "Alles selecteren", .menuOpenLink: "Link openen", .menuOpenLinkHelp: "Rechtsklik op een link in de terminal om die te openen; Kopieer, Plak en Link openen zijn grijs wanneer ze niets kunnen doen",
         .clipboardPasteTitle: "Deze tekst plakken?", .clipboardPasteBody: "Deze tekst bevat regeleindes of stuurtekens. Geplakt in een programma dat dat niet verwacht, kan hij direct commando's uitvoeren. Controleer hem voordat je doorgaat.", .clipboardPasteConfirm: "Plakken", .clipboardReadTitle: "Deze terminal je klembord laten lezen?", .clipboardReadBody: "Een programma in deze terminal heeft om de inhoud van je klembord gevraagd. Sta dit alleen toe als je dat programma zelf hebt gestart en vertrouwt.", .clipboardWriteTitle: "Deze terminal je klembord laten wijzigen?", .clipboardWriteBody: "Een programma in deze terminal wil de inhoud van je klembord vervangen door de tekst hieronder.", .clipboardAllow: "Toestaan", .clipboardDeny: "Niet toestaan", .clipboardHelpTitle: "Klembordwaarschuwingen", .clipboardHelpDetail: "Planchette vraagt toestemming voordat een programma in een terminal je klembord leest en voordat tekst wordt geplakt die direct commando's zou kunnen uitvoeren. Zeg je nee, dan wordt er niets gedeeld of geplakt.",
         .clipboardPreviewMore: "… nog %d tekens",
         .clipboardPasteDeny: "Niet plakken",
@@ -1716,10 +1716,10 @@ enum L10n {
         .prReviewRequired: "Review vereist",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Klik om hem in de browser te openen",
-        .finishedSince: "Klaar sinds %@",
-        .markFinished: "Markeren als klaar",
-        .markFinishedHelp: "Je eigen ‘klaar’: de rij treedt terug en blijft zo tot de terminal nieuw werk krijgt — een prompt, /clear of een nieuwe Claude-sessie",
-        .reopenWork: "Heropenen",
+        
+        
+        
+        
         .addNote: "Notitie toevoegen…",
         .editNote: "Notitie bewerken…",
         .noteHelp: "Een eigen regel bij deze terminal — waarom hij wacht, wat hierna komt. Staat onder de rij tot je hem verwijdert",
@@ -1759,7 +1759,7 @@ enum L10n {
         .detailAge: "Tijd sinds de laatste wijziging",
         .detailTags: "Tags",
         .detailNote: "Notitie",
-        .detailFinished: "Klaar-markering",
+        
         .detailSnooze: "Sluimerbadge",
         .detailAttentionCounts: "Statustellers bij projecten",
         .detailModel: "Model",
@@ -1780,7 +1780,7 @@ enum L10n {
         .detailAgeHelp: "Hoe lang de terminal al in zijn huidige status is, bij vragen en fouten.",
         .detailTagsHelp: "De tags van de terminal, zoals ‘review’ of ‘wip’.",
         .detailNoteHelp: "Je notitie bij de terminal (contextmenu → Notitie toevoegen).",
-        .detailFinishedHelp: "Een zegel bij terminals die je als klaar markeerde; de rij wordt ook vager.",
+        
         .detailSnoozeHelp: "Wanneer een sluimerend project of terminal terugkomt.",
         .detailAttentionCountsHelp: "Hoeveel terminals van een project vragen (blauw), falen (rood) of ongelezen klaar zijn (groen).",
         .detailModelHelp: "Het Claude-model waarop de terminal draait.",
@@ -1928,7 +1928,7 @@ enum L10n {
         .readyDesc: "o turno ou comando terminou — um resultado aguarda a tua revisão", .freeDesc: "prompt vazio, nada para rever — este terminal está disponível", .waitingSince: "à espera há %d min", .runningDesc: "um agente ou comando está em execução", .waitingDesc: "o agente aguarda a tua resposta ou aprovação", .errorDesc: "o último comando ou agente terminou com um erro",
         .newProject: "Novo projeto…", .newProjectHelp: "Adicionar um projeto a partir de uma pasta (⌘N)", .addTerminalHelp: "Adicionar um terminal na pasta deste projeto (⌘T)", .addTerminal: "Adicionar terminal",
         .fontSmaller: "Fonte menor", .fontLarger: "Fonte maior", .fontReset: "Repor tamanho da fonte",
-        .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Recolher todos os projetos", .expandAllProjects: "Expandir todos os projetos", .peekCollapsedTitle: "Mostrar pedidos sob projetos recolhidos", .peekCollapsedHelp: "Um projeto recolhido continua a mostrar terminais com uma pergunta ou um erro por ler. Desligado, fica totalmente fechado.", .doneExpiryTitle: "Remover a marca de concluído após", .doneExpiryHelp: "Um terminal ainda marcado como concluído (verde) após este tempo volta a ficar livre. Um novo turno marca-o de novo.", .doneExpiryNever: "Nunca", .markReady: "Marcar como pronto", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .onlyActiveHelp: "Oculta os terminais livres. Ficam os que estão em execução, à espera ou com erro, e os concluídos enquanto a marca de concluído não for removida.", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo", .menuOpenLink: "Abrir ligação", .menuOpenLinkHelp: "Clique direito numa ligação no terminal para a abrir; Copiar, Colar e Abrir ligação ficam desativados quando não podem agir",
+        .minifySidebar: "Recolher barra lateral", .expandSidebar: "Expandir barra lateral", .collapseAllProjects: "Recolher todos os projetos", .expandAllProjects: "Expandir todos os projetos", .peekCollapsedTitle: "Mostrar pedidos sob projetos recolhidos", .peekCollapsedHelp: "Um projeto recolhido continua a mostrar terminais com uma pergunta ou um erro por ler. Desligado, fica totalmente fechado.", .doneExpiryTitle: "Remover a marca de concluído após", .doneExpiryHelp: "Um terminal ainda marcado como concluído (verde) após este tempo volta a ficar livre. Um novo turno marca-o de novo.", .doneExpiryNever: "Nunca", .markReady: "Marcar como concluído", .notificationsPanel: "Notificações", .notificationsPanelHelp: "Mostrar o painel de notificações à direita", .onlyActive: "Apenas ativos", .onlyActiveHelp: "Oculta os terminais livres. Ficam os que estão em execução, à espera ou com erro, e os concluídos enquanto a marca de concluído não for removida.", .noProjectsYet: "Ainda sem projetos — clica em + para adicionar um.", .menuCopy: "Copiar", .menuPaste: "Colar", .menuSelectAll: "Selecionar tudo", .menuOpenLink: "Abrir ligação", .menuOpenLinkHelp: "Clique direito numa ligação no terminal para a abrir; Copiar, Colar e Abrir ligação ficam desativados quando não podem agir",
         .clipboardPasteTitle: "Colar este texto?", .clipboardPasteBody: "Este texto contém quebras de linha ou caracteres de controlo. Colado num programa que não o espera, pode executar comandos assim que chega. Reveja-o antes de continuar.", .clipboardPasteConfirm: "Colar", .clipboardReadTitle: "Permitir que este terminal leia a área de transferência?", .clipboardReadBody: "Um programa em execução neste terminal pediu o conteúdo da sua área de transferência. Permita apenas se iniciou esse programa e confia nele.", .clipboardWriteTitle: "Permitir que este terminal altere a área de transferência?", .clipboardWriteBody: "Um programa em execução neste terminal quer substituir o conteúdo da sua área de transferência pelo texto abaixo.", .clipboardAllow: "Permitir", .clipboardDeny: "Não permitir", .clipboardHelpTitle: "Avisos da área de transferência", .clipboardHelpDetail: "O Planchette pergunta antes de um programa de um terminal ler a sua área de transferência e antes de colar texto que poderia executar comandos de imediato. Se recusar, nada é partilhado nem colado.",
         .clipboardPreviewMore: "… mais %d caracteres",
         .clipboardPasteDeny: "Não colar",
@@ -1968,10 +1968,10 @@ enum L10n {
         .prReviewRequired: "Revisão pendente",
         .prTooltip: "Pull request #%d · %@",
         .prOpenHelp: "Clique para abri-la no navegador",
-        .finishedSince: "Concluído desde %@",
-        .markFinished: "Marcar como concluído",
-        .markFinishedHelp: "O seu próprio «concluído»: a linha fica em segundo plano até o terminal receber trabalho novo — um prompt, /clear ou uma nova sessão do Claude",
-        .reopenWork: "Reabrir",
+        
+        
+        
+        
         .addNote: "Adicionar nota…",
         .editNote: "Editar nota…",
         .noteHelp: "Uma linha sua sobre este terminal — por que espera, o que vem a seguir. Fica sob a linha até você removê-la",
@@ -2011,7 +2011,7 @@ enum L10n {
         .detailAge: "Tempo desde a última alteração",
         .detailTags: "Tags",
         .detailNote: "Nota",
-        .detailFinished: "Marca de concluído",
+        
         .detailSnooze: "Selo de lembrete",
         .detailAttentionCounts: "Contadores de estado nos projetos",
         .detailModel: "Modelo",
@@ -2032,7 +2032,7 @@ enum L10n {
         .detailAgeHelp: "Há quanto tempo o terminal está no estado atual, em perguntas e erros.",
         .detailTagsHelp: "As tags do terminal, como «review» ou «wip».",
         .detailNoteHelp: "A nota escrita no terminal (menu de contexto → Adicionar nota).",
-        .detailFinishedHelp: "Um selo nos terminais marcados como concluídos; a linha também fica esbatida.",
+        
         .detailSnoozeHelp: "Quando um projeto ou terminal adiado volta.",
         .detailAttentionCountsHelp: "Quantos terminais de um projeto perguntam (azul), falham (vermelho) ou terminaram sem leitura (verde).",
         .detailModelHelp: "O modelo Claude em que o terminal corre.",

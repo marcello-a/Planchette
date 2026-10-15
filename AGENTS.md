@@ -128,7 +128,7 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   `background_tasks` too but still lists the agent that is stopping, so only `Stop`
   is a snapshot. And a task's end reaches the hook as a `UserPromptSubmit` whose
   prompt is a `<task-notification>`: Claude's own notice, not something the user
-  typed — it must never become the task line or reopen work marked finished.
+  typed — it must never become the task line.
   `scripts/perf/background_tasks.py` re-checks all of it against the installed `claude`.
 - **A durable terminal is searched in tmux, not in libghostty.** The pane sits in the
   alternate screen, so libghostty never holds a line that scrolled off it: its search

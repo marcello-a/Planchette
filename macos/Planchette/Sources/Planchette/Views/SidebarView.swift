@@ -1043,17 +1043,11 @@ struct SidebarView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if appState.shows(.finished), let finished = session.finishedAt {
-                    FinishedBadge(since: finished)
-                }
                 if appState.shows(.snooze), let until = appState.snoozeEnd(for: session),
                    until > Date() {
                     SnoozeBadge(until: until)
                 }
             }
-            // Finished work steps back, like a parked project: still there,
-            // no longer competing for a look.
-            .opacity(appState.shows(.finished) && session.isFinished ? 0.6 : 1)
             // The whole row is the button, not only its text: a plain button
             // hit-tests its drawn content alone, so a click into the empty part
             // of the row fell through to the project and opened that instead.
