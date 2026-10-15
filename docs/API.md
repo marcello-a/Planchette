@@ -254,7 +254,7 @@ the rows print. Answered from the same list the panel renders
 | Argument | Type | Meaning |
 |---|---|---|
 | `unread_only` | bool | only terminals whose last report is unread |
-| `only_active` | bool | only running / waiting / error |
+| `only_active` | bool | only what is going on: running / waiting / error, and done terminals whose done check has not cleared yet (a done terminal that is free again is left out) |
 | `project_id` | UUID string | one project |
 | `limit` | int | stop after this many rows |
 

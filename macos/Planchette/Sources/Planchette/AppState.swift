@@ -1193,8 +1193,12 @@ final class AppState: ObservableObject {
     /// Shared with the control API on purpose. "What another program can read"
     /// and "what the panel shows" have to be the same list, or the API starts
     /// answering a question about a UI that has moved on.
+    ///
+    /// `activeOnly` keeps what is running, waiting or failed, and the finished
+    /// terminals whose done check has not cleared yet (`AttentionState.isCurrent`).
     func notificationSections(
-        windowID: UUID? = nil, unreadOnly: Bool = false, activeOnly: Bool = false
+        windowID: UUID? = nil, unreadOnly: Bool = false, activeOnly: Bool = false,
+        now: Date = Date()
     ) -> [(group: SessionGroup, sessions: [TerminalSession])] {
         let ordered = windows.sorted { a, _ in a.id == windowID }
         var out: [(group: SessionGroup, sessions: [TerminalSession])] = []
@@ -1202,7 +1206,11 @@ final class AppState: ObservableObject {
             let inWindow = groups(inWindow: window).filter(\.active)
             for group in inWindow.filter(\.favorite) + inWindow.filter({ !$0.favorite }) {
                 var tabs = sessions(in: group)
-                if activeOnly { tabs = tabs.filter(\.state.isActive) }
+                if activeOnly {
+                    tabs = tabs.filter {
+                        $0.state.isCurrent(since: $0.stateSince, expiry: doneExpiry, now: now)
+                    }
+                }
                 if unreadOnly { tabs = tabs.filter(\.isUnread) }
                 if !tabs.isEmpty { out.append((group, tabs)) }
             }
