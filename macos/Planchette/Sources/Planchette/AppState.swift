@@ -310,9 +310,14 @@ final class AppState: ObservableObject {
         // session count. A quarter of the rate (6s) keeps background questions
         // arriving promptly while cutting the idle cost by 4×.
         screenPollTick += 1
-        if NSApp?.isActive != true && !screenPollTick.isMultiple(of: 4) { return }
+        // On the quiet ticks only the terminals that are asking are read: that is where a
+        // slow answer costs something (a permission granted and the tool running, still
+        // shown as a question), and there are few of them.
+        let quietTick = NSApp?.isActive != true && !screenPollTick.isMultiple(of: 4)
+        if quietTick && !sessions.values.contains(where: { $0.state == .waiting }) { return }
         reloadScreenRulesIfChanged()
         for (id, session) in sessions {
+            if quietTick && session.state != .waiting { continue }
             let rules = screenRules.rules(for: session.agentKind)
             // Nothing to match against (e.g. a plain shell, or an agent whose
             // patterns aren't verified yet) → don't even read the surface.
@@ -359,7 +364,7 @@ final class AppState: ObservableObject {
                 hookAuthority: hookAuthority,
                 current: session.state,
                 raisedByScreen: raised)
-            // Two readings move a terminal on the screen's word alone and must
+            // Three readings move a terminal on the screen's word alone and must
             // hold on two polls in a row (see ScreenConfirmation): an idle
             // prompt over a turn the hooks call running, a question that
             // is no longer on the screen, and a question that was answered (the
@@ -369,6 +374,8 @@ final class AppState: ObservableObject {
                 bold = .idlePrompt
             } else if !hookAuthority, raised, session.state == .waiting, detection == nil {
                 bold = .questionGone
+            } else if hookAuthority, session.state == .waiting, detection?.state == .working {
+                bold = .answered
             } else {
                 bold = nil
             }

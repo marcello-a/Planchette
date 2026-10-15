@@ -149,6 +149,38 @@
         "state" : "idle",
         "tailLines" : 6,
         "visibleBlocker" : false
+      },
+      {
+        "any" : [
+          [
+            "esc to interrupt"
+          ],
+          [
+            "enter to interrupt"
+          ]
+        ],
+        "contains" : [
+
+        ],
+        "id" : "claude_working",
+        "idlePrompt" : false,
+        "interrupted" : false,
+        "lineRegex" : [
+
+        ],
+        "none" : [
+          "esc to cancel",
+          "do you want to",
+          "no, and tell claude",
+          "enter to select",
+          "to navigate",
+          "what should claude do"
+        ],
+        "priority" : 600,
+        "skipStateUpdate" : false,
+        "state" : "working",
+        "tailLines" : 4,
+        "visibleBlocker" : false
       }
     ],
     "codex" : [
@@ -156,5 +188,5 @@
     ]
   },
   "engine" : 1,
-  "version" : 3
+  "version" : 4
 }

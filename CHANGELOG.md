@@ -18,6 +18,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   Behavior turns it off. The control API keeps talking about the
   turn: `turn_state` says what it is, and `session.prompt` and `session.wait` go by it.
 
+### Fixed
+- **A permission you granted no longer leaves the terminal on "waiting".** Claude Code fires no
+  event when you answer a dialog, so a terminal that had asked — for a Bash command, for a call to
+  an MCP server — stayed blue through the whole call, and an MCP call can take minutes. The screen
+  now notices that the dialog is gone and the footer of a live turn is there, and the terminal goes
+  back to running.
+
 ## [0.2.37] — 2026-10-15
 
 ### Added

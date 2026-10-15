@@ -153,6 +153,13 @@ turn is still known: `heldByBackground` keeps the state that was overridden, and
 API goes by it (`turn_state`; the guard of `session.prompt`, `session.wait`). The icon is a
 globe (`StatePixels.globe`, 13×13, still) instead of the robot while the turn is over
 (`SessionStateIcon`). Settings → Project panel → Behavior turns the mark off.
+
+**A granted permission.** Granting a permission fires no hook: Claude Code runs the tool and
+says nothing until it is done, and an MCP call can take minutes. The screen is the only witness
+— the dialog is gone and the footer of a live turn ("esc to interrupt") is there — so the rule
+`claude_working` lets `AttentionState.fromScreen` move a `waiting` terminal back to `running`,
+after two polls, and nothing else: starting work from idle stays the hooks' job.
+
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).
