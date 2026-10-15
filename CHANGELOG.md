@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.37] — 2026-10-15
+
 ### Added
 - **Settings → General → Project color.** Where the color of a project shows — nowhere,
   on its label only, or over the whole project — and how strong it is: colorful, subtle or
