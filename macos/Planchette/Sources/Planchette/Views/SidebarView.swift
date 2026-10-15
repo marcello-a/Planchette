@@ -572,6 +572,16 @@ struct SidebarView: View {
         .frame(width: Self.railWidth)
     }
 
+    /// The tile of a collapsed project: its color, as a gradient unless the color is turned off
+    /// (Settings → General → Project color). A project without a color is a neutral gray.
+    private func railFill(_ chosen: Color?) -> AnyShapeStyle {
+        guard let chosen else { return AnyShapeStyle(Color.secondary.opacity(0.22)) }
+        guard appState.projectColor.showsLabel else { return AnyShapeStyle(chosen) }
+        return AnyShapeStyle(LinearGradient(
+            colors: [chosen.opacity(0.95), chosen.opacity(0.6)],
+            startPoint: .topLeading, endPoint: .bottomTrailing))
+    }
+
     /// A single project tile in the minified rail: initial + color, with a
     /// status dot when any of its terminals needs attention.
     private func minifiedProjectItem(_ group: SessionGroup) -> some View {
@@ -582,7 +592,7 @@ struct SidebarView: View {
         let badge: AttentionState? = states.contains(.error) ? .error
             : (states.contains(.waiting) ? .waiting : nil)
         let initial = String(group.name.prefix(1)).uppercased()
-        let accent = group.color.accent
+        let chosen = group.color.color
         return Button {
             if let active = sessions.first(where: { $0.id == group.activeSessionID }) ?? sessions.first {
                 appState.select(session: active)
@@ -591,13 +601,12 @@ struct SidebarView: View {
             }
         } label: {
             RoundedRectangle(cornerRadius: 9)
-                .fill(LinearGradient(colors: [accent.opacity(0.95), accent.opacity(0.6)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+                .fill(railFill(chosen))
                 .frame(width: Self.railTile, height: Self.railTile)
                 .overlay(
                     Text(initial)
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(chosen != nil ? .white : .primary)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 9)
@@ -718,7 +727,8 @@ struct SidebarView: View {
                     // belongs on the row — a background on the DisclosureGroup is given to every row
                     // of it and comes out as a band per terminal. A closed project has no rows, so
                     // it is its label alone.
-                    .listRowBackground(ProjectGradient(color: group.color, shape: .body(row: row, of: sessions.count)))
+                    .listRowBackground(ProjectGradient(
+                        color: group.color, look: appState.projectColor, shape: .body(row: row, of: sessions.count)))
             }
         } label: {
             HStack(spacing: 6) {
@@ -764,10 +774,11 @@ struct SidebarView: View {
                     attentionSummary(group)
                 }
             }
-            // The project's color — the violet of the app icon until it has one: the same wash the
-            // project's header has in the main area, so the two read as one thing.
+            // The project's color: the same wash the project's header has in the main area, so the
+            // two read as one thing. A project without a color has none.
             .padding(.horizontal, 4).padding(.vertical, 2)
-            .background(ProjectGradient(color: group.color).clipShape(RoundedRectangle(cornerRadius: 5)))
+            .background(ProjectGradient(color: group.color, look: appState.projectColor)
+                .clipShape(RoundedRectangle(cornerRadius: 5)))
             .contentShape(Rectangle())
             // The List only reports a *change* of selection, so a click on the
             // project you are already in (looking at one of its terminals)

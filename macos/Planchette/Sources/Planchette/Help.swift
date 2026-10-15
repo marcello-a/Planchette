@@ -76,6 +76,7 @@ enum Help {
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
             Entry(.helpTabBarTitle, .helpTabBarDetail, where: .helpWhereTabBar),
             Entry(.helpFindTitle, .helpFindDetail, shortcut: "⌘F", where: .helpWhereMenuBar),
+            Entry(.projectColorSection, .projectColorHelp, where: .helpWhereSettings),
             Entry(.tabNameTitle, .tabNameSummaryHelp, where: .helpWhereSettings),
             Entry(.tabShowsSection, .tabShowPathHelp, where: .helpWhereSettings),
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
