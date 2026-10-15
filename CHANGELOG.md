@@ -8,6 +8,19 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Long work can show how far it has come.** A script or agent in a terminal
+  reports its step — `planchette session progress --steps Plan,Build,Review,CI
+  --step 3 --label "round 2"` — and the terminal's row shows a bar with one
+  segment per step and `3/4 Review · round 2` under the prompt. The current
+  segment takes the state colour, so a blue one is the step waiting for you;
+  hover for every step by name. Made for agent pipelines that stay `running`
+  for an hour, where the state alone cannot say whether they are at the start
+  or nearly through. Display only: the state still comes from the hooks. Not
+  persisted; it goes when the terminal closes or its Claude session ends.
+  `session get` and `notification list` report it as `progress`. On by
+  default; Settings → Project panel has a switch.
+
 ## [0.2.35] — 2026-10-14
 
 ### Added

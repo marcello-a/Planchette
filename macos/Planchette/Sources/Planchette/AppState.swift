@@ -713,6 +713,18 @@ final class AppState: ObservableObject {
         backgroundTasks[id] = after.isEmpty ? nil : after
     }
 
+    /// Where the work in each terminal stands, as it reports itself through
+    /// `session.progress` (see `TerminalProgress`). Display only — it never moves
+    /// the attention state. Never persisted: the work reports again on its next step.
+    @Published private(set) var progress: [UUID: TerminalProgress] = [:]
+
+    /// Set or clear a terminal's progress. A report equal to the current one
+    /// republishes nothing.
+    func setProgress(_ id: UUID, _ value: TerminalProgress?) {
+        guard sessions[id] != nil, progress[id] != value else { return }
+        progress[id] = value
+    }
+
     // MARK: Context usage per terminal
 
     /// How full each Claude terminal's context window is, and its model, keyed
@@ -1212,6 +1224,7 @@ final class AppState: ObservableObject {
         sessions[id] = nil
         liveAgentIDs.remove(id)
         backgroundTasks[id] = nil
+        progress[id] = nil
         escalatedIDs.remove(id)
         aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
@@ -1320,6 +1333,7 @@ final class AppState: ObservableObject {
             sessions[sid] = nil
             liveAgentIDs.remove(sid)
             backgroundTasks[sid] = nil
+            progress[sid] = nil
             escalatedIDs.remove(sid)
             aiAssist.forget(sid)
         }
@@ -1749,6 +1763,8 @@ final class AppState: ObservableObject {
                 $0.currentTask = nil
                 $0.firstTask = nil
             }
+            // The progress belonged to that conversation's work.
+            progress[sessionID] = nil
         }
         // State transition (pure, tested). Message only carried for `waiting`.
         if let newState = AttentionState.forHookEvent(

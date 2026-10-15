@@ -27,6 +27,7 @@ enum ControlAPI {
         case sessionPrompt = "session.prompt"
         case sessionRead = "session.read"
         case sessionWait = "session.wait"
+        case sessionProgress = "session.progress"
         case projectList = "project.list"
         case notificationList = "notification.list"
     }
@@ -100,6 +101,9 @@ enum ControlAPI {
         // A terminal that is `ready` may still be busy: a dev server, an agent.
         if let background = BackgroundTasks.summary(state.backgroundTasks[session.id] ?? []) {
             dict["background_tasks"] = background
+        }
+        if let progress = state.progress[session.id] {
+            dict["progress"] = progress.describe(iso: iso)
         }
         if let group = state.groups.first(where: { $0.id == session.groupID }) {
             dict["project"] = group.name
@@ -363,6 +367,28 @@ enum ControlAPI {
                 : (view.readViewport() ?? "")
             let tail = Self.tail(of: full, lines: request.int("lines") ?? 60)
             return encode(ok: true, result: ["text": tail, "session": describe(session, in: state)])
+
+        case .sessionProgress:
+            // A pipeline reporting where it stands — display only, so it may
+            // write while a turn runs (that is when it has something to say).
+            guard let session = resolve(request, state: state) else {
+                return encode(ok: false, error: "no such session")
+            }
+            if request.bool("clear") == true {
+                state.setProgress(session.id, nil)
+                return encode(ok: true, result: ["session": describe(session, in: state)])
+            }
+            switch TerminalProgress.resolve(
+                steps: request.strings("steps"), total: request.int("total"),
+                step: request.int("step"), label: request.string("label"),
+                current: state.progress[session.id], now: Date()
+            ) {
+            case .success(let progress):
+                state.setProgress(session.id, progress)
+                return encode(ok: true, result: ["session": describe(session, in: state)])
+            case .failure(let failure):
+                return encode(ok: false, error: failure.message)
+            }
 
         case .sessionWait:
             guard let session = resolve(request, state: state) else {

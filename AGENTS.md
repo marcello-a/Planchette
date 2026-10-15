@@ -58,6 +58,7 @@ groups terminals by project. See [README.md](README.md) and
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `BackgroundTasks.swift` | The shells and agents Claude Code runs in the background, read off its hooks (pure, unit-tested) |
+| `Progress.swift` | `TerminalProgress`: how far long work has come, as it reports itself through `session.progress` — display only, never moves the state (pure, unit-tested) |
 | `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `Help.swift` | The Help tab's catalogue: every feature, as `LKey` references to the controls' own strings (ground rule 5) |

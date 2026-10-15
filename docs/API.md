@@ -117,6 +117,7 @@ The CLI prints the whole JSON response on stdout, pretty-printed and key-sorted.
 | `session.prompt` | type text into a terminal |
 | `session.read` | read a terminal's screen or scrollback |
 | `session.wait` | block until a terminal reaches a state |
+| `session.progress` | report how far the work in a terminal has come |
 | `project.list` | every project |
 | `notification.list` | the notifications panel, as data |
 
@@ -232,6 +233,42 @@ claims its session will never change state and the wait will time out. For those
 Always pass `--until waiting` alongside `--until ready`: waiting for `ready`
 alone hangs through a permission prompt.
 
+### session.progress
+
+| Argument | Type | Default |
+|---|---|---|
+| `id` | UUID string | the calling terminal |
+| `steps` | array of strings | the current names (1–32, each cut at 24 characters) |
+| `total` | int | the number of `steps`; give it instead of names when there are none (1–32) |
+| `step` | int | the current step, **1-based** |
+| `label` | string | the current label; one line, cut at 200 characters; `""` removes it |
+| `clear` | bool | `false` — `true` removes the progress |
+
+For work that runs much longer than one turn — a pipeline of agents that plans,
+builds, reviews and waits for CI is `running` for an hour, and the state alone
+cannot say whether it is at the start or nearly through. The terminal's row
+shows a bar with one segment per step and `7/13 Verify · round 2` under the
+prompt; the current segment takes the state colour, so a blue one is the step
+that waits for you.
+
+The first report needs `steps` (or `total`) and `step`. Later reports may send
+only what changed: `step` alone moves on, `label` alone rewrites the line. A
+report equal to the current one changes nothing, `since` included.
+
+**Display only.** Progress never changes `state`: hooks stay the authority on
+whether a terminal needs you. It is not persisted, and it is removed when the
+terminal closes or its Claude session ends (also on `/clear`) — report again on
+the next step.
+
+```bash
+"$PLANCHETTE_CLI" session progress --steps Plan,Build,Review,CI --step 1 --label "reading the ticket"
+"$PLANCHETTE_CLI" session progress --step 3 --label "round 2: 1 finding"
+"$PLANCHETTE_CLI" session progress --clear
+```
+
+Returns `{"session": session}` with the new `progress`, or an error that says
+which argument is wrong (`step must be 1 to 4`).
+
 ### project.list
 
 No arguments. Returns `{"projects": [ … ]}`:
@@ -298,6 +335,7 @@ Returned by every `session.*` command.
 | `task` | string | the last prompt submitted here (absent if none) |
 | `message` | string | the last question or error (absent if none) |
 | `background_tasks` | object | `{"shells": n, "agents": n}` — what Claude Code still runs in the background of this terminal (absent if nothing). A `ready` terminal can still be busy: a dev server, a review agent. Claude Code only; older versions do not report it |
+| `progress` | object | what the terminal reported through `session.progress` (absent if nothing): `step`, `total`, `since` (ISO 8601), and when given `steps`, `step_name`, `label` |
 | `project` | string | project name (absent if the project is gone) |
 | `project_id` | string | project id |
 

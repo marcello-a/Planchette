@@ -37,7 +37,7 @@ enum SidebarDetailGroup: String, CaseIterable, Identifiable {
 /// transcript read and are opinionated about what a row should say.
 enum SidebarDetail: String, CaseIterable, Identifiable {
     case path, branch, pullRequest, task, age, tags, note, finished, snooze, attentionCounts
-    case backgroundTasks
+    case backgroundTasks, progress
     case model, contextUsage, cacheTimer
 
     var id: String { rawValue }
@@ -46,7 +46,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
     var group: SidebarDetailGroup {
         switch self {
         case .path, .branch, .pullRequest: .location
-        case .task, .age, .backgroundTasks: .activity
+        case .task, .age, .backgroundTasks, .progress: .activity
         case .tags, .note, .finished, .snooze: .marks
         case .model, .contextUsage, .cacheTimer: .claude
         case .attentionCounts: .projectRow
@@ -73,6 +73,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .snooze: .detailSnooze
         case .attentionCounts: .detailAttentionCounts
         case .backgroundTasks: .detailBackgroundTasks
+        case .progress: .detailProgress
         case .model: .detailModel
         case .contextUsage: .detailContextUsage
         case .cacheTimer: .detailCacheTimer
@@ -93,6 +94,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .snooze: .detailSnoozeHelp
         case .attentionCounts: .detailAttentionCountsHelp
         case .backgroundTasks: .detailBackgroundTasksHelp
+        case .progress: .detailProgressHelp
         case .model: .detailModelHelp
         case .contextUsage: .detailContextUsageHelp
         case .cacheTimer: .detailCacheTimerHelp

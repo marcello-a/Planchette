@@ -1013,6 +1013,10 @@ struct SidebarView: View {
                             }
                         }
                     }
+                    // How far a long pipeline has come, as it reports itself.
+                    if appState.shows(.progress), let progress = appState.progress[session.id] {
+                        ProgressLine(progress: progress, tint: session.state.tint)
+                    }
                     if appState.shows(.tags) {
                         TagChips(tags: session.tags)
                     }
