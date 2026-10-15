@@ -8,6 +8,15 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **The line under a terminal says the session title by default.** The name Claude Code
+  gives the conversation still says what a terminal is for hours into it, when the last
+  prompt has become "ja, mach". A terminal without a title yet shows its last prompt.
+  Settings → Project panel → Terminals → Source picks another one. If you ran 0.2.36 and
+  never changed the source, it moves to the session title once.
+- **Settings → Project panel → Behavior shows the done check** in front of "Clear the done
+  check after": the icon that setting is about.
+
 ## [0.2.36] — 2026-10-15
 
 ### Added

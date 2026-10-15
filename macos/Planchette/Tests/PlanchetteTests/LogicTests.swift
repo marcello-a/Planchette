@@ -3218,16 +3218,45 @@ final class SidebarDetailsTests: XCTestCase {
     func testTheChoicesDefaultAndSurviveAnUnknownValue() throws {
         let old = try JSONDecoder().decode(SidebarDetails.self, from: Data(#"{"overrides":{}}"#.utf8))
         XCTAssertEqual(old.branchTrim, .back)
-        XCTAssertEqual(old.promptSource, .lastPrompt)
+        XCTAssertEqual(old.promptSource, .agentTitle, "the session title is the default")
 
-        let json = #"{"overrides":{},"branchTrim":"middle","promptSource":"agentTitle"}"#
+        let json = #"{"overrides":{},"branchTrim":"middle","promptSource":"lastPrompt"}"#
         let chosen = try JSONDecoder().decode(SidebarDetails.self, from: Data(json.utf8))
         XCTAssertEqual(chosen.branchTrim, .middle)
-        XCTAssertEqual(chosen.promptSource, .agentTitle)
+        XCTAssertEqual(chosen.promptSource, .lastPrompt, "a pick that is not the default survives")
 
         let strange = #"{"overrides":{},"branchTrim":"sideways"}"#
         XCTAssertEqual(try JSONDecoder().decode(SidebarDetails.self, from: Data(strange.utf8)).branchTrim,
                        .back, "a trim no version knows falls back instead of failing the state")
+    }
+
+    // 0.2.36 stored "last prompt" as if somebody had picked it. A file it wrote moves to the new
+    // default once; nothing else is touched.
+    private func state(prompt: String, lastVersion: String?) throws -> PersistedState {
+        let onboarding = lastVersion.map { #","onboarding":{"lastLaunchedVersion":"\#($0)"}"# } ?? ""
+        let json = #"{"sidebarDetails":{"promptSource":"\#(prompt)"}\#(onboarding)}"#
+        return try JSONDecoder().decode(PersistedState.self, from: Data(json.utf8))
+    }
+
+    func testAFileOfTheVersionThatStoredTheOldDefaultMovesToTheNewOne() throws {
+        XCTAssertEqual(try state(prompt: "lastPrompt", lastVersion: "0.2.36").sidebarDetails.promptSource, .agentTitle)
+    }
+
+    func testAChoiceOtherThanTheOldDefaultIsLeftAlone() throws {
+        XCTAssertEqual(try state(prompt: "firstPrompt", lastVersion: "0.2.36").sidebarDetails.promptSource, .firstPrompt)
+        XCTAssertEqual(try state(prompt: "agentTitle", lastVersion: "0.2.36").sidebarDetails.promptSource, .agentTitle)
+    }
+
+    // After the first launch of the new version the file says so, and "last prompt" is a pick.
+    func testALaterFileKeepsItsPick() throws {
+        XCTAssertEqual(try state(prompt: "lastPrompt", lastVersion: "0.2.37").sidebarDetails.promptSource, .lastPrompt)
+        XCTAssertEqual(try state(prompt: "lastPrompt", lastVersion: "0.3.0").sidebarDetails.promptSource, .lastPrompt)
+    }
+
+    // A development build is "0.0.0" at every start: its pick must not be undone each time.
+    func testADevelopmentBuildKeepsItsPick() throws {
+        XCTAssertEqual(try state(prompt: "lastPrompt", lastVersion: "0.0.0").sidebarDetails.promptSource, .lastPrompt)
+        XCTAssertEqual(try state(prompt: "lastPrompt", lastVersion: nil).sidebarDetails.promptSource, .lastPrompt)
     }
 
     // A round trip, because the choices are stored next to the switches and a
@@ -3245,7 +3274,9 @@ final class SidebarDetailsTests: XCTestCase {
     // read only while the prompt line is set to it, and the line is shown.
     func testTheSweepFollowsWhatIsShown() {
         var details = SidebarDetails()
-        XCTAssertFalse(details.readsTranscripts, "the defaults read nothing")
+        XCTAssertTrue(details.readsTranscripts, "the default prompt line is the session title")
+        details.promptSource = .lastPrompt
+        XCTAssertFalse(details.readsTranscripts, "a prompt line that says a prompt reads nothing")
         details.promptSource = .agentTitle
         XCTAssertTrue(details.readsTranscripts)
         details.set(.task, false)
