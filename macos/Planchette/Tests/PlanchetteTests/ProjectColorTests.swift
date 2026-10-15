@@ -59,6 +59,28 @@ final class ProjectColorLookTests: XCTestCase {
         XCTAssertTrue(look(.project).showsBody)
     }
 
+    // Off in either choice means no gradient at all; the rest of the dial is untouched by it.
+    func testOffInEitherChoiceHidesEverything() {
+        var look = ProjectColorLook()
+        look.strength = .off
+        XCTAssertFalse(look.showsLabel)
+        XCTAssertFalse(look.showsBody)
+        look.strength = .faint
+        look.scope = .off
+        XCTAssertFalse(look.showsLabel)
+        XCTAssertFalse(look.showsBody)
+        look.scope = .project
+        XCTAssertTrue(look.showsLabel)
+        XCTAssertTrue(look.showsBody)
+    }
+
+    func testTheFourthStrengthSurvivesASaveAndALoad() throws {
+        let look = try decode(#"{"scope":"label","strength":"off"}"#)
+        XCTAssertEqual(look.strength, .off)
+        XCTAssertEqual(look.scope, .label)
+        XCTAssertEqual(try decode(String(decoding: JSONEncoder().encode(look), as: UTF8.self)), look)
+    }
+
     func testEveryChoiceHasATranslatedTitle() {
         let language = L10n.current
         defer { L10n.current = language }
@@ -102,6 +124,14 @@ final class ProjectWashStrengthTests: XCTestCase {
         XCTAssertNil(ProjectWash.strengths(isLabel: false, look: look(.label, .subtle)))
     }
 
+    // The fourth strength is the end of the dial: nothing is drawn, whatever the scope says.
+    func testTheFourthStrengthDrawsNothingWhateverTheScopeSays() {
+        for scope in ProjectColorScope.allCases {
+            XCTAssertNil(ProjectWash.strengths(isLabel: true, look: look(scope, .off)), "\(scope) label")
+            XCTAssertNil(ProjectWash.strengths(isLabel: false, look: look(scope, .off)), "\(scope) body")
+        }
+    }
+
     func testWholeProjectTintsBoth() {
         XCTAssertNotNil(ProjectWash.strengths(isLabel: true, look: look(.project, .subtle)))
         XCTAssertNotNil(ProjectWash.strengths(isLabel: false, look: look(.project, .subtle)))
@@ -119,7 +149,7 @@ final class ProjectWashStrengthTests: XCTestCase {
 
     func testEveryStepDownIsSofterButNeverGone() throws {
         for isLabel in [true, false] {
-            let steps = try ProjectColorStrength.allCases.map {
+            let steps = try ProjectColorStrength.allCases.filter { $0 != .off }.map {
                 try XCTUnwrap(ProjectWash.strengths(isLabel: isLabel, look: look(.project, $0)))
             }
             for (louder, softer) in zip(steps, steps.dropFirst()) {
@@ -132,7 +162,7 @@ final class ProjectWashStrengthTests: XCTestCase {
 
     // The list of strengths is the picker: colorful first, the faintest last.
     func testTheStrengthsAreListedFromLoudToQuiet() {
-        XCTAssertEqual(ProjectColorStrength.allCases, [.colorful, .subtle, .faint])
+        XCTAssertEqual(ProjectColorStrength.allCases, [.colorful, .subtle, .faint, .off])
         XCTAssertEqual(ProjectColorScope.allCases, [.off, .label, .project])
     }
 }
