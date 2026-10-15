@@ -54,6 +54,13 @@ addressed by terminal *index* since session ids are minted fresh on every open.
 It deliberately carries no Claude conversation id — opening one twice must not
 put two terminals on the same conversation.
 
+**Messages shown once.** `OnboardingState` (inside `state.json`) remembers what the user
+was told: the welcome screen of a first launch (no state file at all), the version that
+ran last, and the "don't show this again" of the durable terminals prompt. After an
+update, `AppState.evaluateOnboarding()` offers that prompt once per version to somebody
+without durable terminals; the rules are `OnboardingState.durablePromptDue`, pure and
+tested. A state file from before the key existed reads as a user who has seen it all.
+
 ## Windows
 
 Multi-window: each `WindowModel` owns a set of group IDs and its own selection.

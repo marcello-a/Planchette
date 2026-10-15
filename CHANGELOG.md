@@ -16,6 +16,19 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   chord. Keys the app or macOS already uses are refused, with the reason. ⌘K stays in
   the Session menu. The magnifier in the bottom bar of the Project panel names the
   keys in its tooltip.
+- **A welcome for somebody who has never run Planchette.** Until the first project
+  exists, the main area says what the app is for: first the feature that sets it
+  apart — your projects, terminals, scrollback and Claude conversations come back after a
+  quit, an update or a restart — then the state icons, the search keys and the
+  notifications, the durable terminals with the install command right there (copy it, or
+  open a terminal with it typed), and where the settings are. After the first project an
+  empty window is the small start screen again.
+- **After an update, a one-time offer of durable terminals.** If tmux is missing or the
+  switch is off, the first launch of each new version says in a few lines what durable
+  terminals do and why they help, with the install command and one click to a terminal
+  with it typed — or the switch, when tmux is already there. The card notices by itself
+  when tmux appears. "Don't show this again" ends it for good; it never shows twice for
+  one version, and never to somebody who has durable terminals.
 
 ### Changed
 - **The search finds what you mean.** It takes words in any order and matches each one

@@ -167,40 +167,6 @@ struct SettingsView: View {
     }
 }
 
-/// Settings → Durable terminals, when tmux is missing: the install command
-/// with a copy button, and one click to a terminal with it already typed —
-/// pressing Enter there is what runs it, so a click can never install anything
-/// by itself.
-private struct InstallTmuxRow: View {
-    @EnvironmentObject var appState: AppState
-    @State private var copied = false
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text(Durable.installCommand)
-                .font(.system(.caption, design: .monospaced))
-                .textSelection(.enabled)
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(Durable.installCommand, forType: .string)
-                copied = true
-                Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    copied = false
-                }
-            } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            .help(L10n.t(.installTmuxCopy))
-            Button(L10n.t(.installTmuxOpen)) {
-                appState.openTerminalTyping(Durable.installCommand)
-            }
-            .help(L10n.t(.installTmuxOpenHelp))
-        }
-    }
-}
-
 /// Settings → Information: explains the status-color system.
 struct InfoTab: View {
     private let states: [AttentionState] = [.ready, .running, .waiting, .error, .free]
@@ -474,6 +440,19 @@ struct ContentView: View {
                 welcome
             }
         }
+        .sheet(isPresented: durablePromptBinding) {
+            DurablePromptSheet()
+        }
+        .task {
+            // After the window had a moment to come up and a restore to start.
+            guard isMainWindow else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            appState.evaluateOnboarding()
+        }
+        // The first project ends the welcome: from then on an empty window is the small one.
+        .onChange(of: appState.groups.isEmpty) { _, empty in
+            if !empty { appState.markWelcomeSeen() }
+        }
     }
 
     @ToolbarContentBuilder
@@ -495,6 +474,13 @@ struct ContentView: View {
         }
     }
 
+    private var durablePromptBinding: Binding<Bool> {
+        Binding(
+            get: { isMainWindow && appState.durablePromptShown },
+            set: { shown in if !shown { appState.closeDurablePrompt() } }
+        )
+    }
+
     private func switcherBinding(_ windowID: UUID) -> Binding<Bool> {
         Binding(
             get: { appState.quickSwitcherWindowID == windowID },
@@ -502,7 +488,19 @@ struct ContentView: View {
         )
     }
 
+    @ViewBuilder
     private var welcome: some View {
+        if appState.onboarding.welcomeSeen {
+            startScreen
+        } else {
+            WelcomeView {
+                if let id = resolvedWindow?.id { appState.promptNewTerminal(inWindow: id) }
+            }
+        }
+    }
+
+    /// An empty window of somebody who has been here before.
+    private var startScreen: some View {
         VStack(spacing: 12) {
             Image(nsImage: NSApp.applicationIconImage)
                 .resizable().frame(width: 72, height: 72)

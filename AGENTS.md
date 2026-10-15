@@ -64,9 +64,10 @@ groups terminals by project. See [README.md](README.md) and
 | `Semver.swift`, `Titles.swift`, `Shell.swift`, `Drop.swift`, `Snooze.swift` | Pure helpers (unit-tested) |
 | `SearchRanking.swift` | What the search matches and how it ranks it: `SearchEntry`, the tiers (whole word, start, inside, initials, letters in order), the field weights, the hint line. Pure, unit-tested |
 | `SearchShortcut.swift`, `SearchShortcutMonitor.swift` | The keys that open the search (a modifier tapped twice, or a chord): the value type, the pure `DoubleTapDetector`, and the local event monitor that feeds it |
+| `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command
@@ -126,6 +127,11 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   prompt is a `<task-notification>`: Claude's own notice, not something the user
   typed — it must never become the task line or reopen work marked finished.
   `scripts/perf/background_tasks.py` re-checks all of it against the installed `claude`.
+- **First launch is "no state file", nothing else.** `AppState.init` sets
+  `OnboardingState.firstLaunch` only when `state.json` does not exist: a file that
+  fails to decode (a downgrade) is somebody's workspace and reads as seen. A message
+  shown once needs a persisted answer (`onboarding`), and it is never shown in an
+  isolated instance — a sheet over a demo or a test would stop whatever drives it.
 - **A parked project is filtered exactly like a snoozed one.** `AppState.isMuted`
   is THE filter for anything that counts or announces attention — badge, dock
   count, banner, inbox, notifications panel — and it covers both reasons a
