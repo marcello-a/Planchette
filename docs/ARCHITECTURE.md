@@ -155,6 +155,29 @@ just stops asking for you. `checkSnoozeExpiry()` (every housekeeping tick, and
 once after a restore, so a snooze that ran out while the app was closed still
 speaks up) clears it and posts the reminder.
 
+## Search
+
+The search (`QuickSwitcherView`) works on a snapshot: `AppState.searchEntries()` copies
+what is known about every terminal when the sheet opens, and the ranking runs against
+that copy, so a state change while it is open cannot reorder the list under the user's
+hand. The ranking is `SearchRanking.swift`, pure and unit-tested: the query is split into
+words, every word has to match (AND), and each word scores by the tier it reaches in its
+best field — whole word, start of a word, inside a word, initials, letters in order —
+times that field's weight: the title counts three times what a summary does, the
+project, PR number, branch and tags come next, then the note and the path, and the
+task, summary and last message least. A `#number` matches a ticket or PR number. The best match in a field the row does
+not already show becomes the hint line.
+
+The keys that open it are `AppState.searchShortcut` (persisted; Settings → General →
+Search): a modifier tapped twice, or a chord. `SearchShortcutMonitor` is a *local*
+`NSEvent` monitor, because a global one needs the Accessibility permission, and the
+shortcut is for the app in front. Chords are consumed; a double tap never costs the
+terminal a key. What counts as a double tap is `DoubleTapDetector`, pure: a press and a
+release of the modifier alone, each under 0.3 s, the second ending within 0.5 s of the
+first; any key, click or scroll in between ends the attempt, and it fires on the
+release, so a Shift held to select never opens it. ⌘K stays a menu item whatever Settings
+says.
+
 ## AI assist (on by default, can be switched off)
 
 Settings explains what it does and has the switch. Stage 1 is deterministic:

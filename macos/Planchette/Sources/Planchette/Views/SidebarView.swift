@@ -1120,17 +1120,22 @@ struct SidebarView: View {
 struct SidebarBottomBar: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openSettings) private var openSettings
+    @AppStorage("settingsTab") private var settingsTab: SettingsTab = .general
     let windowID: UUID
 
     var body: some View {
         HStack(spacing: 2) {
-            // Search / quick switcher (far left).
-            barButton("magnifyingglass", help: L10n.t(.quickSwitcherHelp)) {
+            // Search / quick switcher (far left). The tooltip names the keys that open it.
+            barButton("magnifyingglass", help: L10n.t(.searchTooltip, appState.searchShortcutLabels)) {
                 appState.showQuickSwitcher()
             }
             Spacer()
-            // Settings (far right).
-            barButton("gearshape", help: L10n.t(.settingsHelp)) { openSettings() }
+            // Settings (far right) — on the page about this panel, not on whichever
+            // tab was open last. ⌘, still opens the last one.
+            barButton("gearshape", help: L10n.t(.projectPanelSettingsHelp)) {
+                settingsTab = .projectPanel
+                openSettings()
+            }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 4)

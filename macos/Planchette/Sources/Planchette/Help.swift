@@ -112,6 +112,7 @@ enum Help {
         ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
+            Entry(.searchShortcutTitle, .searchShortcutHelp, shortcut: "⇧⇧", where: .helpWhereSettings),
             Entry(.newWindow, .newWindowHelp, shortcut: "⌘⇧N"),
             Entry(.moveToNewWindow, .moveToNewWindowHelp, where: .helpWhereContextMenu),
             Entry(.mergeIntoMain, .mergeIntoMainHelp, where: .helpWhereToolbar),

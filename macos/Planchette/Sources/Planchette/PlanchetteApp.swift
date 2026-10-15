@@ -71,20 +71,32 @@ struct PlanchetteApp: App {
     }
 }
 
+/// The tabs of the Settings window, by a name that survives a restart: the window
+/// opens on the one you used last, and the gear at the foot of the project panel
+/// opens it on the Project panel.
+enum SettingsTab: String {
+    case general, projectPanel, info, help
+}
+
 struct SettingsView: View {
     @EnvironmentObject var appState: AppState
     @ObservedObject var updater: UpdateService
+    @AppStorage("settingsTab") private var tab: SettingsTab = .general
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             general
                 .tabItem { Label(L10n.t(.generalTab), systemImage: "gearshape") }
+                .tag(SettingsTab.general)
             ProjectPanelSettings()
                 .tabItem { Label(L10n.t(.projectPanelTab), systemImage: "sidebar.left") }
+                .tag(SettingsTab.projectPanel)
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
+                .tag(SettingsTab.info)
             HelpView(version: updater.currentVersion)
                 .tabItem { Label(L10n.t(.helpTab), systemImage: "questionmark.circle") }
+                .tag(SettingsTab.help)
         }
         .frame(width: 480, height: 520)
     }
@@ -107,6 +119,9 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .help(L10n.t(.appearanceHelp))
+            }
+            Section(L10n.t(.searchSection)) {
+                SearchShortcutSetting()
             }
             Section(L10n.t(.aiSection)) {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)

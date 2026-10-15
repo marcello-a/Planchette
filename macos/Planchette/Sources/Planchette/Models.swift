@@ -825,6 +825,9 @@ struct PersistedState: Codable {
     /// Project panel → Tags). A state that never carried the key gets the four
     /// suggestions; an empty list is a choice and stays empty.
     var tagList: [String] = TagList.defaults
+    /// The keys that open the search from anywhere (Settings → General). Shift
+    /// twice until the user picks something else.
+    var searchShortcut: SearchShortcut = .default
     /// The IDE the "look at code" button always opens, once chosen in its
     /// menu. Nil = never chosen — the button follows whatever IDE is running.
     var defaultIDEBundleID: String?
@@ -845,6 +848,7 @@ struct PersistedState: Codable {
         doneExpiry: DoneExpiry = .default,
         sidebarDetails: SidebarDetails = SidebarDetails(),
         tagList: [String] = TagList.defaults,
+        searchShortcut: SearchShortcut = .default,
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false
     ) {
@@ -861,6 +865,7 @@ struct PersistedState: Codable {
         self.doneExpiry = doneExpiry
         self.sidebarDetails = sidebarDetails
         self.tagList = tagList
+        self.searchShortcut = searchShortcut
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
     }
@@ -886,6 +891,8 @@ struct PersistedState: Codable {
             try c.decodeIfPresent(SidebarDetails.self, forKey: .sidebarDetails) ?? SidebarDetails()
         tagList = try c.decodeIfPresent([String].self, forKey: .tagList).map(TagList.sanitized)
             ?? TagList.defaults
+        // A word a newer build wrote must not cost the whole workspace.
+        searchShortcut = (try? c.decodeIfPresent(SearchShortcut.self, forKey: .searchShortcut)) ?? .default
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
         askedAboutSpaceSwitching =
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
