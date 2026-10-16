@@ -8,6 +8,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A tab opens from a click anywhere on it.** Only the icon and the letters of the name took
+  the click; the padding and the gaps between the chips did not.
+
 ## [0.2.41] — 2026-10-16
 
 ### Fixed

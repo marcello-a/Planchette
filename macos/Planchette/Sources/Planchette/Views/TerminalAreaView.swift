@@ -157,6 +157,9 @@ struct TerminalAreaView: View {
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 6)
+            // A plain button hits only what it draws: the padding and the gaps between
+            // the icon, the name and the chips are clear, so a click there fell through.
+            .contentShape(RoundedRectangle(cornerRadius: 5))
             .background(
                 isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
                 in: RoundedRectangle(cornerRadius: 5)
