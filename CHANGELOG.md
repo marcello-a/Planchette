@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.39] — 2026-10-16
+
 ### Added
 - **A fourth intensity: Off.** Settings → General → Project color → Intensity can turn the
   gradient off completely, as Show the color on → Off already could. Off in either of the two
