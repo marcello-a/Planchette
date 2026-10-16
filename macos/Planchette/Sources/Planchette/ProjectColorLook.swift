@@ -25,11 +25,14 @@ enum ProjectColorScope: String, Codable, CaseIterable, Identifiable {
 }
 
 /// How strong that color is. "Colorful" is the look 0.2.36 shipped; the default is the
-/// subtler one in the middle, because the colorful one read as heavy.
+/// subtler one in the middle, because the colorful one read as heavy. The last step of the
+/// dial is no gradient at all.
 enum ProjectColorStrength: String, Codable, CaseIterable, Identifiable {
     case colorful
     case subtle
     case faint
+    /// The end of the dial: nothing is drawn, whatever `ProjectColorScope` says.
+    case off
 
     var id: String { rawValue }
 
@@ -38,6 +41,7 @@ enum ProjectColorStrength: String, Codable, CaseIterable, Identifiable {
         case .colorful: .projectColorColorful
         case .subtle: .projectColorSubtle
         case .faint: .projectColorFaint
+        case .off: .projectColorStrengthOff
         }
     }
 
@@ -49,6 +53,7 @@ enum ProjectColorStrength: String, Codable, CaseIterable, Identifiable {
         case .colorful: 1
         case .subtle: isLabel ? 0.5 : 0.6
         case .faint: isLabel ? 0.26 : 0.45
+        case .off: 0
         }
     }
 }
@@ -68,9 +73,9 @@ struct ProjectColorLook: Codable, Equatable {
         strength = (try? c.decodeIfPresent(ProjectColorStrength.self, forKey: .strength)) ?? .subtle
     }
 
-    /// A label, a header: the strip.
-    var showsLabel: Bool { scope != .off }
+    /// A label, a header: the strip. Off in either choice means no gradient at all.
+    var showsLabel: Bool { scope != .off && strength != .off }
 
     /// The wash behind the terminals of an open project.
-    var showsBody: Bool { scope == .project }
+    var showsBody: Bool { scope == .project && strength != .off }
 }

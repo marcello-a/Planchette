@@ -134,7 +134,7 @@ enum LKey: String, CaseIterable {
     case findMenu, findNextMenu, findPreviousMenu, findPlaceholder, findNoResults, findCountOf
     case findMatchOne, findMatchMany, findNextHelp, findPreviousHelp, findCloseHelp, helpFindTitle, helpFindDetail
     case projectColorSection, projectColorWhere, projectColorOff, projectColorLabel, projectColorProject
-    case projectColorStrength, projectColorColorful, projectColorSubtle, projectColorFaint, projectColorHelp
+    case projectColorStrength, projectColorColorful, projectColorSubtle, projectColorFaint, projectColorStrengthOff, projectColorHelp
 
     // Restore dialog
     case restoreTitle, restoreBody, restore, startFresh
@@ -396,7 +396,8 @@ enum L10n {
         .projectColorColorful: "Colorful",
         .projectColorSubtle: "Subtle",
         .projectColorFaint: "Faint",
-        .projectColorHelp: "The color you pick for a project in its menu tints its label, the header above its terminal and its overview page. Whole project also washes the terminals under its label in the panel. A project without a color is never tinted.",
+        .projectColorStrengthOff: "Off",
+        .projectColorHelp: "The color you pick for a project in its menu tints its label, the header above its terminal and its overview page. Whole project also washes the terminals under its label in the panel. A project without a color is never tinted. Off, in either choice, turns the gradient off completely.",
         .restoreTitle: "Restore your last session?",
         .restoreBody: "%d terminal(s) in %d group(s). Claude sessions resume, startup commands run again.",
         .restore: "Restore", .startFresh: "Start fresh",
@@ -650,7 +651,8 @@ enum L10n {
         .projectColorColorful: "Kräftig",
         .projectColorSubtle: "Dezent",
         .projectColorFaint: "Zart",
-        .projectColorHelp: "Die Farbe, die du einem Projekt in seinem Menü gibst, färbt seinen Namen, die Leiste über dem Terminal und seine Übersicht. „Ganzes Projekt“ legt zusätzlich einen Schimmer unter die Terminals in der Projektleiste. Ein Projekt ohne Farbe bleibt ungefärbt.",
+        .projectColorStrengthOff: "Aus",
+        .projectColorHelp: "Die Farbe, die du einem Projekt in seinem Menü gibst, färbt seinen Namen, die Leiste über dem Terminal und seine Übersicht. „Ganzes Projekt“ legt zusätzlich einen Schimmer unter die Terminals in der Projektleiste. Ein Projekt ohne Farbe bleibt ungefärbt. „Aus“ in einer der beiden Wahlen schaltet den Verlauf ganz ab.",
         .restoreTitle: "Letzte Sitzung wiederherstellen?",
         .restoreBody: "%d Terminal(s) in %d Gruppe(n). Claude-Sessions werden fortgesetzt, Startup-Commands laufen erneut an.",
         .restore: "Wiederherstellen", .startFresh: "Neu starten",
@@ -904,7 +906,8 @@ enum L10n {
         .projectColorColorful: "Vive",
         .projectColorSubtle: "Discrète",
         .projectColorFaint: "Légère",
-        .projectColorHelp: "La couleur choisie pour un projet dans son menu teinte son nom, la barre au-dessus de son terminal et sa page d'aperçu. « Projet entier » étend aussi un voile sur les terminaux sous son nom dans le panneau. Un projet sans couleur n'est jamais teinté.",
+        .projectColorStrengthOff: "Aucune",
+        .projectColorHelp: "La couleur choisie pour un projet dans son menu teinte son nom, la barre au-dessus de son terminal et sa page d'aperçu. « Projet entier » étend aussi un voile sur les terminaux sous son nom dans le panneau. Un projet sans couleur n'est jamais teinté. « Aucune », dans l'un ou l'autre choix, supprime complètement le dégradé.",
         .restoreTitle: "Restaurer la dernière session ?",
         .restoreBody: "%d terminal(s) dans %d groupe(s). Les sessions Claude reprennent, les commandes de démarrage se relancent.",
         .restore: "Restaurer", .startFresh: "Recommencer",
@@ -1158,7 +1161,8 @@ enum L10n {
         .projectColorColorful: "Intensa",
         .projectColorSubtle: "Discreta",
         .projectColorFaint: "Ligera",
-        .projectColorHelp: "El color que eliges para un proyecto en su menú tiñe su nombre, la barra sobre su terminal y su página de resumen. «Proyecto completo» añade además un velo bajo los terminales del panel. Un proyecto sin color nunca se tiñe.",
+        .projectColorStrengthOff: "Ninguna",
+        .projectColorHelp: "El color que eliges para un proyecto en su menú tiñe su nombre, la barra sobre su terminal y su página de resumen. «Proyecto completo» añade además un velo bajo los terminales del panel. Un proyecto sin color nunca se tiñe. «Ninguno» o «Ninguna», en cualquiera de las dos opciones, desactiva el degradado por completo.",
         .restoreTitle: "¿Restaurar la última sesión?",
         .restoreBody: "%d terminal(es) en %d grupo(s). Las sesiones de Claude se reanudan, los comandos de inicio se relanzan.",
         .restore: "Restaurar", .startFresh: "Empezar de nuevo",
@@ -1412,7 +1416,8 @@ enum L10n {
         .projectColorColorful: "Intensa",
         .projectColorSubtle: "Discreta",
         .projectColorFaint: "Leggera",
-        .projectColorHelp: "Il colore scelto per un progetto nel suo menu tinge il suo nome, la barra sopra il suo terminale e la sua pagina di panoramica. «Intero progetto» stende anche un velo sui terminali sotto il nome nel pannello. Un progetto senza colore non viene mai tinto.",
+        .projectColorStrengthOff: "Nessuna",
+        .projectColorHelp: "Il colore scelto per un progetto nel suo menu tinge il suo nome, la barra sopra il suo terminale e la sua pagina di panoramica. «Intero progetto» stende anche un velo sui terminali sotto il nome nel pannello. Un progetto senza colore non viene mai tinto. «Nessuno» o «Nessuna», in una qualsiasi delle due scelte, disattiva del tutto il gradiente.",
         .restoreTitle: "Ripristinare l'ultima sessione?",
         .restoreBody: "%d terminale/i in %d gruppo/i. Le sessioni Claude riprendono, i comandi di avvio si rieseguono.",
         .restore: "Ripristina", .startFresh: "Ricomincia",
@@ -1666,7 +1671,8 @@ enum L10n {
         .projectColorColorful: "Kleurrijk",
         .projectColorSubtle: "Subtiel",
         .projectColorFaint: "Heel subtiel",
-        .projectColorHelp: "De kleur die je een project in zijn menu geeft, kleurt zijn naam, de balk boven zijn terminal en zijn overzichtspagina. Bij 'Heel project' ligt er ook een waas over de terminals onder zijn naam in het paneel. Een project zonder kleur wordt nooit gekleurd.",
+        .projectColorStrengthOff: "Uit",
+        .projectColorHelp: "De kleur die je een project in zijn menu geeft, kleurt zijn naam, de balk boven zijn terminal en zijn overzichtspagina. Bij 'Heel project' ligt er ook een waas over de terminals onder zijn naam in het paneel. Een project zonder kleur wordt nooit gekleurd. 'Uit', bij een van beide keuzes, zet het verloop helemaal uit.",
         .restoreTitle: "Laatste sessie herstellen?",
         .restoreBody: "%d terminal(s) in %d groep(en). Claude-sessies hervatten, opstartcommando's draaien opnieuw.",
         .restore: "Herstellen", .startFresh: "Opnieuw beginnen",
@@ -1920,7 +1926,8 @@ enum L10n {
         .projectColorColorful: "Intensa",
         .projectColorSubtle: "Discreta",
         .projectColorFaint: "Suave",
-        .projectColorHelp: "A cor que escolhes para um projeto no seu menu tinge o nome, a barra por cima do terminal e a página de resumo. «Projeto inteiro» também põe um véu sobre os terminais por baixo do nome no painel. Um projeto sem cor nunca é tingido.",
+        .projectColorStrengthOff: "Nenhuma",
+        .projectColorHelp: "A cor que escolhes para um projeto no seu menu tinge o nome, a barra por cima do terminal e a página de resumo. «Projeto inteiro» também põe um véu sobre os terminais por baixo do nome no painel. Um projeto sem cor nunca é tingido. «Nenhuma», em qualquer das duas escolhas, desliga o gradiente por completo.",
         .restoreTitle: "Restaurar a última sessão?",
         .restoreBody: "%d terminal(is) em %d grupo(s). As sessões Claude retomam, os comandos de arranque executam de novo.",
         .restore: "Restaurar", .startFresh: "Começar de novo",

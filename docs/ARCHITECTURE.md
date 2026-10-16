@@ -219,7 +219,8 @@ behind the strip and turns a mostly vertical wheel event into a sideways offset
 in the project panel — in the color it was given; a project with no color is not tinted at
 all. Settings → General → Project color (`ProjectColorLook`, persisted) decides where the
 wash shows (off, the label, the whole project) and how strong it is (`ProjectColorStrength`:
-colorful is the look 0.2.36 shipped, subtle the default, faint the quietest); the numbers
+colorful is the look 0.2.36 shipped, subtle the default, faint the quietest, off no gradient
+at all — as does scope off, `ProjectColorLook.showsLabel` and `showsBody` say so); the numbers
 are `ProjectWash.strengths`, pure and tested. Under an open label the terminals share one
 softer fade. The list gives every terminal row a background of its own
 (`.listRowBackground`), so each row paints the slice of the fade that lies at its place
