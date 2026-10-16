@@ -673,9 +673,10 @@ final class GhosttySurfaceNSView: NSView {
         let chars = event.charactersIgnoringModifiers ?? ""
         // ⌘F, ⌘G and ⌘⇧G are the menu's too: the find bar is the app's, and it has to
         // answer for a durable terminal, whose history libghostty cannot see.
-        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g"]
+        // ⌘D and ⌘⇧D split the tab (Session menu); the terminal would type them otherwise.
+        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g", "d"]
         // charactersIgnoringModifiers still applies Shift, so a shifted app
-        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree") arrives here as
+        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree", ⌘⇧D "Split down") arrives here as
         // "K"/"T". Lowercase before matching so those reach the menu instead of
         // being swallowed and typed into the terminal.
         if appShortcuts.contains(chars.lowercased()) { return false }
@@ -1093,7 +1094,12 @@ final class TerminalRegistry {
         let id = session.id
         // Focusing must not clear attention *state* (a glance isn't an answer),
         // but it does mean you have now seen whatever finished here.
-        view.onFocus = { [weak appState] in appState?.markSeen(id) }
+        // A click into a pane of a split tab makes it the tab's active terminal: the one the
+        // sidebar marks, the one a shortcut acts on.
+        view.onFocus = { [weak appState] in
+            appState?.markSeen(id)
+            appState?.focusPane(id)
+        }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }
             let window = appState.windowContaining(groupID: session.groupID)

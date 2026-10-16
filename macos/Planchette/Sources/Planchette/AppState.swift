@@ -11,7 +11,9 @@ final class AppState: ObservableObject {
     /// Session currently being dragged in a cluster (nil = none). Lets a drop
     /// target decide, during hover, whether a drop would actually rearrange
     /// anything — so it can refuse a no-op instead of showing a phantom highlight.
-    @Published var draggingClusterSessionID: UUID?
+    /// What the pointer carries while a tab or a pane is being dragged — read by the drop
+    /// zones to show where it would land, since the pasteboard answers only after the drop.
+    @Published var draggingTabItem: TabDragItem?
     @Published var aiEnabled = true {
         didSet { scheduleSave() }
     }
@@ -1327,6 +1329,8 @@ final class AppState: ObservableObject {
         session.durable = durableTerminals && Durable.isAvailable
         sessions[session.id] = session
         if let idx = groups.firstIndex(where: { $0.id == groupID }) {
+            // Bring the strip up to date first: the new terminal is then a tab of its own.
+            groups[idx].tabs = TabStrip.synced(groups[idx].tabs, to: groups[idx].sessionIDs)
             groups[idx].sessionIDs.append(session.id)
             if activate || groups[idx].activeSessionID == nil {
                 groups[idx].activeSessionID = session.id
@@ -1360,10 +1364,7 @@ final class AppState: ObservableObject {
         escalatedIDs.remove(id)
         aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
-            groups[idx].sessionIDs.removeAll { $0 == id }
-            if groups[idx].activeSessionID == id {
-                groups[idx].activeSessionID = groups[idx].sessionIDs.last
-            }
+            takeOut(id, ofGroupAt: idx)
             if groups[idx].sessionIDs.isEmpty {
                 groups.remove(at: idx)
                 sanitizeWindows()
@@ -1371,6 +1372,18 @@ final class AppState: ObservableObject {
         }
         refreshDockBadge()
         scheduleSave()
+    }
+
+    /// Leave a terminal out of a project's strip. When it was the one in front, the one
+    /// beside it takes over: its neighbour pane, else the next tab, else the previous one.
+    private func takeOut(_ id: UUID, ofGroupAt idx: Int) {
+        let strip = TabStrip.synced(groups[idx].tabs, to: groups[idx].sessionIDs)
+        let next = TabStrip.successor(of: id, in: strip)
+        groups[idx].sessionIDs.removeAll { $0 == id }
+        groups[idx].tabs = TabStrip.removing(id, from: strip)
+        if groups[idx].activeSessionID == id {
+            groups[idx].activeSessionID = next ?? groups[idx].sessionIDs.last
+        }
     }
 
     // MARK: Worktrees
@@ -1484,16 +1497,6 @@ final class AppState: ObservableObject {
     }
 
     /// Reorder terminals within a group: place `dragged` right before `target`.
-    func reorderSession(_ dragged: UUID, before target: UUID, groupID: UUID) {
-        guard dragged != target, let gi = groups.firstIndex(where: { $0.id == groupID }) else { return }
-        var ids = groups[gi].sessionIDs
-        guard ids.contains(dragged), ids.contains(target) else { return }
-        ids.removeAll { $0 == dragged }
-        guard let ti = ids.firstIndex(of: target) else { return }
-        ids.insert(dragged, at: ti)
-        groups[gi].sessionIDs = ids
-        scheduleSave()
-    }
 
     // The three mutation helpers publish only a REAL change. A no-op write
     // still fires objectWillChange (a @Published set has no equality check) and
@@ -1520,40 +1523,155 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
-    // MARK: Cluster split layout
+    // MARK: Tabs and their splits
 
-    /// The split arrangement for a group's cluster view, synced to its current
-    /// sessions (defaults to a single row).
-    func clusterLayout(for group: SessionGroup) -> SplitLayout {
-        let base = group.clusterLayout ?? .row(group.sessionIDs.map { SplitLayout.leaf($0) })
-        return base.synced(to: group.sessionIDs)
+    /// The strip of a project, in step with its terminals: a terminal that was added or closed
+    /// since the strip was stored is already accounted for.
+    func tabs(of group: SessionGroup) -> [SplitLayout] {
+        TabStrip.synced(group.tabs, to: group.sessionIDs)
     }
 
-    /// The layout that would result from dropping `dragged` on `target`'s edge,
-    /// or nil if the move is invalid or wouldn't change anything (e.g. dropping
-    /// a pane back where it already is).
-    func clusterMoveResult(dragged: UUID, target: UUID, edge: LayoutEdge, groupID: UUID) -> SplitLayout? {
-        guard dragged != target, let group = groups.first(where: { $0.id == groupID }) else { return nil }
-        let current = clusterLayout(for: group).normalized()
-        let removed = current.removingLeaf(dragged) ?? .leaf(target)
-        let result = removed.splitting(target, with: dragged, edge: edge).normalized()
-        return result == current ? nil : result
+    /// The tab that is in front: the one holding the terminal that has the keyboard.
+    func currentTab(of group: SessionGroup) -> SplitLayout? {
+        let strip = tabs(of: group)
+        if let active = group.activeSessionID, let at = TabStrip.index(of: active, in: strip) {
+            return strip[at]
+        }
+        return strip.first
     }
 
-    /// Drag-and-drop: place `dragged` on the given edge of `target`. No-op if the
-    /// move wouldn't change the arrangement.
-    func moveInCluster(_ dragged: UUID, target: UUID, edge: LayoutEdge, groupID: UUID) {
-        guard let result = clusterMoveResult(dragged: dragged, target: target, edge: edge, groupID: groupID)
-        else { return }
-        updateGroup(groupID) { $0.clusterLayout = result }
+    /// Store a rearranged strip. The terminals must be the same ones: anything else is a
+    /// bug in the caller and changes nothing. `sessionIDs` follows, so the sidebar lists the
+    /// terminals in the order the tabs show them.
+    @discardableResult
+    private func applyTabs(_ tabs: [SplitLayout]?, to groupID: UUID) -> Bool {
+        guard let tabs, let group = groups.first(where: { $0.id == groupID }),
+              Set(TabStrip.order(tabs)) == Set(group.sessionIDs),
+              TabStrip.order(tabs).count == group.sessionIDs.count
+        else { return false }
+        updateGroup(groupID) {
+            $0.tabs = tabs
+            $0.sessionIDs = TabStrip.order(tabs)
+        }
+        return true
     }
 
-    /// Whether this terminal is the one on screen: the active tab of the
-    /// selected project, in a window that is actually visible.
+    /// Drag a tab before another (`before` is a tab's first terminal) or to the end (`nil`).
+    func moveTab(_ tab: UUID, before target: UUID?, groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        let strip = tabs(of: group)
+        guard let from = TabStrip.index(of: tab, in: strip) else { return }
+        let to = target.flatMap { TabStrip.index(of: $0, in: strip) } ?? strip.count
+        applyTabs(TabStrip.moveTab(from: from, before: to, in: strip), to: groupID)
+    }
+
+    /// The strip a tab dropped on a pane's edge would leave — nil when the drop is invalid or
+    /// changes nothing. The drop zones ask before they light up.
+    func dropTabResult(_ tab: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) -> [SplitLayout]? {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return nil }
+        let strip = tabs(of: group)
+        guard let from = TabStrip.index(of: tab, in: strip) else { return nil }
+        return TabStrip.dropTab(at: from, onto: target, edge: edge, in: strip)
+    }
+
+    func dropTab(_ tab: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
+        applyTabs(dropTabResult(tab, onto: target, edge: edge, groupID: groupID), to: groupID)
+    }
+
+    func dropPaneResult(_ pane: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) -> [SplitLayout]? {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return nil }
+        return TabStrip.dropPane(pane, onto: target, edge: edge, in: tabs(of: group))
+    }
+
+    func dropPane(_ pane: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
+        applyTabs(dropPaneResult(pane, onto: target, edge: edge, groupID: groupID), to: groupID)
+    }
+
+    /// Take a pane out to a tab of its own, before the tab whose first terminal is `target`
+    /// (the end of the strip when nil).
+    func extractPane(_ pane: UUID, before target: UUID?, groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        let strip = tabs(of: group)
+        let to = target.flatMap { TabStrip.index(of: $0, in: strip) } ?? strip.count
+        applyTabs(TabStrip.extractPane(pane, before: to, in: strip), to: groupID)
+        updateGroup(groupID) { $0.activeSessionID = pane }
+    }
+
+    /// All tabs of a project in one view, as a grid.
+    func combineTabs(groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        applyTabs(TabStrip.combined(tabs(of: group)), to: groupID)
+    }
+
+    /// Every pane its own tab again.
+    func separateTabs(groupID: UUID) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        applyTabs(TabStrip.separated(tabs(of: group)), to: groupID)
+    }
+
+    /// iTerm2's ⌘D and ⌘⇧D: a new terminal in the project's folder, split off the one that has
+    /// the keyboard — to its right, or below it. In a project that has no terminal it is just
+    /// the first one.
+    func splitTerminal(in groupID: UUID, edge: LayoutEdge) {
+        guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        guard let anchor = group.activeSessionID.flatMap({ sessions[$0] }) ?? sessions(in: group).first else {
+            addTerminalToGroup(groupID)
+            return
+        }
+        let directory = [anchor.currentDirectory, anchor.workingDirectory]
+            .first { !$0.isEmpty } ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let created = addSession(directory: directory, groupID: groupID, activate: false)
+        if let stored = groups.first(where: { $0.id == groupID }) {
+            applyTabs(
+                TabStrip.dropPane(created.id, onto: anchor.id, edge: edge, in: tabs(of: stored)),
+                to: groupID)
+        }
+        select(session: created)
+    }
+
+    /// The terminal in the pane that was clicked or focused has the keyboard: it is the
+    /// project's active terminal. Does not raise a window or switch project — it follows
+    /// where the user already is.
+    func focusPane(_ id: UUID) {
+        guard let session = sessions[id] else { return }
+        rememberFocus(id, in: session.groupID)
+        updateGroup(session.groupID) { $0.activeSessionID = id }
+    }
+
+    /// Which pane of a tab has the keyboard when you come back to it: the one that had it
+    /// last, as in iTerm2. Not persisted — after a restart a tab opens on its first pane.
+    private var focusHistory: [UUID: [UUID]] = [:]
+
+    private func rememberFocus(_ id: UUID, in groupID: UUID) {
+        var history = focusHistory[groupID] ?? []
+        history.removeAll { $0 == id }
+        history.insert(id, at: 0)
+        focusHistory[groupID] = Array(history.prefix(64))
+    }
+
+    /// The pane of `tab` that gets the keyboard when the tab comes to the front.
+    func paneToFocus(in tab: SplitLayout, groupID: UUID) -> UUID? {
+        let leaves = tab.leaves
+        if let active = groups.first(where: { $0.id == groupID })?.activeSessionID, leaves.contains(active) {
+            return active
+        }
+        return focusHistory[groupID]?.first { leaves.contains($0) } ?? leaves.first
+    }
+
+    /// ⌘D and ⌘⇧D: split the project the key window shows.
+    func splitInKeyWindow(edge: LayoutEdge) {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
+              let groupID = window(for: windowID)?.selectedGroupID,
+              groups.contains(where: { $0.id == groupID }) else { return }
+        splitTerminal(in: groupID, edge: edge)
+    }
+
+    /// Whether this terminal is on screen: in the tab in front of the selected project —
+    /// every pane of a split tab is — in a window that is actually visible.
     func isVisible(_ id: UUID) -> Bool {
         guard let session = sessions[id],
               let group = groups.first(where: { $0.id == session.groupID }),
-              group.activeSessionID == id,
+              currentTab(of: group)?.leaves.contains(id) == true,
               let window = windowContaining(groupID: session.groupID),
               window.selectedGroupID == session.groupID
         else { return false }
@@ -1607,6 +1725,7 @@ final class AppState: ObservableObject {
             updateWindow(window.id) { $0.selectGroup(session.groupID) }
             WindowRegistry.shared.raise(window.id)
         }
+        rememberFocus(session.id, in: session.groupID)
         updateGroup(session.groupID) { $0.activeSessionID = session.id }
     }
 
@@ -2295,16 +2414,15 @@ final class AppState: ObservableObject {
     func moveSession(_ id: UUID, to groupID: UUID) {
         guard let session = sessions[id], session.groupID != groupID else { return }
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
-            groups[idx].sessionIDs.removeAll { $0 == id }
-            if groups[idx].activeSessionID == id {
-                groups[idx].activeSessionID = groups[idx].sessionIDs.last
-            }
+            takeOut(id, ofGroupAt: idx)
             if groups[idx].sessionIDs.isEmpty {
                 groups.remove(at: idx)
                 sanitizeWindows()
             }
         }
         if let idx = groups.firstIndex(where: { $0.id == groupID }) {
+            // Bring the strip up to date first: the new terminal is then a tab of its own.
+            groups[idx].tabs = TabStrip.synced(groups[idx].tabs, to: groups[idx].sessionIDs)
             groups[idx].sessionIDs.append(id)
         }
         update(id) { $0.groupID = groupID }
@@ -2334,7 +2452,6 @@ final class AppState: ObservableObject {
             var project = PresetProject(name: group.name)
             project.color = group.color
             project.favorite = group.favorite
-            project.viewMode = group.viewMode
             if let folder = window.folder(of: group.id) {
                 project.folderName = folder.name
                 project.folderColor = folder.color
@@ -2347,9 +2464,20 @@ final class AppState: ObservableObject {
                 terminal.startupCommand = session.startupCommand
                 return terminal
             }
-            if group.viewMode == .cluster {
-                project.clusterLayout = PresetLayout.from(
-                    clusterLayout(for: group), sessionIDs: tabs.map(\.id))
+            // The strip, if any tab holds a split: a plain row of tabs is what opening
+            // creates anyway.
+            let strip = self.tabs(of: group)
+            if strip.contains(where: { $0.leaves.count > 1 }) {
+                let order = TabStrip.order(strip)
+                project.terminals = order.compactMap { sessions[$0] }.map { session in
+                    var terminal = PresetTerminal(workingDirectory: session.currentDirectory)
+                    terminal.customTitle = session.customTitle
+                    terminal.color = session.color
+                    terminal.tags = session.tags
+                    terminal.startupCommand = session.startupCommand
+                    return terminal
+                }
+                project.tabLayouts = strip.compactMap { PresetLayout.from($0, sessionIDs: order) }
             }
             projects.append(project)
         }
@@ -2374,10 +2502,7 @@ final class AppState: ObservableObject {
         var firstSession: TerminalSession?
         for project in preset.projects {
             let group = addGroup(name: project.name, favorite: project.favorite, inWindow: windowID)
-            updateGroup(group.id) {
-                $0.color = project.color
-                $0.viewMode = project.viewMode
-            }
+            updateGroup(group.id) { $0.color = project.color }
             var createdIDs: [UUID] = []
             for terminal in project.terminals {
                 let session = addSession(directory: terminal.workingDirectory, groupID: group.id)
@@ -2390,9 +2515,8 @@ final class AppState: ObservableObject {
                 createdIDs.append(session.id)
                 if firstSession == nil { firstSession = sessions[session.id] }
             }
-            if let layout = project.clusterLayout?.resolved(with: createdIDs) {
-                updateGroup(group.id) { $0.clusterLayout = layout }
-            }
+            let strip = project.resolvedTabs(with: createdIDs)
+            if !strip.isEmpty { applyTabs(strip, to: group.id) }
             if let folderName = project.folderName {
                 let existing = window(for: windowID)?.folders
                     .first { $0.name.lowercased() == folderName.lowercased() }

@@ -27,6 +27,10 @@ struct PlanchetteApp: App {
             CommandMenu(L10n.t(.sessionMenu)) {
                 Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
                     .keyboardShortcut("t")
+                Button(L10n.t(.splitRight)) { delegate.appState.splitInKeyWindow(edge: .right) }
+                    .keyboardShortcut("d")
+                Button(L10n.t(.splitDown)) { delegate.appState.splitInKeyWindow(edge: .bottom) }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
                 Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
                 Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
@@ -765,20 +769,13 @@ struct InboxToolbarButton: View {
         Button {
             shown.toggle()
         } label: {
-            HStack(spacing: 4) {
-                if count > 0 {
-                    Text("\(count)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(appState.errorCount > 0 ? .red : .blue, in: Capsule())
-                }
-                Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
-                    .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
-            }
+            // The red dot says "something wants you"; how many is for the panel to tell.
+            Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
+                .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
         }
         .help(L10n.t(.notificationsPanelHelp))
+        // The number left the picture, not the information: a screen reader still hears it.
+        .accessibilityValue(count > 0 ? "\(count)" : "")
     }
 }
 

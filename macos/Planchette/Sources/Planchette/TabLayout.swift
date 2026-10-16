@@ -113,3 +113,32 @@ enum TabNaming {
         return nil
     }
 }
+
+/// Which terminals a close item of a tab's menu ends. A tab holds one terminal, or
+/// several when it is split, so the strip is a list of lists. Pure, unit-tested.
+enum TabCloseScope: Equatable {
+    case left, this, right
+}
+
+enum TabClosing {
+    /// The terminals of the tabs `scope` names, counted from the tab at `index`.
+    /// Empty for an index that is not a tab, so a stale menu closes nothing.
+    static func terminals(_ scope: TabCloseScope, at index: Int, in tabs: [[UUID]]) -> [UUID] {
+        guard tabs.indices.contains(index) else { return [] }
+        switch scope {
+        case .left: return tabs[..<index].flatMap { $0 }
+        case .this: return tabs[index]
+        case .right: return tabs[(index + 1)...].flatMap { $0 }
+        }
+    }
+
+    /// How many tabs `scope` names — what decides whether its menu item is enabled.
+    static func tabCount(_ scope: TabCloseScope, at index: Int, in tabs: [[UUID]]) -> Int {
+        guard tabs.indices.contains(index) else { return 0 }
+        switch scope {
+        case .left: return index
+        case .this: return 1
+        case .right: return tabs.count - index - 1
+        }
+    }
+}
