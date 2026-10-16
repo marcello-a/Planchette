@@ -39,13 +39,17 @@ struct PresetProject: Codable, Equatable {
     var name: String
     var color: SessionColor = .none
     var favorite: Bool = false
+    /// Read from arrangements saved before tabs held splits; never written.
     var viewMode: GroupViewMode = .tabs
     /// Folder this project sat in, by name — folders are per window and get
     /// re-created (or reused) in whatever window the preset is opened in.
     var folderName: String?
     var folderColor: SessionColor = .none
     var terminals: [PresetTerminal] = []
-    /// Cluster splits, addressed by terminal index (see `PresetLayout`).
+    /// The tab strip, addressed by terminal index (see `PresetLayout`): one entry per tab.
+    /// Left out when no tab holds a split.
+    var tabLayouts: [PresetLayout]?
+    /// The one cluster layout of an arrangement saved before tabs held splits. Read, never written.
     var clusterLayout: PresetLayout?
 
     init(name: String) { self.name = name }
@@ -59,7 +63,21 @@ struct PresetProject: Codable, Equatable {
         folderName = try c.decodeIfPresent(String.self, forKey: .folderName)
         folderColor = try c.decodeIfPresent(SessionColor.self, forKey: .folderColor) ?? .none
         terminals = try c.decodeIfPresent([PresetTerminal].self, forKey: .terminals) ?? []
+        tabLayouts = try c.decodeIfPresent([PresetLayout].self, forKey: .tabLayouts)
         clusterLayout = try c.decodeIfPresent(PresetLayout.self, forKey: .clusterLayout)
+    }
+
+    /// The tab strip for freshly created terminals (same order as `terminals`). An
+    /// arrangement from before splits lived in tabs has one tab per terminal, or — saved in
+    /// cluster mode — one tab with the cluster layout. Empty means "one tab per terminal".
+    func resolvedTabs(with sessionIDs: [UUID]) -> [SplitLayout] {
+        if let tabLayouts {
+            return TabStrip.synced(tabLayouts.compactMap { $0.resolved(with: sessionIDs) }, to: sessionIDs)
+        }
+        if viewMode == .cluster, let layout = clusterLayout?.resolved(with: sessionIDs) {
+            return TabStrip.synced([layout], to: sessionIDs)
+        }
+        return []
     }
 }
 

@@ -272,6 +272,9 @@ enum SessionColor: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How a project used to show its terminals: one at a time, or all at once. Gone from the
+/// project — a tab holds the split now — but old state files and saved arrangements still
+/// carry it, and `cluster` becomes one tab with every terminal in it.
 enum GroupViewMode: String, Codable {
     case tabs
     case cluster
@@ -520,7 +523,7 @@ enum ActivityFeed {
 /// Where a dragged terminal is dropped relative to a target pane.
 enum LayoutEdge { case top, bottom, left, right }
 
-/// A recursive split arrangement of terminals in cluster mode (like iTerm2's
+/// A recursive split arrangement of terminals — one tab of a project (like iTerm2's
 /// split panes). `row` lays children left→right, `column` top→bottom.
 indirect enum SplitLayout: Codable, Equatable {
     case leaf(UUID)               // a terminal session
@@ -555,18 +558,7 @@ indirect enum SplitLayout: Codable, Equatable {
 
     /// Split the target leaf, placing `newID` on the given edge.
     func splitting(_ target: UUID, with newID: UUID, edge: LayoutEdge) -> SplitLayout {
-        switch self {
-        case .leaf(let l):
-            guard l == target else { return self }
-            switch edge {
-            case .left:   return .row([.leaf(newID), .leaf(target)])
-            case .right:  return .row([.leaf(target), .leaf(newID)])
-            case .top:    return .column([.leaf(newID), .leaf(target)])
-            case .bottom: return .column([.leaf(target), .leaf(newID)])
-            }
-        case .row(let c):   return .row(c.map { $0.splitting(target, with: newID, edge: edge) })
-        case .column(let c): return .column(c.map { $0.splitting(target, with: newID, edge: edge) })
-        }
+        inserting(.leaf(newID), besides: target, edge: edge)
     }
 
     /// Flatten nested same-axis nodes and collapse singletons.
@@ -615,11 +607,15 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     let id: UUID
     var name: String
     var color: SessionColor = .none
-    var viewMode: GroupViewMode = .tabs
     var favorite: Bool = false   // "Hauptprojekt": high priority
+    /// Every terminal of the project, in the order of the tab strip (pane by pane within a tab).
     var sessionIDs: [UUID] = []
+    /// The terminal that has the keyboard: the focused pane of the current tab.
     var activeSessionID: UUID?
-    var clusterLayout: SplitLayout?   // custom split arrangement (cluster mode)
+    /// The tab strip: one split tree per tab (see `TabStrip`). `nil` is a project that never
+    /// split anything — one tab per terminal. Read it through `AppState.tabs(of:)`, which
+    /// keeps it in step with `sessionIDs`.
+    var tabs: [SplitLayout]?
     /// Set when this project is a git worktree Planchette created: the checkout
     /// path, so closing the project can offer to remove it again. Optional, so
     /// older state decodes unchanged.
@@ -642,6 +638,11 @@ struct SessionGroup: Identifiable, Codable, Equatable {
         self.name = name
     }
 
+    /// Keys of state written before tabs held splits; read to migrate, never written.
+    private enum LegacyKeys: String, CodingKey {
+        case viewMode, clusterLayout
+    }
+
     // Custom, so a state written before a field existed still decodes — the
     // synthesized decoder demands every non-optional key (see ProjectFolder).
     init(from decoder: Decoder) throws {
@@ -649,11 +650,19 @@ struct SessionGroup: Identifiable, Codable, Equatable {
         id = try c.decode(UUID.self, forKey: .id)
         name = try c.decode(String.self, forKey: .name)
         color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
-        viewMode = try c.decodeIfPresent(GroupViewMode.self, forKey: .viewMode) ?? .tabs
         favorite = try c.decodeIfPresent(Bool.self, forKey: .favorite) ?? false
         sessionIDs = try c.decodeIfPresent([UUID].self, forKey: .sessionIDs) ?? []
         activeSessionID = try c.decodeIfPresent(UUID.self, forKey: .activeSessionID)
-        clusterLayout = try c.decodeIfPresent(SplitLayout.self, forKey: .clusterLayout)
+        tabs = try c.decodeIfPresent([SplitLayout].self, forKey: .tabs)
+        if tabs == nil {
+            // A project saved in cluster mode: everything on screen at once is one tab.
+            let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+            let mode = (try? legacy.decodeIfPresent(GroupViewMode.self, forKey: .viewMode)) ?? nil
+            if mode == .cluster, !sessionIDs.isEmpty {
+                let stored = (try? legacy.decodeIfPresent(SplitLayout.self, forKey: .clusterLayout)) ?? nil
+                tabs = [(stored ?? .row(sessionIDs.map { SplitLayout.leaf($0) })).synced(to: sessionIDs)]
+            }
+        }
         worktreePath = try c.decodeIfPresent(String.self, forKey: .worktreePath)
         worktreeRepoRoot = try c.decodeIfPresent(String.self, forKey: .worktreeRepoRoot)
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)

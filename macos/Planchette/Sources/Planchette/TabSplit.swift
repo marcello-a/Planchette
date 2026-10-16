@@ -176,3 +176,48 @@ extension SplitLayout {
         }
     }
 }
+
+/// What a drag of the tab bar or of a pane's title carries: a whole tab (named by its first
+/// terminal) or one pane.
+///
+/// It travels as JSON, never as text. A terminal accepts dropped text and types it at the
+/// prompt, so a tab dragged over a terminal as plain text would have typed its id into the
+/// shell; JSON is a type the terminal does not take. (A type of our own would be cleaner, but an
+/// undeclared one never reaches a drop target, and an unbundled dev build has no Info.plist to
+/// declare it in.)
+enum TabDragItem: Equatable {
+    case tab(UUID)
+    case pane(UUID)
+
+    /// The pasteboard type of both.
+    static let typeIdentifier = "public.json"
+
+    var encoded: Data {
+        let object: [String: String]
+        switch self {
+        case .tab(let id): object = ["planchetteTab": id.uuidString]
+        case .pane(let id): object = ["planchettePane": id.uuidString]
+        }
+        return (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+    }
+
+    init?(encoded data: Data) {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              object.count == 1, let (key, value) = object.first, let text = value as? String,
+              let id = UUID(uuidString: text) else { return nil }
+        switch key {
+        case "planchetteTab": self = .tab(id)
+        case "planchettePane": self = .pane(id)
+        default: return nil
+        }
+    }
+}
+
+extension TabDragItem {
+    /// A terminal the drag stands for: the pane itself, or the first pane of a tab.
+    var terminal: UUID? {
+        switch self {
+        case .tab(let id), .pane(let id): return id
+        }
+    }
+}

@@ -324,3 +324,171 @@ final class TabSplitTests: XCTestCase {
         XCTAssertGreaterThan(withSplits, 1000, "…and spend its time in split tabs")
     }
 }
+
+final class TabDragItemTests: XCTestCase {
+    func testRoundTrip() {
+        let id = UUID()
+        XCTAssertEqual(TabDragItem(encoded: TabDragItem.tab(id).encoded), .tab(id))
+        XCTAssertEqual(TabDragItem(encoded: TabDragItem.pane(id).encoded), .pane(id))
+    }
+
+    func testItIsJSONAndNeverText() {
+        // The terminal types dropped text at the prompt: the payload must not be what it takes.
+        XCTAssertEqual(TabDragItem.typeIdentifier, "public.json")
+        let text = String(decoding: TabDragItem.tab(UUID()).encoded, as: UTF8.self)
+        XCTAssertTrue(text.hasPrefix("{"))
+        XCTAssertNotNil(try? JSONSerialization.jsonObject(with: TabDragItem.pane(UUID()).encoded))
+    }
+
+    func testAnythingElseIsNotAnItem() {
+        let id = UUID().uuidString
+        XCTAssertNil(TabDragItem(encoded: Data("hello".utf8)))
+        XCTAssertNil(TabDragItem(encoded: Data(#"{"planchetteTab":"not-a-uuid"}"#.utf8)))
+        XCTAssertNil(TabDragItem(encoded: Data(#"{"window":"\#(id)"}"#.utf8)))
+        XCTAssertNil(TabDragItem(encoded: Data(#"{"planchetteTab":"\#(id)","planchettePane":"\#(id)"}"#.utf8)),
+                     "two claims at once is nobody's drag")
+        XCTAssertNil(TabDragItem(encoded: Data(#"{"planchetteTab":42}"#.utf8)))
+        XCTAssertNil(TabDragItem(encoded: Data(id.utf8)), "a bare id is what a terminal would type")
+        XCTAssertNil(TabDragItem(encoded: Data([0xff, 0xfe])))
+        XCTAssertNil(TabDragItem(encoded: Data("[]".utf8)))
+    }
+}
+
+/// State written before tabs held splits still opens — and a project saved in cluster mode
+/// comes back as one tab with everything in it.
+final class TabMigrationTests: XCTestCase {
+    private let a = UUID(), b = UUID(), c = UUID(), gid = UUID()
+
+    private func decode(_ json: String) throws -> SessionGroup {
+        try JSONDecoder().decode(SessionGroup.self, from: Data(json.utf8))
+    }
+
+    func testAProjectThatNeverSplitHasNoStripAndShowsOneTabPerTerminal() throws {
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","sessionIDs":["\(a)","\(b)"]}
+            """)
+        XCTAssertNil(group.tabs)
+        XCTAssertEqual(TabStrip.synced(group.tabs, to: group.sessionIDs), [.leaf(a), .leaf(b)])
+    }
+
+    func testATabsModeProjectOfOldStaysPlainTabs() throws {
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"tabs","sessionIDs":["\(a)","\(b)"]}
+            """)
+        XCTAssertNil(group.tabs)
+    }
+
+    func testAClusterProjectBecomesOneTabWithItsLayout() throws {
+        let layout = SplitLayout.row([.leaf(a), .column([.leaf(b), .leaf(c)])])
+        let encoded = String(decoding: try JSONEncoder().encode(layout), as: UTF8.self)
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"cluster","sessionIDs":["\(a)","\(b)","\(c)"],
+             "clusterLayout":\(encoded)}
+            """)
+        XCTAssertEqual(group.tabs, [layout])
+    }
+
+    func testAClusterProjectWithoutALayoutBecomesOneRowTab() throws {
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"cluster","sessionIDs":["\(a)","\(b)"]}
+            """)
+        XCTAssertEqual(group.tabs, [.row([.leaf(a), .leaf(b)])])
+    }
+
+    func testAClusterLayoutThatLostATerminalIsRepairedOnTheWay() throws {
+        let stale = SplitLayout.row([.leaf(a), .leaf(b), .leaf(c)])
+        let encoded = String(decoding: try JSONEncoder().encode(stale), as: UTF8.self)
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"cluster","sessionIDs":["\(a)","\(c)"],
+             "clusterLayout":\(encoded)}
+            """)
+        XCTAssertEqual(group.tabs, [.row([.leaf(a), .leaf(c)])])
+    }
+
+    func testAClusterProjectWithNoTerminalsStaysEmpty() throws {
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"cluster","sessionIDs":[]}
+            """)
+        XCTAssertNil(group.tabs)
+    }
+
+    func testAGarbledLegacyFieldDoesNotLoseTheProject() throws {
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"sideways","sessionIDs":["\(a)"],"clusterLayout":42}
+            """)
+        XCTAssertEqual(group.sessionIDs, [a])
+        XCTAssertNil(group.tabs)
+    }
+
+    func testTheStripRoundTripsAndTheLegacyKeysAreNotWritten() throws {
+        var group = SessionGroup(id: gid, name: "p")
+        group.sessionIDs = [a, b, c]
+        group.tabs = [.row([.leaf(a), .leaf(b)]), .leaf(c)]
+        let data = try JSONEncoder().encode(group)
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(json.contains("viewMode"))
+        XCTAssertFalse(json.contains("clusterLayout"))
+        XCTAssertEqual(try JSONDecoder().decode(SessionGroup.self, from: data), group)
+    }
+
+    func testAStoredStripWinsOverLegacyKeys() throws {
+        let stored = SplitLayout.row([.leaf(a), .leaf(b)])
+        let encoded = String(decoding: try JSONEncoder().encode([stored]), as: UTF8.self)
+        let group = try decode("""
+            {"id":"\(gid)","name":"p","viewMode":"cluster","sessionIDs":["\(a)","\(b)"],"tabs":\(encoded)}
+            """)
+        XCTAssertEqual(group.tabs, [stored])
+    }
+}
+
+/// Saved arrangements follow the tabs: a split is stored by terminal index, and an arrangement
+/// from before splits lived in tabs still opens.
+final class TabPresetTests: XCTestCase {
+    private func project(terminals: Int) -> PresetProject {
+        var project = PresetProject(name: "p")
+        project.terminals = (0..<terminals).map { PresetTerminal(workingDirectory: "/tmp/\($0)") }
+        return project
+    }
+
+    func testAnArrangementWithoutSplitsOpensAsPlainTabs() {
+        XCTAssertEqual(project(terminals: 3).resolvedTabs(with: [UUID(), UUID(), UUID()]), [])
+    }
+
+    func testTheTabLayoutsAreRebuiltOnFreshTerminals() {
+        var p = project(terminals: 4)
+        p.tabLayouts = [.row([.leaf(0), .leaf(1)]), .leaf(2), .leaf(3)]
+        let ids = (0..<4).map { _ in UUID() }
+        XCTAssertEqual(
+            p.resolvedTabs(with: ids), [.row([.leaf(ids[0]), .leaf(ids[1])]), .leaf(ids[2]), .leaf(ids[3])])
+    }
+
+    func testATerminalNoTabNamesGetsATabAtTheEnd() {
+        var p = project(terminals: 3)
+        p.tabLayouts = [.row([.leaf(0), .leaf(1)])]
+        let ids = (0..<3).map { _ in UUID() }
+        XCTAssertEqual(
+            p.resolvedTabs(with: ids), [.row([.leaf(ids[0]), .leaf(ids[1])]), .leaf(ids[2])])
+    }
+
+    func testAnArrangementSavedInClusterModeIsOneTab() {
+        var p = project(terminals: 3)
+        p.viewMode = .cluster
+        p.clusterLayout = .row([.leaf(0), .column([.leaf(1), .leaf(2)])])
+        let ids = (0..<3).map { _ in UUID() }
+        XCTAssertEqual(
+            p.resolvedTabs(with: ids), [.row([.leaf(ids[0]), .column([.leaf(ids[1]), .leaf(ids[2])])])])
+    }
+
+    func testTabLayoutsRoundTripAndOldFilesDecode() throws {
+        var p = project(terminals: 2)
+        p.tabLayouts = [.row([.leaf(0), .leaf(1)])]
+        let decoded = try JSONDecoder().decode(
+            PresetProject.self, from: try JSONEncoder().encode(p))
+        XCTAssertEqual(decoded, p)
+        let old = try JSONDecoder().decode(
+            PresetProject.self,
+            from: Data(#"{"name":"p","viewMode":"cluster","clusterLayout":{"row":{"_0":[{"leaf":{"_0":0}},{"leaf":{"_0":1}}]}},"terminals":[{"workingDirectory":"/a"},{"workingDirectory":"/b"}]}"#.utf8))
+        XCTAssertNil(old.tabLayouts)
+        XCTAssertEqual(old.clusterLayout, .row([.leaf(0), .leaf(1)]))
+    }
+}
