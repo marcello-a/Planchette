@@ -254,7 +254,6 @@ scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
 | `scripts/` | install, package, release; `perf/` measures and photographs the running app |
 | `skills/` | the planchette skill for agents |
 | `docs/` | concept, architecture, the API manual |
-| `core/`, `linux/` | reserved for the shared Zig core and a GTK4 app — empty |
 
 ## Docs
 
@@ -264,8 +263,7 @@ scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
 
 ## Status
 
-macOS ships and updates itself. Linux is planned, not started — `core/` and
-`linux/` are empty.
+macOS ships and updates itself.
 
 ---
 

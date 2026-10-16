@@ -332,8 +332,9 @@ deadline failure with no load at all.
 Conventional-commit style (`feat:`, `fix:`, `chore:`, `docs:`), imperative,
 with a short body explaining *why*.
 
-**The type is the release switch.** A merge to `main` whose commits carry a `feat:`,
-`fix:` or `perf:` publishes a patch release by itself; `chore:`, `docs:`, `test:`,
+**The type picks the version; the PR checkbox is the switch.** A merge to `main` publishes
+only when its PR ticks "Trigger new release" (off by default). Then commits that carry a
+`feat:`, `fix:` or `perf:` publish a patch release; `chore:`, `docs:`, `test:`,
 `style:` and `refactor:` alone do not (CONTRIBUTING.md, "Releasing"). So pick the type
 for what a user sees, and put the user-facing entry under `## [Unreleased]` in
 `CHANGELOG.md` in the same change — it becomes the release notes. `[skip release]` in

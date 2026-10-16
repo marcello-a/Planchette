@@ -226,6 +226,7 @@ struct AttentionPanel: View {
         .buttonStyle(.plain)
         .help(hoverDetail(session))
         .contextMenu {
+            Button(L10n.t(.markReady)) { appState.markReady(session.id) }
             // Read/unread by hand, so a row can be kept for later without
             // opening it, or dismissed without opening it either.
             if unread {
@@ -234,9 +235,7 @@ struct AttentionPanel: View {
                 Button(L10n.t(.markUnread)) { appState.markUnread(session.id) }
             }
             Divider()
-            SessionAttentionMenu(session: session)
-            Divider()
-            Button(L10n.t(.rename)) { appState.promptRename(session: session) }
+            SessionAttentionMenu(session: session, includesDone: false)
         }
     }
 }

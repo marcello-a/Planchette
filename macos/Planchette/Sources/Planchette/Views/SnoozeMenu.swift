@@ -7,9 +7,13 @@ import SwiftUI
 struct SessionAttentionMenu: View {
     @EnvironmentObject var appState: AppState
     let session: TerminalSession
+    /// The notifications panel puts "Mark as done" above the read/unread item itself.
+    var includesDone = true
 
     var body: some View {
-        Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+        if includesDone {
+            Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+        }
         Menu(L10n.t(.remindMe)) {
             ForEach(SnoozeOption.allCases) { option in
                 Button(L10n.t(option.labelKey)) {
