@@ -12,6 +12,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **A fourth intensity: Off.** Settings → General → Project color → Intensity can turn the
   gradient off completely, as Show the color on → Off already could. Off in either of the two
   wins, and the other one dims.
+  
+## [0.2.38] — 2026-10-16
 
 ### Changed
 - **A terminal that runs a shell or an agent in the background shows as running, with a globe.**
