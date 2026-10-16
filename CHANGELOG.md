@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.41] — 2026-10-16
+
 ### Fixed
 - **A terminal that is working no longer shows as free.** Claude Code 2.1.301 prints no
   "esc to interrupt" under a working turn in auto mode, so its footer looked like an idle
