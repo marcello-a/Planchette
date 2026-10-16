@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.40] — 2026-10-16
+
 ### Changed
 - **"Only active" no longer lists the terminals that are running.** A terminal that works does
   not need you, and "Only active" is the list of what does: waiting, failed, and finished ones
