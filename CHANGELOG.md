@@ -23,6 +23,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   terminal's session.
 
 ### Changed
+- **The notification bell shows the red dot, not a number.** The count stays in the panel's
+  title and in a screen reader's voice.
 - **The cluster view is gone; the split tab replaces it.** A project that was in cluster mode
   opens as one tab holding the same panes in the same arrangement, and a saved arrangement keeps
   its splits. *Combine All Tabs* is the button for "everything at once". The pane drag of the
