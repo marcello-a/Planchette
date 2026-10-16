@@ -79,7 +79,7 @@ private struct PaneView: View {
 
     private var header: some View {
         HStack(spacing: 5) {
-            StateIcon(state: session.state, size: 12)
+            SessionStateIcon(session: session, size: 12)
             Text(appState.tabName(for: session)).font(.caption.weight(.medium)).lineLimit(1)
             Text(session.shortPath).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             Spacer()

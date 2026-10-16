@@ -101,6 +101,8 @@ enum ControlAPI {
         if let background = BackgroundTasks.summary(state.backgroundTasks[session.id] ?? []) {
             dict["background_tasks"] = background
         }
+        // Shown as running because of that work: the state its turn is in.
+        if let held = state.heldByBackground[session.id] { dict["turn_state"] = held.rawValue }
         if let group = state.groups.first(where: { $0.id == session.groupID }) {
             dict["project"] = group.name
             dict["project_id"] = group.id.uuidString
@@ -339,7 +341,9 @@ enum ControlAPI {
             }
             // Typing into a turn in flight interrupts it — and whatever the agent
             // was doing is the user's work, not the caller's to discard.
-            if session.state == .running, request.bool("force") != true {
+            // The turn, not the mark: a terminal shown as running only because of a shell or an
+            // agent in its background sits at its prompt, and typing there interrupts nothing.
+            if state.turnState(of: session.id) == .running, request.bool("force") != true {
                 return encode(
                     ok: false,
                     error: "session is running; wait for it or pass force")
@@ -452,7 +456,8 @@ enum ControlAPI {
         let deadline = Date().addingTimeInterval(min(max(timeout, 1), 3600))
         while Date() < deadline {
             guard let session = state.sessions[id] else { return nil }
-            if until.contains(session.state.rawValue) { return session }
+            // The turn again: a worker that has answered is ready, whatever it still runs.
+            if until.contains((state.turnState(of: id) ?? session.state).rawValue) { return session }
             // Nobody is left to read the answer: stop holding a task, and the
             // descriptor, for the rest of the timeout.
             guard clientAlive() else { return nil }

@@ -126,6 +126,31 @@ enum StatePixels {
         }
     }
 
+    /// A globe, for a terminal whose turn is over and whose Claude still runs a shell or an agent
+    /// in the background (a dev server, a review agent): purple like `running`, because it is,
+    /// but not the robot, because nothing is being done *to you* right now — it is a place
+    /// something runs. Still, unlike the robot: a dev server is there for days, and a hundred
+    /// turning globes would cost what the animation guard of `StateIcon` exists to save.
+    ///
+    /// 13×13, not the states' 8×8: a globe is lines — a ring, a meridian, an equator, two
+    /// latitudes — and at 8 pixels the lines are as thick as the gaps and it turns into a blob.
+    /// At the default 13 pt every pixel is one point.
+    static let globe = [
+        "....#####....",
+        "..###...###..",
+        ".##.#...#.##.",
+        ".###########.",
+        "#..#.....#..#",
+        "#..#.....#..#",
+        "#############",
+        "#..#.....#..#",
+        "#..#.....#..#",
+        ".###########.",
+        ".##.#...#.##.",
+        "..###...###..",
+        "....#####....",
+    ]
+
     static func sprite(_ state: AttentionState, frame: Int = 0) -> [String] {
         let all = frames(state)
         return all[frame % all.count]
@@ -263,10 +288,23 @@ struct StateIcon: View {
     var size: CGFloat = 13
     /// Overrides the state's own colour.
     var tint: Color?
+    /// The globe in place of the robot: the turn is over and only background work runs. Only
+    /// meaningful for `running`; it keeps the running colour and does not move.
+    var inBackground = false
 
     @ObservedObject private var activity = AppActivity.shared
 
     var body: some View {
+        if inBackground {
+            PixelIcon(sprite: StatePixels.globe, size: size, tint: tint ?? state.tint)
+                .accessibilityLabel(L10n.t(.stateBackground))
+                .help(L10n.t(.stateBackground))
+        } else {
+            animatedOrStill
+        }
+    }
+
+    private var animatedOrStill: some View {
         Group {
             // A static sprite while the app is in the background — no timeline,
             // no ticks. NOT the .animation schedule with paused:, which wakes
@@ -300,5 +338,19 @@ struct StateIcon: View {
         // size and escalated into a full NSHostingView layout pass — measured
         // at 4x the CPU of this shape.
         .frame(width: size, height: size)
+    }
+}
+
+/// A terminal's state as its row, tab or tile draws it: the sprite of its state — and the globe in
+/// place of the robot while its turn is over and only its background work runs
+/// (`AppState.runsInBackground`). One view for every place that draws a session, so none of them
+/// can forget it.
+struct SessionStateIcon: View {
+    @EnvironmentObject var appState: AppState
+    let session: TerminalSession
+    var size: CGFloat = 13
+
+    var body: some View {
+        StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session))
     }
 }

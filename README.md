@@ -120,9 +120,10 @@ Also worth a second:
   menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
 - Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
   a project you are not working on.
-- Background agents and shells show under the state icon, so a terminal that looks idle but still
-  works says so. Optional per terminal: context ring, model, prompt-cache timer, and the pull
-  request with its review state.
+- Background agents and shells show under the state icon, and the terminal stays purple (running,
+  with a globe in place of the robot) while they work, so a terminal that looks idle but still
+  works says so. Optional per terminal:
+  context ring, model, prompt-cache timer, and the pull request with its review state.
 
 ### Find your way
 
