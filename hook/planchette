@@ -188,7 +188,10 @@ def main(argv):
         help="notification list: only terminals whose last report is unread")
     parser.add_argument(
         "--only-active", action="store_true",
-        help="notification list: only terminals that are running, asking or failed")
+        help="notification list: only terminals that wait for you, failed, or finished lately")
+    parser.add_argument(
+        "--include-running", action="store_true",
+        help="notification list: with --only-active, the terminals that are running too")
     parser.add_argument(
         "--limit", type=int, help="notification list: stop after this many rows")
     args = parser.parse_args(argv)
@@ -232,6 +235,8 @@ def main(argv):
         payload["unread_only"] = True
     if args.only_active:
         payload["only_active"] = True
+    if args.include_running:
+        payload["include_running"] = True
     if args.limit is not None:
         payload["limit"] = args.limit
 

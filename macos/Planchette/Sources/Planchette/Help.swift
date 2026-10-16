@@ -109,6 +109,7 @@ enum Help {
             Entry(.notificationsPanel, .notificationsPanelHelp),
             Entry(.onlyUnread, .onlyUnreadHelp),
             Entry(.onlyActive, .onlyActiveHelp),
+            Entry(.includeRunning, .includeRunningHelp),
             Entry(.markAllRead, nil),
             Entry(.markRead, nil, where: .helpWhereContextMenu),
             Entry(.markUnread, nil, where: .helpWhereContextMenu),

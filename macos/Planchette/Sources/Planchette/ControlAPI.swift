@@ -236,7 +236,8 @@ enum ControlAPI {
             var sections = state.notificationSections(
                 windowID: WindowRegistry.shared.keyWindowID() ?? state.windows.first?.id,
                 unreadOnly: request.bool("unread_only") == true,
-                activeOnly: request.bool("only_active") == true)
+                activeOnly: request.bool("only_active") == true,
+                includeRunning: request.bool("include_running") == true)
             if let projectID = request.uuid("project_id") {
                 sections = sections.filter { $0.group.id == projectID }
             }

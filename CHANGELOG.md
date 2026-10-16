@@ -8,6 +8,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **"Only active" no longer lists the terminals that are running.** A terminal that works does
+  not need you, and "Only active" is the list of what does: waiting, failed, and finished ones
+  whose done check is still there. A new "Show running" checkbox next to it brings the working
+  terminals back; it matters only while "Only active" is ticked. `notification list` follows:
+  `--only-active` leaves running terminals out, `--include-running` adds them.
+
 ## [0.2.39] — 2026-10-16
 
 ### Added

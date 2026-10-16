@@ -66,12 +66,20 @@ enum AttentionState: String, Codable {
     /// Is this terminal actively doing / holding something (not idle)?
     var isActive: Bool { self != .ready && self != .free }
 
-    /// What "Only active" keeps in the notifications panel: whatever is running, waiting or
-    /// failed, and a finished turn for as long as its done check is fresh. A result is not idle
-    /// until the check clears itself (`DoneExpiry`) and the terminal is free again — until then
-    /// it is still news, so a filter for "what is going on" must not hide it.
-    func isCurrent(since: Date, expiry: DoneExpiry, now: Date) -> Bool {
-        isActive || (self == .ready && !expiry.isExpired(since: since, now: now))
+    /// What "Only active" keeps in the notifications panel: whatever is waiting or failed, and a
+    /// finished turn for as long as its done check is fresh. A result is not idle until the check
+    /// clears itself (`DoneExpiry`) and the terminal is free again — until then it is still news,
+    /// so a filter for "what wants me" must not hide it.
+    ///
+    /// A running terminal is left out unless `includeRunning`: it is working, it does not need
+    /// you, and a list of what does should not be full of what does not.
+    func isCurrent(since: Date, expiry: DoneExpiry, now: Date, includeRunning: Bool = false) -> Bool {
+        switch self {
+        case .waiting, .error: true
+        case .running: includeRunning
+        case .ready: !expiry.isExpired(since: since, now: now)
+        case .free: false
+        }
     }
 
     /// What a terminal shows when its turn has ended but its Claude still runs a shell or an agent
