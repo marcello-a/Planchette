@@ -127,49 +127,65 @@ struct TerminalAreaView: View {
     }
 
     private func tab(_ session: TerminalSession, isActive: Bool) -> some View {
-        Button {
+        HStack(spacing: 5) {
+            SessionStateIcon(session: session, size: 13)
+            if let color = session.color.color {
+                Circle().fill(color).frame(width: 7, height: 7)
+            }
+            Text(appState.tabName(for: session))
+                .lineLimit(1)
+                .frame(maxWidth: 200, alignment: .leading)
+            if appState.tabLayout.showsPath {
+                Text(session.shortPath)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if appState.tabLayout.showsBranch, let branch = appState.branches[session.id] {
+                BranchText(branch: branch, trim: appState.sidebarDetails.branchTrim)
+                    .frame(maxWidth: 140, alignment: .leading)
+            }
+            if appState.tabLayout.showsTags {
+                TagChips(tags: session.tags)
+            }
+            // At the end of the tab, as in every tabbed app. It asks first: closing ends
+            // the terminal's session, and a tab is too easy to hit while aiming at its name.
+            Button {
+                TabCloser.confirmAndClose(
+                    [session.id], title: L10n.t(.closeTabAlertTitle, appState.tabName(for: session)),
+                    appState: appState)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, height: 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(L10n.t(.closeTabHelp))
+        }
+        .padding(.leading, 11)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        // Clear padding and the gaps between the icon, the name and the chips do not take
+        // a click unless the tab says its whole shape is hit.
+        .contentShape(RoundedRectangle(cornerRadius: 5))
+        .onTapGesture {
             clickedTab = session.id
             appState.updateGroup(group.id) { $0.activeSessionID = session.id }
-        } label: {
-            HStack(spacing: 5) {
-                SessionStateIcon(session: session, size: 13)
-                if let color = session.color.color {
-                    Circle().fill(color).frame(width: 7, height: 7)
-                }
-                Text(appState.tabName(for: session))
-                    .lineLimit(1)
-                    .frame(maxWidth: 200, alignment: .leading)
-                if appState.tabLayout.showsPath {
-                    Text(session.shortPath)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if appState.tabLayout.showsBranch, let branch = appState.branches[session.id] {
-                    BranchText(branch: branch, trim: appState.sidebarDetails.branchTrim)
-                        .frame(maxWidth: 140, alignment: .leading)
-                }
-                if appState.tabLayout.showsTags {
-                    TagChips(tags: session.tags)
-                }
-            }
-            .padding(.horizontal, 11)
-            .padding(.vertical, 6)
-            // A plain button hits only what it draws: the padding and the gaps between
-            // the icon, the name and the chips are clear, so a click there fell through.
-            .contentShape(RoundedRectangle(cornerRadius: 5))
-            .background(
-                isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
-                in: RoundedRectangle(cornerRadius: 5)
-            )
-            // The tab you are in, outlined in what that terminal is doing —
-            // on the tab, not around the terminal: a frame drawn around the
-            // content boxes in the text you are reading.
-            .overlay(
-                RoundedRectangle(cornerRadius: 5)
-                    .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 2)
-            )
         }
-        .buttonStyle(.plain)
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isButton)
+        .background(
+            isActive ? AnyShapeStyle(.selection) : AnyShapeStyle(.clear),
+            in: RoundedRectangle(cornerRadius: 5)
+        )
+        // The tab you are in, outlined in what that terminal is doing —
+        // on the tab, not around the terminal: a frame drawn around the
+        // content boxes in the text you are reading.
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 2)
+        )
         // Drag a tab onto another to reorder terminals within the project.
         .onDrag {
             NSItemProvider(object: session.id.uuidString as NSString)
@@ -213,5 +229,26 @@ struct TerminalAreaView: View {
             Text(L10n.t(.newTerminalHint)).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Closing from a tab: always asked first, because it ends the terminals' sessions.
+@MainActor
+enum TabCloser {
+    /// Ask, then close the terminals. `ids` is every terminal the tabs hold; the body
+    /// names how many that is.
+    static func confirmAndClose(_ ids: [UUID], title: String, appState: AppState) {
+        guard !ids.isEmpty else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = L10n.t(.closeTabAlertBody, ids.count)
+        alert.addButton(withTitle: L10n.t(.close))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        // From a button's action: see `ModalAlert` for why it is not `runModal()`.
+        Task { @MainActor in
+            guard await ModalAlert.run(alert) == .alertFirstButtonReturn else { return }
+            for id in ids { appState.closeSession(id) }
+        }
     }
 }

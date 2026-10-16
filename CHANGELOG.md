@@ -8,6 +8,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A close button at the end of every tab.** It asks first, because closing a tab ends the
+  terminal's session.
+
 ### Changed
 - **"Look at code" moved from the header into a tab's right-click menu.** The header keeps room
   for the dev-server links. The menu has the same three things: *Look at code*, *Open in* and
