@@ -13,6 +13,10 @@ to leave the icon wrong, then waits for the state the terminal should end in:
   claude-abort-streaming  a real turn that is printing an answer, Ctrl+C                            -> free
   claude-esc-at-dialog    a real permission dialog ("?"), Esc                                       -> free
   claude-killed           a real turn, `kill -9` of Claude (no SessionEnd hook ever comes)          -> error
+  claude-approved-tool    a real permission dialog, answered with Enter, a tool that goes on for 25 s -> running, not waiting
+  claude-mcp-allowed      a real MCP call (mcp_probe.py, 25 s) that needs no answer                  -> running all along
+  claude-mcp-approved     the same MCP call behind a permission dialog, answered with Enter          -> running, not waiting
+  claude-background-shell a turn that starts a shell with `sleep 25` in the background and ends       -> running until the shell ends
 
 The shell scenarios run the user's login shell (zsh, with Ghostty's shell integration) with an EMPTY
 ZDOTDIR, so no dotfile runs, in a terminal whose agentKind is `claude` - which is what a terminal keeps
@@ -30,7 +34,8 @@ from perf_common import REPO, FocusGuard, UserFilesGuard, scratch_root
 HERE = os.path.dirname(os.path.abspath(__file__))
 G, S = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 SCENARIOS = ["shell-ends", "shell-aborted", "shell-fails", "shell-plain",
-             "claude-abort-early", "claude-abort-streaming", "claude-esc-at-dialog", "claude-killed"]
+             "claude-abort-early", "claude-abort-streaming", "claude-esc-at-dialog", "claude-killed",
+             "claude-approved-tool", "claude-mcp-allowed", "claude-mcp-approved", "claude-background-shell"]
 
 
 def wait_for(predicate, timeout, step=0.4):
@@ -45,7 +50,8 @@ def wait_for(predicate, timeout, step=0.4):
 class Instance:
     """One isolated Planchette with one terminal, optionally the stand-in API and a Claude config."""
 
-    def __init__(self, label, binary, root, durable, claude):
+    def __init__(self, label, binary, root, durable, claude, allow=()):
+        self.allow = list(allow)
         self.root = root
         self.state_dir = f"{root}/state"; os.makedirs(self.state_dir, exist_ok=True)
         self.work = f"{root}/work"; os.makedirs(self.work, exist_ok=True)
@@ -96,12 +102,14 @@ class Instance:
                "projects": {self.work: {"hasTrustDialogAccepted": True, "allowedTools": [], "hasCompletedProjectOnboarding": True,
                                         "projectOnboardingSeenCount": 5}},
                "hasResetAutoModeOptInForDefaultOffer": True, "hasSeenAutoDefaultNudge": True, "fullscreenUpsellSeenCount": 10,
-               "lastReleaseNotesSeen": "99.0.0"}
+               "lastReleaseNotesSeen": "99.0.0",
+               # an MCP server of the user's own scope: no project approval to answer first
+               "mcpServers": {"probe": {"type": "stdio", "command": sys.executable, "args": ["-I", f"{HERE}/mcp_probe.py"]}}}
         json.dump(cfg, open(f"{home}/.claude.json", "w")); json.dump(cfg, open(f"{home}/.claude/.claude.json", "w"))
         hook = {"type": "command", "command": f"{REPO}/hook/planchette-hook claude"}
         events = ["SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest", "PreToolUse", "PostToolUse", "Stop",
                   "SubagentStop", "SessionEnd"]   # HookInstaller.events
-        json.dump({"permissions": {"allow": [], "defaultMode": "default"},
+        json.dump({"permissions": {"allow": self.allow, "defaultMode": "default"},
                    "hooks": {e: [{"matcher": "*", "hooks": [hook]}] if e in ("PreToolUse", "PostToolUse") else [{"hooks": [hook]}] for e in events}},
                   open(f"{home}/.claude/settings.json", "w"))
         pairs = {"HOME": home, "CLAUDE_CONFIG_DIR": f"{home}/.claude", "ANTHROPIC_API_KEY": key, "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
@@ -156,6 +164,25 @@ class Instance:
             if s == wanted: return True, " -> ".join(seen)
             time.sleep(0.5)
         return False, " -> ".join(seen)
+
+    def timeline(self, seconds, step=0.5):
+        """The states seen over `seconds`, each with how long it stayed: 'waiting 2.5s -> running 11.0s'."""
+        spans, end = [], time.time() + seconds
+        while time.time() < end:
+            s, now = self.state(), time.time()
+            if spans and spans[-1][0] == s: spans[-1][2] = now
+            else: spans.append([s, now, now])
+            time.sleep(step)
+        return " -> ".join(f"{s} {b - a + step:.1f}s" for s, a, b in spans)
+
+    def spans(self, seconds, step=0.5):
+        """The states seen over `seconds` as (state, seconds since the start when it began)."""
+        seen, start = [], time.time()
+        while time.time() - start < seconds:
+            s = self.state()
+            if not seen or seen[-1][0] != s: seen.append((s, round(time.time() - start, 1)))
+            time.sleep(step)
+        return seen
 
     def close(self):
         self.focus_guard.stop()
@@ -220,9 +247,40 @@ def shell(name, root, binary):
 
 
 def claude(name, root, binary):
-    inst = Instance(name, binary, root, durable=name != "claude-killed", claude=True)
+    inst = Instance(name, binary, root, durable=name != "claude-killed", claude=True,
+                    allow=["mcp__probe__slow"] if name == "claude-mcp-allowed" else [])
     try:
         inst.start_claude()
+        if name == "claude-approved-tool":
+            # A permission dialog, answered with Enter, and a tool that then takes 25 s: what does the icon say meanwhile?
+            inst.type_line("PERMWAIT25 please wait a while")
+            if not inst.reaches("waiting", 30)[0]: return False, f"no question (state {inst.state()}); screen: {inst.screen(14)!r}"
+            time.sleep(2); inst.press("Enter")
+            line = inst.timeline(34)
+            return "running" in line.split("->")[1] if "->" in line else False, line
+        if name == "claude-background-shell":
+            # The turn starts a shell that sleeps 25 s and ends at once: what does the icon say while the shell runs?
+            inst.type_line("BGSHELL25 start something and tell me")
+            began = time.time()
+            first = inst.spans(8)
+            # The turn is over, the shell runs: the API talks about the turn (turn_state) and does not refuse a prompt.
+            got = inst.rpc({"planchette_request": "session.get", "id": S})["result"]["session"]
+            prompted = inst.rpc({"planchette_request": "session.prompt", "id": S, "text": "STREAM2 and now this"})
+            rest = inst.spans(36)
+            seen = first + [(s, round(t + time.time() - began - 36, 1)) for s, t in rest]
+            line = " -> ".join(f"{s}@{t}s" for s, t in seen) + f"; get: state={got.get('state')} turn_state={got.get('turn_state')}; prompt ok={prompted.get('ok')} {prompted.get('error', '')}"
+            # idle before the shell is over (it began ~2 s after the prompt) is the old, wrong answer
+            idle_early = [t for s, t in seen if s in ("ready", "free") and 1 < t < 20]
+            held = got.get("state") == "running" and got.get("turn_state") in ("ready", "free")
+            return not idle_early and held and prompted.get("ok") is True, line
+        if name in ("claude-mcp-allowed", "claude-mcp-approved"):
+            inst.type_line("MCPCALL25 call the server")
+            if name == "claude-mcp-approved":
+                if not inst.reaches("waiting", 40)[0]: return False, f"no question (state {inst.state()}); screen: {inst.screen(16)!r}"
+                time.sleep(2); inst.press("Enter")
+            line = inst.timeline(36)
+            states = [part.split()[0] for part in line.split(" -> ")]
+            return states[:1] == ["running"] or "running" in states, line
         if name == "claude-abort-early":
             inst.type_line("SLOW60 please take your time")
             if not inst.reaches("running", 10)[0]: return False, "never ran"
@@ -266,4 +324,5 @@ def main():
     print(f"[{label}] RESULT: " + "; ".join(f"{n}: {'ok' if ok else 'FAIL'}" for n, ok in results), flush=True)
 
 
-main()
+if __name__ == "__main__":
+    main()

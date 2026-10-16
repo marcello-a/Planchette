@@ -192,7 +192,9 @@ Returns `{"session": session}`, or `{"ok": false, "error": "no such session"}`.
 
 Refuses with `session is running; wait for it or pass force` while a turn is in
 flight: typing into a running turn interrupts it, and that turn is the user's
-work, not yours to discard. `force` overrides it — be sure.
+work, not yours to discard. `force` overrides it — be sure. It is the *turn* that
+counts: a terminal shown as `running` only because Claude still runs a shell or an
+agent in the background (`turn_state` says so) sits at its prompt, and is not refused.
 
 The text is delivered as a paste — framed in bracketed-paste markers when the
 program asked for that, as zsh, fish and Claude Code do — and then Enter is pressed
@@ -221,6 +223,10 @@ Returns `{"text": "…", "session": session}` — the last `lines` lines.
 | `id` | UUID string | the calling terminal |
 | `until` | array of state names | `["ready", "waiting", "error", "free"]` |
 | `timeout_ms` | int | `120000` (capped at 3600 s) |
+
+Waits on the *turn*: a terminal shown as `running` only because of its background
+work counts as the state its turn is in (`turn_state`, `ready` or `free`), so a worker
+that has answered is not waited for until its dev server stops.
 
 Returns `{"session": session, "timed_out": false}` on arrival, or `ok: false`
 with a timeout error. The wait stops early, without an answer, when the caller's
@@ -293,7 +299,8 @@ Returned by every `session.*` command.
 | `id` | string | terminal id |
 | `title` | string | the name the app derives: a name you typed, else the ticket of the branch and the last prompt (`NIE-1902 · Add the switch`). The tab bar shows what Settings → Tabs says (the conversation's summary, by default), so the two can differ |
 | `path` | string | live working directory |
-| `state` | string | `running` · `waiting` · `ready` · `error` · `free` |
+| `state` | string | `running` · `waiting` · `ready` · `error` · `free`. A terminal whose turn ended while Claude still runs a shell or an agent in the background is `running` (Settings → Project panel → Behavior turns that off) |
+| `turn_state` | string | `ready` or `free`, present only when `state` is `running` for that reason: the state the turn itself is in. `session.prompt` and `session.wait` go by it |
 | `agent` | string | `claude` · `codex` · `none` |
 | `seen` | bool | has its last report been looked at |
 | `task` | string | the last prompt submitted here (absent if none) |
@@ -339,7 +346,7 @@ empty string.
 
 | State | Colour | Means |
 |---|---|---|
-| `running` | purple | a turn is in flight |
+| `running` | purple | a turn is in flight, or its turn ended and Claude still runs a shell or an agent in the background |
 | `waiting` | blue | it needs a human answer |
 | `ready` | green | a turn finished, the result is unreviewed |
 | `error` | red | the last command or agent failed |

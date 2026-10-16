@@ -13,7 +13,10 @@ Claude Code starts real background work without any model behind it (`background
   SLOW<n>      the reply is held back n seconds: a turn that stays "running" (state_sync.py)
   STREAM<n>    the answer starts at once (text on screen) and then stalls for n seconds
   ASKPERM<n>   Bash `touch permtest.txt`: a command that needs a permission, so a dialog opens
+  PERMWAIT<n>   Bash `touch permtest.txt; sleep <n>`: a permission dialog, then a tool that goes on for n seconds
+  MCPCALL<n>   the tool `slow` of the MCP server `probe` (mcp_probe.py): a tool call that takes n seconds
 Each token is answered once (see `answered`); a second task needs a different number.
+No token may contain another one: `re.search` finds SLOW inside ASKSLOW, and the held-back reply wins.
 """
 import json, re, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -140,10 +143,11 @@ class Handler(BaseHTTPRequestHandler):
         usage = {"input_tokens": 10, "output_tokens": 3}
         scripted = None
         if "haiku" not in (body.get("model") or "") and body.get("stream"):
-            work, shell, agent, slow, stall, perm = (
-                re.search(token + r"(\d+)", text) for token in ("SUBWORK", "BGSHELL", "BGAGENT", "SLOW", "STREAM", "ASKPERM"))
-            work, shell, agent, slow, stall, perm = (
-                m if m and first_time(m.group(0)) else None for m in (work, shell, agent, slow, stall, perm))
+            work, shell, agent, slow, stall, perm, askslow, mcp = (
+                re.search(token + r"(\d+)", text)
+                for token in ("SUBWORK", "BGSHELL", "BGAGENT", "SLOW", "STREAM", "ASKPERM", "PERMWAIT", "MCPCALL"))
+            work, shell, agent, slow, stall, perm, askslow, mcp = (
+                m if m and first_time(m.group(0)) else None for m in (work, shell, agent, slow, stall, perm, askslow, mcp))
             if slow:
                 time.sleep(int(slow.group(1)))
                 reply = "SLOW-DONE"
@@ -152,6 +156,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
             elif perm:
                 scripted = ("Bash", {"command": "touch permtest.txt", "description": "make a file"})
+            elif askslow:
+                scripted = ("Bash", {"command": f"touch permtest.txt; sleep {askslow.group(1)}",
+                                     "description": f"make a file, then wait {askslow.group(1)} seconds"})
+            elif mcp:
+                scripted = ("mcp__probe__slow", {"seconds": int(mcp.group(1))})
             elif work:
                 time.sleep(int(work.group(1)))
                 reply = "SUBAGENT-DONE"

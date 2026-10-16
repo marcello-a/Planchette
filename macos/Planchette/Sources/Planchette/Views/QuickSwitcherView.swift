@@ -97,7 +97,7 @@ struct QuickSwitcherView: View {
             return SearchRanking.shifted(hit.matches[.path] ?? [], by: shortPath.count - path.count, within: shortPath.count)
         }()
         return HStack(spacing: 8) {
-            StateIcon(state: session.state)
+            SessionStateIcon(session: session)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text(Highlight.attributed(session.displayTitle, hit.matches[.title] ?? [])).bold()

@@ -36,7 +36,7 @@ enum SidebarDetailGroup: String, CaseIterable, Identifiable {
 /// On by default — except the model and the context usage, which cost a
 /// transcript read and are opinionated about what a row should say.
 enum SidebarDetail: String, CaseIterable, Identifiable {
-    case path, branch, pullRequest, task, age, tags, note, finished, snooze, attentionCounts
+    case path, branch, pullRequest, task, age, tags, note, snooze, attentionCounts
     case backgroundTasks
     case model, contextUsage, cacheTimer
 
@@ -47,7 +47,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         switch self {
         case .path, .branch, .pullRequest: .location
         case .task, .age, .backgroundTasks: .activity
-        case .tags, .note, .finished, .snooze: .marks
+        case .tags, .note, .snooze: .marks
         case .model, .contextUsage, .cacheTimer: .claude
         case .attentionCounts: .projectRow
         }
@@ -69,7 +69,6 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .age: .detailAge
         case .tags: .detailTags
         case .note: .detailNote
-        case .finished: .detailFinished
         case .snooze: .detailSnooze
         case .attentionCounts: .detailAttentionCounts
         case .backgroundTasks: .detailBackgroundTasks
@@ -89,7 +88,6 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         case .age: .detailAgeHelp
         case .tags: .detailTagsHelp
         case .note: .detailNoteHelp
-        case .finished: .detailFinishedHelp
         case .snooze: .detailSnoozeHelp
         case .attentionCounts: .detailAttentionCountsHelp
         case .backgroundTasks: .detailBackgroundTasksHelp

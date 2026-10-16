@@ -91,6 +91,12 @@ final class AppState: ObservableObject {
     @Published var projectColor = ProjectColorLook() {
         didSet { scheduleSave() }
     }
+    /// A terminal whose Claude still runs a shell or an agent in the background shows as running
+    /// once its turn has ended: the turn is over, the work is not (Settings → Project panel →
+    /// Behavior; `AttentionState.settled`). On by default.
+    @Published var backgroundCountsAsRunning = true {
+        didSet { scheduleSave() }
+    }
     /// What the user has already been told: the welcome screen of a first launch and the
     /// durable terminals prompt after an update. Persisted — asking twice is nagging.
     @Published var onboarding = OnboardingState() {
@@ -192,6 +198,7 @@ final class AppState: ObservableObject {
             onboarding = saved.onboarding
             tabLayout = saved.tabLayout
             projectColor = saved.projectColor
+            backgroundCountsAsRunning = saved.backgroundCountsAsRunning
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -303,9 +310,14 @@ final class AppState: ObservableObject {
         // session count. A quarter of the rate (6s) keeps background questions
         // arriving promptly while cutting the idle cost by 4×.
         screenPollTick += 1
-        if NSApp?.isActive != true && !screenPollTick.isMultiple(of: 4) { return }
+        // On the quiet ticks only the terminals that are asking are read: that is where a
+        // slow answer costs something (a permission granted and the tool running, still
+        // shown as a question), and there are few of them.
+        let quietTick = NSApp?.isActive != true && !screenPollTick.isMultiple(of: 4)
+        if quietTick && !sessions.values.contains(where: { $0.state == .waiting }) { return }
         reloadScreenRulesIfChanged()
         for (id, session) in sessions {
+            if quietTick && session.state != .waiting { continue }
             let rules = screenRules.rules(for: session.agentKind)
             // Nothing to match against (e.g. a plain shell, or an agent whose
             // patterns aren't verified yet) → don't even read the surface.
@@ -337,6 +349,14 @@ final class AppState: ObservableObject {
             }
             let detection = ScreenDetector.detect(
                 lines: text.components(separatedBy: "\n"), rules: rules)
+            // A terminal held at running by its background work sits at an idle prompt on
+            // purpose: that is not "a turn that ended without a hook", and "free" would be
+            // undone at once anyway (`setState` settles it) — after rewriting the state its
+            // turn is in, which the control API reads.
+            if session.state == .running, heldByBackground[id] != nil, detection?.idlePrompt == true {
+                screenConfirmation.forget(id)
+                continue
+            }
             let raised = screenRaisedIDs.contains(id)
             let newState = AttentionState.fromScreen(
                 detection,
@@ -344,15 +364,18 @@ final class AppState: ObservableObject {
                 hookAuthority: hookAuthority,
                 current: session.state,
                 raisedByScreen: raised)
-            // Two readings move a terminal on the screen's word alone and must
+            // Three readings move a terminal on the screen's word alone and must
             // hold on two polls in a row (see ScreenConfirmation): an idle
-            // prompt over a turn the hooks call running, and a question that
-            // is no longer on the screen.
+            // prompt over a turn the hooks call running, a question that
+            // is no longer on the screen, and a question that was answered (the
+            // footer of a live turn where the dialog was).
             let bold: ScreenConfirmation.Reading?
             if hookAuthority, session.state == .running, detection?.idlePrompt == true {
                 bold = .idlePrompt
             } else if !hookAuthority, raised, session.state == .waiting, detection == nil {
                 bold = .questionGone
+            } else if hookAuthority, session.state == .waiting, detection?.state == .working {
+                bold = .answered
             } else {
                 bold = nil
             }
@@ -772,6 +795,23 @@ final class AppState: ObservableObject {
     /// Never persisted: the tasks are processes of a Claude that a restart
     /// ends, and the next hook says what is true.
     @Published private(set) var backgroundTasks: [UUID: [BackgroundTask]] = [:]
+
+    /// The terminals shown as running only because of their background work
+    /// (`AttentionState.settled`), with the idle state their turn is in: `ready` or `free`.
+    /// The control API talks about the turn, not about the mark — prompting a terminal that
+    /// sits at its prompt interrupts nothing, and a worker whose turn ended has answered.
+    @Published private(set) var heldByBackground: [UUID: AttentionState] = [:]
+
+    /// Whether this terminal is shown as running *only* because of its background work: its turn is
+    /// over, so its icon is the globe, not the robot.
+    func runsInBackground(_ session: TerminalSession) -> Bool {
+        session.state == .running && heldByBackground[session.id] != nil
+    }
+
+    /// The state of the terminal's turn: what its hooks say, without the mark above.
+    func turnState(of id: UUID) -> AttentionState? {
+        heldByBackground[id] ?? sessions[id]?.state
+    }
 
     private func applyBackground(_ signal: BackgroundTaskSignal, to id: UUID) {
         let before = backgroundTasks[id] ?? []
@@ -1314,6 +1354,7 @@ final class AppState: ObservableObject {
         findTasks[id] = nil
         liveAgentIDs.remove(id)
         backgroundTasks[id] = nil
+        if heldByBackground[id] != nil { heldByBackground[id] = nil }
         screenRaisedIDs.remove(id)
         screenConfirmation.forget(id)
         escalatedIDs.remove(id)
@@ -1870,7 +1911,7 @@ final class AppState: ObservableObject {
     /// command result) or the user explicitly marks it free ("nothing for me
     /// here") — which is what the context-menu action means.
     func markReady(_ id: UUID) {
-        setState(id, .free)
+        setState(id, .free, settle: false)
         markSeen(id)
     }
 
@@ -1995,7 +2036,18 @@ final class AppState: ObservableObject {
         setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
     }
 
-    private func setState(_ id: UUID, _ state: AttentionState, message: String? = nil) {
+    private func setState(_ id: UUID, _ requested: AttentionState, message: String? = nil, settle: Bool = true) {
+        // A turn that ended while the terminal still runs a shell or an agent in the background is
+        // not done, and an idle prompt on its screen is not "free": the terminal keeps showing what
+        // is true (`AttentionState.settled`). Every writer comes through here — a hook, the screen,
+        // a finished command — so none of them can undo it. What you decide yourself ("Mark as
+        // done") is not a reading of the terminal, and passes as it is.
+        let state = settle && backgroundCountsAsRunning
+            ? requested.settled(hasBackgroundWork: !(backgroundTasks[id] ?? []).isEmpty)
+            : requested
+        // Only a real change is written: the icon follows this, and it is published.
+        let held: AttentionState? = state == requested ? nil : requested
+        if heldByBackground[id] != held { heldByBackground[id] = held }
         if state != .waiting { screenRaisedIDs.remove(id) }
         // Anything that happened while you were looking elsewhere is unread: a
         // turn that finished, a question, an error. What happened in front of you
@@ -2082,12 +2134,6 @@ final class AppState: ObservableObject {
                 // whatever is there already belongs to it, not to a new one.
                 if $0.firstTask == nil { $0.firstTask = task }
             }
-        }
-        // New work reopens a terminal you had marked finished: the mark was
-        // about the work that is now over (a prompt, a `/clear`, a fresh Claude).
-        if sessions[sessionID]?.isFinished == true,
-           TerminalSession.reopensFinishedWork(hookEvent: hookEvent, source: source, prompt: prompt) {
-            update(sessionID) { $0.finishedAt = nil }
         }
         // Context usage follows the agent: gone when it ends, back (and read
         // at once) on anything else — a finished turn is when it changed.
@@ -2480,7 +2526,8 @@ final class AppState: ObservableObject {
             askedAboutSpaceSwitching: askedAboutSpaceSwitching,
             onboarding: onboarding,
             tabLayout: tabLayout,
-            projectColor: projectColor
+            projectColor: projectColor,
+            backgroundCountsAsRunning: backgroundCountsAsRunning
         )
         do {
             let encoder = JSONEncoder()
@@ -2565,6 +2612,7 @@ final class AppState: ObservableObject {
         onboarding = state.onboarding
         tabLayout = state.tabLayout
         projectColor = state.projectColor
+        backgroundCountsAsRunning = state.backgroundCountsAsRunning
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -2680,6 +2728,7 @@ final class AppState: ObservableObject {
         onboarding = previous?.onboarding ?? onboarding
         tabLayout = previous?.tabLayout ?? tabLayout
         projectColor = previous?.projectColor ?? projectColor
+        backgroundCountsAsRunning = previous?.backgroundCountsAsRunning ?? backgroundCountsAsRunning
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

@@ -173,7 +173,7 @@ struct AttentionPanel: View {
                 // Unread is carried by the bar down the leading edge of the row
                 // and the weight of the title — never by colour alone, and never
                 // by a ring: a circle drawn around a pixel sprite fights it.
-                StateIcon(state: session.state, size: 14)
+                SessionStateIcon(session: session, size: 14)
                     .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 2) {
                     // The state belongs in the corner, next to the name it
@@ -186,7 +186,7 @@ struct AttentionPanel: View {
                             .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
                             .truncationMode(.middle)
                         Spacer(minLength: 4)
-                        StateChip(state: session.state)
+                        StateChip(state: session.state, inBackground: appState.runsInBackground(session))
                     }
                     // Prompt and age on one line: two rows of prompt at most, and
                     // it ends before the age instead of running under it — the age

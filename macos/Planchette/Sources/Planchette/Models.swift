@@ -82,6 +82,14 @@ enum AttentionState: String, Codable {
         }
     }
 
+    /// What a terminal shows when its turn has ended but its Claude still runs a shell or an agent
+    /// in the background (`BackgroundTasks`): the turn is over, the work is not, and "done" or "free"
+    /// would be a lie. Only the idle states give way. A question or an error still wants you,
+    /// whatever else runs, and `running` is already what it says.
+    func settled(hasBackgroundWork: Bool) -> AttentionState {
+        hasBackgroundWork && (self == .ready || self == .free) ? .running : self
+    }
+
     /// Does reaching this state report something to you? Those are the states
     /// that arrive as a notification and can therefore be unread — a question,
     /// an error, a finished turn. `running` is the terminal accepting work you
@@ -231,9 +239,11 @@ struct StateSummaryBadges: View {
 /// colors the same. Colors come solely from `AttentionState.tint`.
 struct StateChip: View {
     let state: AttentionState
+    /// "In the background" instead of "Running": the turn is over, the work is not.
+    var inBackground = false
 
     var body: some View {
-        Text(state.label)
+        Text(inBackground ? L10n.t(.stateBackground) : state.label)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(state.tint.opacity(0.16), in: Capsule())
@@ -349,12 +359,6 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// Friday"). Never written by the app — it is the one line here that only
     /// you can say, so nothing clears it but you.
     var note: String?
-    /// When you marked the work in this terminal as finished. The hook states
-    /// say what the *agent* is doing, and `ready` flips back the moment it runs
-    /// again; this says what *you* decided, and stays until you give the
-    /// terminal new work (see `reopensFinishedWork`) or undo it.
-    var finishedAt: Date?
-    var isFinished: Bool { finishedAt != nil }
 
     // AI assist
     var transcriptPath: String?   // Claude transcript JSONL, from hook events
@@ -395,7 +399,6 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
         note = try c.decodeIfPresent(String.self, forKey: .note)
-        finishedAt = try c.decodeIfPresent(Date.self, forKey: .finishedAt)
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)
@@ -489,25 +492,6 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     var promptLine: String? {
         let line = currentTask ?? lastMessage ?? aiSummary
         return (line?.isEmpty ?? true) ? nil : line
-    }
-
-    /// Whether a hook event gives a terminal new work, which ends the "finished"
-    /// mark you put on it: the mark was about the work that is now over.
-    ///
-    /// - a prompt you send reopens it — but not Claude's own "a background task
-    ///   ended" notice, which reaches the hook as a prompt nobody typed;
-    /// - `/clear` does (`source == "clear"`): the conversation that carried the
-    ///   work is gone;
-    /// - a Claude that starts fresh does (`startup`);
-    /// - `resume` does not. The app restores a Claude terminal with `--resume` on
-    ///   every launch, and a mark you set must survive a restart; a compaction or
-    ///   a fork carries the same work on.
-    static func reopensFinishedWork(hookEvent: String, source: String?, prompt: String?) -> Bool {
-        switch hookEvent {
-        case "UserPromptSubmit": !(prompt.map(BackgroundTasks.isNotification) ?? false)
-        case "SessionStart": source == "clear" || source == "startup"
-        default: false
-        }
     }
 
     /// Condense a submitted prompt to a one-line task label ("working on …").
@@ -865,6 +849,8 @@ struct PersistedState: Codable {
     var tabLayout = TabLayout()
     /// Where a project's color shows and how strong it is (Settings → General → Project color).
     var projectColor = ProjectColorLook()
+    /// A terminal with a shell or an agent running in the background shows as running once its turn has ended.
+    var backgroundCountsAsRunning = true
 
     init(
         groups: [SessionGroup],
@@ -885,7 +871,8 @@ struct PersistedState: Codable {
         askedAboutSpaceSwitching: Bool = false,
         onboarding: OnboardingState = OnboardingState(),
         tabLayout: TabLayout = TabLayout(),
-        projectColor: ProjectColorLook = ProjectColorLook()
+        projectColor: ProjectColorLook = ProjectColorLook(),
+        backgroundCountsAsRunning: Bool = true
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -906,6 +893,7 @@ struct PersistedState: Codable {
         self.onboarding = onboarding
         self.tabLayout = tabLayout
         self.projectColor = projectColor
+        self.backgroundCountsAsRunning = backgroundCountsAsRunning
     }
 
     init(from decoder: Decoder) throws {
@@ -940,5 +928,6 @@ struct PersistedState: Codable {
         sidebarDetails = sidebarDetails.migrated(lastLaunchedVersion: onboarding.lastLaunchedVersion)
         tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
         projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
+        backgroundCountsAsRunning = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundCountsAsRunning)) ?? true
     }
 }

@@ -120,9 +120,10 @@ Also worth a second:
   menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
 - Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
   a project you are not working on.
-- Background agents and shells show under the state icon, so a terminal that looks idle but still
-  works says so. Optional per terminal: context ring, model, prompt-cache timer, and the pull
-  request with its review state.
+- Background agents and shells show under the state icon, and the terminal stays purple (running,
+  with a globe in place of the robot) while they work, so a terminal that looks idle but still
+  works says so. Optional per terminal:
+  context ring, model, prompt-cache timer, and the pull request with its review state.
 
 ### Find your way
 
@@ -152,7 +153,7 @@ Also worth a second:
 - Projects in folders; drag one into a folder and drop it into an exact slot. Click a folder for an
   overview: every project, its state, its terminals.
 - Tab view or cluster grid per project; drag panes to split.
-- Tags (with a list you edit), colors, favorites, notes, "mark as finished"; multi-select (⌘/⇧-click)
+- Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
 - Choose what every row of the project panel shows — path, branch, pull request, prompt, age,
   tags — in *Settings → Project panel*.

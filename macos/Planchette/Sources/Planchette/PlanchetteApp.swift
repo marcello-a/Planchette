@@ -182,18 +182,27 @@ struct SettingsView: View {
 
 /// Settings → Information: explains the status-color system.
 struct InfoTab: View {
-    private let states: [AttentionState] = [.ready, .running, .waiting, .error, .free]
+    /// What the legend explains: the five states, and the globe — `running` for a terminal whose
+    /// turn is over while its Claude still runs something in the background.
+    private enum Row: Hashable {
+        case state(AttentionState)
+        case background
+    }
+
+    private let rows: [Row] = [
+        .state(.ready), .state(.running), .background, .state(.waiting), .state(.error), .state(.free),
+    ]
 
     var body: some View {
         Form {
             Section(L10n.t(.colorLegendTitle)) {
                 Text(L10n.t(.colorLegendIntro)).foregroundStyle(.secondary)
-                ForEach(states, id: \.self) { state in
+                ForEach(rows, id: \.self) { row in
                     HStack(alignment: .top, spacing: 10) {
-                        StateIcon(state: state, size: 18).padding(.top, 2)
+                        icon(for: row).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(state.label).fontWeight(.semibold)
-                            Text(description(for: state))
+                            Text(title(for: row)).fontWeight(.semibold)
+                            Text(description(for: row))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -202,6 +211,28 @@ struct InfoTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func icon(for row: Row) -> some View {
+        switch row {
+        case .state(let state): StateIcon(state: state, size: 18)
+        case .background: StateIcon(state: .running, size: 18, inBackground: true)
+        }
+    }
+
+    private func title(for row: Row) -> String {
+        switch row {
+        case .state(let state): state.label
+        case .background: L10n.t(.stateBackground)
+        }
+    }
+
+    private func description(for row: Row) -> String {
+        switch row {
+        case .state(let state): description(for: state)
+        case .background: L10n.t(.backgroundDesc)
+        }
     }
 
     private func description(for state: AttentionState) -> String {
@@ -956,15 +987,6 @@ extension AppState {
     func promptNote(session: TerminalSession) {
         promptText(title: L10n.t(.notePrompt), value: session.note ?? "") { note in
             self.update(session.id) { $0.note = note.isEmpty ? nil : note }
-        }
-    }
-
-    /// Mark the work in a terminal finished, or open it again. Finishing also
-    /// reads it: whatever it reported is what you just decided about.
-    func setFinished(_ finished: Bool, session id: UUID) {
-        update(id) {
-            $0.finishedAt = finished ? ($0.finishedAt ?? Date()) : nil
-            if finished { $0.seen = true }
         }
     }
 
