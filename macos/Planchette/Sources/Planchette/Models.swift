@@ -74,6 +74,14 @@ enum AttentionState: String, Codable {
         isActive || (self == .ready && !expiry.isExpired(since: since, now: now))
     }
 
+    /// What a terminal shows when its turn has ended but its Claude still runs a shell or an agent
+    /// in the background (`BackgroundTasks`): the turn is over, the work is not, and "done" or "free"
+    /// would be a lie. Only the idle states give way. A question or an error still wants you,
+    /// whatever else runs, and `running` is already what it says.
+    func settled(hasBackgroundWork: Bool) -> AttentionState {
+        hasBackgroundWork && (self == .ready || self == .free) ? .running : self
+    }
+
     /// Does reaching this state report something to you? Those are the states
     /// that arrive as a notification and can therefore be unread — a question,
     /// an error, a finished turn. `running` is the terminal accepting work you
@@ -223,9 +231,11 @@ struct StateSummaryBadges: View {
 /// colors the same. Colors come solely from `AttentionState.tint`.
 struct StateChip: View {
     let state: AttentionState
+    /// "In the background" instead of "Running": the turn is over, the work is not.
+    var inBackground = false
 
     var body: some View {
-        Text(state.label)
+        Text(inBackground ? L10n.t(.stateBackground) : state.label)
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 6).padding(.vertical, 1)
             .background(state.tint.opacity(0.16), in: Capsule())
@@ -831,6 +841,8 @@ struct PersistedState: Codable {
     var tabLayout = TabLayout()
     /// Where a project's color shows and how strong it is (Settings → General → Project color).
     var projectColor = ProjectColorLook()
+    /// A terminal with a shell or an agent running in the background shows as running once its turn has ended.
+    var backgroundCountsAsRunning = true
 
     init(
         groups: [SessionGroup],
@@ -851,7 +863,8 @@ struct PersistedState: Codable {
         askedAboutSpaceSwitching: Bool = false,
         onboarding: OnboardingState = OnboardingState(),
         tabLayout: TabLayout = TabLayout(),
-        projectColor: ProjectColorLook = ProjectColorLook()
+        projectColor: ProjectColorLook = ProjectColorLook(),
+        backgroundCountsAsRunning: Bool = true
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -872,6 +885,7 @@ struct PersistedState: Codable {
         self.onboarding = onboarding
         self.tabLayout = tabLayout
         self.projectColor = projectColor
+        self.backgroundCountsAsRunning = backgroundCountsAsRunning
     }
 
     init(from decoder: Decoder) throws {
@@ -906,5 +920,6 @@ struct PersistedState: Codable {
         sidebarDetails = sidebarDetails.migrated(lastLaunchedVersion: onboarding.lastLaunchedVersion)
         tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
         projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
+        backgroundCountsAsRunning = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundCountsAsRunning)) ?? true
     }
 }

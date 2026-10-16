@@ -971,7 +971,7 @@ struct SidebarView: View {
                 // background: a terminal that looks idle may be busy with a dev
                 // server or an agent, and the state alone does not say so.
                 VStack(spacing: 3) {
-                    StateIcon(state: session.state)
+                    SessionStateIcon(session: session)
                     if appState.shows(.backgroundTasks),
                        let tasks = appState.backgroundTasks[session.id] {
                         BackgroundTasksBadge(tasks: tasks)

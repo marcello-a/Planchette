@@ -243,7 +243,9 @@ enum ScreenDetector {
         // fetched v1 file take the release asset that carries it.
         // 3: claude_idle_footer reads every permission mode's footer and frees a
         // turn the hooks never closed (an abort before the first output).
-        version: 3,
+        // 4: claude_working reads the footer of a turn in flight, which is how a
+        // question that was answered is noticed (no hook says so).
+        version: 4,
         engine: ScreenRuleSet.engineVersion,
         agents: [
             AgentKind.claude.rawValue: [
@@ -305,6 +307,19 @@ enum ScreenDetector {
                     none: ["esc to cancel", "do you want to", "esc to interrupt",
                            "enter to interrupt"],
                     idlePrompt: true),
+                // A turn in flight: the footer says "esc to interrupt" for as long as
+                // Claude works — a tool that takes a minute, an MCP call, included. A
+                // dialog never does (its footer is "Esc to cancel · Tab to amend"), so
+                // the marker with no question on the screen is what an ANSWERED
+                // question looks like: granting a permission fires no hook of its own,
+                // and a terminal that raised "waiting" stayed blue through the whole
+                // call. Verified against Claude Code 2.1.300, Bash and MCP.
+                ScreenRule(
+                    id: "claude_working", state: .working, priority: 600,
+                    tailLines: 4,
+                    any: [["esc to interrupt"], ["enter to interrupt"]],
+                    none: ["esc to cancel", "do you want to", "no, and tell claude",
+                           "enter to select", "to navigate", "what should claude do"]),
             ],
             AgentKind.codex.rawValue: [],
         ])
@@ -366,6 +381,11 @@ extension AttentionState {
             // was produced to review, so it is free, not ready — and only a
             // running turn: a waiting one asks through a dialog.
             if screen.idlePrompt { return current == .running ? .free : nil }
+            // A question that was answered. The permission was granted (no hook says
+            // so) and the tool runs: the dialog is gone and the footer of a live turn
+            // is there. Only a `waiting` — a running terminal is already right, and
+            // an idle one is the hooks' to start, so the screen never invents running.
+            if screen.state == .working { return current == .waiting ? .running : nil }
             // The one case the screen knows better: something is visibly waiting
             // on the human while the hooks think otherwise.
             guard screen.visibleBlocker, !current.needsAttention else { return nil }
@@ -390,16 +410,20 @@ extension AttentionState {
 /// A reading of the screen that moves a terminal on its own word has to hold on
 /// consecutive polls before it counts.
 ///
-/// Two readings are that bold: "the prompt is idle, so the turn you call running
-/// is over" and "the question I raised is gone". Each can be true for a moment
-/// without being true — a turn that has just begun shows an idle-looking prompt
-/// for a split second before its spinner, a program redraws — and a wrong "free"
-/// would hide a turn that is still running. Two polls (1.5 s apart or more) rule
-/// the blink out, and an abort that is real is still there on the second.
+/// Three readings are that bold: "the prompt is idle, so the turn you call running
+/// is over", "the question I raised is gone", and "the footer of a live turn is where
+/// the question was". Each can be true for a moment without being true — a turn that
+/// has just begun shows an idle-looking prompt for a split second before its spinner,
+/// a program redraws, a dialog is about to be drawn over a footer that still says
+/// "esc to interrupt" — and a wrong "free" would hide a turn that is still running.
+/// Two polls (1.5 s apart or more) rule the blink out, and an abort that is real is
+/// still there on the second.
 struct ScreenConfirmation {
     enum Reading: Equatable {
         case idlePrompt
         case questionGone
+        /// The footer of a live turn where a question was: it was answered.
+        case answered
     }
 
     /// Polls in a row a reading must hold.

@@ -119,6 +119,24 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   Code's "you left me hanging" nudge after a minute of idling, which is not a
   question and must not turn a terminal blue. All three decisions live in
   `AttentionState.forHookEvent`, with a table test in `LogicTests`.
+- **A permission that was granted fires no hook, so the screen ends the question.** After the
+  dialog that `PermissionRequest` raised, Claude Code runs the tool and sends nothing until it is
+  done — for an MCP call that can be minutes — so a terminal stayed blue ("waiting") through the
+  whole call. Measured with the real `claude` against the stand-in API (`state_sync.py`,
+  `claude-approved-tool` and `claude-mcp-approved`): `waiting` for all 25 s of the tool. The rule
+  `claude_working` reads the footer of a live turn ("esc to interrupt"; a dialog's footer is "Esc to
+  cancel"), and `AttentionState.fromScreen` lets it move **only a waiting terminal** to running, after
+  two polls (`ScreenConfirmation.answered`). It never starts work from idle: that stays the hooks'.
+  Waiting terminals are read on every poll tick, the quiet ones in the background included.
+- **Background work keeps a terminal `running`, in one place.** `AppState.setState` turns a requested
+  `ready` or `free` into `running` while `backgroundTasks[id]` is not empty (`AttentionState.settled`),
+  so no writer — a hook, the screen, a finished command — can undo it; only the user's own "Mark as
+  done" bypasses it. The control API talks about the *turn*: `heldByBackground` remembers the state
+  that was overridden, `turnState(of:)` returns it, and the guard of `session.prompt` and
+  `session.wait` use it. The icon follows the same record: `SessionStateIcon` draws the globe
+  (`StatePixels.globe`) for `runsInBackground` and the robot otherwise, so a view that draws a
+  session's state must use it rather than `StateIcon(state: session.state)`. Without that, a terminal with a dev server in its background could never be
+  prompted without `force`, and a worker whose answer is in could never be waited for.
 - **Background tasks belong to the Claude *process*, not to the conversation.**
   `BackgroundTasks` reads them off the hooks, and three facts — all observed on
   Claude Code 2.1.299, not documented — decide its rules. `/clear` ends the

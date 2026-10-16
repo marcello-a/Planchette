@@ -92,6 +92,18 @@ private struct TerminalPage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                // The icon of the state it holds a terminal at.
+                Toggle(isOn: $appState.backgroundCountsAsRunning) {
+                    HStack(spacing: 6) {
+                        StateIcon(state: .running, size: 14, inBackground: true)
+                        Text(L10n.t(.backgroundRunningTitle))
+                    }
+                }
+                .help(L10n.t(.backgroundRunningHelp))
+                Text(L10n.t(.backgroundRunningHelp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)

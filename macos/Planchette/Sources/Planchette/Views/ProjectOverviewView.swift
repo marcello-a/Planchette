@@ -97,7 +97,7 @@ struct OverviewTabRow: View {
             appState.select(session: session)
         } label: {
             HStack(alignment: .top, spacing: 8) {
-                StateIcon(state: session.state)
+                SessionStateIcon(session: session)
                     .padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {

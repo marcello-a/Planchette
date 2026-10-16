@@ -8,6 +8,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A fourth intensity: Off.** Settings → General → Project color → Intensity can turn the
+  gradient off completely, as Show the color on → Off already could. Off in either of the two
+  wins, and the other one dims.
+
 ### Changed
 - **"Mark as ready" is now "Mark as done"** in a terminal's menu, and the same in the other
   languages. It does what it did: you are done with this terminal, so it goes back to free
@@ -18,6 +23,25 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   row, and the "Finished mark" switch in Settings → Project panel. "Mark as done" already
   says you are finished with a terminal. A state file that still holds the mark loads as
   before and loses it at the next save.
+
+## [0.2.38] — 2026-10-16
+
+### Changed
+- **A terminal that runs a shell or an agent in the background shows as running, with a globe.**
+  A turn that ends while Claude still runs something in the background (`run_in_background`, an
+  agent launched without waiting) used to turn the terminal green or gray; it now stays purple until
+  that work is over, and then Claude's report of it makes it done as usual. The icon is a globe, not
+  the robot, so "working for you" and "something runs in the background" are told apart; the
+  Information tab explains it. A question or an error still wins. Settings → Project panel →
+  Behavior turns it off. The control API keeps talking about the
+  turn: `turn_state` says what it is, and `session.prompt` and `session.wait` go by it.
+
+### Fixed
+- **A permission you granted no longer leaves the terminal on "waiting".** Claude Code fires no
+  event when you answer a dialog, so a terminal that had asked — for a Bash command, for a call to
+  an MCP server — stayed blue through the whole call, and an MCP call can take minutes. The screen
+  now notices that the dialog is gone and the footer of a live turn is there, and the terminal goes
+  back to running.
 
 ## [0.2.37] — 2026-10-15
 

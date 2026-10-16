@@ -135,7 +135,7 @@ struct TerminalAreaView: View {
             appState.updateGroup(group.id) { $0.activeSessionID = session.id }
         } label: {
             HStack(spacing: 5) {
-                StateIcon(state: session.state, size: 13)
+                SessionStateIcon(session: session, size: 13)
                 if let color = session.color.color {
                     Circle().fill(color).frame(width: 7, height: 7)
                 }

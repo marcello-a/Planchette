@@ -918,6 +918,127 @@ final class ScreenDetectionTests: XCTestCase {
         ScreenDetector.detect(lines: screen.components(separatedBy: "\n"), rules: claudeRules)
     }
 
+    // MARK: A question that was answered (Claude Code 2.1.300, Bash and MCP, captured)
+
+    /// Granting a permission fires no hook. The dialog is replaced by the tool call, and the footer
+    /// is that of a live turn — which is all there is to see of the answer.
+    private let bashRunningAfterApproval = """
+        ❯ PERMWAIT20 please wait
+
+        ⏺ Bash(touch permtest.txt; sleep 20)
+          ⎿  Running… (8s)
+             (ctrl+b ctrl+b (twice) to run in
+             background)
+
+        ✢ Thundering… (9s · ↓ 24 tokens)
+
+        ────────────────────────────────────────────
+        ❯
+        ────────────────────────────────────────────
+          ⏸ manual mode on · esc to interrupt · ←…
+                                ◐ medium · /effort
+        """
+
+    private let mcpRunningAfterApproval = """
+        ❯ MCPCALL20 call the server
+
+        ⏺ Calling probe… (ctrl+o to expand)
+
+        ✢ Scurrying… (9s · ↓ 4 tokens)
+
+        ────────────────────────────────────────────
+        ❯
+        ────────────────────────────────────────────
+          ⏸ manual mode on · esc to interrupt · ←…
+                                ◐ medium · /effort
+        """
+
+    private let bashDialog = """
+         make a file, then wait 20 seconds
+        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+         touch permtest.txt; sleep 20
+        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+         Do you want to proceed?
+         ❯ 1. Yes
+           2. Yes, and always allow access to
+              /work from this project
+           3. Yes, and switch to auto mode · auto
+              mode handles these prompts for you
+           4. No
+
+         Esc to cancel · Tab to amend
+        """
+
+    private let mcpDialog = """
+         Tool use
+         probe — Slow Tool: (MCP)
+        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+         seconds: 20
+        ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+         Do you want to proceed?
+         ❯ 1. Yes
+           2. No
+
+         Esc to cancel · Tab to amend
+        """
+
+    func testAToolRunningAfterAnApprovalReadsAsWorking() {
+        for screen in [bashRunningAfterApproval, mcpRunningAfterApproval] {
+            let detection = read(screen)
+            XCTAssertEqual(detection?.state, .working)
+            XCTAssertEqual(detection?.ruleID, "claude_working")
+            XCTAssertFalse(detection?.visibleBlocker == true)
+        }
+    }
+
+    // The dialog says "Esc to cancel", never "esc to interrupt": the two cannot be mistaken.
+    func testTheDialogItselfIsNeverWorking() {
+        for screen in [bashDialog, mcpDialog] {
+            let detection = read(screen)
+            XCTAssertEqual(detection?.state, .blocked)
+            XCTAssertTrue(detection?.visibleBlocker == true)
+        }
+    }
+
+    // The permission was granted: the hooks still say "waiting", the screen shows the work.
+    func testAnAnsweredQuestionGoesBackToRunning() {
+        for screen in [bashRunningAfterApproval, mcpRunningAfterApproval] {
+            XCTAssertEqual(
+                AttentionState.fromScreen(read(screen), agent: .claude, hookAuthority: true, current: .waiting),
+                .running)
+        }
+    }
+
+    // The screen answers a question; it does not start work. Anything but a waiting terminal is left to the hooks.
+    func testTheScreenNeverInventsRunningUnderHookAuthority() {
+        for current in [AttentionState.running, .ready, .free, .error] {
+            XCTAssertNil(
+                AttentionState.fromScreen(read(bashRunningAfterApproval), agent: .claude, hookAuthority: true, current: current),
+                "\(current)")
+        }
+    }
+
+    // A dialog that is still there keeps the terminal waiting, whatever else is drawn.
+    func testAQuestionStillOnTheScreenStaysWaiting() {
+        for screen in [bashDialog, mcpDialog] {
+            XCTAssertNil(
+                AttentionState.fromScreen(read(screen), agent: .claude, hookAuthority: true, current: .waiting))
+        }
+    }
+
+    // "Answered" moves a terminal on the screen's word alone, so it has to hold on two polls: a dialog is
+    // drawn over a footer that says "esc to interrupt" for a frame.
+    func testAnAnsweredQuestionNeedsTwoPollsInARow() {
+        var confirmation = ScreenConfirmation()
+        let id = UUID()
+        XCTAssertFalse(confirmation.confirm(.answered, for: id))
+        XCTAssertTrue(confirmation.confirm(.answered, for: id))
+        confirmation.forget(id)
+        XCTAssertFalse(confirmation.confirm(.answered, for: id), "a streak that was used starts again")
+        _ = confirmation.confirm(nil, for: id)
+        XCTAssertFalse(confirmation.confirm(.answered, for: id), "a blink in between ends the streak")
+    }
+
     // The abort that leaves no trace text: an idle open prompt is the only sign.
     func testPromptRestoredAfterAnAbortIsAnIdlePrompt() {
         let detection = read(promptRestoredAfterAbort)
@@ -933,7 +1054,8 @@ final class ScreenDetectionTests: XCTestCase {
     // "esc to interrupt" in the footer is what a live turn says.
     func testARunningTurnIsNotAnIdlePrompt() {
         let detection = read(turnRunning)
-        XCTAssertNil(detection, "no rule may read a running turn as idle")
+        XCTAssertFalse(detection?.idlePrompt == true, "no rule may read a running turn as idle")
+        XCTAssertEqual(detection?.state, .working, "it reads as what it is")
         XCTAssertNil(
             AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .running))
     }
@@ -954,7 +1076,8 @@ final class ScreenDetectionTests: XCTestCase {
             let idle = read("❯ draft\n──────────\n  \(footer)")
             XCTAssertTrue(idle?.idlePrompt == true, "idle: \(footer)")
             let busy = read("✻ Thinking…\n❯\n──────────\n  \(footer) · esc to interrupt")
-            XCTAssertNil(busy, "running: \(footer)")
+            XCTAssertFalse(busy?.idlePrompt == true, "running: \(footer)")
+            XCTAssertEqual(busy?.state, .working, "running: \(footer)")
         }
     }
 
@@ -1038,7 +1161,8 @@ final class ScreenDetectionTests: XCTestCase {
     // …and a wrapped "esc to interrupt" still says the turn is live.
     func testAWrappedEscToInterruptStillMeansRunning() {
         let narrow = "✻ Thinking…\n❯\n──────\n  ⏸ manual mode on · esc to\ninterrupt"
-        XCTAssertNil(read(narrow))
+        XCTAssertFalse(read(narrow)?.idlePrompt == true)
+        XCTAssertEqual(read(narrow)?.state, .working)
     }
 
     // Claude's patterns read whatever a plain shell prints: a leftover `claude`
@@ -1219,15 +1343,20 @@ final class StateArbitrationTests: XCTestCase {
     private let working = ScreenDetection(state: .working, ruleID: "t")
 
     // While hooks are authoritative the screen may raise a question they missed
-    // (a blocker) and end a turn no hook closed (an interrupt, an idle prompt) —
-    // nothing else. A plain idle reading and a working one are the hooks' business.
+    // (a blocker), end a turn no hook closed (an interrupt, an idle prompt), and end a
+    // question no hook closed (it was answered: the footer of a live turn is where the
+    // dialog was) — nothing else. A plain idle reading is the hooks' business, and so
+    // is a working one anywhere but on a waiting terminal.
     func testHookAuthorityOnlyAllowsBlockerEscalation() {
         XCTAssertEqual(
             AttentionState.fromScreen(blocker, agent: .claude, hookAuthority: true, current: .running),
             .waiting)
+        XCTAssertEqual(
+            AttentionState.fromScreen(working, agent: .claude, hookAuthority: true, current: .waiting),
+            .running, "an answered question is the one thing a working screen may change")
         // Everything else is the hooks' business.
-        for screen in [idle, working] {
-            for current in [AttentionState.running, .ready, .free, .waiting, .error] {
+        for (screen, exceptions) in [(idle, [AttentionState]()), (working, [.waiting])] {
+            for current in [AttentionState.running, .ready, .free, .waiting, .error] where !exceptions.contains(current) {
                 XCTAssertNil(
                     AttentionState.fromScreen(
                         screen, agent: .claude, hookAuthority: true, current: current),
