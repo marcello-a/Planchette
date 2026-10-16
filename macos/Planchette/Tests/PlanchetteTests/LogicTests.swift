@@ -986,9 +986,68 @@ final class ScreenDetectionTests: XCTestCase {
         for screen in [bashRunningAfterApproval, mcpRunningAfterApproval] {
             let detection = read(screen)
             XCTAssertEqual(detection?.state, .working)
-            XCTAssertEqual(detection?.ruleID, "claude_working")
+            // The footer rule, or the status line when the screen has one: either way a live turn.
+            XCTAssertTrue(["claude_working", "claude_spinner"].contains(detection?.ruleID ?? ""))
             XCTAssertFalse(detection?.visibleBlocker == true)
         }
+    }
+
+    // Claude Code 2.1.301 prints no "esc to interrupt" in an auto-mode footer while it works. The
+    // footer then looks like an idle prompt, so the status line has to say the turn is live.
+    // Both screens are copied from terminals that showed `free` while Claude worked.
+    func testAWorkingTurnWithoutEscToInterruptIsWorking() {
+        let screens = [
+            """
+            ✢ Deliberating… (5m 38s · ↓ 16.8k tokens · still thinking)
+
+            ──────────────────────────────────────────────────
+            ❯\u{00A0}
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2093-multibild-product-type ✗3  •  ▓▓░░░░░░░░ 17%  •  Opus 5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """,
+            """
+              ctrl+x ctrl+s to send now
+
+            ✢ Whisking… (3m 59s · ↓ 4.9k tokens)
+
+            ──────────────────────────────────────────────────
+            ❯ Press up to edit queued messages
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2102-multibild-nav-arrows ✗7  •  ▓▓▓▓▓▓░░░░ 58%  •  Sonnet 5.5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """,
+        ]
+        for screen in screens {
+            let detection = read(screen)
+            XCTAssertEqual(detection?.state, .working)
+            XCTAssertEqual(detection?.ruleID, "claude_spinner")
+            XCTAssertFalse(detection?.idlePrompt == true)
+            XCTAssertNil(
+                AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .running),
+                "a running turn stays running")
+        }
+    }
+
+    // The same footer after the turn ended: "Cooked for …" has no ellipsis and no parenthesis.
+    func testAFinishedTurnWithTheSameFooterIsStillIdle() {
+        let detection = read("""
+            ✻ Cooked for 1m 32s · done 10:24 AM
+
+            ──────────────────────────────────────────────────
+            ❯\u{00A0}
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2103-speed-mode-footer-bar ✓  •  Sonnet 5.5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """)
+        XCTAssertEqual(detection?.ruleID, "claude_idle_footer")
+        XCTAssertTrue(detection?.idlePrompt == true)
+    }
+
+    // A dialog is drawn over a live status line for a frame: it must stay a question.
+    func testTheSpinnerNeverHidesADialog() {
+        let detection = read("✻ Thinking… (3s · ↓ 1 tokens)\n" + bashDialog)
+        XCTAssertEqual(detection?.state, .blocked)
     }
 
     // The dialog says "Esc to cancel", never "esc to interrupt": the two cannot be mistaken.

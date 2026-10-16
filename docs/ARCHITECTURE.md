@@ -160,6 +160,13 @@ says nothing until it is done, and an MCP call can take minutes. The screen is t
 `claude_working` lets `AttentionState.fromScreen` move a `waiting` terminal back to `running`,
 after two polls, and nothing else: starting work from idle stays the hooks' job.
 
+**The status line, not the footer, says a turn is live.** Claude Code 2.1.301 prints no
+"esc to interrupt" in the footer of a working turn in auto mode, so that footer
+("auto mode on · ← for agents") looked like an idle prompt and freed a terminal that was
+working. `claude_spinner` reads the status line instead ("✢ Whisking… (3m 59s · ↓ 4.9k
+tokens)": an ellipsis, then the elapsed time in a parenthesis) and outranks the idle footer. A
+finished turn prints "✻ Cooked for 1m 32s · done", which has neither.
+
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).

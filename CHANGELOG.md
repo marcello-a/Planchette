@@ -8,6 +8,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A terminal that is working no longer shows as free.** Claude Code 2.1.301 prints no
+  "esc to interrupt" under a working turn in auto mode, so its footer looked like an idle
+  prompt and the screen reader freed the terminal, even for a long Bash call or a long
+  thought. The reader now takes the live status line ("Whisking… (3m 59s · …)") as proof that
+  the turn runs.
+
 ## [0.2.40] — 2026-10-16
 
 ### Changed

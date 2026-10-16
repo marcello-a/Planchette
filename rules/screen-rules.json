@@ -113,6 +113,33 @@
       },
       {
         "any" : [
+
+        ],
+        "contains" : [
+
+        ],
+        "id" : "claude_spinner",
+        "idlePrompt" : false,
+        "interrupted" : false,
+        "lineRegex" : [
+          "(…|\\.\\.\\.)\\s*\\(\\d+\\s*[hms]\\b"
+        ],
+        "none" : [
+          "esc to cancel",
+          "do you want to",
+          "no, and tell claude",
+          "enter to select",
+          "to navigate",
+          "what should claude do"
+        ],
+        "priority" : 750,
+        "skipStateUpdate" : false,
+        "state" : "working",
+        "tailLines" : 14,
+        "visibleBlocker" : false
+      },
+      {
+        "any" : [
           [
             "? for shortcuts"
           ],
@@ -188,5 +215,5 @@
     ]
   },
   "engine" : 1,
-  "version" : 4
+  "version" : 5
 }
