@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.42] — 2026-10-16
+
 ### Added
 - **Split a tab, as in iTerm2.** A tab can hold several terminals side by side. Drag a tab onto
   the edge of the terminal in front and the view splits there; drag a pane's title bar onto the
