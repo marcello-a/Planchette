@@ -8,6 +8,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **"Look at code" moved from the header into a tab's right-click menu.** The header keeps room
+  for the dev-server links. The menu has the same three things: *Look at code*, *Open in* and
+  *Default IDE*.
+
 ### Fixed
 - **A tab opens from a click anywhere on it.** Only the icon and the letters of the name took
   the click; the padding and the gaps between the chips did not.

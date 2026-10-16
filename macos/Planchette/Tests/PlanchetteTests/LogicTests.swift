@@ -2915,18 +2915,16 @@ final class DevServerURLTests: XCTestCase {
     }
 }
 
-/// The menu behind the "look at code" button. It is built in AppKit because a
-/// SwiftUI `Menu` shipped as a blank flash next to a terminal surface; these
-/// tests are what keeps "the menu came up empty" from happening unnoticed again.
-@MainActor
+/// The "Open in" rows of a tab's right-click menu. They are worked out apart from the
+/// SwiftUI menu so that "the menu came up empty" and "an IDE vanished" cannot go unnoticed.
 final class IDEMenuTests: XCTestCase {
     private let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
     private let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
     private let xcode = IDEs.known.first { $0.name == "Xcode" }!
 
-    private func menu(default def: String? = nil, target: IDE? = nil,
-                      directory: String = "/tmp") -> NSMenu {
-        IDEMenuActions.shared.menu(
+    private func entries(default def: String? = nil, target: IDE? = nil,
+                         directory: String = "/tmp") -> [IDEMenuEntry] {
+        IDEMenuEntry.entries(
             directory: directory,
             installed: [vscode, phpstorm, xcode],
             running: [phpstorm.bundleID],
@@ -2934,24 +2932,20 @@ final class IDEMenuTests: XCTestCase {
             target: target)
     }
 
-    func testMenuListsEveryInstalledIDEAndTheDefaultSubmenu() {
-        let items = menu().items
-        XCTAssertFalse(items.isEmpty, "the menu must never come up empty")
-        let titles = items.map(\.title)
-        XCTAssertTrue(titles.contains("Visual Studio Code"))
-        XCTAssertTrue(titles.contains("PhpStorm"))
-        XCTAssertTrue(titles.contains(L10n.t(.defaultIDEMenu)))
-        let defaults = items.last?.submenu
-        XCTAssertEqual(defaults?.items.count, 5, "3 IDEs + separator + None")
+    func testEveryInstalledIDEIsListed() {
+        XCTAssertEqual(entries().map(\.ide.name), ["Visual Studio Code", "PhpStorm", "Xcode"])
     }
 
-    func testRunningIDEIsMarkedAndTheTargetIsBold() {
-        let items = menu(target: phpstorm).items
-        let php = items.first { $0.title == "PhpStorm" }
-        let code = items.first { $0.title == "Visual Studio Code" }
-        XCTAssertEqual(php?.state, .mixed, "running IDEs are marked")
-        XCTAssertEqual(code?.state, .off)
-        XCTAssertNotNil(php?.attributedTitle, "what a click opens reads bold")
+    func testRunningIDEIsMarkedAndTheTargetIsKnown() {
+        let rows = entries(target: phpstorm)
+        let php = rows.first { $0.ide == phpstorm }
+        let code = rows.first { $0.ide == vscode }
+        XCTAssertEqual(php?.isRunning, true)
+        XCTAssertTrue(php?.title.hasSuffix("●") == true, "a running IDE says so in its title")
+        XCTAssertEqual(code?.isRunning, false)
+        XCTAssertEqual(code?.title, "Visual Studio Code")
+        XCTAssertEqual(php?.isTarget, true)
+        XCTAssertEqual(code?.isTarget, false)
     }
 
     func testXcodeIsListedButDisabledWithoutAProjectFile() throws {
@@ -2959,17 +2953,15 @@ final class IDEMenuTests: XCTestCase {
             .appendingPathComponent("planchette-menu-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let item = menu(directory: dir.path).items.first { $0.title == "Xcode" }
-        XCTAssertNotNil(item, "it stays listed")
-        XCTAssertFalse(item?.isEnabled ?? true, "but it cannot open a plain folder")
+        let row = entries(directory: dir.path).first { $0.ide == xcode }
+        XCTAssertNotNil(row, "it stays listed")
+        XCTAssertEqual(row?.isEnabled, false, "but it cannot open a plain folder")
     }
 
-    func testTheDefaultCarriesTheCheckmarkAndNoneIsTheAlternative() {
-        let withDefault = menu(default: phpstorm.bundleID).items.last?.submenu?.items ?? []
-        XCTAssertEqual(withDefault.first { $0.title == "PhpStorm" }?.state, .on)
-        XCTAssertEqual(withDefault.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .off)
-        let withNone = menu().items.last?.submenu?.items ?? []
-        XCTAssertEqual(withNone.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .on)
+    func testTheDefaultIsMarkedOnce() {
+        let withDefault = entries(default: phpstorm.bundleID)
+        XCTAssertEqual(withDefault.filter(\.isDefault).map(\.ide.name), ["PhpStorm"])
+        XCTAssertTrue(entries().filter(\.isDefault).isEmpty)
     }
 }
 

@@ -57,9 +57,6 @@ struct TerminalAreaView: View {
             // Dev servers running in this checkout — the link is always here.
             DevServerChips(groupID: group.id)
                 .padding(.trailing, 6)
-            // Hand the project to an IDE.
-            IDEButton(group: group)
-                .padding(.trailing, 6)
             // Font size lives in the terminal's own right-click menu, next to
             // copy and paste: it belongs to the text you are looking at, and
             // three permanent buttons for something you touch twice a month
@@ -197,6 +194,10 @@ struct TerminalAreaView: View {
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
             Divider()
             SessionAttentionMenu(session: session)
+            Divider()
+            // Hand the project to an IDE: it left the header, which the dev-server
+            // links need, and it belongs to the project the tab is in.
+            IDEMenuItems(group: group)
             Divider()
             TagMenu(session: session)
             Divider()

@@ -103,7 +103,7 @@ enum Help {
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
             Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
-            Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereTabBar),
+            Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereContextMenu),
         ]),
         Section(titleKey: .notificationsPanel, entries: [
             Entry(.notificationsPanel, .notificationsPanelHelp),
