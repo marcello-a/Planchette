@@ -14,7 +14,18 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **A fourth intensity: Off.** Settings → General → Project color → Intensity can turn the
   gradient off completely, as Show the color on → Off already could. Off in either of the two
   wins, and the other one dims.
-  
+
+### Changed
+- **"Mark as ready" is now "Mark as done"** in a terminal's menu, and the same in the other
+  languages. It does what it did: you are done with this terminal, so it goes back to free
+  and counts as read.
+
+### Removed
+- **"Mark as finished" is gone**, and with it the seal on a finished terminal, the dimmed
+  row, and the "Finished mark" switch in Settings → Project panel. "Mark as done" already
+  says you are finished with a terminal. A state file that still holds the mark loads as
+  before and loses it at the next save.
+
 ## [0.2.38] — 2026-10-16
 
 ### Changed

@@ -135,7 +135,7 @@ enum BackgroundTasks {
 
     /// Whether a submitted prompt is Claude Code's own `<task-notification>`
     /// rather than something the user typed. It must not become the terminal's
-    /// task line, and it must not reopen work the user marked finished.
+    /// task line.
     static func isNotification(_ prompt: String) -> Bool {
         prompt.drop(while: \.isWhitespace).hasPrefix("<task-notification>")
     }

@@ -153,7 +153,7 @@ Also worth a second:
 - Projects in folders; drag one into a folder and drop it into an exact slot. Click a folder for an
   overview: every project, its state, its terminals.
 - Tab view or cluster grid per project; drag panes to split.
-- Tags (with a list you edit), colors, favorites, notes, "mark as finished"; multi-select (⌘/⇧-click)
+- Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
 - Choose what every row of the project panel shows — path, branch, pull request, prompt, age,
   tags — in *Settings → Project panel*.

@@ -47,8 +47,6 @@ struct SidebarDetailExample: View {
             TagChips(tags: ["review", "wip"])
         case .note:
             NoteLine(note: "Wait for QA on staging before merge")
-        case .finished:
-            FinishedBadge(since: Date().addingTimeInterval(-2 * 3600))
         case .snooze:
             SnoozeBadge(until: Date().addingTimeInterval(3600))
         case .attentionCounts:
