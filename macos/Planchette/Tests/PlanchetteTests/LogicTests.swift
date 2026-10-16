@@ -3556,3 +3556,42 @@ final class ScreenConfirmationTests: XCTestCase {
         XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
     }
 }
+
+
+/// What the close items of a tab's menu end: left of it, it, right of it — never more.
+final class TabClosingTests: XCTestCase {
+    private let a = UUID(), b = UUID(), c = UUID(), d = UUID(), e = UUID()
+
+    func testEachScopeTakesItsOwnSideOnly() {
+        let tabs = [[a], [b], [c], [d]]
+        XCTAssertEqual(TabClosing.terminals(.left, at: 2, in: tabs), [a, b])
+        XCTAssertEqual(TabClosing.terminals(.this, at: 2, in: tabs), [c])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 2, in: tabs), [d])
+    }
+
+    func testTheEndsHaveNothingBeyondThem() {
+        let tabs = [[a], [b], [c]]
+        XCTAssertEqual(TabClosing.terminals(.left, at: 0, in: tabs), [])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 2, in: tabs), [])
+        XCTAssertEqual(TabClosing.tabCount(.left, at: 0, in: tabs), 0)
+        XCTAssertEqual(TabClosing.tabCount(.right, at: 2, in: tabs), 0)
+    }
+
+    func testASplitTabClosesAllItsTerminals() {
+        let tabs = [[a], [b, c], [d, e]]
+        XCTAssertEqual(TabClosing.terminals(.this, at: 1, in: tabs), [b, c])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 0, in: tabs), [b, c, d, e])
+        XCTAssertEqual(TabClosing.terminals(.left, at: 2, in: tabs), [a, b, c])
+        XCTAssertEqual(TabClosing.tabCount(.right, at: 0, in: tabs), 2, "tabs, not terminals")
+    }
+
+    func testAStaleIndexClosesNothing() {
+        let tabs = [[a], [b]]
+        for scope in [TabCloseScope.left, .this, .right] {
+            XCTAssertEqual(TabClosing.terminals(scope, at: 5, in: tabs), [])
+            XCTAssertEqual(TabClosing.terminals(scope, at: -1, in: tabs), [])
+            XCTAssertEqual(TabClosing.tabCount(scope, at: 5, in: tabs), 0)
+        }
+        XCTAssertEqual(TabClosing.terminals(.this, at: 0, in: []), [])
+    }
+}

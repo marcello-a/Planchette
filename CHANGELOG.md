@@ -13,6 +13,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   terminal's session.
 
 ### Changed
+- **A tab's menu has three separate close items:** *Close Tabs to the Left*, *Close This Tab* and
+  *Close Tabs to the Right*. Each asks first and is greyed out when it has nothing to close.
 - **"Look at code" moved from the header into a tab's right-click menu.** The header keeps room
   for the dev-server links. The menu has the same three things: *Look at code*, *Open in* and
   *Default IDE*.

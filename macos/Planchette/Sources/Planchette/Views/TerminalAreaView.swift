@@ -217,10 +217,35 @@ struct TerminalAreaView: View {
             Divider()
             TagMenu(session: session)
             Divider()
-            Button(L10n.t(.close), role: .destructive) { appState.closeSession(session.id) }
-                .help(L10n.t(.closeHelp))
+            closeMenu(for: session)
         }
     }
+
+    /// Three separate items, so "close the ones to my left" never takes the tab itself.
+    /// Each asks first, like the button on the tab.
+    @ViewBuilder
+    private func closeMenu(for session: TerminalSession) -> some View {
+        let tabs = appState.sessions(in: group).map { [$0.id] }
+        if let index = tabs.firstIndex(of: [session.id]) {
+            ForEach([TabCloseScope.left, .this, .right], id: \.self) { scope in
+                let ids = TabClosing.terminals(scope, at: index, in: tabs)
+                let count = TabClosing.tabCount(scope, at: index, in: tabs)
+                Button(L10n.t(Self.closeLabel[scope] ?? .close), role: .destructive) {
+                    TabCloser.confirmAndClose(
+                        ids,
+                        title: scope == .this
+                            ? L10n.t(.closeTabAlertTitle, appState.tabName(for: session))
+                            : L10n.t(.closeTabsAlertTitle, count),
+                        appState: appState)
+                }
+                .disabled(ids.isEmpty)
+            }
+        }
+    }
+
+    private static let closeLabel: [TabCloseScope: LKey] = [
+        .left: .closeTabsToLeft, .this: .closeThisTab, .right: .closeTabsToRight,
+    ]
 
     private var emptyHint: some View {
         VStack(spacing: 10) {

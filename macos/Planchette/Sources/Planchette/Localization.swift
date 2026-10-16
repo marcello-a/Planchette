@@ -74,6 +74,7 @@ enum LKey: String, CaseIterable {
     case tags, newTag, removeAllTags, startupCommand, close
     case closeProject, closeProjectBody
     case closeThisTab, closeTabsToLeft, closeTabsToRight, closeTabHelp, closeTabAlertTitle, closeTabsAlertTitle, closeTabAlertBody
+    case closeTabsMenuHelp
     case renameGroup, renameTerminal, startupCommandPrompt, newTagTitle
     case ok, cancel
 
@@ -292,6 +293,7 @@ enum L10n {
         .startupCommand: "Startup command…", .close: "Close",
         .closeProject: "Close Project", .closeProjectBody: "Close \"%@\" and its %d terminal(s)? This ends any running sessions.",
         .closeThisTab: "Close This Tab", .closeTabsToLeft: "Close Tabs to the Left", .closeTabsToRight: "Close Tabs to the Right", .closeTabHelp: "Close this tab", .closeTabAlertTitle: "Close \"%@\"?", .closeTabsAlertTitle: "Close %d tabs?", .closeTabAlertBody: "%d terminal(s) will close. This ends any running sessions.",
+        .closeTabsMenuHelp: "Right-click a tab: close the tabs to its left, the tab itself, or the tabs to its right. Each asks first.",
         .renameGroup: "Rename group", .renameTerminal: "Rename terminal",
         .startupCommandPrompt: "Startup command (runs again after a restore)",
         .newTagTitle: "New tag", .ok: "OK", .cancel: "Cancel",
@@ -548,6 +550,7 @@ enum L10n {
         .startupCommand: "Startup-Command…", .close: "Schließen",
         .closeProject: "Projekt schließen", .closeProjectBody: "„%@“ und seine %d Terminal(s) schließen? Laufende Sitzungen werden beendet.",
         .closeThisTab: "Diesen Tab schließen", .closeTabsToLeft: "Tabs links davon schließen", .closeTabsToRight: "Tabs rechts davon schließen", .closeTabHelp: "Diesen Tab schließen", .closeTabAlertTitle: "„%@“ schließen?", .closeTabsAlertTitle: "%d Tabs schließen?", .closeTabAlertBody: "%d Terminal(s) werden geschlossen. Laufende Sitzungen werden beendet.",
+        .closeTabsMenuHelp: "Rechtsklick auf einen Tab: die Tabs links davon, den Tab selbst oder die Tabs rechts davon schließen. Jedes fragt vorher nach.",
         .renameGroup: "Gruppe umbenennen", .renameTerminal: "Terminal umbenennen",
         .startupCommandPrompt: "Startup-Command (läuft nach einem Restore erneut)",
         .newTagTitle: "Neues Tag", .ok: "OK", .cancel: "Abbrechen",
@@ -804,6 +807,7 @@ enum L10n {
         .startupCommand: "Commande de démarrage…", .close: "Fermer",
         .closeProject: "Fermer le projet", .closeProjectBody: "Fermer « %@ » et ses %d terminal(aux) ? Les sessions en cours seront arrêtées.",
         .closeThisTab: "Fermer cet onglet", .closeTabsToLeft: "Fermer les onglets à gauche", .closeTabsToRight: "Fermer les onglets à droite", .closeTabHelp: "Fermer cet onglet", .closeTabAlertTitle: "Fermer « %@ » ?", .closeTabsAlertTitle: "Fermer %d onglets ?", .closeTabAlertBody: "Fermeture de %d terminal(aux). Les sessions en cours prennent fin.",
+        .closeTabsMenuHelp: "Clic droit sur un onglet : fermer les onglets à sa gauche, l'onglet lui-même ou les onglets à sa droite. Chacun demande confirmation.",
         .renameGroup: "Renommer le groupe", .renameTerminal: "Renommer le terminal",
         .startupCommandPrompt: "Commande de démarrage (relancée après une restauration)",
         .newTagTitle: "Nouvelle étiquette", .ok: "OK", .cancel: "Annuler",
@@ -1060,6 +1064,7 @@ enum L10n {
         .startupCommand: "Comando de inicio…", .close: "Cerrar",
         .closeProject: "Cerrar proyecto", .closeProjectBody: "¿Cerrar «%@» y sus %d terminal(es)? Se finalizarán las sesiones en curso.",
         .closeThisTab: "Cerrar esta pestaña", .closeTabsToLeft: "Cerrar pestañas a la izquierda", .closeTabsToRight: "Cerrar pestañas a la derecha", .closeTabHelp: "Cerrar esta pestaña", .closeTabAlertTitle: "¿Cerrar «%@»?", .closeTabsAlertTitle: "¿Cerrar %d pestañas?", .closeTabAlertBody: "Se cerrarán %d terminal(es). Las sesiones en curso terminarán.",
+        .closeTabsMenuHelp: "Clic derecho en una pestaña: cierra las pestañas a su izquierda, la propia pestaña o las de su derecha. Cada una pide confirmación.",
         .renameGroup: "Renombrar grupo", .renameTerminal: "Renombrar terminal",
         .startupCommandPrompt: "Comando de inicio (se ejecuta de nuevo tras restaurar)",
         .newTagTitle: "Nueva etiqueta", .ok: "OK", .cancel: "Cancelar",
@@ -1316,6 +1321,7 @@ enum L10n {
         .startupCommand: "Comando di avvio…", .close: "Chiudi",
         .closeProject: "Chiudi progetto", .closeProjectBody: "Chiudere «%@» e i suoi %d terminale/i? Le sessioni in corso verranno terminate.",
         .closeThisTab: "Chiudi questa scheda", .closeTabsToLeft: "Chiudi le schede a sinistra", .closeTabsToRight: "Chiudi le schede a destra", .closeTabHelp: "Chiudi questa scheda", .closeTabAlertTitle: "Chiudere «%@»?", .closeTabsAlertTitle: "Chiudere %d schede?", .closeTabAlertBody: "Verranno chiusi %d terminale/i. Le sessioni in corso terminano.",
+        .closeTabsMenuHelp: "Clic destro su una scheda: chiude le schede a sinistra, la scheda stessa o quelle a destra. Ognuna chiede conferma.",
         .renameGroup: "Rinomina gruppo", .renameTerminal: "Rinomina terminale",
         .startupCommandPrompt: "Comando di avvio (rieseguito dopo un ripristino)",
         .newTagTitle: "Nuovo tag", .ok: "OK", .cancel: "Annulla",
@@ -1572,6 +1578,7 @@ enum L10n {
         .startupCommand: "Opstartcommando…", .close: "Sluiten",
         .closeProject: "Project sluiten", .closeProjectBody: "\"%@\" en de %d terminal(s) sluiten? Actieve sessies worden beëindigd.",
         .closeThisTab: "Dit tabblad sluiten", .closeTabsToLeft: "Tabbladen links sluiten", .closeTabsToRight: "Tabbladen rechts sluiten", .closeTabHelp: "Dit tabblad sluiten", .closeTabAlertTitle: "„%@” sluiten?", .closeTabsAlertTitle: "%d tabbladen sluiten?", .closeTabAlertBody: "%d terminal(s) worden gesloten. Lopende sessies eindigen.",
+        .closeTabsMenuHelp: "Rechtsklik op een tabblad: sluit de tabbladen links ervan, het tabblad zelf of de tabbladen rechts ervan. Elk vraagt eerst om bevestiging.",
         .renameGroup: "Groep hernoemen", .renameTerminal: "Terminal hernoemen",
         .startupCommandPrompt: "Opstartcommando (draait opnieuw na een herstel)",
         .newTagTitle: "Nieuwe tag", .ok: "OK", .cancel: "Annuleren",
@@ -1828,6 +1835,7 @@ enum L10n {
         .startupCommand: "Comando de arranque…", .close: "Fechar",
         .closeProject: "Fechar projeto", .closeProjectBody: "Fechar \"%@\" e os seus %d terminal(is)? As sessões em curso serão terminadas.",
         .closeThisTab: "Fechar este separador", .closeTabsToLeft: "Fechar separadores à esquerda", .closeTabsToRight: "Fechar separadores à direita", .closeTabHelp: "Fechar este separador", .closeTabAlertTitle: "Fechar \"%@\"?", .closeTabsAlertTitle: "Fechar %d separadores?", .closeTabAlertBody: "%d terminal(is) serão fechados. As sessões em curso terminam.",
+        .closeTabsMenuHelp: "Clique direito num separador: fecha os separadores à esquerda, o próprio separador ou os da direita. Cada um pede confirmação.",
         .renameGroup: "Renomear grupo", .renameTerminal: "Renomear terminal",
         .startupCommandPrompt: "Comando de arranque (executado de novo após restauro)",
         .newTagTitle: "Nova etiqueta", .ok: "OK", .cancel: "Cancelar",
