@@ -62,6 +62,7 @@ enum Help {
             Entry(.collapseAllProjects, nil, where: .helpWhereSidebar),
             Entry(.peekCollapsedTitle, .peekCollapsedHelp, where: .helpWhereSettings),
             Entry(.doneExpiryTitle, .doneExpiryHelp, where: .helpWhereSettings),
+            Entry(.backgroundRunningTitle, .backgroundRunningHelp, where: .helpWhereSettings),
             Entry(.projectPanelTab, .projectPanelIntro, where: .helpWhereSettings),
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
