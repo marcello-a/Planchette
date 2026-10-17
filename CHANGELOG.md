@@ -14,6 +14,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - Somebody who never opened the notepad gets a hint at its button, with a "Don't show this again" checkbox.
 
 ### Changed
+- A fenced code block (```` ``` ````) is one prompt: a blank line inside it no longer ends the prompt.
+- The run button starts the prompt on a new line when Claude Code's input box already holds text, so it does not run into what was typed there.
 - ⌥-click on the load button no longer presses Return: the second button does that. ⌘↩ in a prompt still does.
 
 ## [0.2.44] — 2026-10-17

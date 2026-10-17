@@ -104,6 +104,8 @@ enum NotepadPrompts {
         /// The line without its break.
         let content: NSRange
         let isBlank: Bool
+        /// Inside a fenced code block, fences included: a blank line there is part of the code.
+        var inFence = false
     }
 
     private static func lines(in text: NSString) -> [Line] {
@@ -128,6 +130,16 @@ enum NotepadPrompts {
             }
         }
         if start < text.length { add(end: text.length, breakLength: 0) }
+        var open = false
+        for index in result.indices {
+            let content = text.substring(with: result[index].content).trimmingCharacters(in: .whitespaces)
+            if content.hasPrefix("```") {
+                open.toggle()
+                result[index].inFence = true
+            } else {
+                result[index].inFence = open
+            }
+        }
         return result
     }
 
@@ -139,7 +151,8 @@ enum NotepadPrompts {
         let ns = text as NSString
         let all = lines(in: ns)
         let needed = NotepadLook.sanitized(returns: returns)
-        let filled = all.indices.filter { !all[$0].isBlank }
+        // A blank line inside a code fence does not end a prompt: the block is one prompt.
+        let filled = all.indices.filter { !all[$0].isBlank || all[$0].inFence }
         var groups: [[Int]] = []
         for index in filled {
             if let last = groups.last?.last, index - last - 1 + 1 < needed {
@@ -238,5 +251,31 @@ enum NotepadPrompts {
         while before > 0, all[before - 1].isBlank { before -= 1 }
         let start = before > 0 ? NSMaxRange(all[before - 1].content) : 0
         return NSRange(location: start, length: ns.length - start)
+    }
+}
+
+/// Whether the input box of Claude Code already holds text, read off the viewport. A prompt that
+/// is added and run by the notepad then starts on a line of its own, so it does not run into what
+/// was typed there. Without a Claude input box on screen (a plain shell) there is no answer, and
+/// the prompt is added as it is.
+enum ClaudeInputDraft {
+    /// The text of the input box's first line: the last line that starts with `>` or `❯`, inside
+    /// the box's border or not. Earlier lines with a `>` are the conversation.
+    static func text(in viewport: String) -> String? {
+        for raw in viewport.split(separator: "\n", omittingEmptySubsequences: false).reversed() {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("│") || line.hasPrefix("┃") { line.removeFirst() }
+            if line.hasSuffix("│") || line.hasSuffix("┃") { line.removeLast() }
+            line = line.trimmingCharacters(in: .whitespaces)
+            guard let mark = line.first, mark == ">" || mark == "❯" else { continue }
+            return String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        return nil
+    }
+
+    /// Typed text, not the grey suggestion (`Try "…"`) Claude Code shows in an empty box.
+    static func hasDraft(in viewport: String) -> Bool {
+        guard let text = text(in: viewport), !text.isEmpty else { return false }
+        return !text.hasPrefix("Try \"")
     }
 }

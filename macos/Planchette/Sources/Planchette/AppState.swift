@@ -141,7 +141,10 @@ final class AppState: ObservableObject {
         guard !text.isEmpty, let session = sessions[id] else { return }
         Task { @MainActor in
             guard let view = ControlAPI.liveView(for: session, state: self) else { return }
-            await ControlAPI.deliverPrompt(text, submit: submit, to: view, session: id)
+            // Run directly, and something is already typed in Claude Code's input: start a new line
+            // (a line break inside a paste is a newline in the box, never Enter).
+            let busy = submit && ClaudeInputDraft.hasDraft(in: view.readViewport() ?? "")
+            await ControlAPI.deliverPrompt(busy ? "\n" + text : text, submit: submit, to: view, session: id)
             view.window?.makeFirstResponder(view)
             // Only now — the prompt is in the terminal — does the pad do what the setting says.
             onLoaded?()

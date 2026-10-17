@@ -85,3 +85,22 @@ final class NotepadMarkdownTests: XCTestCase {
                              NotepadMarkdown.headingScale(level: 3, forWidth: 300))
     }
 }
+
+final class ClaudeInputDraftTests: XCTestCase {
+    private func screen(input: String) -> String {
+        "> an earlier message\n\nAnswer.\n╭──────╮\n│ > \(input) │\n╰──────╯\n  ? for shortcuts"
+    }
+
+    func testTypedTextIsADraft() {
+        XCTAssertTrue(ClaudeInputDraft.hasDraft(in: screen(input: "fix the test")))
+    }
+
+    func testAnEmptyBoxOrItsSuggestionIsNot() {
+        XCTAssertFalse(ClaudeInputDraft.hasDraft(in: screen(input: "")))
+        XCTAssertFalse(ClaudeInputDraft.hasDraft(in: screen(input: "Try \"how does it work\"")))
+    }
+
+    func testAPlainShellHasNoAnswer() {
+        XCTAssertNil(ClaudeInputDraft.text(in: "marcello@mac ~ % ls\nfile"))
+    }
+}
