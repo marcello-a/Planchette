@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.44] — 2026-10-17
+
 ### Fixed
 - **A terminal moved into a tab no longer renames it.** The tab keeps the name of the terminal it was
   made for — also when the moved terminal is dropped on the left or top edge, or has the keyboard
