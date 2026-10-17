@@ -12,6 +12,8 @@ struct TerminalAreaView: View {
     @State private var dropBefore: UUID?
     /// A drag is over the free space after the last tab.
     @State private var dropAtEnd = false
+    /// The width of the notepad while its handle is being dragged (nil when it is not).
+    @State private var padWidth: Double?
 
     var body: some View {
         let strip = appState.tabs(of: group)
@@ -20,10 +22,33 @@ struct TerminalAreaView: View {
             header(strip: strip, current: current)
             Divider()
             if let current {
-                SplitTabView(tab: current, group: group)
+                tabWithNotepad(current)
             } else {
                 emptyHint
             }
+        }
+    }
+
+    /// The tab in front, and — when the notepad is open — the notepad of the terminal that has the
+    /// keyboard at its right, behind a handle that changes its width.
+    @ViewBuilder
+    private func tabWithNotepad(_ tab: SplitLayout) -> some View {
+        if appState.notepad.isOpen,
+           let id = appState.paneToFocus(in: tab, groupID: group.id),
+           let session = appState.sessions[id] {
+            GeometryReader { geometry in
+                let width = padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: geometry.size.width)
+                HStack(spacing: 0) {
+                    SplitTabView(tab: tab, group: group)
+                    NotepadResizeHandle(live: $padWidth, available: geometry.size.width)
+                    NotepadPanel(session: session, text: appState.notepadText(for: id))
+                        // One pad per terminal: another terminal is a new panel, with its own state.
+                        .id(session.id)
+                        .frame(width: width)
+                }
+            }
+        } else {
+            SplitTabView(tab: tab, group: group)
         }
     }
 
@@ -79,6 +104,11 @@ struct TerminalAreaView: View {
                 appState.separateTabs(groupID: group.id)
             }
             .disabled(!strip.contains { $0.leaves.count > 1 })
+            Divider().frame(height: 14).padding(.horizontal, 3)
+            splitButton("note.text", help: .notepadHelp, label: .notepad) {
+                appState.toggleNotepad()
+            }
+            .foregroundStyle(appState.notepad.isOpen ? Color.accentColor : Color.primary)
         }
     }
 

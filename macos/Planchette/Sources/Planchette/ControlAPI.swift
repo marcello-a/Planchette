@@ -409,7 +409,7 @@ enum ControlAPI {
     /// Enter, so the old `text + "\r"` in one write typed the prompt and left it
     /// waiting in the input box. Enter is therefore a key press after the paste.
     @MainActor
-    private static func deliverPrompt(
+    static func deliverPrompt(
         _ text: String, submit: Bool, to view: GhosttySurfaceNSView, session: UUID
     ) async {
         await prompts.run(session) {
@@ -429,7 +429,7 @@ enum ControlAPI {
     /// gets another try right now; typing into it, or reading it, would otherwise
     /// be silently dropped while the API said "ok".
     @MainActor
-    private static func liveView(
+    static func liveView(
         for session: TerminalSession, state: AppState
     ) -> GhosttySurfaceNSView? {
         guard let view = TerminalRegistry.shared.existingView(session.id)

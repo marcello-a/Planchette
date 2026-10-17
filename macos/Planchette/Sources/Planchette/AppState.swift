@@ -99,6 +99,48 @@ final class AppState: ObservableObject {
     @Published var backgroundCountsAsRunning = true {
         didSet { scheduleSave() }
     }
+    /// The notepad strip at the right of the tab: open or not, and how wide. Persisted.
+    @Published var notepad = NotepadLook() {
+        didSet { scheduleSave() }
+    }
+    /// What each terminal's notepad says. Deliberately not `@Published`: a keystroke in the pad
+    /// must not redraw the window. Written to `TerminalSession.notepad` when the state is saved.
+    private(set) var notepadText: [UUID: String] = [:]
+    /// The notepad has the keyboard. A terminal that was just redrawn takes the keyboard when it
+    /// is the active one (`focusIfActive`); while you type in the pad it must not.
+    var notepadEditing = false
+    /// What each terminal's notepad says, as the pad's text view reads it.
+    func notepadText(for id: UUID) -> String { notepadText[id] ?? "" }
+
+    func setNotepad(_ text: String, for id: UUID) {
+        guard sessions[id] != nil, notepadText[id, default: ""] != text else { return }
+        notepadText[id] = text.isEmpty ? nil : text
+        scheduleSave()
+    }
+
+    /// The pad was just opened by hand and its text view should take the keyboard: you opened it
+    /// to write. A pad that comes back with the workspace, or with another terminal, does not.
+    /// Read once by the text view that appears (`NotepadEditor.makeNSView`).
+    var notepadWantsKeyboard = false
+
+    /// Open or close the pad (⌘J, the tab bar's button).
+    func toggleNotepad() {
+        notepadWantsKeyboard = !notepad.isOpen
+        notepad.isOpen.toggle()
+    }
+
+    /// Put a line of the pad into the terminal's prompt, the way `session.prompt` does: a paste,
+    /// and — with `submit` — a Return after it. The keyboard goes to the terminal: the line is in
+    /// its prompt, and the next thing you do is edit it or press Return.
+    func loadPrompt(_ text: String, into id: UUID, submit: Bool) {
+        guard !text.isEmpty, let session = sessions[id] else { return }
+        Task { @MainActor in
+            guard let view = ControlAPI.liveView(for: session, state: self) else { return }
+            await ControlAPI.deliverPrompt(text, submit: submit, to: view, session: id)
+            view.window?.makeFirstResponder(view)
+        }
+    }
+
     /// What the user has already been told: the welcome screen of a first launch and the
     /// durable terminals prompt after an update. Persisted — asking twice is nagging.
     @Published var onboarding = OnboardingState() {
@@ -201,6 +243,7 @@ final class AppState: ObservableObject {
             tabLayout = saved.tabLayout
             projectColor = saved.projectColor
             backgroundCountsAsRunning = saved.backgroundCountsAsRunning
+            notepad = saved.notepad
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -1353,6 +1396,7 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.scrollbackURL(for: id))
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
+        notepadText[id] = nil
         finds[id] = nil
         findTasks[id]?.cancel()
         findTasks[id] = nil
@@ -2634,7 +2678,12 @@ final class AppState: ObservableObject {
         guard !groups.isEmpty || !windows.isEmpty else { return }
         let state = PersistedState(
             groups: groups,
-            sessions: Array(sessions.values),
+            // The notepads are written here, from where they live while the app runs.
+            sessions: sessions.values.map { session in
+                var stored = session
+                stored.notepad = notepadText[session.id]
+                return stored
+            },
             windows: windows,
             aiEnabled: aiEnabled,
             language: language,
@@ -2651,7 +2700,8 @@ final class AppState: ObservableObject {
             onboarding: onboarding,
             tabLayout: tabLayout,
             projectColor: projectColor,
-            backgroundCountsAsRunning: backgroundCountsAsRunning
+            backgroundCountsAsRunning: backgroundCountsAsRunning,
+            notepad: notepad
         )
         do {
             let encoder = JSONEncoder()
@@ -2737,6 +2787,10 @@ final class AppState: ObservableObject {
         tabLayout = state.tabLayout
         projectColor = state.projectColor
         backgroundCountsAsRunning = state.backgroundCountsAsRunning
+        notepad = state.notepad
+        notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
+            session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }
+        })
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -2853,6 +2907,8 @@ final class AppState: ObservableObject {
         tabLayout = previous?.tabLayout ?? tabLayout
         projectColor = previous?.projectColor ?? projectColor
         backgroundCountsAsRunning = previous?.backgroundCountsAsRunning ?? backgroundCountsAsRunning
+        notepad = previous?.notepad ?? notepad
+        notepadText = [:]
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

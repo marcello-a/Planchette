@@ -69,6 +69,30 @@ def system_events_process(pid, timeout=20):
     raise SystemExit(f"System Events does not know pid {pid} (yet): not scripting a process it might confuse with another")
 
 
+def hid_idle_seconds():
+    """Seconds since the last key press or pointer move on this machine (0 when it cannot be read)."""
+    out = subprocess.run(["ioreg", "-c", "IOHIDSystem"], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        if "HIDIdleTime" in line:
+            try:
+                return int(line.split("=")[-1].strip()) / 1e9
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
+def wait_until_idle(seconds=20, timeout=600, quiet=False):
+    """A script that moves the pointer and types must not do it while somebody else does: wait until
+    nobody touched the keyboard or the pointer for `seconds`. Gives up after `timeout` and goes on."""
+    waited = 0
+    while hid_idle_seconds() < seconds and waited < timeout:
+        if waited == 0 and not quiet:
+            print(f"[wait] somebody is at the machine: waiting until it has been quiet for {seconds}s", flush=True)
+        time.sleep(3)
+        waited += 3
+    return waited
+
+
 class FocusGuard:
     """An isolated instance activates itself when it starts, which takes the keyboard from
     whoever is working. Create the guard BEFORE launching the instance, call start(pid) after,

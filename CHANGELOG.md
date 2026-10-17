@@ -8,6 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A notepad for every terminal, at the right of the tab.** Open it with the note button in the
+  tab bar or ⌘J; close it with its ✕. Drag its edge to change the width. What you write is saved
+  with the workspace — on every change, and again when the app quits — and the pad stays open at
+  the width you left it. A prompt runs to the blank line that ends it (two Returns; Settings →
+  Tabs → Notepad makes it one or three), so it can be several lines long. The ▶ in the margin
+  loads the prompt into the terminal's prompt without running it; ⌥-click, or ⌘↩ inside the
+  prompt, also presses Return.
+
+### Fixed
+- **A field next to a terminal keeps the keyboard.** The terminal took it back whenever SwiftUI
+  re-attached it — in the middle of a word typed in the notepad — and answered ⌘V, ⌘A and ⌘Z that
+  belonged to the field. It now does neither.
+
 ## [0.2.42] — 2026-10-16
 
 ### Added
@@ -40,6 +54,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   *Default IDE*.
 
 ### Fixed
+- **The terminal only answers ⌘ shortcuts while it has the keyboard.** With a field next to it
+  (the notepad, the find bar) ⌘V, ⌘A and ⌘Z belong to the field.
 - **⌘D reaches the Session menu.** The terminal took it and typed it at the prompt.
 - **A tab opens from a click anywhere on it.** Only the icon and the letters of the name took
   the click; the padding and the gaps between the chips did not.

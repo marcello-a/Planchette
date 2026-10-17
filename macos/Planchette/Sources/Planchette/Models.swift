@@ -363,6 +363,11 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// you can say, so nothing clears it but you.
     var note: String?
 
+    /// The notepad of this terminal (`Notepad.swift`): one line is one prompt. Only written to
+    /// disk — while the app runs the text lives in `AppState.notepadText`, so typing in it does
+    /// not redraw the window. Never written by the app: it is yours.
+    var notepad: String?
+
     // AI assist
     var transcriptPath: String?   // Claude transcript JSONL, from hook events
     var aiSummary: String?        // one-liner, only when AI assist is enabled
@@ -402,6 +407,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         tags = try c.decodeIfPresent([String].self, forKey: .tags) ?? []
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
         note = try c.decodeIfPresent(String.self, forKey: .note)
+        notepad = try c.decodeIfPresent(String.self, forKey: .notepad)
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)
@@ -860,6 +866,8 @@ struct PersistedState: Codable {
     var projectColor = ProjectColorLook()
     /// A terminal with a shell or an agent running in the background shows as running once its turn has ended.
     var backgroundCountsAsRunning = true
+    /// Whether the notepad is open and how wide (see `NotepadLook`).
+    var notepad = NotepadLook()
 
     init(
         groups: [SessionGroup],
@@ -881,7 +889,8 @@ struct PersistedState: Codable {
         onboarding: OnboardingState = OnboardingState(),
         tabLayout: TabLayout = TabLayout(),
         projectColor: ProjectColorLook = ProjectColorLook(),
-        backgroundCountsAsRunning: Bool = true
+        backgroundCountsAsRunning: Bool = true,
+        notepad: NotepadLook = NotepadLook()
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -903,6 +912,7 @@ struct PersistedState: Codable {
         self.tabLayout = tabLayout
         self.projectColor = projectColor
         self.backgroundCountsAsRunning = backgroundCountsAsRunning
+        self.notepad = notepad
     }
 
     init(from decoder: Decoder) throws {
@@ -938,5 +948,6 @@ struct PersistedState: Codable {
         tabLayout = (try? c.decodeIfPresent(TabLayout.self, forKey: .tabLayout)) ?? TabLayout()
         projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
         backgroundCountsAsRunning = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundCountsAsRunning)) ?? true
+        notepad = (try? c.decodeIfPresent(NotepadLook.self, forKey: .notepad)) ?? NotepadLook()
     }
 }

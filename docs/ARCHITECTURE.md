@@ -66,6 +66,20 @@ strip as the views read it; `applyTabs` is the one place it is written, and refu
 does not hold exactly the project's terminals. A project saved in cluster mode (`viewMode`,
 `clusterLayout`) is migrated when it is decoded: one tab holding the cluster's layout.
 
+**The notepad** (`Notepad.swift`, `Views/NotepadView.swift`). Each terminal has one text, written to
+`TerminalSession.notepad` only when the state is saved: while the app runs it lives in
+`AppState.notepadText`, which is deliberately not `@Published`, because a keystroke in the pad must
+not redraw the window. `NotepadLook` (open, width, how many Returns end a prompt) is persisted as
+`PersistedState.notepad` and read from a state that has none. `NotepadPrompts` is the pure part: it
+cuts the text into prompts — by hand, since `NSString` paragraphs miss U+2028 — and answers the
+prompt under the caret. The pad is an `NSTextView` that reports where each prompt starts; the
+margin buttons are SwiftUI buttons laid over those positions, because an `NSScrollView` inside
+a SwiftUI view exposed no children to accessibility, and buttons that are not in the accessibility
+tree cannot be used with VoiceOver or driven by `scripts/perf/notepad.py`. Loading goes through
+the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — with ⌥ — Return after it, one
+prompt at a time per terminal. `AppState.notepadEditing` keeps `focusIfActive` from taking the
+keyboard back while you type in the pad.
+
 A drag carries a `TabDragItem` (a tab, by its first terminal, or a pane) as **JSON**, never as
 text: a terminal accepts dropped text and types it at the prompt. An undeclared type of our own
 would be cleaner, but it never reaches a drop target in an unbundled build. The drop zones
