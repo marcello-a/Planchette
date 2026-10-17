@@ -832,6 +832,60 @@ def split_drag(inst):
     no_text_typed(inst, "at the end")
 
 
+def tab_names(inst):
+    """A terminal moved into a tab does not rename it: the tab keeps the name of the one it was made for."""
+    inst.label_terminals()
+    area = inst.content()
+
+    def names():
+        return [t["name"] for t in inst.tab_buttons()]
+
+    # a tab onto the right edge of the terminal in front: the dropped terminal has the keyboard, the tab keeps its name
+    drag_tab_onto(inst, "delta", edge_point(area, "right", 40))
+    ok, shape = inst.wait_shape(["row(alpha,delta)", "bravo", "charlie"])
+    check("a tab was dropped into the one in front", ok, shape)
+    check("the dropped terminal has the keyboard", bool(wait_for(lambda: inst.active() == "delta", 5)), inst.active())
+    check("…and the tab is still called alpha, not delta", names()[0] == "alpha", names())
+
+    # on the left edge: the dropped one comes first in the view, the tab does not change its name
+    right = max(inst.panes(), key=lambda p: p["frame"]["x"])
+    drag_tab_onto(inst, "bravo", edge_point(right["frame"], "left", 40))
+    ok, shape = inst.wait_shape(["row(alpha,bravo,delta)", "charlie"])
+    check("a tab dropped on the left edge of a pane", ok, shape)
+    check("…still called alpha", names()[0] == "alpha", names())
+
+    # the other way round: the tab that is moved into is the *later* one
+    inst.click(*center(inst.tab_buttons()[1]["frame"]))                   # charlie
+    time.sleep(1.0)
+    drag_tab_onto(inst, 0, edge_point(inst.content(), "right", 40))
+    time.sleep(1.5)
+    check("the earlier tab dropped into charlie: the tab is called charlie", names() == ["charlie"], names())
+
+    # clicking another pane changes the keyboard, not the name
+    pane = inst.pane("bravo")
+    if pane:
+        inst.click(pane["title"][0] + 40, pane["title"][1])
+        time.sleep(1.0)
+        check("clicking another pane does not rename the tab", names() == ["charlie"] and inst.active() == "bravo", (names(), inst.active()))
+
+    # a pane taken out is a tab of its own, named after itself; the tab it left keeps its name
+    bar = inst.tab_buttons()[-1]["frame"]
+    drag_pane_onto(inst, "delta", (bar["x"] + bar["w"] + 14, bar["y"] + bar["h"] // 2))
+    time.sleep(1.5)
+    check("a pane taken out is called after itself; the tab it left keeps its name", names() == ["charlie", "delta"], names())
+
+    # closing the terminal that gives the tab its name passes the name on
+    victim = inst.pane("charlie")
+    if victim:
+        inst.click(*center(victim["close"]))
+        close = wait_for(lambda: inst.alert_button("Close"), 6)
+        if close:
+            inst.click(*center(close))
+        ok = wait_for(lambda: names()[0] != "charlie", 8)
+        check("closing the terminal a tab is named after gives it the next one's name", bool(ok), names())
+    inst.shot("tab-names")
+
+
 def drop_refused(inst):
     inst.label_terminals()
     area = inst.content()
@@ -1030,7 +1084,7 @@ def tab_reorder(inst):
     check("a tab dropped on another tab moves before it", ok, shape)
 
 
-SCENARIOS = {"switch_projects": switch_projects, "stress": stress, "split_drag": split_drag, "drop_refused": drop_refused, "buttons": buttons, "panes_focus_close": panes_focus_close, "persistence": persistence, "legacy_cluster": legacy_cluster, "tab_reorder": tab_reorder, "explore": explore, "tabs_basic": tabs_basic, "explore_split": explore_split}
+SCENARIOS = {"tab_names": tab_names, "switch_projects": switch_projects, "stress": stress, "split_drag": split_drag, "drop_refused": drop_refused, "buttons": buttons, "panes_focus_close": panes_focus_close, "persistence": persistence, "legacy_cluster": legacy_cluster, "tab_reorder": tab_reorder, "explore": explore, "tabs_basic": tabs_basic, "explore_split": explore_split}
 
 
 def run_scenario(name, binary, scratch, files, scenarios=None, prepare=None, attempts=4):

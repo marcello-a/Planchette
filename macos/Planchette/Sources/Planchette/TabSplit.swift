@@ -56,6 +56,36 @@ enum TabStrip {
         return nil
     }
 
+    // MARK: The name of a tab
+
+    /// The terminal that speaks for a tab — whose name, color and path the tab shows: the tab's
+    /// stored title terminal when it is in the tab, else the first one. It is not the terminal
+    /// that has the keyboard: moving a terminal into a tab, or clicking another pane, must not
+    /// rename the tab.
+    static func speaker(of tab: SplitLayout, anchors: [UUID]) -> UUID? {
+        let leaves = tab.leaves
+        return leaves.first { anchors.contains($0) } ?? leaves.first
+    }
+
+    /// The title terminals once the strip has changed from `old` to `new`: every tab keeps the
+    /// one it had. Where two tabs became one, the one of the tab that was moved *into* — the one
+    /// that held `target` — stays; a tab whose title terminal left or was closed takes its first
+    /// terminal; a new tab is titled by its own terminal.
+    static func carriedAnchors(
+        old: [SplitLayout], oldAnchors: [UUID], new: [SplitLayout], preferring target: UUID?
+    ) -> [UUID] {
+        let oldSpeakers = old.compactMap { speaker(of: $0, anchors: oldAnchors) }
+        let titled = Set(oldSpeakers)
+        let targetsTitle = target
+            .flatMap { id in old.first { $0.leaves.contains(id) } }
+            .flatMap { speaker(of: $0, anchors: oldAnchors) }
+        return new.compactMap { tab in
+            let candidates = tab.leaves.filter { titled.contains($0) }
+            if candidates.count > 1, let targetsTitle, candidates.contains(targetsTitle) { return targetsTitle }
+            return candidates.first ?? tab.leaves.first
+        }
+    }
+
     // MARK: Changing
 
     /// The strip without a terminal; a tab it leaves empty goes with it.

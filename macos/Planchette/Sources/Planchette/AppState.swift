@@ -1424,7 +1424,10 @@ final class AppState: ObservableObject {
         let strip = TabStrip.synced(groups[idx].tabs, to: groups[idx].sessionIDs)
         let next = TabStrip.successor(of: id, in: strip)
         groups[idx].sessionIDs.removeAll { $0 == id }
-        groups[idx].tabs = TabStrip.removing(id, from: strip)
+        let rest = TabStrip.removing(id, from: strip)
+        groups[idx].tabAnchors = TabStrip.carriedAnchors(
+            old: strip, oldAnchors: groups[idx].tabAnchors, new: rest, preferring: nil)
+        groups[idx].tabs = rest
         if groups[idx].activeSessionID == id {
             groups[idx].activeSessionID = next ?? groups[idx].sessionIDs.last
         }
@@ -1588,16 +1591,25 @@ final class AppState: ObservableObject {
     /// bug in the caller and changes nothing. `sessionIDs` follows, so the sidebar lists the
     /// terminals in the order the tabs show them.
     @discardableResult
-    private func applyTabs(_ tabs: [SplitLayout]?, to groupID: UUID) -> Bool {
+    private func applyTabs(_ tabs: [SplitLayout]?, to groupID: UUID, target: UUID? = nil) -> Bool {
         guard let tabs, let group = groups.first(where: { $0.id == groupID }),
               Set(TabStrip.order(tabs)) == Set(group.sessionIDs),
               TabStrip.order(tabs).count == group.sessionIDs.count
         else { return false }
+        // Every tab keeps the name it had; a terminal that was moved into a tab does not rename it.
+        let anchors = TabStrip.carriedAnchors(
+            old: self.tabs(of: group), oldAnchors: group.tabAnchors, new: tabs, preferring: target)
         updateGroup(groupID) {
             $0.tabs = tabs
+            $0.tabAnchors = anchors
             $0.sessionIDs = TabStrip.order(tabs)
         }
         return true
+    }
+
+    /// The terminal that speaks for a tab: its name is the tab's name.
+    func speaker(of tab: SplitLayout, in group: SessionGroup) -> TerminalSession? {
+        TabStrip.speaker(of: tab, anchors: group.tabAnchors).flatMap { sessions[$0] }
     }
 
     /// Drag a tab before another (`before` is a tab's first terminal) or to the end (`nil`).
@@ -1619,7 +1631,7 @@ final class AppState: ObservableObject {
     }
 
     func dropTab(_ tab: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
-        applyTabs(dropTabResult(tab, onto: target, edge: edge, groupID: groupID), to: groupID)
+        applyTabs(dropTabResult(tab, onto: target, edge: edge, groupID: groupID), to: groupID, target: target)
     }
 
     func dropPaneResult(_ pane: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) -> [SplitLayout]? {
@@ -1628,7 +1640,7 @@ final class AppState: ObservableObject {
     }
 
     func dropPane(_ pane: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
-        applyTabs(dropPaneResult(pane, onto: target, edge: edge, groupID: groupID), to: groupID)
+        applyTabs(dropPaneResult(pane, onto: target, edge: edge, groupID: groupID), to: groupID, target: target)
     }
 
     /// Take a pane out to a tab of its own, before the tab whose first terminal is `target`
@@ -1668,7 +1680,7 @@ final class AppState: ObservableObject {
         if let stored = groups.first(where: { $0.id == groupID }) {
             applyTabs(
                 TabStrip.dropPane(created.id, onto: anchor.id, edge: edge, in: tabs(of: stored)),
-                to: groupID)
+                to: groupID, target: anchor.id)
         }
         select(session: created)
     }

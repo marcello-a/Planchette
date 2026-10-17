@@ -8,6 +8,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A terminal moved into a tab no longer renames it.** The tab keeps the name of the terminal it was
+  made for — also when the moved terminal is dropped on the left or top edge, or has the keyboard
+  afterwards, and when you click another pane. The name changes only when that terminal is closed
+  or taken out of the tab; the next one in the tab then gives it its name. Where two tabs become one
+  (Combine All Tabs), the first tab's name stays.
+
 ### Changed
 - **The notifications panel's row menu is shorter.** "Mark as done" is on top, "Mark as
   unread" (or "Mark as read") below it, then a line and the reminder and note items. The

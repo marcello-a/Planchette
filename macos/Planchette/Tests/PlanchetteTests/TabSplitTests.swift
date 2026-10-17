@@ -492,3 +492,129 @@ final class TabPresetTests: XCTestCase {
         XCTAssertEqual(old.clusterLayout, .row([.leaf(0), .leaf(1)]))
     }
 }
+
+/// What a tab is called: the terminal it was made for, whatever is moved into it or has the keyboard.
+final class TabTitleTests: XCTestCase {
+    private let a = UUID(), b = UUID(), c = UUID(), d = UUID(), e = UUID()
+    private func leaf(_ id: UUID) -> SplitLayout { .leaf(id) }
+
+    private func carry(_ old: [SplitLayout], _ anchors: [UUID], _ new: [SplitLayout]?, target: UUID? = nil) -> [UUID] {
+        TabStrip.carriedAnchors(old: old, oldAnchors: anchors, new: new ?? old, preferring: target)
+    }
+
+    func testATabWithoutAStoredTitleIsCalledAfterItsFirstTerminal() {
+        XCTAssertEqual(TabStrip.speaker(of: .row([leaf(a), leaf(b)]), anchors: []), a)
+        XCTAssertEqual(TabStrip.speaker(of: leaf(c), anchors: []), c)
+    }
+
+    func testAStoredTitleWinsWhereverItSits() {
+        XCTAssertEqual(TabStrip.speaker(of: .row([leaf(a), leaf(b)]), anchors: [b]), b)
+        XCTAssertEqual(TabStrip.speaker(of: .row([leaf(a), leaf(b)]), anchors: [e, b]), b, "a title of another tab is ignored")
+        XCTAssertEqual(TabStrip.speaker(of: .row([leaf(a), leaf(b)]), anchors: [e]), a, "one that is not here is ignored")
+    }
+
+    func testAMovedTabDoesNotRenameTheTabItMovesInto() {
+        let tabs = [leaf(a), leaf(b), leaf(c)]
+        for edge in [LayoutEdge.left, .right, .top, .bottom] {
+            let new = TabStrip.dropTab(at: 2, onto: a, edge: edge, in: tabs)!
+            let anchors = carry(tabs, [], new, target: a)
+            XCTAssertEqual(TabStrip.speaker(of: new[0], anchors: anchors), a, "dropped on the \(edge) edge: still a")
+            XCTAssertEqual(TabStrip.speaker(of: new[1], anchors: anchors), b)
+        }
+    }
+
+    func testAMovedPaneDoesNotRenameTheTabItMovesInto() {
+        let tabs = [SplitLayout.row([leaf(a), leaf(b)]), leaf(c)]
+        let new = TabStrip.dropPane(c, onto: b, edge: .left, in: tabs)!
+        let anchors = carry(tabs, [], new, target: b)
+        XCTAssertEqual(TabStrip.speaker(of: new[0], anchors: anchors), a, "the tab was called a before")
+    }
+
+    func testAPaneThatWasATabsTitleLeavesItAndTheTabTakesItsFirstTerminal() {
+        let tabs = [SplitLayout.row([leaf(a), leaf(b)]), leaf(c)]
+        let new = TabStrip.dropPane(a, onto: c, edge: .right, in: tabs)!        // a was the title of tab 0
+        let anchors = carry(tabs, [a], new, target: c)
+        XCTAssertEqual(TabStrip.speaker(of: new[0], anchors: anchors), b, "the tab it left is called b now")
+        XCTAssertEqual(TabStrip.speaker(of: new[1], anchors: anchors), c, "the tab it joined keeps c")
+    }
+
+    func testAPaneTakenOutBecomesATabCalledAfterItself() {
+        let tabs = [SplitLayout.row([leaf(a), leaf(b)])]
+        let new = TabStrip.extractPane(b, before: 1, in: tabs)!
+        let anchors = carry(tabs, [], new)
+        XCTAssertEqual(new.map { TabStrip.speaker(of: $0, anchors: anchors) }, [a, b])
+    }
+
+    func testCombiningKeepsTheFirstTabsName() {
+        let tabs = [leaf(a), leaf(b), leaf(c), leaf(d)]
+        let anchors = carry(tabs, [], TabStrip.combined(tabs))
+        XCTAssertEqual(TabStrip.speaker(of: TabStrip.combined(tabs)![0], anchors: anchors), a)
+    }
+
+    func testSeparatingGivesEveryPaneItsOwnName() {
+        let tabs = [SplitLayout.row([leaf(a), leaf(b)]), leaf(c)]
+        let new = TabStrip.separated(tabs)!
+        let anchors = carry(tabs, [b], new)
+        XCTAssertEqual(new.map { TabStrip.speaker(of: $0, anchors: anchors) }, [a, b, c])
+    }
+
+    func testClosingTheTitleTerminalPassesTheNameOn() {
+        let tabs = [SplitLayout.row([leaf(a), leaf(b)]), leaf(c)]
+        let new = TabStrip.removing(a, from: tabs)
+        let anchors = carry(tabs, [a], new)
+        XCTAssertEqual(new.map { TabStrip.speaker(of: $0, anchors: anchors) }, [b, c])
+    }
+
+    func testMovingATabChangesNoName() {
+        let tabs = [leaf(a), SplitLayout.row([leaf(b), leaf(c)]), leaf(d)]
+        let new = TabStrip.moveTab(from: 1, before: 0, in: tabs)!
+        let anchors = carry(tabs, [c], new)
+        XCTAssertEqual(new.map { TabStrip.speaker(of: $0, anchors: anchors) }, [c, a, d])
+    }
+
+    /// Whatever is dragged onto a pane, the tab it lands in keeps its name — and every tab has one.
+    func testRandomDropsNeverRenameTheTabTheyLandIn() {
+        let edges: [LayoutEdge] = [.top, .bottom, .left, .right]
+        var landed = 0
+        for seed in 1...150 {
+            var state = UInt64(seed) &* 2862933555777941757 &+ 3037000493
+            func next(_ n: Int) -> Int { state = state &* 6364136223846793005 &+ 1442695040888963407; return Int((state >> 33) % UInt64(max(n, 1))) }
+            let ids = (0..<(2 + next(6))).map { _ in UUID() }
+            var tabs = TabStrip.synced(nil, to: ids)
+            var anchors: [UUID] = []
+            for _ in 0..<40 {
+                let leaves = TabStrip.order(tabs)
+                let target = leaves[next(leaves.count)]
+                let edge = edges[next(4)]
+                let result: [SplitLayout]?
+                if next(2) == 0 {
+                    result = TabStrip.dropTab(at: next(tabs.count), onto: target, edge: edge, in: tabs)
+                } else {
+                    result = TabStrip.dropPane(leaves[next(leaves.count)], onto: target, edge: edge, in: tabs)
+                }
+                guard let new = result else { continue }
+                let nameBefore = TabStrip.index(of: target, in: tabs).flatMap { TabStrip.speaker(of: tabs[$0], anchors: anchors) }
+                let carried = carry(tabs, anchors, new, target: target)
+                let nameAfter = TabStrip.index(of: target, in: new).flatMap { TabStrip.speaker(of: new[$0], anchors: carried) }
+                XCTAssertEqual(nameAfter, nameBefore, "seed \(seed): the tab a terminal is dropped into keeps its name")
+                for tab in new {
+                    XCTAssertNotNil(TabStrip.speaker(of: tab, anchors: carried))
+                    XCTAssertTrue(tab.leaves.contains(TabStrip.speaker(of: tab, anchors: carried)!), "the name is a terminal of the tab")
+                }
+                XCTAssertEqual(carried.count, new.count, "one name per tab")
+                landed += 1
+                tabs = new
+                anchors = carried
+            }
+        }
+        XCTAssertGreaterThan(landed, 1000, "the random walk must really move things")
+    }
+
+    func testAStateFromBeforeTabsHadATitleOpensWithOneTitlePerTabFromTheFirstTerminal() throws {
+        let group = try JSONDecoder().decode(SessionGroup.self, from: Data(#"{"id":"\#(UUID())","name":"p"}"#.utf8))
+        XCTAssertEqual(group.tabAnchors, [])
+        var stored = SessionGroup(id: UUID(), name: "p")
+        stored.tabAnchors = [a, b]
+        XCTAssertEqual(try JSONDecoder().decode(SessionGroup.self, from: JSONEncoder().encode(stored)).tabAnchors, [a, b])
+    }
+}
