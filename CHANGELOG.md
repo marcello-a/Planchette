@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.43] — 2026-10-17
+
 ### Added
 - **A notepad for every terminal, at the right of the tab.** Open it with the note button in the
   tab bar or ⌘J; close it with its ✕. Drag its edge to change the width. What you write is saved
