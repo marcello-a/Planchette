@@ -11,6 +11,15 @@ final class NotepadPromptsTests: XCTestCase {
         XCTAssertEqual(texts("first\n\nsecond\n\nthird"), ["first", "second", "third"])
     }
 
+    func testABlankLineInsideACodeFenceDoesNotEndThePrompt() {
+        let text = "explain this:\n```\n\nsaefewr\n\n```\n\nnext"
+        XCTAssertEqual(texts(text), ["explain this:\n```\n\nsaefewr\n\n```", "next"])
+    }
+
+    func testAnUnclosedFenceRunsToTheEndOfThePad() {
+        XCTAssertEqual(texts("```\na\n\nb"), ["```\na\n\nb"])
+    }
+
     func testAPromptCanBeSeveralLines() {
         let text = "fix the failing test\nit is in cart.spec.ts\nkeep the fix small\n\nthen commit"
         XCTAssertEqual(texts(text), ["fix the failing test\nit is in cart.spec.ts\nkeep the fix small", "then commit"])

@@ -126,6 +126,11 @@ final class AppState: ObservableObject {
     /// Open or close the pad (⌘J, the tab bar's button).
     func toggleNotepad() {
         notepadWantsKeyboard = !notepad.isOpen
+        if !notepad.isOpen {
+            // Opened by hand: it has been tried, and the hint that pointed at it is done.
+            if !onboarding.notepadTried { onboarding.notepadTried = true }
+            notepadHintShown = false
+        }
         notepad.isOpen.toggle()
     }
 
@@ -136,7 +141,10 @@ final class AppState: ObservableObject {
         guard !text.isEmpty, let session = sessions[id] else { return }
         Task { @MainActor in
             guard let view = ControlAPI.liveView(for: session, state: self) else { return }
-            await ControlAPI.deliverPrompt(text, submit: submit, to: view, session: id)
+            // Run directly, and something is already typed in Claude Code's input: start a new line
+            // (a line break inside a paste is a newline in the box, never Enter).
+            let busy = submit && ClaudeInputDraft.hasDraft(in: view.readViewport() ?? "")
+            await ControlAPI.deliverPrompt(busy ? "\n" + text : text, submit: submit, to: view, session: id)
             view.window?.makeFirstResponder(view)
             // Only now — the prompt is in the terminal — does the pad do what the setting says.
             onLoaded?()
@@ -2067,11 +2075,24 @@ final class AppState: ObservableObject {
             runningVersion: version, durableOn: durableTerminals && Durable.isAvailable)
         onboarding.lastLaunchedVersion = version
         if due, !SupportPaths.isIsolated { durablePromptShown = true }
+        // One message at a time: the durable prompt first, the notepad hint at a later launch.
+        if !due, !SupportPaths.isIsolated, onboarding.notepadHintDue { notepadHintShown = true }
     }
 
     /// The first project exists: the welcome screen has done its job.
     func markWelcomeSeen() {
         if !onboarding.welcomeSeen { onboarding.welcomeSeen = true }
+    }
+
+    /// The hint that points at the notepad button is open. Session only: whether it is due again
+    /// is `OnboardingState.notepadHintDue`.
+    @Published var notepadHintShown = false
+
+    func closeNotepadHint() { notepadHintShown = false }
+
+    /// The hint's "Don't show this again": a setting, applied the moment it is ticked.
+    func hideNotepadHint(_ hide: Bool) {
+        if onboarding.notepadHintHidden != hide { onboarding.notepadHintHidden = hide }
     }
 
     func closeDurablePrompt() {
