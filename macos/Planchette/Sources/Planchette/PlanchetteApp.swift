@@ -31,6 +31,10 @@ struct PlanchetteApp: App {
                     .keyboardShortcut("d")
                 Button(L10n.t(.splitDown)) { delegate.appState.splitInKeyWindow(edge: .bottom) }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
+                // ⌘J, not ⌥⌘N: another app can own a global shortcut (Arc has ⌥⌘N), and a global
+                // shortcut beats the menu of the app in front.
+                Button(L10n.t(.notepad)) { delegate.appState.toggleNotepad() }
+                    .keyboardShortcut("j")
                 Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
                 Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])

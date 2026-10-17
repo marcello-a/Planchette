@@ -24,7 +24,8 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from perf_common import RESOURCES, UserFilesGuard, frontmost_pid, scratch_root, system_events_process, tool
+from perf_common import (RESOURCES, UserFilesGuard, frontmost_pid, hid_idle_seconds, scratch_root,
+                         system_events_process, tool, wait_until_idle)
 
 G = "11111111-0000-0000-0000-000000000001"
 OTHER = "11111111-0000-0000-0000-000000000002"
@@ -36,7 +37,7 @@ RESULTS = []
 
 def check(name, ok, detail=""):
     RESULTS.append((name, bool(ok)))
-    print(f"[tab_split] {'ok  ' if ok else 'FAIL'} {name}" + (f"  ({detail})" if detail and not ok else ""), flush=True)
+    print(f"[tab_split] {'ok  ' if ok else 'FAIL'} {name}" + (f"  ({detail})" if detail not in ("", None) and not ok else ""), flush=True)
     return ok
 
 
@@ -53,6 +54,10 @@ def wait_for(predicate, timeout, step=0.3):
     return None
 
 
+class Disturbed(Exception):
+    """The person at the machine took the keyboard from the instance under test: not an app failure."""
+
+
 class Instance:
     """One isolated Planchette on a seeded workspace."""
 
@@ -66,6 +71,9 @@ class Instance:
             handle.write("PROMPT='%1~ ❯ '\nunset HISTFILE\nunsetopt BEEP\n")
         self.proc = None
         self.pid = None
+        self.edit_state = None      # a function that changes the seeded state before it is written
+        self.disturbed = False      # somebody used the machine during the scenario
+        self.last_input_end = 0.0   # when this script last sent an input
         self.user_pid = frontmost_pid()
         self.ids = SIDS[:terminals]
 
@@ -94,6 +102,8 @@ class Instance:
             "windows": [{"id": "00000000-0000-0000-0000-0000000000a1", "groupIDs": [G, OTHER],
                          "selectedGroupID": G, "folders": [], "showsProjectOverview": False}],
         }
+        if self.edit_state:
+            self.edit_state(state)
         self.write_state(state)
 
     @staticmethod
@@ -108,6 +118,8 @@ class Instance:
 
     def start(self, wait=7.0):
         self.seed()
+        out = subprocess.run([tool("inputs"), "where"], capture_output=True, text=True).stdout.split()
+        self.pointer_origin = (int(out[0]), int(out[1])) if len(out) == 2 else None
         self.launch(wait)
 
     def stop_app(self):
@@ -167,6 +179,10 @@ class Instance:
         if self.user_pid:
             subprocess.run(["osascript", "-e", 'tell application "System Events" to set frontmost of '
                             f"(first process whose unix id is {self.user_pid}) to true"], capture_output=True)
+        # The pointer stayed in the test window while the test ran; it goes back now.
+        origin = getattr(self, "pointer_origin", None)
+        if origin:
+            subprocess.run([tool("inputs"), "move", str(origin[0]), str(origin[1])], capture_output=True)
 
     # ---- the control API
 
@@ -379,9 +395,15 @@ class Instance:
                 found.append(e)
         return found
 
-    def window(self):
-        windows = self.find(role="AXWindow")
-        return max(windows, key=lambda w: w["w"] * w["h"])
+    def window(self, patience=20):
+        """The instance's biggest window. Right after a launch, or when the display has just woken,
+        the accessibility tree has none yet: wait for it instead of failing."""
+        for _ in range(patience):
+            windows = self.find(role="AXWindow")
+            if windows:
+                return max(windows, key=lambda w: w["w"] * w["h"])
+            time.sleep(1.0)
+        raise Disturbed("the instance has no window in the accessibility tree")
 
     def tabs_on_screen(self):
         """The tab elements of the bar, left to right: the names in them, and their frames."""
@@ -415,9 +437,34 @@ class Instance:
 
     # ---- input
 
-    @staticmethod
-    def inputs(*args):
-        subprocess.run([tool("inputs"), *[str(a) for a in args]], capture_output=True)
+    def settle_for_input(self):
+        """Before every synthetic click, drag or key press: give way to a person who is using the
+        machine, and make sure the instance under test is the app in front — a key press or a click
+        sent while another app is in front would land in somebody's work. Whenever this had to wait
+        or to take the focus back, the scenario is marked `disturbed`: what it measures is no longer
+        what the app does but what the person did, and `main` runs it again."""
+        # The system counts this script's own events as activity, so a person is at the machine only
+        # when something happened more recently than the script's own last input.
+        since_mine = time.time() - self.last_input_end if self.last_input_end else 1e9
+        idle = hid_idle_seconds()
+        if idle + 0.6 < min(since_mine, 3):
+            self.disturbed = True
+            print(f"[disturbed] input by somebody else: idle {idle:.1f}s, my last input {since_mine:.1f}s ago", flush=True)
+            wait_until_idle(3, 600, quiet=True)
+        now_front = frontmost_pid()
+        if now_front != str(self.pid):
+            self.disturbed = True
+            print(f"[disturbed] the app in front is pid {now_front}, not the instance ({self.pid})", flush=True)
+            self.front()
+            time.sleep(1.2)                 # keys sent while the app is still activating are lost
+            if frontmost_pid() != str(self.pid):
+                raise Disturbed("the instance under test is not in front: not sending input to another app")
+
+    def inputs(self, *args):
+        self.settle_for_input()
+        subprocess.run([tool("inputs"), *[str(a) for a in args]], capture_output=True,
+                       env={**os.environ, "KEEP_POINTER": "1"})
+        self.last_input_end = time.time()
 
     def click(self, x, y, count=1):
         self.inputs("click", x, y, count)
@@ -431,11 +478,13 @@ class Instance:
     def drag_hover(self, x1, y1, x2, y2, hover_ms, during, steps=40, hold=350):
         """Press at the first point, move to the second, stay there `hover_ms`, and call `during()`
         while the pointer is still down; then release."""
-        env = {**os.environ, "HOVER_MS": str(hover_ms)}
+        self.settle_for_input()
+        env = {**os.environ, "HOVER_MS": str(hover_ms), "KEEP_POINTER": "1"}
         proc = subprocess.Popen([tool("inputs"), "drag", *[str(v) for v in (x1, y1, x2, y2, steps, hold)]], env=env)
         time.sleep((hold + steps * 14 + 220 + 500) / 1000)
         result = during()
         proc.wait()
+        self.last_input_end = time.time()
         return result
 
     def dragpath(self, hold, *points):
@@ -984,6 +1033,47 @@ def tab_reorder(inst):
 SCENARIOS = {"switch_projects": switch_projects, "stress": stress, "split_drag": split_drag, "drop_refused": drop_refused, "buttons": buttons, "panes_focus_close": panes_focus_close, "persistence": persistence, "legacy_cluster": legacy_cluster, "tab_reorder": tab_reorder, "explore": explore, "tabs_basic": tabs_basic, "explore_split": explore_split}
 
 
+def run_scenario(name, binary, scratch, files, scenarios=None, prepare=None, attempts=4):
+    """One scenario, in its own instance. When it fails and the person at the machine was in the way
+    (`Instance.disturbed`), it runs again — up to `attempts` times — and only the last attempt counts.
+    A failure that survives a clean attempt is the app's."""
+    scenarios = scenarios or SCENARIOS
+    for attempt in range(1, attempts + 1):
+        root = f"{scratch}/{name}"
+        shutil.rmtree(root, ignore_errors=True)
+        os.makedirs(root)
+        wait_until_idle(int(os.environ.get("QUIET_SECONDS", "45")))
+        print(f"[tab_split] --- {name}" + (f" (attempt {attempt})" if attempt > 1 else ""), flush=True)
+        mark = len(RESULTS)
+        inst = Instance(binary, root)
+        if prepare:
+            prepare(inst, name)
+        try:
+            inst.start()
+            scenarios[name](inst)
+        except Disturbed as error:
+            inst.disturbed = True
+            RESULTS.append((f"{name}: interrupted ({error})", False))
+        except Exception as error:
+            # A scenario that fell over after the person at the machine had been in the way (a window
+            # that moved, an element that was not there) is retried like one that failed; one that
+            # fell over on a quiet machine is a bug of the script or of the app, and is raised.
+            if not inst.disturbed:
+                raise
+            RESULTS.append((f"{name}: stopped by {type(error).__name__} after the machine was used", False))
+        finally:
+            inst.stop()
+        files.report(name)
+        failed = [n for n, ok in RESULTS[mark:] if not ok]
+        if failed and inst.disturbed and attempt < attempts:
+            print(f"[tab_split] {len(failed)} check(s) failed while somebody used the machine: running {name} again", flush=True)
+            del RESULTS[mark:]
+            continue
+        if failed and inst.disturbed:
+            print(f"[tab_split] note: {name} was disturbed in every attempt; the failures may not be the app's", flush=True)
+        break
+
+
 def main():
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
@@ -991,17 +1081,7 @@ def main():
     chosen = sys.argv[3:] or [name for name in SCENARIOS if name != "explore"]
     files = UserFilesGuard()
     for name in chosen:
-        root = f"{scratch}/{name}"
-        shutil.rmtree(root, ignore_errors=True)
-        os.makedirs(root)
-        print(f"[tab_split] --- {name}", flush=True)
-        inst = Instance(binary, root)
-        try:
-            inst.start()
-            SCENARIOS[name](inst)
-        finally:
-            inst.stop()
-        files.report(name)
+        run_scenario(name, binary, scratch, files)
     failed = [n for n, ok in RESULTS if not ok]
     print(f"[tab_split] RESULT: {len(RESULTS) - len(failed)} of {len(RESULTS)} checks ok" + (f"; FAILED: {', '.join(failed)}" if failed else ""))
     sys.exit(1 if failed else 0)
