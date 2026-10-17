@@ -204,10 +204,12 @@ struct TerminalAreaView: View {
 
     private func tabItem(_ tab: SplitLayout, at index: Int, in strip: [SplitLayout], isCurrent: Bool) -> some View {
         let sessions = tab.leaves.compactMap { appState.sessions[$0] }
-        // The terminal that speaks for the tab: the one that has the keyboard, else the one
-        // that had it last, else the first.
-        let speaker = appState.paneToFocus(in: tab, groupID: group.id).flatMap { appState.sessions[$0] }
-            ?? sessions.first
+        // The terminal that speaks for the tab, whose name the tab carries: the tab's own, not the
+        // one that has the keyboard — moving a terminal into the tab must not rename it.
+        let speaker = appState.speaker(of: tab, in: group) ?? sessions.first
+        // The one a click brings the keyboard to: where it was in that tab last.
+        let landing = appState.paneToFocus(in: tab, groupID: group.id).flatMap { appState.sessions[$0] }
+            ?? speaker
         let tabKey = key(tab)
         return Group {
             if let session = speaker {
@@ -215,7 +217,7 @@ struct TerminalAreaView: View {
                     .overlay(alignment: .leading) { insertionMarker(dropBefore == tabKey) }
                     .onTapGesture {
                         clickedTab = tabKey
-                        appState.select(session: session)
+                        appState.select(session: landing ?? session)
                     }
                     .accessibilityElement(children: .contain)
                     .accessibilityAddTraits(.isButton)

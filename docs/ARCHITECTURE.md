@@ -88,6 +88,14 @@ finished (`AppState.loadPrompt(…, onLoaded:)`), through its own editing method
 finds the prompt again by its words, nearest to where it was. A struck prompt is plain text with
 the marks — a restart keeps text, not attributes — and `restyle()` draws the line through it.
 
+**The name of a tab** is the name of one terminal of it, kept in `SessionGroup.tabAnchors` (one per
+tab) — not of the terminal that has the keyboard, which would rename the tab every time a pane is
+clicked or a terminal is dropped into it. `TabStrip.speaker` answers the stored one, else the
+first terminal; `TabStrip.carriedAnchors` carries the names over every change of the strip: a tab keeps
+its own, two tabs that became one keep the one of the tab that was dropped *into*, and a tab
+whose terminal left or was closed takes its first terminal. A click on a tab still brings the keyboard
+to the pane it was last in.
+
 A drag carries a `TabDragItem` (a tab, by its first terminal, or a pane) as **JSON**, never as
 text: a terminal accepts dropped text and types it at the prompt. An undeclared type of our own
 would be cleaner, but it never reaches a drop target in an unbundled build. The drop zones

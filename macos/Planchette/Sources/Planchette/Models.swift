@@ -622,6 +622,9 @@ struct SessionGroup: Identifiable, Codable, Equatable {
     /// split anything — one tab per terminal. Read it through `AppState.tabs(of:)`, which
     /// keeps it in step with `sessionIDs`.
     var tabs: [SplitLayout]?
+    /// The terminal whose name each tab carries (see `TabStrip.speaker`): one per tab. Empty in a
+    /// state from before tabs had a title of their own — every tab then carries its first terminal's.
+    var tabAnchors: [UUID] = []
     /// Set when this project is a git worktree Planchette created: the checkout
     /// path, so closing the project can offer to remove it again. Optional, so
     /// older state decodes unchanged.
@@ -660,6 +663,7 @@ struct SessionGroup: Identifiable, Codable, Equatable {
         sessionIDs = try c.decodeIfPresent([UUID].self, forKey: .sessionIDs) ?? []
         activeSessionID = try c.decodeIfPresent(UUID.self, forKey: .activeSessionID)
         tabs = try c.decodeIfPresent([SplitLayout].self, forKey: .tabs)
+        tabAnchors = (try? c.decodeIfPresent([UUID].self, forKey: .tabAnchors)) ?? []
         if tabs == nil {
             // A project saved in cluster mode: everything on screen at once is one tab.
             let legacy = try decoder.container(keyedBy: LegacyKeys.self)

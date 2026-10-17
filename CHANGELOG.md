@@ -8,14 +8,19 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A terminal moved into a tab no longer renames it.** The tab keeps the name of the terminal it was
+  made for — also when the moved terminal is dropped on the left or top edge, or has the keyboard
+  afterwards, and when you click another pane. The name changes only when that terminal is closed
+  or taken out of the tab; the next one in the tab then gives it its name. Where two tabs become one
+  (Combine All Tabs), the first tab's name stays.
+
 ### Changed
 - **A prompt that was loaded from the notepad leaves it.** Whatever is in the pad is what is still
   to do. It goes with the gap it leaves, so the rest stays as it was, and ⌘Z gives it back.
   Settings → Tabs → Notepad → *After a prompt is loaded* can strike it through instead (it stays,
   between `~~` marks, drawn with a line through it and a check in the margin; loading it again
   sends the words without the marks) or leave it as it is.
-
-### Changed
 - **The notifications panel's row menu is shorter.** "Mark as done" is on top, "Mark as
   unread" (or "Mark as read") below it, then a line and the reminder and note items. The
   Rename item is gone from this menu; it stays in the project panel and on the tab.
