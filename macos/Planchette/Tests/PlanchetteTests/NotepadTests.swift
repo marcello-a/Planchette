@@ -190,3 +190,152 @@ final class NotepadPersistenceTests: XCTestCase {
         XCTAssertEqual(again.notepad, NotepadLook(isOpen: true, width: 410))
     }
 }
+
+
+/// What happens to a prompt of the pad once it has been loaded into the terminal.
+final class NotepadAfterLoadingTests: XCTestCase {
+    /// Apply an edit the way the text view does.
+    private func applied(_ edit: NotepadPrompts.Edit?, to text: String) -> String {
+        guard let edit else { return text }
+        return (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
+    }
+
+    /// Load prompt number `index` with the setting `action`; the text that is left.
+    private func after(_ action: NotepadAfterLoading, prompt index: Int, in text: String, returns: Int = 2) -> String {
+        let prompts = NotepadPrompts.prompts(in: text, returns: returns)
+        return applied(NotepadPrompts.edit(afterLoading: action, prompts[index], in: text), to: text)
+    }
+
+    // MARK: remove
+
+    func testRemovingTheFirstPromptLeavesTheOthersAsTheyWere() {
+        XCTAssertEqual(after(.remove, prompt: 0, in: "one\n\ntwo\n\nthree"), "two\n\nthree")
+    }
+
+    func testRemovingAMiddlePromptLeavesNoGap() {
+        XCTAssertEqual(after(.remove, prompt: 1, in: "one\n\ntwo\n\nthree"), "one\n\nthree")
+    }
+
+    func testRemovingTheLastPromptLeavesNoEmptyLinesAtTheEnd() {
+        XCTAssertEqual(after(.remove, prompt: 2, in: "one\n\ntwo\n\nthree"), "one\n\ntwo")
+        XCTAssertEqual(after(.remove, prompt: 1, in: "one\n\ntwo\n"), "one", "a final Return goes with it")
+    }
+
+    func testRemovingTheOnlyPromptEmptiesThePad() {
+        XCTAssertEqual(after(.remove, prompt: 0, in: "only"), "")
+        XCTAssertEqual(after(.remove, prompt: 0, in: "\n\nonly\n\n"), "")
+    }
+
+    func testAManyLinePromptGoesWholeAndTheBlankLinesAroundItCollapse() {
+        let text = "keep\n\nfix the test\nin cart.spec.ts\n\n\n\nlater"
+        XCTAssertEqual(after(.remove, prompt: 1, in: text), "keep\n\nlater")
+    }
+
+    func testWithOneReturnEachLineIsRemovedAlone() {
+        XCTAssertEqual(after(.remove, prompt: 1, in: "a\nb\nc", returns: 1), "a\nc")
+        XCTAssertEqual(after(.remove, prompt: 2, in: "a\nb\nc", returns: 1), "a\nb")
+        XCTAssertEqual(after(.remove, prompt: 0, in: "a\nb\nc", returns: 1), "b\nc")
+    }
+
+    func testTheIndentationOfTheNextPromptSurvives() {
+        XCTAssertEqual(after(.remove, prompt: 0, in: "one\n\n  two"), "  two")
+    }
+
+    func testEveryKindOfBreakIsRemovedWholeWithThePrompt() {
+        XCTAssertEqual(after(.remove, prompt: 0, in: "one\r\n\r\ntwo"), "two")
+        XCTAssertEqual(after(.remove, prompt: 0, in: "one\u{2029}\u{2029}two"), "two")
+        XCTAssertEqual(after(.remove, prompt: 1, in: "one\r\n\r\ntwo"), "one")
+    }
+
+    func testRemovingEveryPromptOneByOneEmptiesThePadWhateverTheOrder() {
+        for order in [[0, 0, 0], [2, 1, 0], [1, 0, 0], [0, 1, 0], [2, 0, 0]] {
+            var text = "alpha\nsecond line\n\nbravo\n\n\ncharlie\n"
+            for index in order {
+                let count = NotepadPrompts.prompts(in: text, returns: 2).count
+                text = after(.remove, prompt: min(index, count - 1), in: text)
+            }
+            XCTAssertTrue(NotepadPrompts.prompts(in: text, returns: 2).isEmpty, "order \(order): \(text.debugDescription)")
+            XCTAssertEqual(text.trimmingCharacters(in: .whitespacesAndNewlines), "", "nothing but space is left, order \(order)")
+        }
+    }
+
+    // MARK: strike
+
+    func testStrikingWrapsThePromptInTheMark() {
+        XCTAssertEqual(after(.strike, prompt: 0, in: "one\n\ntwo"), "~~one~~\n\ntwo")
+        XCTAssertEqual(after(.strike, prompt: 1, in: "a\n\nfix it\nnow"), "a\n\n~~fix it\nnow~~")
+    }
+
+    func testAStruckPromptIsRecognisedAndLoadsWithoutTheMark() {
+        let prompts = NotepadPrompts.prompts(in: "~~one~~\n\ntwo\n\n~~fix it\nnow~~", returns: 2)
+        XCTAssertEqual(prompts.map(\.text), ["one", "two", "fix it\nnow"])
+        XCTAssertEqual(prompts.map(\.isDone), [true, false, true])
+    }
+
+    func testStrikingTwiceDoesNothingTheSecondTime() {
+        let once = after(.strike, prompt: 0, in: "one\n\ntwo")
+        XCTAssertNil(NotepadPrompts.edit(afterLoading: .strike, NotepadPrompts.prompts(in: once, returns: 2)[0], in: once))
+    }
+
+    func testAMarkWithNothingBetweenItIsNotAStruckPrompt() {
+        for text in ["~~", "~~~~", "~~ ~~", "~~one", "one~~"] {
+            let prompts = NotepadPrompts.prompts(in: text, returns: 2)
+            XCTAssertEqual(prompts.count, 1, text)
+            XCTAssertFalse(prompts[0].isDone, text)
+            XCTAssertEqual(prompts[0].text, text.trimmingCharacters(in: .whitespaces), "typed text stays as it is")
+        }
+    }
+
+    func testRemovingAStruckPromptWorksLikeAnyOther() {
+        XCTAssertEqual(after(.remove, prompt: 0, in: "~~one~~\n\ntwo"), "two")
+    }
+
+    // MARK: keep
+
+    func testKeepingChangesNothing() {
+        let text = "one\n\ntwo"
+        XCTAssertNil(NotepadPrompts.edit(afterLoading: .keep, NotepadPrompts.prompts(in: text, returns: 2)[0], in: text))
+    }
+
+    // MARK: finding the prompt again
+
+    func testThePromptIsFoundAgainWhereItMoved() {
+        let before = "one\n\ntwo\n\nthree"
+        let loaded = NotepadPrompts.prompts(in: before, returns: 2)[2]          // "three" at 10
+        let now = "zero\n\none\n\ntwo\n\nthree"                              // something was added above
+        let found = NotepadPrompts.locate(loaded.text, near: loaded.range.location, in: now, returns: 2)
+        XCTAssertEqual((now as NSString).substring(with: found!.range), "three")
+    }
+
+    func testOfTwoIdenticalPromptsTheNearestOneIsTaken() {
+        let text = "same\n\nother\n\nsame"
+        let second = NotepadPrompts.prompts(in: text, returns: 2)[2]
+        let found = NotepadPrompts.locate("same", near: second.range.location, in: text, returns: 2)
+        XCTAssertEqual(found?.range, second.range)
+        let first = NotepadPrompts.prompts(in: text, returns: 2)[0]
+        XCTAssertEqual(NotepadPrompts.locate("same", near: 0, in: text, returns: 2)?.range, first.range)
+    }
+
+    func testAPromptThatIsGoneIsNotFoundAndNothingElseIsTouched() {
+        XCTAssertNil(NotepadPrompts.locate("gone", near: 0, in: "one\n\ntwo", returns: 2))
+        XCTAssertNil(NotepadPrompts.locate("one", near: 0, in: "", returns: 2))
+    }
+
+    // MARK: the setting
+
+    func testTheDefaultIsToRemove() {
+        XCTAssertEqual(NotepadAfterLoading.default, .remove)
+        XCTAssertEqual(NotepadLook().afterLoading, .remove)
+    }
+
+    func testTheSettingRoundTripsAndOldOrOddFilesGetTheDefault() throws {
+        for action in NotepadAfterLoading.allCases {
+            let look = NotepadLook(isOpen: true, width: 300, returnsPerPrompt: 2, afterLoading: action)
+            XCTAssertEqual(try JSONDecoder().decode(NotepadLook.self, from: JSONEncoder().encode(look)), look)
+        }
+        let older = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"isOpen":true,"width":300,"returnsPerPrompt":1}"#.utf8))
+        XCTAssertEqual(older.afterLoading, .remove)
+        let odd = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"afterLoading":"burn"}"#.utf8))
+        XCTAssertEqual(odd.afterLoading, .remove, "a value a newer build wrote must not cost the workspace")
+    }
+}

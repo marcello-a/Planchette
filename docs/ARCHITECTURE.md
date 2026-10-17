@@ -80,6 +80,14 @@ the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — with �
 prompt at a time per terminal. `AppState.notepadEditing` keeps `focusIfActive` from taking the
 keyboard back while you type in the pad.
 
+What happens to a prompt after it was loaded is `NotepadAfterLoading` (`remove` by default, `strike`,
+`keep`), and `NotepadPrompts.edit(afterLoading:…)` is the pure answer: the range to delete (the prompt
+and the blank lines that separated it from the next one; the last prompt takes the gap before it
+instead) or the text with the mark `~~…~~` around it. The text view applies it after the delivery
+finished (`AppState.loadPrompt(…, onLoaded:)`), through its own editing methods, so ⌘Z works, and
+finds the prompt again by its words, nearest to where it was. A struck prompt is plain text with
+the marks — a restart keeps text, not attributes — and `restyle()` draws the line through it.
+
 **The name of a tab** is the name of one terminal of it, kept in `SessionGroup.tabAnchors` (one per
 tab) — not of the terminal that has the keyboard, which would rename the tab every time a pane is
 clicked or a terminal is dropped into it. `TabStrip.speaker` answers the stored one, else the

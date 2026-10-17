@@ -383,6 +383,83 @@ def quit_saves(inst):
           bool(wait_for(lambda: pad_open(inst) and len(load_buttons(inst)) == 1 and not placeholder_shown(inst), 10)))
 
 
+TEXT_AFTER = "first\n\nsecond line a\nsecond line b\n\nthird"
+
+
+def after_seed(action, default=False):
+    def edit(state):
+        for session in state["sessions"]:
+            if session["id"] == SIDS[0]:
+                session["notepad"] = TEXT_AFTER
+        state["notepad"] = {"isOpen": True, "width": 300}
+        if not default:               # the default: a file that says nothing about it
+            state["notepad"]["afterLoading"] = action
+    return edit
+
+
+def after_default(inst):
+    """With nothing said, a loaded prompt leaves the pad — and ⌘Z gives it back."""
+    inst.label_terminals()
+    check("the pad is open with its saved text", bool(wait_for(lambda: pad_open(inst) and len(load_buttons(inst)) == 3, 10)),
+          len(load_buttons(inst)))
+    inst.click(*center(load_buttons(inst)[1]))                       # the prompt of two lines
+    ok = wait_for(lambda: saved_text(inst) == "first\n\nthird", 8)
+    check("a prompt that was loaded leaves the pad, and the gap with it", bool(ok), saved_text(inst))
+    check("…both of its lines are in the terminal",
+          bool(wait_for(lambda: "second line a" in screen(inst) and "second line b" in screen(inst), 6)), screen(inst)[-100:])
+    check("…and the margin has one button fewer", bool(wait_for(lambda: len(load_buttons(inst)) == 2, 6)), len(load_buttons(inst)))
+    inst.shot("after-removed")
+
+    click_into_pad(inst)
+    inst.key("z", "cmd")
+    check("⌘Z gives the prompt back", bool(wait_for(lambda: saved_text(inst) == TEXT_AFTER, 8)), saved_text(inst))
+
+    # ⌘↩ inside the first prompt: loaded, run, and gone
+    area = pad_text(inst)
+    first = load_buttons(inst)[0]
+    inst.click(area["x"] + area["w"] - 30, first["y"] + first["h"] // 2)
+    time.sleep(0.4)
+    inst.key("return", "cmd")
+    ok = wait_for(lambda: saved_text(inst) == "second line a\nsecond line b\n\nthird", 8)
+    check("⌘↩ removes the prompt it loaded", bool(ok), saved_text(inst))
+    check("…and the terminal ran it", bool(wait_for(lambda: any("first" in l for l in screen(inst).splitlines()), 6)))
+
+    # the last prompt: nothing is left behind it
+    inst.click(*center(load_buttons(inst)[-1]))
+    ok = wait_for(lambda: saved_text(inst) == "second line a\nsecond line b", 8)
+    check("the last prompt takes no empty lines with it", bool(ok), saved_text(inst))
+    # everything gone: an empty pad shows its hint again
+    inst.click(*center(load_buttons(inst)[0]))
+    check("the pad ends empty, with its hint", bool(wait_for(lambda: saved_text(inst) in (None, "") and placeholder_shown(inst), 8)),
+          saved_text(inst))
+
+
+def after_strike(inst):
+    """With the setting on strike, a loaded prompt stays, marked — and still loads without the marks."""
+    inst.label_terminals()
+    check("the pad is open with its saved text", bool(wait_for(lambda: pad_open(inst) and len(load_buttons(inst)) == 3, 10)))
+    inst.click(*center(load_buttons(inst)[0]))
+    ok = wait_for(lambda: saved_text(inst) == "~~first~~\n\nsecond line a\nsecond line b\n\nthird", 8)
+    check("a loaded prompt stays, between ~~ marks", bool(ok), saved_text(inst))
+    check("…the terminal got the words, not the marks",
+          bool(wait_for(lambda: "first" in screen(inst), 6)) and "~~" not in screen(inst), screen(inst)[-80:])
+    check("…and the margin still has all its buttons", len(load_buttons(inst)) == 3, len(load_buttons(inst)))
+    inst.shot("after-struck")
+    # loading a struck prompt again adds nothing to the text
+    inst.click(*center(load_buttons(inst)[0]))
+    time.sleep(2.0)
+    check("loading it again does not mark it twice",
+          saved_text(inst) == "~~first~~\n\nsecond line a\nsecond line b\n\nthird", saved_text(inst))
+    # ⌘↩ marks the prompt it loaded
+    area = pad_text(inst)
+    third = load_buttons(inst)[2]
+    inst.click(area["x"] + area["w"] - 30, third["y"] + third["h"] // 2)
+    time.sleep(0.4)
+    inst.key("return", "cmd")
+    ok = wait_for(lambda: (saved_text(inst) or "").endswith("~~third~~"), 8)
+    check("⌘↩ marks the prompt it loaded", bool(ok), saved_text(inst))
+
+
 def shortcut(inst):
     """⌘J opens the pad with the cursor in it, and closes it with the keyboard back in the terminal."""
     inst.label_terminals()
@@ -412,15 +489,34 @@ def shortcut(inst):
     inst.shot("pad-shortcut")
 
 
-SCENARIOS = {"shortcut": shortcut, "quit_saves": quit_saves, "pad": pad_scenario, "one_return": setting_one_return, "default_returns": setting_default, "close_resize": close_resize, "several": several_terminals,
+SCENARIOS = {"after_default": after_default, "after_strike": after_strike, "shortcut": shortcut, "quit_saves": quit_saves, "pad": pad_scenario, "one_return": setting_one_return, "default_returns": setting_default, "close_resize": close_resize, "several": several_terminals,
              "keyboard": keyboard_stays, "restart": restart}
+
+
+AFTER_SCENARIOS = ("after_default", "after_strike")
+
+
+def with_after(edit, action):
+    """An edit of the seeded state, and the setting for what happens after a prompt was loaded."""
+    def both(state):
+        if edit:
+            edit(state)
+        state.setdefault("notepad", {})["afterLoading"] = action
+    return both
 
 
 def prepare(inst, name):
     if name == "one_return":
-        inst.edit_state = seeded_setting(inst)
+        inst.edit_state = with_after(seeded_setting(inst), "keep")
     elif name == "default_returns":
-        inst.edit_state = default_edit
+        inst.edit_state = with_after(default_edit, "keep")
+    elif name == "after_default":
+        inst.edit_state = after_seed("remove", default=True)
+    elif name == "after_strike":
+        inst.edit_state = after_seed("strike")
+    else:
+        # What the older scenarios check is what the pad says; they do not want it to shrink.
+        inst.edit_state = with_after(None, "keep")
 
 
 def main():

@@ -16,6 +16,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   (Combine All Tabs), the first tab's name stays.
 
 ### Changed
+- **A prompt that was loaded from the notepad leaves it.** Whatever is in the pad is what is still
+  to do. It goes with the gap it leaves, so the rest stays as it was, and ⌘Z gives it back.
+  Settings → Tabs → Notepad → *After a prompt is loaded* can strike it through instead (it stays,
+  between `~~` marks, drawn with a line through it and a check in the margin; loading it again
+  sends the words without the marks) or leave it as it is.
 - **The notifications panel's row menu is shorter.** "Mark as done" is on top, "Mark as
   unread" (or "Mark as read") below it, then a line and the reminder and note items. The
   Rename item is gone from this menu; it stays in the project panel and on the tab.

@@ -77,6 +77,7 @@ enum Help {
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
             Entry(.notepad, .helpNotepadDetail, shortcut: "⌘J", where: .helpWhereTabBar),
             Entry(.notepadReturnsTitle, .notepadReturnsTwoHelp, where: .helpWhereSettings),
+            Entry(.notepadAfterTitle, .notepadAfterRemoveHelp, where: .helpWhereSettings),
             Entry(.splitRight, .splitRightHelp, shortcut: "⌘D", where: .helpWhereTabBar),
             Entry(.splitDown, .splitDownHelp, shortcut: "⌘⇧D", where: .helpWhereTabBar),
             Entry(.combineTabs, .combineTabsHelp, where: .helpWhereTabBar),

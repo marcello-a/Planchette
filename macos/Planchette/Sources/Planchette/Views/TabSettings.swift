@@ -46,6 +46,19 @@ struct TabSettings: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
+                Picker(L10n.t(.notepadAfterTitle), selection: $appState.notepad.afterLoading) {
+                    ForEach(NotepadAfterLoading.allCases) { action in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L10n.t(Self.afterTitle[action] ?? .notepadAfterRemove))
+                            Text(L10n.t(Self.afterHelp[action] ?? .notepadAfterRemoveHelp))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .tag(action)
+                    }
+                }
+                .pickerStyle(.radioGroup)
             }
         }
         .formStyle(.grouped)
@@ -53,6 +66,12 @@ struct TabSettings: View {
 
     private static let returnsTitle: [Int: LKey] = [
         1: .notepadReturnsOne, 2: .notepadReturnsTwo, 3: .notepadReturnsThree,
+    ]
+    private static let afterTitle: [NotepadAfterLoading: LKey] = [
+        .remove: .notepadAfterRemove, .strike: .notepadAfterStrike, .keep: .notepadAfterKeep,
+    ]
+    private static let afterHelp: [NotepadAfterLoading: LKey] = [
+        .remove: .notepadAfterRemoveHelp, .strike: .notepadAfterStrikeHelp, .keep: .notepadAfterKeepHelp,
     ]
     private static let returnsHelp: [Int: LKey] = [
         1: .notepadReturnsOneHelp, 2: .notepadReturnsTwoHelp, 3: .notepadReturnsThreeHelp,

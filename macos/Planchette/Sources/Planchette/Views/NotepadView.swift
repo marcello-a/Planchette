@@ -1,6 +1,13 @@
 import AppKit
 import SwiftUI
 
+/// The way from a margin button to the text view: the button says a prompt was loaded, the text
+/// view does what the setting says to it. The two sit side by side in SwiftUI and know nothing of
+/// each other otherwise.
+final class NotepadEditorHandle {
+    var didLoad: ((NotepadRow) -> Void)?
+}
+
 /// The notepad of a terminal, as a strip at the right of the tab: a text view whose margin carries
 /// a button for every line. A click loads the line into the terminal's prompt; ⌥ also presses
 /// Return. One line is one prompt — it ends where the line does.
@@ -10,6 +17,7 @@ struct NotepadPanel: View {
     @State private var isEmpty: Bool
     /// Where the lines are, as the text view lays them out — the margin follows.
     @State private var rows: [NotepadRow] = []
+    @State private var handle = NotepadEditorHandle()
 
     init(session: TerminalSession, text: String) {
         self.session = session
@@ -40,9 +48,9 @@ struct NotepadPanel: View {
             .padding(.horizontal, 8).padding(.vertical, 5)
             Divider()
             HStack(spacing: 0) {
-                NotepadMargin(rows: rows, sessionID: session.id)
+                NotepadMargin(rows: rows, sessionID: session.id, handle: handle)
                 ZStack(alignment: .topLeading) {
-                    NotepadEditor(sessionID: session.id, isEmpty: $isEmpty, rows: $rows)
+                    NotepadEditor(sessionID: session.id, isEmpty: $isEmpty, rows: $rows, handle: handle)
                     if isEmpty {
                         Text(L10n.t(.notepadPlaceholder, appState.notepad.returnsPerPrompt))
                             .font(.system(size: 12))
@@ -105,6 +113,8 @@ struct NotepadRow: Identifiable, Equatable {
     /// The first row of the prompt, from the top of the pad's text area.
     let y: Double
     let height: Double
+    /// Struck through: it was loaded already.
+    var isDone = false
 }
 
 /// The margin: a ▶ at the first row of every prompt. A click loads the prompt into
@@ -114,6 +124,7 @@ struct NotepadMargin: View {
     @EnvironmentObject var appState: AppState
     let rows: [NotepadRow]
     let sessionID: UUID
+    let handle: NotepadEditorHandle
 
     static let width: Double = 26
 
@@ -123,9 +134,12 @@ struct NotepadMargin: View {
             ForEach(rows) { row in
                 Button {
                     let submit = NSEvent.modifierFlags.contains(.option)
-                    appState.loadPrompt(row.prompt, into: sessionID, submit: submit)
+                    appState.loadPrompt(row.prompt, into: sessionID, submit: submit) { [handle] in
+                        handle.didLoad?(row)
+                    }
                 } label: {
-                    Image(systemName: "arrowtriangle.right.fill")
+                    // A check where the prompt was loaded already; it can still be loaded again.
+                    Image(systemName: row.isDone ? "checkmark" : "arrowtriangle.right.fill")
                         .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .frame(width: Self.width, height: row.height)
@@ -149,6 +163,7 @@ struct NotepadEditor: NSViewRepresentable {
     let sessionID: UUID
     @Binding var isEmpty: Bool
     @Binding var rows: [NotepadRow]
+    let handle: NotepadEditorHandle
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -198,6 +213,9 @@ struct NotepadEditor: NSViewRepresentable {
             coordinator?.focusChanged(focused)
         }
         context.coordinator.attach(textView: textView, scroll: scroll)
+        handle.didLoad = { [weak coordinator = context.coordinator] row in
+            coordinator?.applyAfterLoading(row)
+        }
         if appState.notepadWantsKeyboard {
             appState.notepadWantsKeyboard = false
             context.coordinator.takeKeyboard()
@@ -210,7 +228,7 @@ struct NotepadEditor: NSViewRepresentable {
         // The setting that says what ends a prompt changed: the buttons are somewhere else.
         if context.coordinator.returns != appState.notepad.returnsPerPrompt {
             context.coordinator.returns = appState.notepad.returnsPerPrompt
-            DispatchQueue.main.async { context.coordinator.updateRows() }
+            DispatchQueue.main.async { context.coordinator.restyle(); context.coordinator.updateRows() }
         }
     }
 
@@ -251,6 +269,7 @@ struct NotepadEditor: NSViewRepresentable {
                 guard let self, let textView = self.textView else { return }
                 let empty = textView.string.isEmpty
                 if self.parent.isEmpty != empty { self.parent.isEmpty = empty }
+                self.restyle()
                 self.updateRows()
             }
         }
@@ -279,7 +298,46 @@ struct NotepadEditor: NSViewRepresentable {
             parent.appState.setNotepad(textView.string, for: parent.sessionID)
             let empty = textView.string.isEmpty
             if parent.isEmpty != empty { parent.isEmpty = empty }
+            restyle()
             updateRows()
+        }
+
+        /// The look of the text: the plain look, with a line through every prompt that is written
+        /// as `~~…~~`. It is drawn, not stored — the file keeps plain text, and a restart gets
+        /// the same look back from the marks.
+        func restyle() {
+            guard let textView, let storage = textView.textStorage, !textView.hasMarkedText() else { return }
+            let plain: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                .foregroundColor: NSColor.labelColor,
+            ]
+            let whole = NSRange(location: 0, length: storage.length)
+            storage.beginEditing()
+            storage.setAttributes(plain, range: whole)
+            for prompt in NotepadPrompts.prompts(in: textView.string, returns: parent.appState.notepad.returnsPerPrompt)
+            where prompt.isDone {
+                storage.addAttributes([
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                ], range: prompt.range)
+            }
+            storage.endEditing()
+            textView.typingAttributes = plain
+        }
+
+        /// A prompt was loaded into the terminal: do what the setting says to it. The prompt is
+        /// found again by its words, nearest to where it was — the pad can have changed since the
+        /// click — and the change goes through the text view, so ⌘Z gives the prompt back.
+        func applyAfterLoading(_ row: NotepadRow) {
+            guard let textView else { return }
+            let returns = parent.appState.notepad.returnsPerPrompt
+            guard let prompt = NotepadPrompts.locate(row.prompt, near: row.id, in: textView.string, returns: returns),
+                  let edit = NotepadPrompts.edit(
+                    afterLoading: parent.appState.notepad.afterLoading, prompt, in: textView.string),
+                  textView.shouldChangeText(in: edit.range, replacementString: edit.replacement)
+            else { return }
+            textView.textStorage?.replaceCharacters(in: edit.range, with: edit.replacement)
+            textView.didChangeText()
         }
 
         /// Where the lines that hold a prompt are, from the top of what is shown.
@@ -297,7 +355,8 @@ struct NotepadEditor: NSViewRepresentable {
                 let fragment = layout.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
                 let y = fragment.minY + origin.y - visibleTop
                 guard y + fragment.height > -20, y < shown + 20 else { return nil }
-                return NotepadRow(id: line.range.location, prompt: line.text, y: y, height: fragment.height)
+                return NotepadRow(id: line.range.location, prompt: line.text, y: y, height: fragment.height,
+                                  isDone: line.isDone)
             }
             if rows != parent.rows { parent.rows = rows }
         }
@@ -309,11 +368,14 @@ struct NotepadEditor: NSViewRepresentable {
         /// ⌘↩: the prompt the insertion point is in, and Return after it.
         func loadCurrentLine(submit: Bool) {
             guard let textView,
-                  let prompt = NotepadPrompts.prompt(
+                  let prompt = NotepadPrompts.promptValue(
                     at: textView.selectedRange().location, in: textView.string,
                     returns: parent.appState.notepad.returnsPerPrompt)
             else { return }
-            parent.appState.loadPrompt(prompt, into: parent.sessionID, submit: submit)
+            let row = NotepadRow(id: prompt.range.location, prompt: prompt.text, y: 0, height: 0, isDone: prompt.isDone)
+            parent.appState.loadPrompt(prompt.text, into: parent.sessionID, submit: submit) { [weak self] in
+                self?.applyAfterLoading(row)
+            }
         }
     }
 }
