@@ -68,9 +68,11 @@ groups terminals by project. See [README.md](README.md) and
 | `ProjectColorLook.swift` | Where a project's color shows (`ProjectColorScope`: off, label, whole project) and how strong it is (`ProjectColorStrength`: colorful, subtle, faint), persisted as `PersistedState.projectColor`. The numbers behind it are `ProjectWash.strengths` in `Views/ProjectGradient.swift`. Pure, unit-tested |
 | `TabLayout.swift` | What names a tab and what else it carries (`TabName`, `TabLayout`, persisted), and the order the name sources give way to each other (`TabNaming`). Pure, unit-tested |
 | `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
+| `TabSplit.swift` | The tab strip as a pure model: `TabStrip` (a tab is a split tree of terminals; every drop answers a new strip or `nil`), `TabDragItem` (what a drag carries), `TabCloseScope`. Unit-tested, with a seeded random walk |
+| `Notepad.swift` | The notepad: `NotepadLook` (open, width, Returns per prompt — persisted) and `NotepadPrompts`, which cuts a text into prompts and finds the one under the caret. Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `ProjectColorSettings` (Settings → General → Project color), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `NotepadView` (the pad: text view, margin buttons, drag handle), `SplitTabView` (the tab in front: split tree, pane title bars, drop zones), `TerminalAreaView` (tab bar, drag and drop between tabs, the split buttons), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `ProjectColorSettings` (Settings → General → Project color), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command
@@ -160,6 +162,23 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   fails to decode (a downgrade) is somebody's workspace and reads as seen. A message
   shown once needs a persisted answer (`onboarding`), and it is never shown in an
   isolated instance — a sheet over a demo or a test would stop whatever drives it.
+- **A tab is a split tree, and `tabs` is the order of the project.** Add or close a terminal through
+  `AppState` (`addSession`, `closeSession`, `moveSession`) and the strip follows; never write
+  `group.sessionIDs` without the strip, and change the strip only through `applyTabs`, which
+  keeps `sessionIDs` in tab order. A drag must carry JSON (`TabDragItem`), never text: the terminal
+  accepts dropped text and types it. Verify drag and drop by `scripts/perf/tab_split.py`
+  (real mouse events) — SwiftUI's `onDrop` cannot be tested otherwise, and an undeclared custom
+  pasteboard type silently never arrives in an unbundled build.
+- **The terminal swallows ⌘-letters that are not in its allowlist.** `performKeyEquivalent` in
+  `GhosttySurfaceView` passes only `k n t w q , f g d` to the menus; any other ⌘ shortcut is
+  typed into the shell. A new menu shortcut needs its letter there, in the same change.
+- **Nothing takes the keyboard from a field next to a terminal.** `focusIfActive` gives the keyboard
+  to the active terminal on every redraw; it must stay out of the way of anything you type in beside
+  it. The find bar is `AppState.finds`, the notepad is `AppState.notepadEditing` — a new field needs
+  the same guard. And `performKeyEquivalent` answers only while the terminal is the first responder,
+  or ⌘V and ⌘Z would go to the terminal while you edit the pad.
+- **A text that changes on every keystroke does not live in a `@Published` value.** A keystroke in the
+  notepad would redraw the whole window; the text is kept apart and written when the state is saved.
 - **A parked project is filtered exactly like a snoozed one.** `AppState.isMuted`
   is THE filter for anything that counts or announces attention — badge, dock
   count, banner, inbox, notifications panel — and it covers both reasons a

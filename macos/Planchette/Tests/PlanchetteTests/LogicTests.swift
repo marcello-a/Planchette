@@ -986,9 +986,68 @@ final class ScreenDetectionTests: XCTestCase {
         for screen in [bashRunningAfterApproval, mcpRunningAfterApproval] {
             let detection = read(screen)
             XCTAssertEqual(detection?.state, .working)
-            XCTAssertEqual(detection?.ruleID, "claude_working")
+            // The footer rule, or the status line when the screen has one: either way a live turn.
+            XCTAssertTrue(["claude_working", "claude_spinner"].contains(detection?.ruleID ?? ""))
             XCTAssertFalse(detection?.visibleBlocker == true)
         }
+    }
+
+    // Claude Code 2.1.301 prints no "esc to interrupt" in an auto-mode footer while it works. The
+    // footer then looks like an idle prompt, so the status line has to say the turn is live.
+    // Both screens are copied from terminals that showed `free` while Claude worked.
+    func testAWorkingTurnWithoutEscToInterruptIsWorking() {
+        let screens = [
+            """
+            ✢ Deliberating… (5m 38s · ↓ 16.8k tokens · still thinking)
+
+            ──────────────────────────────────────────────────
+            ❯\u{00A0}
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2093-multibild-product-type ✗3  •  ▓▓░░░░░░░░ 17%  •  Opus 5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """,
+            """
+              ctrl+x ctrl+s to send now
+
+            ✢ Whisking… (3m 59s · ↓ 4.9k tokens)
+
+            ──────────────────────────────────────────────────
+            ❯ Press up to edit queued messages
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2102-multibild-nav-arrows ✗7  •  ▓▓▓▓▓▓░░░░ 58%  •  Sonnet 5.5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """,
+        ]
+        for screen in screens {
+            let detection = read(screen)
+            XCTAssertEqual(detection?.state, .working)
+            XCTAssertEqual(detection?.ruleID, "claude_spinner")
+            XCTAssertFalse(detection?.idlePrompt == true)
+            XCTAssertNil(
+                AttentionState.fromScreen(detection, agent: .claude, hookAuthority: true, current: .running),
+                "a running turn stays running")
+        }
+    }
+
+    // The same footer after the turn ended: "Cooked for …" has no ellipsis and no parenthesis.
+    func testAFinishedTurnWithTheSameFooterIsStillIdle() {
+        let detection = read("""
+            ✻ Cooked for 1m 32s · done 10:24 AM
+
+            ──────────────────────────────────────────────────
+            ❯\u{00A0}
+            ──────────────────────────────────────────────────
+              marcello/feat/NIE-2103-speed-mode-footer-bar ✓  •  Sonnet 5.5
+              ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
+            """)
+        XCTAssertEqual(detection?.ruleID, "claude_idle_footer")
+        XCTAssertTrue(detection?.idlePrompt == true)
+    }
+
+    // A dialog is drawn over a live status line for a frame: it must stay a question.
+    func testTheSpinnerNeverHidesADialog() {
+        let detection = read("✻ Thinking… (3s · ↓ 1 tokens)\n" + bashDialog)
+        XCTAssertEqual(detection?.state, .blocked)
     }
 
     // The dialog says "Esc to cancel", never "esc to interrupt": the two cannot be mistaken.
@@ -2856,18 +2915,16 @@ final class DevServerURLTests: XCTestCase {
     }
 }
 
-/// The menu behind the "look at code" button. It is built in AppKit because a
-/// SwiftUI `Menu` shipped as a blank flash next to a terminal surface; these
-/// tests are what keeps "the menu came up empty" from happening unnoticed again.
-@MainActor
+/// The "Open in" rows of a tab's right-click menu. They are worked out apart from the
+/// SwiftUI menu so that "the menu came up empty" and "an IDE vanished" cannot go unnoticed.
 final class IDEMenuTests: XCTestCase {
     private let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
     private let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
     private let xcode = IDEs.known.first { $0.name == "Xcode" }!
 
-    private func menu(default def: String? = nil, target: IDE? = nil,
-                      directory: String = "/tmp") -> NSMenu {
-        IDEMenuActions.shared.menu(
+    private func entries(default def: String? = nil, target: IDE? = nil,
+                         directory: String = "/tmp") -> [IDEMenuEntry] {
+        IDEMenuEntry.entries(
             directory: directory,
             installed: [vscode, phpstorm, xcode],
             running: [phpstorm.bundleID],
@@ -2875,24 +2932,20 @@ final class IDEMenuTests: XCTestCase {
             target: target)
     }
 
-    func testMenuListsEveryInstalledIDEAndTheDefaultSubmenu() {
-        let items = menu().items
-        XCTAssertFalse(items.isEmpty, "the menu must never come up empty")
-        let titles = items.map(\.title)
-        XCTAssertTrue(titles.contains("Visual Studio Code"))
-        XCTAssertTrue(titles.contains("PhpStorm"))
-        XCTAssertTrue(titles.contains(L10n.t(.defaultIDEMenu)))
-        let defaults = items.last?.submenu
-        XCTAssertEqual(defaults?.items.count, 5, "3 IDEs + separator + None")
+    func testEveryInstalledIDEIsListed() {
+        XCTAssertEqual(entries().map(\.ide.name), ["Visual Studio Code", "PhpStorm", "Xcode"])
     }
 
-    func testRunningIDEIsMarkedAndTheTargetIsBold() {
-        let items = menu(target: phpstorm).items
-        let php = items.first { $0.title == "PhpStorm" }
-        let code = items.first { $0.title == "Visual Studio Code" }
-        XCTAssertEqual(php?.state, .mixed, "running IDEs are marked")
-        XCTAssertEqual(code?.state, .off)
-        XCTAssertNotNil(php?.attributedTitle, "what a click opens reads bold")
+    func testRunningIDEIsMarkedAndTheTargetIsKnown() {
+        let rows = entries(target: phpstorm)
+        let php = rows.first { $0.ide == phpstorm }
+        let code = rows.first { $0.ide == vscode }
+        XCTAssertEqual(php?.isRunning, true)
+        XCTAssertTrue(php?.title.hasSuffix("●") == true, "a running IDE says so in its title")
+        XCTAssertEqual(code?.isRunning, false)
+        XCTAssertEqual(code?.title, "Visual Studio Code")
+        XCTAssertEqual(php?.isTarget, true)
+        XCTAssertEqual(code?.isTarget, false)
     }
 
     func testXcodeIsListedButDisabledWithoutAProjectFile() throws {
@@ -2900,17 +2953,15 @@ final class IDEMenuTests: XCTestCase {
             .appendingPathComponent("planchette-menu-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        let item = menu(directory: dir.path).items.first { $0.title == "Xcode" }
-        XCTAssertNotNil(item, "it stays listed")
-        XCTAssertFalse(item?.isEnabled ?? true, "but it cannot open a plain folder")
+        let row = entries(directory: dir.path).first { $0.ide == xcode }
+        XCTAssertNotNil(row, "it stays listed")
+        XCTAssertEqual(row?.isEnabled, false, "but it cannot open a plain folder")
     }
 
-    func testTheDefaultCarriesTheCheckmarkAndNoneIsTheAlternative() {
-        let withDefault = menu(default: phpstorm.bundleID).items.last?.submenu?.items ?? []
-        XCTAssertEqual(withDefault.first { $0.title == "PhpStorm" }?.state, .on)
-        XCTAssertEqual(withDefault.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .off)
-        let withNone = menu().items.last?.submenu?.items ?? []
-        XCTAssertEqual(withNone.first { $0.title == L10n.t(.noDefaultIDE) }?.state, .on)
+    func testTheDefaultIsMarkedOnce() {
+        let withDefault = entries(default: phpstorm.bundleID)
+        XCTAssertEqual(withDefault.filter(\.isDefault).map(\.ide.name), ["PhpStorm"])
+        XCTAssertTrue(entries().filter(\.isDefault).isEmpty)
     }
 }
 
@@ -3503,5 +3554,44 @@ final class ScreenConfirmationTests: XCTestCase {
         XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
         confirmation.forget(one)
         XCTAssertFalse(confirmation.confirm(.idlePrompt, for: one))
+    }
+}
+
+
+/// What the close items of a tab's menu end: left of it, it, right of it — never more.
+final class TabClosingTests: XCTestCase {
+    private let a = UUID(), b = UUID(), c = UUID(), d = UUID(), e = UUID()
+
+    func testEachScopeTakesItsOwnSideOnly() {
+        let tabs = [[a], [b], [c], [d]]
+        XCTAssertEqual(TabClosing.terminals(.left, at: 2, in: tabs), [a, b])
+        XCTAssertEqual(TabClosing.terminals(.this, at: 2, in: tabs), [c])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 2, in: tabs), [d])
+    }
+
+    func testTheEndsHaveNothingBeyondThem() {
+        let tabs = [[a], [b], [c]]
+        XCTAssertEqual(TabClosing.terminals(.left, at: 0, in: tabs), [])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 2, in: tabs), [])
+        XCTAssertEqual(TabClosing.tabCount(.left, at: 0, in: tabs), 0)
+        XCTAssertEqual(TabClosing.tabCount(.right, at: 2, in: tabs), 0)
+    }
+
+    func testASplitTabClosesAllItsTerminals() {
+        let tabs = [[a], [b, c], [d, e]]
+        XCTAssertEqual(TabClosing.terminals(.this, at: 1, in: tabs), [b, c])
+        XCTAssertEqual(TabClosing.terminals(.right, at: 0, in: tabs), [b, c, d, e])
+        XCTAssertEqual(TabClosing.terminals(.left, at: 2, in: tabs), [a, b, c])
+        XCTAssertEqual(TabClosing.tabCount(.right, at: 0, in: tabs), 2, "tabs, not terminals")
+    }
+
+    func testAStaleIndexClosesNothing() {
+        let tabs = [[a], [b]]
+        for scope in [TabCloseScope.left, .this, .right] {
+            XCTAssertEqual(TabClosing.terminals(scope, at: 5, in: tabs), [])
+            XCTAssertEqual(TabClosing.terminals(scope, at: -1, in: tabs), [])
+            XCTAssertEqual(TabClosing.tabCount(scope, at: 5, in: tabs), 0)
+        }
+        XCTAssertEqual(TabClosing.terminals(.this, at: 0, in: []), [])
     }
 }

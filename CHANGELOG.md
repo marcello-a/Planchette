@@ -8,10 +8,71 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A notepad for every terminal, at the right of the tab.** Open it with the note button in the
+  tab bar or ⌘J; close it with its ✕. Drag its edge to change the width. What you write is saved
+  with the workspace — on every change, and again when the app quits — and the pad stays open at
+  the width you left it. A prompt runs to the blank line that ends it (two Returns; Settings →
+  Tabs → Notepad makes it one or three), so it can be several lines long. The ▶ in the margin
+  loads the prompt into the terminal's prompt without running it; ⌥-click, or ⌘↩ inside the
+  prompt, also presses Return.
+
+### Fixed
+- **A field next to a terminal keeps the keyboard.** The terminal took it back whenever SwiftUI
+  re-attached it — in the middle of a word typed in the notepad — and answered ⌘V, ⌘A and ⌘Z that
+  belonged to the field. It now does neither.
+
 ### Changed
 - **The notifications panel's row menu is shorter.** "Mark as done" is on top, "Mark as
   unread" (or "Mark as read") below it, then a line and the reminder and note items. The
   Rename item is gone from this menu; it stays in the project panel and on the tab.
+
+## [0.2.42] — 2026-10-16
+
+### Added
+- **Split a tab, as in iTerm2.** A tab can hold several terminals side by side. Drag a tab onto
+  the edge of the terminal in front and the view splits there; drag a pane's title bar onto the
+  tab bar to make it a tab again, or onto a tab to put it before that one. A tab with several
+  panes shows a count, and the state of the most urgent pane — a question in a pane you cannot
+  see is not hidden behind a calm one. Click into a pane, or its title bar, to give it the
+  keyboard; coming back to a tab returns to the pane you were in.
+- **Split Right (⌘D) and Split Down (⌘⇧D).** A new terminal in the project's folder, split off
+  the one you are in. They are buttons in the tab bar and items of the Session menu.
+- **Combine All Tabs and Separate All Panes**, next to them: every tab of a project in one view,
+  as a grid, or every pane in a tab of its own.
+- **A close button at the end of every tab.** It asks first, because closing a tab ends the
+  terminal's session.
+
+### Changed
+- **The notification bell shows the red dot, not a number.** The count stays in the panel's
+  title and in a screen reader's voice.
+- **The cluster view is gone; the split tab replaces it.** A project that was in cluster mode
+  opens as one tab holding the same panes in the same arrangement, and a saved arrangement keeps
+  its splits. *Combine All Tabs* is the button for "everything at once". The pane drag of the
+  cluster view now also works over the terminal itself, not only over its title.
+- **Closing a terminal hands the keyboard to its neighbour:** the next pane of its tab, else the
+  next tab, else the one before — it used to be the last terminal of the project.
+- **A tab's menu has three separate close items:** *Close Tabs to the Left*, *Close This Tab* and
+  *Close Tabs to the Right*. Each asks first and is greyed out when it has nothing to close.
+- **"Look at code" moved from the header into a tab's right-click menu.** The header keeps room
+  for the dev-server links. The menu has the same three things: *Look at code*, *Open in* and
+  *Default IDE*.
+
+### Fixed
+- **The terminal only answers ⌘ shortcuts while it has the keyboard.** With a field next to it
+  (the notepad, the find bar) ⌘V, ⌘A and ⌘Z belong to the field.
+- **⌘D reaches the Session menu.** The terminal took it and typed it at the prompt.
+- **A tab opens from a click anywhere on it.** Only the icon and the letters of the name took
+  the click; the padding and the gaps between the chips did not.
+
+## [0.2.41] — 2026-10-16
+
+### Fixed
+- **A terminal that is working no longer shows as free.** Claude Code 2.1.301 prints no
+  "esc to interrupt" under a working turn in auto mode, so its footer looked like an idle
+  prompt and the screen reader freed the terminal, even for a long Bash call or a long
+  thought. The reader now takes the live status line ("Whisking… (3m 59s · …)") as proof that
+  the turn runs.
 
 ## [0.2.40] — 2026-10-16
 

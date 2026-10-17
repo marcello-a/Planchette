@@ -245,7 +245,10 @@ enum ScreenDetector {
         // turn the hooks never closed (an abort before the first output).
         // 4: claude_working reads the footer of a turn in flight, which is how a
         // question that was answered is noticed (no hook says so).
-        version: 4,
+        // 5: claude_spinner reads the live status line. Claude Code 2.1.301 prints
+        // no "esc to interrupt" in the footer of a turn in auto mode, so the footer
+        // alone read a working turn as an idle prompt and freed it.
+        version: 5,
         engine: ScreenRuleSet.engineVersion,
         agents: [
             AgentKind.claude.rawValue: [
@@ -294,6 +297,17 @@ enum ScreenDetector {
                 // "? for shortcuts" — which an input with text in it (a prompt put
                 // back after an abort) does not show, so that alone is not enough.
                 // Verified against Claude Code 2.1.300.
+                // A turn in flight draws a status line — "✢ Whisking… (3m 59s · ↓ 4.9k
+                // tokens)" — and replaces it with "✻ Cooked for 1m 32s · done" when the turn
+                // ends. Only the live one has an ellipsis followed by "(elapsed". It beats
+                // the idle footer, because the footer of a working turn has no
+                // "esc to interrupt" in every mode and looks like an idle prompt.
+                ScreenRule(
+                    id: "claude_spinner", state: .working, priority: 750,
+                    tailLines: 14,
+                    none: ["esc to cancel", "do you want to", "no, and tell claude",
+                           "enter to select", "to navigate", "what should claude do"],
+                    lineRegex: ["(…|\\.\\.\\.)\\s*\\(\\d+\\s*[hms]\\b"]),
                 ScreenRule(
                     id: "claude_idle_footer", state: .idle, priority: 700,
                     tailLines: 6,

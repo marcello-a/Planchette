@@ -49,10 +49,42 @@ per-session startup command.
 separation is the feature: "Start fresh" throws the workspace away, and the
 saved arrangements have to still be there afterwards — the welcome screen offers
 them as the way back. A preset is a template, not a snapshot: projects, folders,
-terminals (cwd, title, color, tags, startup command) and the cluster splits,
+terminals (cwd, title, color, tags, startup command) and the tabs' splits,
 addressed by terminal *index* since session ids are minted fresh on every open.
 It deliberately carries no Claude conversation id — opening one twice must not
 put two terminals on the same conversation.
+
+**A tab is a split tree** (`TabSplit.swift`). A project keeps `tabs: [SplitLayout]`, one tree of
+terminals per tab, and `sessionIDs` in the order the tabs show them (pane by pane), so the
+sidebar, the overview and the control API need no idea of splits. `TabStrip` is the whole
+model, pure and unit-tested: `synced` repairs a stored strip against the project's terminals
+(a closed terminal leaves its tab, a new one gets a tab at the end, one that is in two places
+stays in the first), and every drop — a tab onto a pane's edge, a pane onto a pane, a pane out
+to its own tab, combine all, separate all — answers a new strip or `nil` when nothing would
+change, which is also how the drop zones know not to light up. `AppState.tabs(of:)` is the
+strip as the views read it; `applyTabs` is the one place it is written, and refuses a strip that
+does not hold exactly the project's terminals. A project saved in cluster mode (`viewMode`,
+`clusterLayout`) is migrated when it is decoded: one tab holding the cluster's layout.
+
+**The notepad** (`Notepad.swift`, `Views/NotepadView.swift`). Each terminal has one text, written to
+`TerminalSession.notepad` only when the state is saved: while the app runs it lives in
+`AppState.notepadText`, which is deliberately not `@Published`, because a keystroke in the pad must
+not redraw the window. `NotepadLook` (open, width, how many Returns end a prompt) is persisted as
+`PersistedState.notepad` and read from a state that has none. `NotepadPrompts` is the pure part: it
+cuts the text into prompts — by hand, since `NSString` paragraphs miss U+2028 — and answers the
+prompt under the caret. The pad is an `NSTextView` that reports where each prompt starts; the
+margin buttons are SwiftUI buttons laid over those positions, because an `NSScrollView` inside
+a SwiftUI view exposed no children to accessibility, and buttons that are not in the accessibility
+tree cannot be used with VoiceOver or driven by `scripts/perf/notepad.py`. Loading goes through
+the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — with ⌥ — Return after it, one
+prompt at a time per terminal. `AppState.notepadEditing` keeps `focusIfActive` from taking the
+keyboard back while you type in the pad.
+
+A drag carries a `TabDragItem` (a tab, by its first terminal, or a pane) as **JSON**, never as
+text: a terminal accepts dropped text and types it at the prompt. An undeclared type of our own
+would be cleaner, but it never reaches a drop target in an unbundled build. The drop zones
+(`SplitTabView`, `TerminalAreaView`) work over the terminal itself: the nearest edge of the pane
+under the pointer decides where it splits.
 
 **Messages shown once.** `OnboardingState` (inside `state.json`) remembers what the user
 was told: the welcome screen of a first launch (no state file at all), the version that
@@ -160,6 +192,13 @@ says nothing until it is done, and an MCP call can take minutes. The screen is t
 `claude_working` lets `AttentionState.fromScreen` move a `waiting` terminal back to `running`,
 after two polls, and nothing else: starting work from idle stays the hooks' job.
 
+**The status line, not the footer, says a turn is live.** Claude Code 2.1.301 prints no
+"esc to interrupt" in the footer of a working turn in auto mode, so that footer
+("auto mode on · ← for agents") looked like an idle prompt and freed a terminal that was
+working. `claude_spinner` reads the status line instead ("✢ Whisking… (3m 59s · ↓ 4.9k
+tokens)": an ellipsis, then the elapsed time in a parenthesis) and outranks the idle footer. A
+finished turn prints "✻ Cooked for 1m 32s · done", which has neither.
+
 Install the hooks with `hook/install-hooks.sh` (merges into
 `~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
 terminals).
@@ -206,7 +245,7 @@ A tab's name is `AppState.tabName(for:)`, from the source Settings → Tabs pick
 and tested): the summary — the conversation title Claude Code writes into its transcript
 (`AgentTitle`, in `agentTitles`), else the AI summary, else the last prompt — the last
 prompt, the first prompt, or the classic ticket and prompt. A manual name beats all of
-them. The cluster tiles and the project overview use it too. The control API's `title`
+them. The split panes' title bars and the project overview use it too. The control API's `title`
 does not: it is `displayTitle`, a contract other programs read, and a setting here must
 not change it. The transcript sweep (`refreshContextUsage`) runs for the summary name as
 it does for the context ring, and for nothing else.

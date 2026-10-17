@@ -29,7 +29,7 @@ launch — *Restore* or *Start fresh* — and a fresh start archives the old wor
 
 | | Quit, update (*Install & Relaunch*), crash | Reboot or logout |
 |---|---|---|
-| Projects, folders, tabs, clusters, windows, tags, colors, notes, settings | kept | kept |
+| Projects, folders, tabs and their splits, windows, tags, colors, notes, settings | kept | kept |
 | What each terminal printed, and the line you were typing at its prompt | kept | kept |
 | A Claude conversation | resumed with `claude --resume` — in a durable terminal it never stopped | resumed with `claude --resume` |
 | A dev server or other startup command | started again — in a durable terminal it never stopped | started again |
@@ -152,7 +152,7 @@ Also worth a second:
 
 - Projects in folders; drag one into a folder and drop it into an exact slot. Click a folder for an
   overview: every project, its state, its terminals.
-- Tab view or cluster grid per project; drag panes to split.
+- Tabs that split, as in iTerm2: drag a tab onto a terminal's edge to split it, a pane's title back onto the tab bar to make it a tab; ⌘D / ⌘⇧D split off a new terminal; one button puts every tab in one view.
 - Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
 - Choose what every row of the project panel shows — path, branch, pull request, prompt, age,
@@ -160,7 +160,7 @@ Also worth a second:
 - Multiple windows, and merging them back. Saved arrangements rebuild a whole workspace in one click.
 
 <p align="center">
-  <img src="docs/images/cluster.png" width="900" alt="Cluster view: every terminal of a project at once">
+  <img src="docs/images/cluster.png" width="900" alt="Every tab of a project in one view (Combine All Tabs)">
 </p>
 
 ### Terminals
@@ -170,9 +170,10 @@ Also worth a second:
 - Dev servers show as clickable port chips on their project, opening the address the server
   announced (`https://vite.myposter.de:8082`, network URL first) — found by process, so a server
   started in an IDE terminal counts too.
-- *Look at code*: jumps to the window an IDE already has the project open in — otherwise opens it
+- *Look at code* (right-click a tab): jumps to the window an IDE already has the project open in — otherwise opens it
   in the IDE the checkout belongs to (`.idea` → JetBrains, `.vscode` → VS Code), else the one you
-  last worked in; the chevron picks another or sets a default.
+  last worked in; *Open in* picks another and *Default IDE* sets one.
+- A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, and ▶ loads it into the terminal — ⌥-click also presses Return.
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path.
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder.
 - Links open with ⌘-click; a link that would run something is shown, not run. A program that asks

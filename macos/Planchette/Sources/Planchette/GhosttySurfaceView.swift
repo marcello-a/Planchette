@@ -397,7 +397,10 @@ final class GhosttySurfaceNSView: NSView {
         guard window != nil else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, let window = self.window, self.isActive() else { return }
-            if !(window.firstResponder is GhosttySurfaceNSView) {
+            // Not from a field somebody is typing in: the notepad's text view, the find bar's field
+            // editor — both are an `NSText` — would lose the keyboard in the middle of a word every
+            // time SwiftUI re-attached this view.
+            if !(window.firstResponder is GhosttySurfaceNSView), !(window.firstResponder is NSText) {
                 window.makeFirstResponder(self)
             }
         }
@@ -668,14 +671,19 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Only the terminal that has the keyboard answers: with a notepad or a find bar in the
+        // window, ⌘V, ⌘A and ⌘Z belong to the field you are typing in, and with several panes the
+        // first one in the view tree would otherwise take every ⌘ shortcut.
+        guard window?.firstResponder === self else { return false }
         // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus.
         guard event.modifierFlags.contains(.command) else { return false }
         let chars = event.charactersIgnoringModifiers ?? ""
         // ⌘F, ⌘G and ⌘⇧G are the menu's too: the find bar is the app's, and it has to
         // answer for a durable terminal, whose history libghostty cannot see.
-        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g"]
+        // ⌘D and ⌘⇧D split the tab and ⌘J opens the notepad (Session menu); the terminal would type them otherwise.
+        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g", "d", "j"]
         // charactersIgnoringModifiers still applies Shift, so a shifted app
-        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree") arrives here as
+        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree", ⌘⇧D "Split down") arrives here as
         // "K"/"T". Lowercase before matching so those reach the menu instead of
         // being swallowed and typed into the terminal.
         if appShortcuts.contains(chars.lowercased()) { return false }
@@ -1093,7 +1101,12 @@ final class TerminalRegistry {
         let id = session.id
         // Focusing must not clear attention *state* (a glance isn't an answer),
         // but it does mean you have now seen whatever finished here.
-        view.onFocus = { [weak appState] in appState?.markSeen(id) }
+        // A click into a pane of a split tab makes it the tab's active terminal: the one the
+        // sidebar marks, the one a shortcut acts on.
+        view.onFocus = { [weak appState] in
+            appState?.markSeen(id)
+            appState?.focusPane(id)
+        }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }
             let window = appState.windowContaining(groupID: session.groupID)
@@ -1219,9 +1232,14 @@ private struct TerminalSurfaceRepresentable: NSViewRepresentable {
     }
 
     private func focusIfActive(_ view: NSView) {
-        guard autoFocus, appState.finds[session.id] == nil, let surfaceView = view as? GhosttySurfaceNSView else { return }
+        // Not while the find bar or the notepad has the keyboard: a redraw of the terminal would
+        // take it from the field you are typing in.
+        guard autoFocus, appState.finds[session.id] == nil, !appState.notepadEditing,
+              let surfaceView = view as? GhosttySurfaceNSView else { return }
         DispatchQueue.main.async {
+            // Asked again here: the notepad may have taken the keyboard since this was scheduled.
             guard let window = surfaceView.window, surfaceView.isActive() else { return }
+            if appState.notepadEditing || appState.finds[session.id] != nil { return }
             // Ensure a key window exists so keystrokes are delivered at all
             // (after the launch modal + window restoration the app can end up
             // with no key window). Only while active: keyWindow is always nil
