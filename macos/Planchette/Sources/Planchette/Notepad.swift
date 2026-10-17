@@ -4,6 +4,20 @@ import Foundation
 /// Returns that end it — two by default, which is a blank line — so it can be several lines long.
 /// Everything here is pure and unit-tested; the views are in `Views/NotepadView.swift`.
 
+/// What happens to a prompt of the pad once it has been loaded into the terminal.
+enum NotepadAfterLoading: String, Codable, CaseIterable, Identifiable {
+    /// It leaves the pad: what is in the pad is what is still to do.
+    case remove
+    /// It stays, struck through. It is written into the text as `~~…~~` (the pad is plain text,
+    /// and what a restart keeps has to be text), and shown with a line through it.
+    case strike
+    /// Nothing happens.
+    case keep
+
+    static let `default` = NotepadAfterLoading.remove
+    var id: String { rawValue }
+}
+
 /// Whether the pad is open, how wide it is, and how many Returns end a prompt — one setting for
 /// the whole app, like the notifications panel: it stays where you left it while you go from
 /// terminal to terminal. Persisted as `PersistedState.notepad`.
@@ -21,12 +35,15 @@ struct NotepadLook: Codable, Equatable {
     var isOpen = false
     var width: Double = NotepadLook.defaultWidth
     var returnsPerPrompt = NotepadLook.defaultReturns
+    var afterLoading = NotepadAfterLoading.default
 
     init(isOpen: Bool = false, width: Double = NotepadLook.defaultWidth,
-         returnsPerPrompt: Int = NotepadLook.defaultReturns) {
+         returnsPerPrompt: Int = NotepadLook.defaultReturns,
+         afterLoading: NotepadAfterLoading = .default) {
         self.isOpen = isOpen
         self.width = NotepadLook.sanitized(width)
         self.returnsPerPrompt = NotepadLook.sanitized(returns: returnsPerPrompt)
+        self.afterLoading = afterLoading
     }
 
     // A state written by another build, or by hand, must not cost the whole workspace.
@@ -36,6 +53,8 @@ struct NotepadLook: Codable, Equatable {
         width = Self.sanitized((try? c.decodeIfPresent(Double.self, forKey: .width)) ?? Self.defaultWidth)
         returnsPerPrompt = Self.sanitized(
             returns: (try? c.decodeIfPresent(Int.self, forKey: .returnsPerPrompt)) ?? Self.defaultReturns)
+        // A word a newer build wrote falls back; a state from before this setting gets the default.
+        afterLoading = (try? c.decodeIfPresent(NotepadAfterLoading.self, forKey: .afterLoading)) ?? .default
     }
 
     /// A width that can be stored: a number, and not below the minimum.
@@ -70,9 +89,14 @@ enum NotepadPrompts {
         /// UTF-16 units (what a text view counts in). The Return that ends it is not part of it.
         let range: NSRange
         /// What goes into the terminal: the lines as typed, joined by "\n", without the space
-        /// around them.
+        /// around them — and without the `~~` of a struck-through prompt.
         let text: String
+        /// Written as `~~…~~`: it was loaded already, and the setting said to strike it through.
+        var isDone = false
     }
+
+    /// The mark of a struck-through prompt: the text between two of these.
+    static let doneMark = "~~"
 
     private struct Line {
         /// The line with its break.
@@ -127,17 +151,29 @@ enum NotepadPrompts {
         return groups.map { group in
             let first = all[group[0]], last = all[group[group.count - 1]]
             let range = NSRange(location: first.content.location, length: NSMaxRange(last.content) - first.content.location)
-            return Prompt(range: range, text: normalized(ns.substring(with: range)))
+            let text = normalized(ns.substring(with: range))
+            // ~~like this~~: struck through, and what goes into the terminal is what is inside.
+            if text.count > 2 * doneMark.count, text.hasPrefix(doneMark), text.hasSuffix(doneMark) {
+                let inner = text.dropFirst(doneMark.count).dropLast(doneMark.count)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if !inner.isEmpty { return Prompt(range: range, text: inner, isDone: true) }
+            }
+            return Prompt(range: range, text: text)
         }
     }
 
     /// The prompt the insertion point is in, or nil in a gap between prompts. At the very end of
     /// the text, after a final Return, there is an empty line and so no prompt.
     static func prompt(at location: Int, in text: String, returns: Int) -> String? {
+        promptValue(at: location, in: text, returns: returns)?.text
+    }
+
+    /// The same, with where it is — what is needed to do something to it afterwards.
+    static func promptValue(at location: Int, in text: String, returns: Int) -> Prompt? {
         let length = (text as NSString).length
         let at = min(max(location, 0), length)
         return prompts(in: text, returns: returns)
-            .first { $0.range.location <= at && at <= NSMaxRange($0.range) }?.text
+            .first { $0.range.location <= at && at <= NSMaxRange($0.range) }
     }
 
     /// Typed text for a terminal: one kind of line break, nothing around it.
@@ -147,5 +183,60 @@ enum NotepadPrompts {
             result = result.replacingOccurrences(of: separator, with: "\n")
         }
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: After a prompt was loaded
+
+    /// A change to the text: `range` is replaced by `replacement`.
+    struct Edit: Equatable {
+        let range: NSRange
+        let replacement: String
+    }
+
+    /// The prompt that was loaded, found again in the text as it is now: the same words, nearest to
+    /// where it was. The text can have changed between the click and the end of the load; a prompt
+    /// that is gone is not found, and nothing is done to something else.
+    static func locate(_ text: String, near location: Int, in current: String, returns: Int) -> Prompt? {
+        let candidates = prompts(in: current, returns: returns).filter { $0.text == text }
+        return candidates.min { abs($0.range.location - location) < abs($1.range.location - location) }
+    }
+
+    /// What the setting does to a prompt that was loaded: its removal, its marks, or nothing.
+    static func edit(
+        afterLoading action: NotepadAfterLoading, _ prompt: Prompt, in text: String
+    ) -> Edit? {
+        let ns = text as NSString
+        switch action {
+        case .keep:
+            return nil
+        case .strike:
+            guard !prompt.isDone else { return nil }
+            return Edit(range: prompt.range, replacement: doneMark + ns.substring(with: prompt.range) + doneMark)
+        case .remove:
+            return Edit(range: removalRange(of: prompt, in: text), replacement: "")
+        }
+    }
+
+    /// The prompt, and the Returns and blank lines that separated it from the next one — so that
+    /// removing it leaves the rest as it was, not with a growing gap. The last prompt takes the gap
+    /// before it instead, so the pad does not end in empty lines.
+    static func removalRange(of prompt: Prompt, in text: String) -> NSRange {
+        let ns = text as NSString
+        let all = lines(in: ns)
+        guard let first = all.firstIndex(where: { $0.content.location >= prompt.range.location }),
+              let last = all.lastIndex(where: { NSMaxRange($0.content) <= NSMaxRange(prompt.range) })
+        else { return prompt.range }
+        // Everything after the prompt's last line up to the next line that holds text.
+        var after = last + 1
+        while after < all.count, all[after].isBlank { after += 1 }
+        if after < all.count {
+            let start = all[first].full.location
+            return NSRange(location: start, length: all[after].full.location - start)
+        }
+        // The last prompt: take the blank lines and the Return before it as well.
+        var before = first
+        while before > 0, all[before - 1].isBlank { before -= 1 }
+        let start = before > 0 ? NSMaxRange(all[before - 1].content) : 0
+        return NSRange(location: start, length: ns.length - start)
     }
 }

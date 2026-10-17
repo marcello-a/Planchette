@@ -173,7 +173,7 @@ Also worth a second:
 - *Look at code* (right-click a tab): jumps to the window an IDE already has the project open in — otherwise opens it
   in the IDE the checkout belongs to (`.idea` → JetBrains, `.vscode` → VS Code), else the one you
   last worked in; *Open in* picks another and *Default IDE* sets one.
-- A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, and ▶ loads it into the terminal — ⌥-click also presses Return.
+- A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, and ▶ loads it into the terminal — ⌥-click also presses Return. A loaded prompt leaves the pad (or is struck through; Settings → Tabs).
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path.
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder.
 - Links open with ⌘-click; a link that would run something is shown, not run. A program that asks

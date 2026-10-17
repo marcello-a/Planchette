@@ -80,6 +80,14 @@ the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — with �
 prompt at a time per terminal. `AppState.notepadEditing` keeps `focusIfActive` from taking the
 keyboard back while you type in the pad.
 
+What happens to a prompt after it was loaded is `NotepadAfterLoading` (`remove` by default, `strike`,
+`keep`), and `NotepadPrompts.edit(afterLoading:…)` is the pure answer: the range to delete (the prompt
+and the blank lines that separated it from the next one; the last prompt takes the gap before it
+instead) or the text with the mark `~~…~~` around it. The text view applies it after the delivery
+finished (`AppState.loadPrompt(…, onLoaded:)`), through its own editing methods, so ⌘Z works, and
+finds the prompt again by its words, nearest to where it was. A struck prompt is plain text with
+the marks — a restart keeps text, not attributes — and `restyle()` draws the line through it.
+
 A drag carries a `TabDragItem` (a tab, by its first terminal, or a pane) as **JSON**, never as
 text: a terminal accepts dropped text and types it at the prompt. An undeclared type of our own
 would be cleaner, but it never reaches a drop target in an unbundled build. The drop zones
