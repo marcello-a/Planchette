@@ -18,6 +18,10 @@
   <img src="docs/images/overview.png" width="900" alt="Planchette: projects in folders with their own colors, a project's tabs named after what each session is about, and the notifications panel listing who needs you">
 </p>
 
+> **Two things set Planchette apart:** [everything stays](#everything-stays) — quit, update or crash,
+> and the next launch puts every session back — and [the notepad](#the-notepad) — prompts written
+> ahead, sent with one click.
+
 ## Everything stays
 
 **This is the feature the rest is built around: whatever happens to the app or the Mac, the next
@@ -39,6 +43,22 @@ is a running agent, and that is what [durable terminals](#setup--what-unlocks-wh
 tmux installed the agent keeps working while Planchette is gone, and reopening re-attaches to the
 **live** session instead of resuming a conversation. Planchette offers them on the first launch,
 and once after each update until you have them.
+
+## The notepad
+
+**Prompts, ready to send.** Every terminal has a notepad at the right of its tab (⌘J), saved with the
+workspace. Write the next prompts while the agent works; send each one with a click.
+
+<p align="center">
+  <img src="hints/notepad.gif" width="640" alt="The notepad: three prompts written ahead, the return arrow sends one to the terminal, the down arrow adds the next as a draft">
+</p>
+
+- **Two buttons per prompt.** The down arrow adds it to the terminal as a draft, the return arrow
+  adds it and presses Return. ⌘↩ in a prompt does the same as the return arrow.
+- **Markdown as you type** — headlines, lists, quotes, code, bold, italic — sized to the width of the
+  pad. The text stays as typed, so what reaches the terminal is what you wrote.
+- **A prompt is a block** that ends at a blank line (one to three Returns, a setting), and a code
+  fence is one prompt. A prompt that was sent leaves the pad, or is struck through (Settings → Tabs).
 
 ## See it work
 

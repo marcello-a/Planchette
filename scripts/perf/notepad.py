@@ -483,8 +483,102 @@ def shortcut(inst):
     inst.shot("pad-shortcut")
 
 
+# ---- the picture of the notepad hint ------------------------------------------------------------
+# Not a check: it records `hints/notepad.gif`, the loop the first-use hint shows. A stand-in agent
+# (a shell loop that answers every line it reads) takes the place of Claude Code, so the picture
+# is the real window with real clicks — and nobody's prompts. Run it by name:
+#   with_displays.sh 900 python3 scripts/perf/notepad.py <binary> <scratch> gif
+
+GIF_STEPS = [
+    # (frame, caption, seconds)
+    ("empty", "Write your prompts ahead of time", 1.6),
+    ("one", "Markdown shows as you type", 1.6),
+    ("three", "One prompt after the other", 1.8),
+    ("run", "Return arrow: send it now", 2.2),
+    ("draft", "Down arrow: add it as a draft", 2.6),
+]
+
+
+def gif_scenario(inst):
+    # Lower case only: the typing tool does not press Shift, and a picture must not show its seams.
+    inst.label_terminals()
+    open_pad(inst)
+    win = inst.window()
+    inst.click(win["x"] + win["w"] // 4, win["y"] + win["h"] // 2)             # into the terminal
+    time.sleep(0.5)
+    inst.inputs("type", 'clear; while read -r l; do echo "agent> $l"; done')
+    inst.key("return")
+    time.sleep(1.0)
+    inst.shot("gif-empty")
+
+    click_into_pad(inst)
+    inst.inputs("type", "fix the **cart** crash")
+    time.sleep(0.5)
+    inst.shot("gif-one")
+    inst.key("return")
+    inst.key("return")
+    inst.inputs("type", "add a test for `total()`")
+    inst.key("return")
+    inst.key("return")
+    inst.inputs("type", "update the readme")
+    time.sleep(0.6)
+    inst.shot("gif-three")
+
+    area = pad_text(inst)
+    run_at, draft_at = center(run_buttons(inst)[0]), center(load_buttons(inst)[0])
+    inst.click(*run_at)
+    wait_for(lambda: "agent> fix the" in screen(inst), 8)
+    time.sleep(0.8)
+    inst.shot("gif-run")
+
+    inst.click(*draft_at)
+    wait_for(lambda: "add a test for" in screen(inst).split("agent> fix")[-1], 8)
+    time.sleep(0.8)
+    inst.shot("gif-draft")
+    check("the frames of the picture were taken", all(
+        os.path.exists(f"{inst.shots}/gif-{name}.png") for name, _, _ in GIF_STEPS), inst.shots)
+    out = os.environ.get("HINT_GIF_OUT")
+    if out:
+        # In points, from the window's corner: what to crop, and where the clicked buttons are.
+        left, top = win["x"], win["y"]
+        # The terminal starts where the first tab does (the project list is at its left).
+        tabs = [e for e in inst.ax() if e.get("value") == "alpha" or e.get("desc") == "alpha"]
+        tabs = [e for e in tabs if e["y"] < area["y"] - 10]
+        term_left = min((e["x"] for e in tabs), default=left + 420) - left - 60      # a tab's text sits inside the tab
+        margin = 44                                                          # the margin's two buttons
+        box = {"x": area["x"] - margin - left, "y": area["y"] - 34 - top, "w": area["w"] + margin, "h": 300,
+               "term": term_left}
+        build_gif(inst.shots, out, box, {"run": (run_at[0] - left, run_at[1] - top),
+                                         "draft": (draft_at[0] - left, draft_at[1] - top)})
+
+
+def build_gif(shots, out, box, clicks):
+    """Crop the terminal's end and the pad, ring the button that was clicked, caption, loop."""
+    import subprocess
+    frames = []
+    for name, caption, seconds in GIF_STEPS:
+        src, dst = f"{shots}/gif-{name}.png", f"{shots}/gif-{name}-done.png"
+        k = 2                                                              # a retina screenshot
+        # Two pieces side by side: where the terminal's text is (its top left corner) and the pad.
+        # The terminal is far wider than its text, so the stretch between them is left out.
+        lead = 300
+        cmd = ["magick", "(", src, "-crop", f"{lead * k}x{box['h'] * k}+{box['term'] * k}+{box['y'] * k}", "+repage", ")",
+               "(", src, "-crop", f"{box['w'] * k}x{box['h'] * k}+{box['x'] * k}+{box['y'] * k}", "+repage", ")",
+               "+append"]
+        if name in clicks:
+            cx, cy = (lead + clicks[name][0] - box["x"]) * k, (clicks[name][1] - box["y"]) * k
+            cmd += ["-fill", "none", "-stroke", "#ff453a", "-strokewidth", "4",
+                    "-draw", f"circle {cx},{cy} {cx + 22},{cy}"]
+        cmd += ["-resize", "960x", "-gravity", "South", "-background", "#1d1d1f", "-fill", "white",
+                "-stroke", "none", "-pointsize", "34", "-splice", "0x70", "-annotate", "+0+18", caption, dst]
+        subprocess.run(cmd, check=True)
+        frames += ["-delay", str(int(seconds * 100)), dst]
+    subprocess.run(["magick", *frames, "-loop", "0", "+dither", "-colors", "48", "-layers", "Optimize", out], check=True)
+    print(f"[notepad] wrote {out} ({os.path.getsize(out) // 1024} KB)")
+
+
 SCENARIOS = {"after_default": after_default, "after_strike": after_strike, "shortcut": shortcut, "quit_saves": quit_saves, "pad": pad_scenario, "one_return": setting_one_return, "default_returns": setting_default, "close_resize": close_resize, "several": several_terminals,
-             "keyboard": keyboard_stays, "restart": restart}
+             "keyboard": keyboard_stays, "restart": restart, "gif": gif_scenario}
 
 
 AFTER_SCENARIOS = ("after_default", "after_strike")
@@ -508,6 +602,8 @@ def prepare(inst, name):
         inst.edit_state = after_seed("remove", default=True)
     elif name == "after_strike":
         inst.edit_state = after_seed("strike")
+    elif name == "gif":
+        inst.edit_state = with_after(None, "remove")
     else:
         # What the older scenarios check is what the pad says; they do not want it to shrink.
         inst.edit_state = with_after(None, "keep")
@@ -517,7 +613,7 @@ def main():
     if len(sys.argv) < 3:
         raise SystemExit(__doc__)
     binary, scratch = os.path.abspath(sys.argv[1]), scratch_root(sys.argv[2])
-    chosen = sys.argv[3:] or list(SCENARIOS)
+    chosen = sys.argv[3:] or [n for n in SCENARIOS if n != "gif"]
     files = UserFilesGuard()
     for name in chosen:
         tab_split.run_scenario(name, binary, scratch, files, scenarios=SCENARIOS, prepare=prepare)

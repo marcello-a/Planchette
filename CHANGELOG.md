@@ -11,7 +11,7 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ### Added
 - The notepad shows Markdown as you type: headlines, lists, quotes, code blocks, inline code, bold and italic. The text stays exactly as typed, so a prompt reaches the terminal unchanged. The type size follows the width of the pad, and headlines are tamed in a narrow pad, so sentences stay easy to read.
 - A second button at every prompt adds it to the terminal and presses Return. The first button (new icon) still adds it as a draft.
-- Somebody who never opened the notepad gets a hint at its button, with a "Don't show this again" checkbox.
+- Feature hints: somebody who never used the notepad sees a short card with a looping picture of it when they open a new terminal, with a "Don't show tips again" checkbox. Later big features use the same card.
 
 ### Changed
 - A fenced code block (```` ``` ````) is one prompt: a blank line inside it no longer ends the prompt.

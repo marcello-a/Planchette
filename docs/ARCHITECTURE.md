@@ -92,8 +92,7 @@ Markdown is drawn, never stored. `NotepadMarkdown.spans(in:)` (pure) finds headl
 inline code, bold, italic, quotes and list items; `restyle()` turns the spans into attributes and keeps
 the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the terminal is what was
 typed. The body size follows the width of the pad (`bodySize(forWidth:)`, 12–14 pt), and headline
-scale is damped when the pad is narrow. `OnboardingState.notepadTried/notepadHintHidden` drive the
-popover (`NotepadHint`) that points at the tab bar's notepad button until the pad was opened once.
+scale is damped when the pad is narrow.
 
 **The name of a tab** is the name of one terminal of it, kept in `SessionGroup.tabAnchors` (one per
 tab) — not of the terminal that has the keyboard, which would rename the tab every time a pane is
@@ -289,6 +288,21 @@ softer fade. The list gives every terminal row a background of its own
 (`ProjectWash.slice`, pure): a row ends exactly as strong as the next one starts. A background
 on the project's `DisclosureGroup` would not do: it is handed to every row of the group, and
 each row runs the whole fade.
+
+## Feature hints
+
+A big feature introduces itself once, at the moment it is useful (AGENTS.md, ground rule 8). A hint is
+a `FeatureHint` case; `HintBook` (inside `OnboardingState`, persisted) knows which are switched off
+("Don't show tips again", for all) and which feature was used (`completeHint`). `AppState.offerHint`
+is the one gate: quiet before the window is up, over the durable terminals prompt, while another hint
+is open, in an isolated instance, once per launch for each hint, and for a feature that was used.
+It is called from user actions only (`userOpenedTerminal`), never from restore code — restoring a
+workspace calls `addSession` for every terminal, and a hint offered there was gone before anybody
+looked. `.featureHint(_:)` opens the card as a popover at its anchor half a second after
+`hintShowing` names it (a popover requested while its anchor is being created is dropped). The card
+shows `hints/<name>.gif` — in the bundle's `Resources/hints`, in a dev run in the repository — with
+`NSImageView.animates`, then a title, one line and the way to try it. The GIFs are recorded from the
+real app: `scripts/perf/notepad.py <binary> <scratch> gif` (with `HINT_GIF_OUT=hints/notepad.gif`).
 
 ## Find in a terminal
 

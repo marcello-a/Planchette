@@ -12,22 +12,18 @@ struct OnboardingState: Codable, Equatable {
     var lastLaunchedVersion: String?
     /// "Don't show this again" on the durable terminals prompt.
     var durablePromptHidden = false
-    /// The notepad was opened at least once. A state file that predates the key belongs to someone
-    /// who may never have seen it, so a missing key reads as not tried.
-    var notepadTried = false
-    /// "Don't show this again" on the hint that points at the notepad.
-    var notepadHintHidden = false
+    /// The feature hints: which are switched off, which feature was used already (`HintBook`).
+    var hints = HintBook()
 
     /// The state of somebody who has never run the app: no state file existed.
     static let firstLaunch = OnboardingState(welcomeSeen: false)
 
     init(welcomeSeen: Bool = true, lastLaunchedVersion: String? = nil, durablePromptHidden: Bool = false,
-         notepadTried: Bool = false, notepadHintHidden: Bool = false) {
+         hints: HintBook = HintBook()) {
         self.welcomeSeen = welcomeSeen
         self.lastLaunchedVersion = lastLaunchedVersion
         self.durablePromptHidden = durablePromptHidden
-        self.notepadTried = notepadTried
-        self.notepadHintHidden = notepadHintHidden
+        self.hints = hints
     }
 
     // Tolerant on purpose: a file from another version must cost this struct a field,
@@ -37,13 +33,9 @@ struct OnboardingState: Codable, Equatable {
         welcomeSeen = (try? c.decodeIfPresent(Bool.self, forKey: .welcomeSeen)) ?? true
         lastLaunchedVersion = try? c.decodeIfPresent(String.self, forKey: .lastLaunchedVersion)
         durablePromptHidden = (try? c.decodeIfPresent(Bool.self, forKey: .durablePromptHidden)) ?? false
-        notepadTried = (try? c.decodeIfPresent(Bool.self, forKey: .notepadTried)) ?? false
-        notepadHintHidden = (try? c.decodeIfPresent(Bool.self, forKey: .notepadHintHidden)) ?? false
+        hints = (try? c.decodeIfPresent(HintBook.self, forKey: .hints)) ?? HintBook()
     }
 
-    /// Whether to point at the notepad: at each launch, until it was opened once or the user said
-    /// to stop. A first launch gets the welcome instead.
-    var notepadHintDue: Bool { welcomeSeen && !notepadTried && !notepadHintHidden }
 
     /// The version this process is. An unbundled debug build has none: "0.0.0", as the
     /// updater reads it too.

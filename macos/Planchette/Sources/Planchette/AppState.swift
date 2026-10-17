@@ -127,9 +127,7 @@ final class AppState: ObservableObject {
     func toggleNotepad() {
         notepadWantsKeyboard = !notepad.isOpen
         if !notepad.isOpen {
-            // Opened by hand: it has been tried, and the hint that pointed at it is done.
-            if !onboarding.notepadTried { onboarding.notepadTried = true }
-            notepadHintShown = false
+            completeHint(.notepad)      // used: it needs no introduction any more
         }
         notepad.isOpen.toggle()
     }
@@ -2075,8 +2073,6 @@ final class AppState: ObservableObject {
             runningVersion: version, durableOn: durableTerminals && Durable.isAvailable)
         onboarding.lastLaunchedVersion = version
         if due, !SupportPaths.isIsolated { durablePromptShown = true }
-        // One message at a time: the durable prompt first, the notepad hint at a later launch.
-        if !due, !SupportPaths.isIsolated, onboarding.notepadHintDue { notepadHintShown = true }
     }
 
     /// The first project exists: the welcome screen has done its job.
@@ -2084,15 +2080,41 @@ final class AppState: ObservableObject {
         if !onboarding.welcomeSeen { onboarding.welcomeSeen = true }
     }
 
-    /// The hint that points at the notepad button is open. Session only: whether it is due again
-    /// is `OnboardingState.notepadHintDue`.
-    @Published var notepadHintShown = false
+    // MARK: Feature hints
 
-    func closeNotepadHint() { notepadHintShown = false }
+    /// The hint that is open now, if any. Session only: whether one is due again is `HintBook`.
+    @Published var hintShowing: FeatureHint?
+    /// Offered in this run already: a hint that was closed is not offered again until the next launch.
+    private var hintsOffered: Set<FeatureHint> = []
 
-    /// The hint's "Don't show this again": a setting, applied the moment it is ticked.
-    func hideNotepadHint(_ hide: Bool) {
-        if onboarding.notepadHintHidden != hide { onboarding.notepadHintHidden = hide }
+    /// Offer a hint, at the moment the user does something that makes it useful. Quiet when it is
+    /// not the time: before the window is up, over the durable terminals prompt, while another
+    /// hint is open, in an isolated instance, once it was offered or its feature was used, or
+    /// after "Don't show this again". The caller needs no checks of its own.
+    func offerHint(_ hint: FeatureHint) {
+        guard onboardingEvaluated, !SupportPaths.isIsolated, !durablePromptShown, hintShowing == nil,
+              !hintsOffered.contains(hint), onboarding.hints.isDue(hint) else { return }
+        hintsOffered.insert(hint)
+        hintShowing = hint
+    }
+
+    /// The feature was used: its hint is done for good, and closes if it is open.
+    func completeHint(_ hint: FeatureHint) {
+        if onboarding.hints.done.insert(hint.rawValue).inserted { scheduleSave() }
+        if hintShowing == hint { hintShowing = nil }
+    }
+
+    func closeHint() { hintShowing = nil }
+
+    /// "Don't show this again": a setting, applied the moment it is ticked.
+    func hideHints(_ hide: Bool) {
+        if onboarding.hints.hidden != hide { onboarding.hints.hidden = hide }
+    }
+
+    /// A terminal was opened by the user (⌘T, the + button, a new project): the moment to mention
+    /// what a terminal can do. Never called while a workspace is restored.
+    func userOpenedTerminal() {
+        offerHint(.notepad)
     }
 
     func closeDurablePrompt() {

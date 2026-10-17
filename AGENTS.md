@@ -41,6 +41,15 @@ groups terminals by project. See [README.md](README.md) and
    AppleScript, `lsof`, GitHub API) runs off-main; only touch `@MainActor`
    state after awaiting back.
 7. **Verify by driving the app, not just building.** See "Verifying" below.
+8. **A big new feature gets a hint — ask the user.** When you finish a big user-facing feature
+   (a new panel, a new way to work, not a tweak), ask once whether it should get a first-use hint,
+   and offer to build it. A hint is one `FeatureHint` case plus its content in
+   `FeatureHintContent.of` (`Views/FeatureHintView.swift`), a looping `hints/<name>.gif` that
+   *shows the benefit* (recorded from the real app by a `scripts/perf` scenario, like
+   `notepad.py gif`), one title and one line of body text in all 7 languages, a
+   `.featureHint(.x)` on the control it points at, an `offerHint(.x)` at the moment the user does
+   something that makes it useful (never from restore code), and `completeHint(.x)` where the
+   feature is used. Text rule: short, concrete, makes you want to try it — understanding comes first.
 
 ## Where things live (`macos/Planchette/Sources/Planchette/`)
 
@@ -70,9 +79,10 @@ groups terminals by project. See [README.md](README.md) and
 | `Onboarding.swift` | What the app already told the user (`OnboardingState`: the welcome seen, the version that ran last, "don't show again") and when the durable terminals prompt is due. Pure, unit-tested |
 | `TabSplit.swift` | The tab strip as a pure model: `TabStrip` (a tab is a split tree of terminals; every drop answers a new strip or `nil`), `TabDragItem` (what a drag carries), `TabCloseScope`. Unit-tested, with a seeded random walk |
 | `Notepad.swift` | The notepad: `NotepadLook` (open, width, Returns per prompt — persisted) and `NotepadPrompts`, which cuts a text into prompts and finds the one under the caret. Pure, unit-tested |
+| `FeatureHint.swift` | Which feature hints exist (`FeatureHint`) and which are still due (`HintBook`: all hidden, or the feature was used). Pure, unit-tested |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
-| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `NotepadView` (the pad: text view, margin buttons, drag handle), `SplitTabView` (the tab in front: split tree, pane title bars, drop zones), `TerminalAreaView` (tab bar, drag and drop between tabs, the split buttons), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `ProjectColorSettings` (Settings → General → Project color), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
+| `Views/` | `SidebarView` (+ bottom bar), `ProjectPanelSettings` (Settings → Project panel: three pages and the tag editor), `TerminalAreaView`, `FolderOverviewView` (a folder's page), `InboxView`, `QuickSwitcherView`, `SearchShortcutSetting` (the shortcut row in Settings → General), `TabSettings` (Settings → Tabs), `NotepadView` (the pad: text view, margin buttons, drag handle), `SplitTabView` (the tab in front: split tree, pane title bars, drop zones), `TerminalAreaView` (tab bar, drag and drop between tabs, the split buttons), `TerminalFindBar` (⌘F over a terminal), `ProjectGradient` (the wash behind a project's header), `ProjectColorSettings` (Settings → General → Project color), `WheelToHorizontalScroll` (a vertical wheel scrolls the tab bar), `FeatureHintView` (the hint card with its looping GIF, `.featureHint(_:)`), `OnboardingViews` (the welcome screen, the durable terminals card and its prompt after an update), `ReleaseNotesView` (the update dialog's expandable list), `TagViews`, `HelpView`, `StateIcon` (pixel sprites) |
 
 The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command

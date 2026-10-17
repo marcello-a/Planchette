@@ -90,21 +90,29 @@ final class OnboardingStateTests: XCTestCase {
         XCTAssertTrue(OnboardingState().durablePromptDue(runningVersion: "0.2.36", durableOn: false))
     }
 
-    func testNotepadHintIsDueUntilTriedOrHidden() {
-        XCTAssertTrue(OnboardingState().notepadHintDue)
-        XCTAssertFalse(OnboardingState(notepadTried: true).notepadHintDue)
-        XCTAssertFalse(OnboardingState(notepadHintHidden: true).notepadHintDue)
-        XCTAssertFalse(OnboardingState.firstLaunch.notepadHintDue, "the welcome comes first")
+    func testAHintIsDueUntilItsFeatureWasUsedOrAllAreHidden() {
+        XCTAssertTrue(HintBook().isDue(.notepad))
+        XCTAssertFalse(HintBook(done: [FeatureHint.notepad.rawValue]).isDue(.notepad))
+        XCTAssertFalse(HintBook(hidden: true).isDue(.notepad))
     }
 
-    func testAStateFromBeforeTheNotepadHintReadsAsNotTried() throws {
-        let old = #"{"welcomeSeen":true,"durablePromptHidden":false}"#.data(using: .utf8)!
+    func testEveryHintHasContent() {
+        for hint in FeatureHint.allCases {
+            let content = FeatureHintContent.of(hint)
+            for key in [content.title, content.body, content.action, .hintHide] {
+                XCTAssertNotEqual(L10n.t(key), key.rawValue, "untranslated: \(hint) \(key)")
+            }
+        }
+    }
+
+    func testAStateFromBeforeHintsReadsAsAllDue() throws {
+        let old = #"{"welcomeSeen":true,"durablePromptHidden":false,"notepadTried":true}"#.data(using: .utf8)!
         let state = try JSONDecoder().decode(OnboardingState.self, from: old)
-        XCTAssertTrue(state.notepadHintDue)
+        XCTAssertTrue(state.hints.isDue(.notepad))
         let round = try JSONDecoder().decode(
             OnboardingState.self,
-            from: JSONEncoder().encode(OnboardingState(notepadTried: true, notepadHintHidden: true)))
-        XCTAssertTrue(round.notepadTried)
-        XCTAssertTrue(round.notepadHintHidden)
+            from: JSONEncoder().encode(OnboardingState(hints: HintBook(hidden: true, done: ["notepad", "future"]))))
+        XCTAssertTrue(round.hints.hidden)
+        XCTAssertEqual(round.hints.done, ["notepad", "future"])
     }
 }

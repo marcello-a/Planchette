@@ -860,6 +860,7 @@ extension AppState {
         let group = existing ?? addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
+        userOpenedTerminal()
     }
 
     /// Open a terminal in the home directory with `command` already typed at
@@ -926,6 +927,7 @@ extension AppState {
         if let folderID { moveGroup(group.id, toFolder: folderID, inWindow: windowID) }
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
+        userOpenedTerminal()
     }
 
     /// Ask for a branch and open a git worktree of the *current* project as a
@@ -1072,5 +1074,6 @@ extension AppState {
             ?? FileManager.default.homeDirectoryForCurrentUser.path
         let session = addSession(directory: dir, groupID: groupID)
         select(session: session)
+        userOpenedTerminal()
     }
 }

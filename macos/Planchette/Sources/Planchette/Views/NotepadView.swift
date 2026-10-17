@@ -465,30 +465,3 @@ final class NotepadTextView: NSTextView {
         return resigned
     }
 }
-
-/// The hint that points at the notepad button for somebody who never opened the pad: what it is
-/// for, one click to try it, and "Don't show this again".
-struct NotepadHint: View {
-    @EnvironmentObject var appState: AppState
-    @State private var hideForever = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(L10n.t(.notepad), systemImage: "note.text").font(.headline)
-            Text(L10n.t(.notepadHintBody))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Toggle(L10n.t(.notepadHintHide), isOn: $hideForever)
-                    .toggleStyle(.checkbox)
-                Spacer()
-                Button(L10n.t(.close)) { appState.closeNotepadHint() }
-                Button(L10n.t(.notepadHintTry)) { appState.toggleNotepad() }
-                    .keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(16)
-        .frame(width: 320)
-        .onAppear { hideForever = appState.onboarding.notepadHintHidden }
-        .onChange(of: hideForever) { _, hide in appState.hideNotepadHint(hide) }
-    }
-}

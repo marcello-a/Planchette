@@ -109,10 +109,7 @@ struct TerminalAreaView: View {
                 appState.toggleNotepad()
             }
             .foregroundStyle(appState.notepad.isOpen ? Color.accentColor : Color.primary)
-            .popover(isPresented: Binding(
-                get: { appState.notepadHintShown },
-                set: { if !$0 { appState.closeNotepadHint() } }), arrowEdge: .bottom
-            ) { NotepadHint() }
+            .featureHint(.notepad)
         }
     }
 
