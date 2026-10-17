@@ -60,6 +60,8 @@ chmod +x "$APP/Contents/Resources/planchette"
 # Detection rules are bundled AND published as their own release asset, so a
 # pattern fix reaches users without a new binary (see docs/LIVE-UPDATE.md).
 cp "$ROOT/rules/screen-rules.json" "$APP/Contents/Resources/screen-rules.json"
+# The pictures of the feature hints (hints/<name>.gif).
+[ -d "$ROOT/hints" ] && cp -R "$ROOT/hints" "$APP/Contents/Resources/hints"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

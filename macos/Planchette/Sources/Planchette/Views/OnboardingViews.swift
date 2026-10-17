@@ -142,8 +142,11 @@ struct WelcomeView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 16) {
-                    // The one that sets Planchette apart, first and set apart.
+                    // The two that set Planchette apart, first and set apart.
                     feature("arrow.counterclockwise.circle.fill", .welcomeStaysTitle, .welcomeStaysBody)
+                        .padding(12)
+                        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                    feature("note.text", .welcomeNotepadTitle, .welcomeNotepadBody)
                         .padding(12)
                         .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
                     feature("questionmark.bubble.fill", .welcomeStatesTitle, .welcomeStatesBody)
