@@ -132,12 +132,14 @@ final class AppState: ObservableObject {
     /// Put a line of the pad into the terminal's prompt, the way `session.prompt` does: a paste,
     /// and — with `submit` — a Return after it. The keyboard goes to the terminal: the line is in
     /// its prompt, and the next thing you do is edit it or press Return.
-    func loadPrompt(_ text: String, into id: UUID, submit: Bool) {
+    func loadPrompt(_ text: String, into id: UUID, submit: Bool, onLoaded: (() -> Void)? = nil) {
         guard !text.isEmpty, let session = sessions[id] else { return }
         Task { @MainActor in
             guard let view = ControlAPI.liveView(for: session, state: self) else { return }
             await ControlAPI.deliverPrompt(text, submit: submit, to: view, session: id)
             view.window?.makeFirstResponder(view)
+            // Only now — the prompt is in the terminal — does the pad do what the setting says.
+            onLoaded?()
         }
     }
 
