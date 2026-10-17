@@ -9,8 +9,8 @@ final class NotepadEditorHandle {
 }
 
 /// The notepad of a terminal, as a strip at the right of the tab: a text view whose margin carries
-/// a button for every line. A click loads the line into the terminal's prompt; ⌥ also presses
-/// Return. One line is one prompt — it ends where the line does.
+/// two buttons for every prompt: one adds it to the terminal as a draft, one adds it and presses
+/// Return.
 struct NotepadPanel: View {
     @EnvironmentObject var appState: AppState
     let session: TerminalSession
@@ -117,43 +117,51 @@ struct NotepadRow: Identifiable, Equatable {
     var isDone = false
 }
 
-/// The margin: a ▶ at the first row of every prompt. A click loads the prompt into
-/// the terminal's prompt; ⌥-click also presses Return. They are buttons, so they are in the
-/// accessibility tree and in the tab order like any other.
+/// The margin: two buttons at the first row of every prompt. The first adds the prompt to the
+/// terminal as a draft (it waits for you to press Return); the second adds it and presses Return.
+/// They are buttons, so they are in the accessibility tree and in the tab order like any other.
 struct NotepadMargin: View {
     @EnvironmentObject var appState: AppState
     let rows: [NotepadRow]
     let sessionID: UUID
     let handle: NotepadEditorHandle
 
-    static let width: Double = 26
+    static let buttonWidth: Double = 22
+    static let width: Double = buttonWidth * 2
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Rectangle().fill(Color.primary.opacity(0.05))
             ForEach(rows) { row in
-                Button {
-                    let submit = NSEvent.modifierFlags.contains(.option)
-                    appState.loadPrompt(row.prompt, into: sessionID, submit: submit) { [handle] in
-                        handle.didLoad?(row)
-                    }
-                } label: {
+                HStack(spacing: 0) {
                     // A check where the prompt was loaded already; it can still be loaded again.
-                    Image(systemName: row.isDone ? "checkmark" : "arrowtriangle.right.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                        .frame(width: Self.width, height: row.height)
-                        .contentShape(Rectangle())
+                    button(row, submit: false, icon: row.isDone ? "checkmark" : "arrow.down.to.line",
+                           label: .notepadLoadLine, help: .notepadLoadHelp)
+                    button(row, submit: true, icon: "return", label: .notepadRunLine, help: .notepadRunHelp)
                 }
-                .buttonStyle(.plain)
-                .help(L10n.t(.notepadLoadHelp))
-                .accessibilityLabel(L10n.t(.notepadLoadLine))
-                .accessibilityHint(row.prompt)
                 .offset(y: row.y)
             }
         }
         .frame(width: Self.width)
         .clipped()
+    }
+
+    private func button(_ row: NotepadRow, submit: Bool, icon: String, label: LKey, help: LKey) -> some View {
+        Button {
+            appState.loadPrompt(row.prompt, into: sessionID, submit: submit) { [handle] in
+                handle.didLoad?(row)
+            }
+        } label: {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: Self.buttonWidth, height: row.height)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(L10n.t(help))
+        .accessibilityLabel(L10n.t(label))
+        .accessibilityHint(row.prompt)
     }
 }
 
@@ -198,7 +206,7 @@ struct NotepadEditor: NSViewRepresentable {
         textView.isGrammarCheckingEnabled = false
         textView.smartInsertDeleteEnabled = false
         textView.drawsBackground = false
-        textView.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+        textView.font = NSFont.systemFont(ofSize: 12)
         textView.textColor = .labelColor
         textView.insertionPointColor = .labelColor
         textView.setAccessibilityLabel(L10n.t(.notepad))
@@ -260,7 +268,13 @@ struct NotepadEditor: NSViewRepresentable {
             for (name, object) in [(NSView.boundsDidChangeNotification, scroll.contentView as NSView),
                                    (NSView.frameDidChangeNotification, scroll as NSView)] {
                 observers.append(center.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
-                    MainActor.assumeIsolated { self?.updateRows() }
+                    MainActor.assumeIsolated {
+                        guard let self else { return }
+                        // A narrower or wider pad draws the text at another size.
+                        let width = Double(self.scroll?.frame.width ?? 0)
+                        if NotepadMarkdown.bodySize(forWidth: width) != self.appliedSize { self.restyle() }
+                        self.updateRows()
+                    }
                 })
             }
             // What this text view holds decides whether the placeholder shows — not what the panel
@@ -302,18 +316,62 @@ struct NotepadEditor: NSViewRepresentable {
             updateRows()
         }
 
-        /// The look of the text: the plain look, with a line through every prompt that is written
-        /// as `~~…~~`. It is drawn, not stored — the file keeps plain text, and a restart gets
-        /// the same look back from the marks.
+        /// The body size the text was last drawn at: it follows the width of the pad.
+        private var appliedSize: Double = 0
+
+        /// The look of the text: Markdown (headlines, lists, quotes, code, bold, italic — see
+        /// `NotepadMarkdown`) and a line through every prompt written as `~~…~~`. It is drawn, not
+        /// stored — the file keeps the text as typed, and a restart gets the same look back.
         func restyle() {
             guard let textView, let storage = textView.textStorage, !textView.hasMarkedText() else { return }
+            let width = Double(scroll?.frame.width ?? 0)
+            let size = NotepadMarkdown.bodySize(forWidth: width)
+            appliedSize = size
+            let body = NSFont.systemFont(ofSize: size)
+            let mono = NSFont.monospacedSystemFont(ofSize: size * 0.92, weight: .regular)
+            let spacing = NotepadMarkdown.lineSpacing(forBodySize: size)
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.lineSpacing = spacing
             let plain: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
-                .foregroundColor: NSColor.labelColor,
+                .font: body, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph,
             ]
+            let text = textView.string as NSString
             let whole = NSRange(location: 0, length: storage.length)
             storage.beginEditing()
             storage.setAttributes(plain, range: whole)
+            func derive(_ range: NSRange, _ change: (NSFont) -> NSFont) {
+                storage.enumerateAttribute(.font, in: range) { value, sub, _ in
+                    storage.addAttribute(.font, value: change(value as? NSFont ?? body), range: sub)
+                }
+            }
+            for span in NotepadMarkdown.spans(in: textView.string) where NSMaxRange(span.range) <= storage.length {
+                switch span.style {
+                case .heading(let level):
+                    let big = NSFont.systemFont(
+                        ofSize: size * NotepadMarkdown.headingScale(level: level, forWidth: width), weight: .bold)
+                    storage.addAttribute(.font, value: big, range: span.range)
+                case .codeBlock, .inlineCode:
+                    storage.addAttributes([
+                        .font: mono, .backgroundColor: NSColor.labelColor.withAlphaComponent(0.08),
+                    ], range: span.range)
+                case .bold:
+                    derive(span.range) { NSFontManager.shared.convert($0, toHaveTrait: .boldFontMask) }
+                case .italic:
+                    derive(span.range) { NSFontManager.shared.convert($0, toHaveTrait: .italicFontMask) }
+                case .quote:
+                    storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.range)
+                case .mark:
+                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.range)
+                case .listItem(let prefix):
+                    // A wrapped line of an item lines up under its words, not under its bullet.
+                    let lead = text.substring(with: NSRange(location: span.range.location, length: prefix))
+                    let indent = (lead as NSString).size(withAttributes: [.font: body]).width
+                    let item = NSMutableParagraphStyle()
+                    item.lineSpacing = spacing
+                    item.headIndent = indent
+                    storage.addAttribute(.paragraphStyle, value: item, range: span.range)
+                }
+            }
             for prompt in NotepadPrompts.prompts(in: textView.string, returns: parent.appState.notepad.returnsPerPrompt)
             where prompt.isDone {
                 storage.addAttributes([
@@ -405,5 +463,32 @@ final class NotepadTextView: NSTextView {
         let resigned = super.resignFirstResponder()
         if resigned { onFocusChange?(false) }
         return resigned
+    }
+}
+
+/// The hint that points at the notepad button for somebody who never opened the pad: what it is
+/// for, one click to try it, and "Don't show this again".
+struct NotepadHint: View {
+    @EnvironmentObject var appState: AppState
+    @State private var hideForever = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(L10n.t(.notepad), systemImage: "note.text").font(.headline)
+            Text(L10n.t(.notepadHintBody))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Toggle(L10n.t(.notepadHintHide), isOn: $hideForever)
+                    .toggleStyle(.checkbox)
+                Spacer()
+                Button(L10n.t(.close)) { appState.closeNotepadHint() }
+                Button(L10n.t(.notepadHintTry)) { appState.toggleNotepad() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
+        .onAppear { hideForever = appState.onboarding.notepadHintHidden }
+        .onChange(of: hideForever) { _, hide in appState.hideNotepadHint(hide) }
     }
 }

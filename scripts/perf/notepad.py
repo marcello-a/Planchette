@@ -19,7 +19,8 @@ import tab_split
 from tab_split import G, NAMES, SIDS, Instance, center, check, wait_for
 from perf_common import UserFilesGuard, frontmost_pid, scratch_root, wait_until_idle
 
-LOAD = "Load prompt into the terminal"
+LOAD = "Add prompt to the terminal as a draft"
+RUN = "Add prompt to the terminal and run it"
 
 
 def notepad_button(inst):
@@ -68,6 +69,10 @@ def screen(inst, index=0, lines=14):
 
 def load_buttons(inst):
     return sorted([e for e in inst.ax() if e["role"] == "AXButton" and e["desc"] == LOAD], key=lambda e: e["y"])
+
+
+def run_buttons(inst):
+    return sorted([e for e in inst.ax() if e["role"] == "AXButton" and e["desc"] == RUN], key=lambda e: e["y"])
 
 
 def type_lines(inst, lines):
@@ -120,7 +125,7 @@ def pad_scenario(inst):
     inst.click(*center(buttons[0]))
     ok = wait_for(lambda: "echo one" in screen(inst) and "echo two" in screen(inst), 6)
     shown = screen(inst).strip().splitlines()
-    check("a click on ▶ loads the prompt, both lines of it, into the terminal", bool(ok), shown[-4:])
+    check("a click on the draft button loads the prompt, both lines of it, into the terminal", bool(ok), shown[-4:])
     check("…without pressing Return", not any(l.strip() in ("one", "two") for l in shown), shown[-5:])
     check("the keyboard went to the terminal", wait_for(lambda: frontmost_pid() == str(inst.pid), 3))
     inst.key("return")
@@ -128,12 +133,11 @@ def pad_scenario(inst):
                   and [l.strip() for l in screen(inst).splitlines()].count("two") == 1, 6)
     check("Return in the terminal runs what was loaded", bool(ok), screen(inst).strip().splitlines()[-6:])
 
-    # ⌥-click: loaded and run
-    buttons = load_buttons(inst)
-    x, y = center(buttons[1])
-    subprocess_env_click_option(inst, x, y)
+    # the second button: loaded and run
+    check("every prompt has a run button as well", len(run_buttons(inst)) == len(load_buttons(inst)))
+    inst.click(*center(run_buttons(inst)[1]))
     ok = wait_for(lambda: any(l.strip() == "three" for l in screen(inst).splitlines()), 6)
-    check("⌥-click on ▶ also presses Return", bool(ok), screen(inst).strip().splitlines()[-4:])
+    check("the return button loads the prompt and presses Return", bool(ok), screen(inst).strip().splitlines()[-4:])
 
     # ⌘↩ with the caret in the second line of the first prompt
     area = pad_text(inst)
@@ -198,16 +202,6 @@ def default_edit(state):
         if s["id"] == SIDS[0]:
             s["notepad"] = "line a\nline b\n\nline c\n\n\nline d"
     state["notepad"] = {"isOpen": True, "width": 300}      # no returnsPerPrompt: an older file
-
-
-def subprocess_env_click_option(inst, x, y):
-    """A click with ⌥ held: the key goes down, the click happens, the key comes up."""
-    inst.settle_for_input()
-    import subprocess
-    from perf_common import tool
-    subprocess.run([tool("inputs"), "optclick", str(x), str(y)], capture_output=True,
-                   env={**os.environ, "KEEP_POINTER": "1"})
-    inst.last_input_end = time.time()
 
 
 def front_app_name():

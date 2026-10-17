@@ -89,4 +89,22 @@ final class OnboardingStateTests: XCTestCase {
     func testDueWhenNoVersionWasEverRecorded() {
         XCTAssertTrue(OnboardingState().durablePromptDue(runningVersion: "0.2.36", durableOn: false))
     }
+
+    func testNotepadHintIsDueUntilTriedOrHidden() {
+        XCTAssertTrue(OnboardingState().notepadHintDue)
+        XCTAssertFalse(OnboardingState(notepadTried: true).notepadHintDue)
+        XCTAssertFalse(OnboardingState(notepadHintHidden: true).notepadHintDue)
+        XCTAssertFalse(OnboardingState.firstLaunch.notepadHintDue, "the welcome comes first")
+    }
+
+    func testAStateFromBeforeTheNotepadHintReadsAsNotTried() throws {
+        let old = #"{"welcomeSeen":true,"durablePromptHidden":false}"#.data(using: .utf8)!
+        let state = try JSONDecoder().decode(OnboardingState.self, from: old)
+        XCTAssertTrue(state.notepadHintDue)
+        let round = try JSONDecoder().decode(
+            OnboardingState.self,
+            from: JSONEncoder().encode(OnboardingState(notepadTried: true, notepadHintHidden: true)))
+        XCTAssertTrue(round.notepadTried)
+        XCTAssertTrue(round.notepadHintHidden)
+    }
 }

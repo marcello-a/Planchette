@@ -76,7 +76,7 @@ prompt under the caret. The pad is an `NSTextView` that reports where each promp
 margin buttons are SwiftUI buttons laid over those positions, because an `NSScrollView` inside
 a SwiftUI view exposed no children to accessibility, and buttons that are not in the accessibility
 tree cannot be used with VoiceOver or driven by `scripts/perf/notepad.py`. Loading goes through
-the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — with ⌥ — Return after it, one
+the same `ControlAPI.deliverPrompt` as `session.prompt`: a paste, and — for the second margin button and ⌘↩ — Return after it, one
 prompt at a time per terminal. `AppState.notepadEditing` keeps `focusIfActive` from taking the
 keyboard back while you type in the pad.
 
@@ -87,6 +87,13 @@ instead) or the text with the mark `~~…~~` around it. The text view applies it
 finished (`AppState.loadPrompt(…, onLoaded:)`), through its own editing methods, so ⌘Z works, and
 finds the prompt again by its words, nearest to where it was. A struck prompt is plain text with
 the marks — a restart keeps text, not attributes — and `restyle()` draws the line through it.
+
+Markdown is drawn, never stored. `NotepadMarkdown.spans(in:)` (pure) finds headlines, fenced and
+inline code, bold, italic, quotes and list items; `restyle()` turns the spans into attributes and keeps
+the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the terminal is what was
+typed. The body size follows the width of the pad (`bodySize(forWidth:)`, 12–14 pt), and headline
+scale is damped when the pad is narrow. `OnboardingState.notepadTried/notepadHintHidden` drive the
+popover (`NotepadHint`) that points at the tab bar's notepad button until the pad was opened once.
 
 **The name of a tab** is the name of one terminal of it, kept in `SessionGroup.tabAnchors` (one per
 tab) — not of the terminal that has the keyboard, which would rename the tab every time a pane is

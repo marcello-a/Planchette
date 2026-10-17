@@ -8,6 +8,14 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- The notepad shows Markdown as you type: headlines, lists, quotes, code blocks, inline code, bold and italic. The text stays exactly as typed, so a prompt reaches the terminal unchanged. The type size follows the width of the pad, and headlines are tamed in a narrow pad, so sentences stay easy to read.
+- A second button at every prompt adds it to the terminal and presses Return. The first button (new icon) still adds it as a draft.
+- Somebody who never opened the notepad gets a hint at its button, with a "Don't show this again" checkbox.
+
+### Changed
+- ⌥-click on the load button no longer presses Return: the second button does that. ⌘↩ in a prompt still does.
+
 ## [0.2.44] — 2026-10-17
 
 ### Fixed
