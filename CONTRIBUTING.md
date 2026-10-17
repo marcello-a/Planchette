@@ -100,9 +100,11 @@ Developer ID identity + notarization — replace the `codesign` line in
 
 Releases are cut from the default branch and drive the in-app updater.
 
-**A merge releases itself.** Every push to `main` builds GhosttyKit, runs the tests,
-and then `scripts/auto-release.sh` decides
-([`.github/workflows/release.yml`](.github/workflows/release.yml)):
+**A merge releases when its PR asks for it.** Every push to `main` builds GhosttyKit and
+runs the tests. The PR template has a **Trigger new release** checkbox, off by default.
+Only when it is ticked does `scripts/auto-release.sh` run and decide
+([`.github/workflows/release.yml`](.github/workflows/release.yml)). Unticked, or a push
+without a PR, is a build and nothing more. A manual run of the workflow always may release.
 
 - The commits since the last release carry a `feat:`, `fix:` or `perf:` → the patch
   number goes up by one, in a `chore: release vX.Y.Z` commit the workflow pushes, and

@@ -8,6 +8,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **The notifications panel's row menu is shorter.** "Mark as done" is on top, "Mark as
+  unread" (or "Mark as read") below it, then a line and the reminder and note items. The
+  Rename item is gone from this menu; it stays in the project panel and on the tab.
+
 ## [0.2.43] — 2026-10-17
 
 ### Added
