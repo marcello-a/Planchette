@@ -160,6 +160,11 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   prompt is a `<task-notification>`: Claude's own notice, not something the user
   typed — it must never become the task line.
   `scripts/perf/background_tasks.py` re-checks all of it against the installed `claude`.
+  And the list holds more than work (2.1.309, read from its source): a `monitor` —
+  the live link Claude arms when it publishes an artifact, an MCP stream — and an
+  idle teammate stay `running` until the process ends. Only shells and agents count
+  (`BackgroundTasks.kind(ofListed:)`); counting every other type as a shell kept
+  terminals running long after their last turn.
 - **A durable terminal is searched in tmux, not in libghostty.** The pane sits in the
   alternate screen, so libghostty never holds a line that scrolled off it: its search
   would find only what is on screen. `AppState.startFind`/`updateFind` choose the engine

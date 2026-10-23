@@ -305,7 +305,7 @@ Returned by every `session.*` command.
 | `seen` | bool | has its last report been looked at |
 | `task` | string | the last prompt submitted here (absent if none) |
 | `message` | string | the last question or error (absent if none) |
-| `background_tasks` | object | `{"shells": n, "agents": n}` — what Claude Code still runs in the background of this terminal (absent if nothing). A `ready` terminal can still be busy: a dev server, a review agent. Claude Code only; older versions do not report it |
+| `background_tasks` | object | `{"shells": n, "agents": n}` — what Claude Code still runs in the background of this terminal (absent if nothing). A `ready` terminal can still be busy: a dev server, a review agent. A watch (an artifact's live link, an MCP stream) or an idle teammate is not counted: it never ends on its own. Claude Code only; older versions do not report it |
 | `project` | string | project name (absent if the project is gone) |
 | `project_id` | string | project id |
 
