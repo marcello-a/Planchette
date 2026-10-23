@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.46] — 2026-10-23
+
 ### Fixed
 - **A terminal whose Claude published an artifact goes back to done after its turn.** Claude Code
   keeps an artifact's live link open in the background, and Planchette counted it as a running
