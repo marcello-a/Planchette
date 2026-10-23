@@ -8,6 +8,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **A terminal whose Claude published an artifact goes back to done after its turn.** Claude Code
+  keeps an artifact's live link open in the background, and Planchette counted it as a running
+  shell: the terminal kept its globe and stayed "running" until Claude quit. Only shells and
+  agents count now; a watch, an idle teammate and Claude's own housekeeping do not.
+
 ## [0.2.45] — 2026-10-17
 
 ### Added

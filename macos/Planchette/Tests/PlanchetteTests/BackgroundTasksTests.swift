@@ -51,16 +51,68 @@ final class BackgroundTasksTests: XCTestCase {
         XCTAssertEqual(signal, .snapshot([BackgroundTask(id: "b", kind: .shell, title: "live")]))
     }
 
-    func testUnknownTypesCountAsShellsAndAnyAgentTypeAsAnAgent() {
+    // The entries below are shaped as Claude Code 2.1.309 writes them (its
+    // serializer, read from its source), not captured: an artifact's live link
+    // (`monitor_ws`) carries no extra field, an MCP stream (`monitor_mcp`) its
+    // server and tool.
+
+    // Publishing an artifact arms its live link, and the terminal stayed
+    // running after its last turn, for as long as Claude ran.
+    func testAWatchIsNotWork() {
         let signal = read("""
         {"hook_event_name":"Stop","background_tasks":[
-          {"id":"m","type":"monitor","status":"running","command":"tail -f log"},
-          {"id":"r","type":"remote_agent","status":"running","description":"cloud review"}]}
+          {"id":"w1","type":"monitor","status":"running","description":"Live: claude.ai/artifact/Lj9UWLAo"},
+          {"id":"w2","type":"monitor","status":"running","description":"build events","server":"ci","tool":"watch"}]}
+        """)
+        XCTAssertEqual(signal, .snapshot([]))
+        XCTAssertEqual(BackgroundTasks.apply(try! XCTUnwrap(signal), to: [shellOne]), [])
+    }
+
+    func testBesideAWatchTheWorkStillCounts() {
+        let signal = read("""
+        {"hook_event_name":"Stop","background_tasks":[
+          {"id":"w1","type":"monitor","status":"running","description":"Live: claude.ai/artifact/Lj9UWLAo"},
+          {"id":"bni865gr9","type":"shell","status":"running","description":"stub shell one","command":"sleep 40"}]}
+        """)
+        XCTAssertEqual(signal, .snapshot([shellOne]))
+    }
+
+    func testEveryKindOfAgentCountsAsAnAgent() {
+        let signal = read("""
+        {"hook_event_name":"Stop","background_tasks":[
+          {"id":"s","type":"subagent","status":"running","description":"review"},
+          {"id":"f","type":"workflow","status":"running","description":"migrate","name":"migrate"},
+          {"id":"c","type":"cloud session","status":"running","description":"cloud review"},
+          {"id":"r","type":"remote_agent","status":"pending","description":"a raw type name"}]}
         """)
         XCTAssertEqual(signal, .snapshot([
-            BackgroundTask(id: "m", kind: .shell, title: "tail -f log"),
-            BackgroundTask(id: "r", kind: .agent, title: "cloud review"),
+            BackgroundTask(id: "s", kind: .agent, title: "review"),
+            BackgroundTask(id: "f", kind: .agent, title: "migrate"),
+            BackgroundTask(id: "c", kind: .agent, title: "cloud review"),
+            BackgroundTask(id: "r", kind: .agent, title: "a raw type name"),
         ]))
+    }
+
+    // A teammate stays `running` while it idles; the rest is Claude's own
+    // housekeeping, or nothing known to end.
+    func testWhatIsNotKnownToEndDoesNotCount() {
+        let signal = read("""
+        {"hook_event_name":"Stop","background_tasks":[
+          {"id":"t","type":"teammate","status":"running","description":"@reviewer"},
+          {"id":"d","type":"dream","status":"running","description":"dream"},
+          {"id":"a","type":"auto-mode scan","status":"running","description":"scan"},
+          {"id":"i","type":"memory import","status":"running","description":"import"},
+          {"id":"p","type":"MCP task","status":"running","description":"export","server":"x","tool":"y"},
+          {"id":"n","type":"something new","status":"running","description":"?"},
+          {"id":"u","status":"running","description":"no type"}]}
+        """)
+        XCTAssertEqual(signal, .snapshot([]))
+    }
+
+    func testTheTypeIsReadWhateverItsCase() {
+        XCTAssertEqual(BackgroundTasks.kind(ofListed: "Shell"), .shell)
+        XCTAssertEqual(BackgroundTasks.kind(ofListed: "SubAgent"), .agent)
+        XCTAssertNil(BackgroundTasks.kind(ofListed: "Monitor"))
     }
 
     func testAMultiLineTitleBecomesOneShortLine() throws {

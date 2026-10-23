@@ -33,10 +33,14 @@ enum BackgroundTaskSignal: Equatable, Sendable {
 /// What the hooks say was observed by running Claude Code 2.1.299 against a
 /// local stand-in for the API (`scripts/perf/`), not taken from a manual:
 ///
-/// - `Stop` carries `background_tasks`: `{id, type, status, description, …}`
-///   with `type` `shell` or `subagent`. A task leaves the list when it ends.
-///   `SubagentStop` carries it too, but still lists the agent that is stopping,
-///   so only `Stop` is trusted.
+/// - `Stop` carries `background_tasks`: `{id, type, status, description, …}`.
+///   A task leaves the list when it ends. `SubagentStop` carries it too, but
+///   still lists the agent that is stopping, so only `Stop` is trusted.
+/// - The list holds more than work (2.1.309, read from its source: the labels
+///   of its task types). A watch — `monitor`: an artifact's live link, a
+///   WebSocket, an MCP stream — waits rather than works, and an idle teammate
+///   stays `running` for good, so only shells and agents count
+///   (`kind(ofListed:)`).
 /// - A task that ends while Claude waits at the prompt arrives as a
 ///   `UserPromptSubmit` whose prompt is a `<task-notification>` (`<task-id>`,
 ///   `<status>`) — the notification starts a turn, so it is a prompt to the
@@ -91,15 +95,37 @@ enum BackgroundTasks {
     }
 
     private static func task(fromListed entry: [String: Any]) -> BackgroundTask? {
-        guard let id = entry["id"] as? String, !id.isEmpty else { return nil }
+        guard let id = entry["id"] as? String, !id.isEmpty,
+              let kind = kind(ofListed: entry["type"] as? String ?? "")
+        else { return nil }
         if let status = entry["status"] as? String, overStatuses.contains(status.lowercased()) {
             return nil
         }
-        let type = (entry["type"] as? String)?.lowercased() ?? ""
         return BackgroundTask(
             id: id,
-            kind: type.contains("agent") ? .agent : .shell,
+            kind: kind,
             title: title(entry["description"], entry["command"], entry["agent_type"]))
+    }
+
+    /// What a task of Claude's list is, by its `type` — nil for one that is not
+    /// work that ends, which must not hold a terminal `running`.
+    ///
+    /// Counted: `shell` (a `run_in_background` command, and the Monitor tool's
+    /// command, which is a process too) and the agents: `subagent`, `workflow`,
+    /// `cloud session`. Not counted: `monitor`, a watch (a WebSocket, an MCP
+    /// stream) that waits for events rather than working — and the one an
+    /// artifact's live link arms never ends on its own: publishing an artifact
+    /// left the terminal running after its last turn; `teammate`, which stays
+    /// `running` while it idles; Claude's own housekeeping (`dream`,
+    /// `auto-mode scan`, `memory import`); `MCP task`; and any type a later
+    /// version adds, until it is known to end.
+    static func kind(ofListed type: String) -> BackgroundTask.Kind? {
+        let type = type.lowercased()
+        switch type {
+        case "shell": return .shell
+        case "workflow", "cloud session": return .agent
+        default: return type.contains("agent") ? .agent : nil
+        }
     }
 
     /// The task a finished tool call started, if it started one: a `Bash` call
