@@ -22,4 +22,12 @@ enum Shell {
         }
         return result
     }
+
+    /// The whole string as one single-quoted shell word: `it's` → `'it'\''s'`.
+    /// For a command Planchette types itself, built from remote text (a PR URL):
+    /// nothing inside the quotes is ever expanded. Line breaks go, as in `escape`.
+    static func singleQuoted(_ str: String) -> String {
+        let flat = str.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: "")
+        return "'" + flat.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
 }

@@ -119,6 +119,7 @@ The CLI prints the whole JSON response on stdout, pretty-printed and key-sorted.
 | `session.wait` | block until a terminal reaches a state |
 | `project.list` | every project |
 | `notification.list` | the notifications panel, as data |
+| `review.list` | the Reviews panel, as data: the pull requests that wait for your review |
 
 ### session.list
 
@@ -287,6 +288,52 @@ the rest), then every other window's, and terminals in tab order.
   is meant to nag, keep them if it is meant to mirror.
 - `counts` are the totals the panel header and the menu bar show. They ignore
   both the filters and `limit`, and they never include a muted terminal.
+
+### review.list
+
+The Reviews panel as data: the pull requests that asked you for a review, in the
+panel's sections and order (`AppState.reviewSections`). GitHub is polled every
+five minutes through `gh`; an isolated instance (`PLANCHETTE_STATE_DIR`) does not
+poll and lists what its state holds.
+
+| Argument | Type | Meaning |
+|---|---|---|
+| `include_team` | bool | also the requests that went only to one of your teams (the panel's "Only mine" unticked) |
+| `hide_sent` | bool | leave out the reviews you sent that wait for the author |
+
+```bash
+"$PLANCHETTE_CLI" review list --include-team
+```
+
+Returns `{"reviews": [...], "counts": {"unseen": n, "listed": n}, "checked_at": "…" | null}`.
+Each review:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `url`, `repo`, `number`, `title`, `author` | | the pull request (`repo` is `owner/name`) |
+| `draft`, `additions`, `deletions`, `changed_files` | | its size and draft state |
+| `checks` | string | `passed` · `failed` · `pending` · `none` |
+| `requested_from_me` | bool | asked by name, not only through a team |
+| `team` | string | the team that was asked (absent when you were asked by name) |
+| `section` | string | `needs_you` · `reviewing` · `sent` |
+| `stage` | string | `requested` · `reviewing` · `findings` · `sent` |
+| `unread` | bool | not looked at since it changed |
+| `updated` | bool | the author asked again or pushed after your sent review |
+| `sending` | bool | "Send review" was clicked; the review terminal is posting |
+| `since` | string | ISO 8601 — when the stage last changed |
+| `checkout` | string | where the review runs or ran (absent before a start) |
+| `temporary` | bool | that checkout is a worktree Planchette removes after the review is sent |
+| `session` | UUID string | the review terminal |
+| `findings` | int | how many findings the review wrote (absent before) |
+| `verdict` | string | `COMMENT` · `APPROVE` · `REQUEST_CHANGES` — the one it will be sent with, or was |
+| `snoozed_until` | string | ISO 8601, only while snoozed ("Later") |
+| `error` | string | the last thing that went wrong (absent if nothing) |
+
+The review itself runs in a terminal as the `review-pr` Claude Code skill — the user's own, or
+the default in `skills/review-pr`, which the app installs when there is none. It and
+the app share three files in `<state dir>/reviews/<owner>-<repo>-<number>/`:
+`findings.json` (the skill's findings), `decisions.json` (yours, written by the
+app on "Send review") and `sent.json` (the skill's receipt).
 
 ## Objects
 

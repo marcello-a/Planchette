@@ -252,6 +252,7 @@ final class AppState: ObservableObject {
             projectColor = saved.projectColor
             backgroundCountsAsRunning = saved.backgroundCountsAsRunning
             notepad = saved.notepad
+            reviews = saved.reviews
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -263,6 +264,7 @@ final class AppState: ObservableObject {
         startBranchPolling()
         startDevServerPolling()
         startPullRequestPolling()
+        startReviewPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -832,6 +834,30 @@ final class AppState: ObservableObject {
     /// One `gh` sweep at a time: each lookup is a network call of up to 20s, so
     /// a slow connection used to stack a fresh sweep on every minute tick.
     private var pullRequestFlight = SingleFlight()
+
+    // MARK: Review requests (state; the logic is in Reviews.swift)
+
+    /// Every PR that asked for the user's review and what its review is up to,
+    /// by PR URL. Persisted: the stage and the decisions are the user's own work.
+    @Published var reviews: [String: ReviewRecord] = [:]
+    /// The findings of each review, read from its `findings.json`. Derived from
+    /// the files, never persisted.
+    @Published var reviewFindings: [String: ReviewFindings] = [:]
+    /// The checkouts a review could run in, per PR URL — gathered when its row opens.
+    @Published var reviewCheckouts: [String: [ReviewRequests.Checkout]] = [:]
+    /// When GitHub last answered; nil until the first answer.
+    @Published var reviewsCheckedAt: Date?
+    /// False when `gh` is missing or not logged in: the panel says how to fix it.
+    @Published var reviewsReachable = true
+    /// The row the panel should open — set by a banner click.
+    @Published var reviewFocus: String?
+    /// The last line a send or a start left for the user ("Review sent to …").
+    @Published var reviewNotice: String?
+    var reviewFlight = SingleFlight()
+    var reviewTimer: Timer?
+    var reviewWatchTimer: Timer?
+    var reviewPolls = 0
+    var reviewLastManualRefresh: Date?
 
     /// The PR a project row shows: the one its terminals share, like the branch.
     func sharedPullRequest(of group: SessionGroup) -> PullRequest? {
@@ -1503,10 +1529,20 @@ final class AppState: ObservableObject {
         alert.addButton(withTitle: L10n.t(.removeWorktree))
         alert.addButton(withTitle: L10n.t(.keepWorktree))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
+        removeWorktree(path: path, repoRoot: repoRoot)
+    }
+
+    /// `git worktree remove`, off-main; a refusal is shown, never forced. A branch
+    /// to delete goes only after the checkout is gone: git keeps a checked-out
+    /// branch. It is the review's own branch, so `-D` deletes it unmerged.
+    func removeWorktree(path: String, repoRoot: String, deletingBranch branch: String? = nil) {
         Task { [weak self] in
             let error: Error? = await Task.detached {
                 do {
                     try Worktrees.remove(path: path, repoRoot: repoRoot)
+                    if let branch {
+                        _ = try? Worktrees.git(["branch", "-D", branch], in: repoRoot)
+                    }
                     return nil
                 } catch {
                     return error
@@ -1516,9 +1552,19 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// What closing a worktree project does with its checkout.
+    enum WorktreeOnClose {
+        /// Ask, the default: the checkout may hold work.
+        case ask
+        /// Remove it without asking — a review's temporary worktree, whose work
+        /// is on GitHub — and then the local branch the review made in it. Git
+        /// still refuses while there are uncommitted changes.
+        case remove(deletingBranch: String?)
+    }
+
     /// Close a whole project: free its terminals' surfaces, drop its sessions,
     /// remove the group, and repair window group lists and selection.
-    func closeGroup(_ groupID: UUID) {
+    func closeGroup(_ groupID: UUID, worktree: WorktreeOnClose = .ask) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
         for sid in group.sessionIDs {
             TerminalRegistry.shared.close(sid)
@@ -1547,7 +1593,10 @@ final class AppState: ObservableObject {
         scheduleSave()
         // The checkout outlives the project unless the user says otherwise.
         if let path = group.worktreePath, let root = group.worktreeRepoRoot {
-            offerWorktreeRemoval(path: path, repoRoot: root)
+            switch worktree {
+            case .ask: offerWorktreeRemoval(path: path, repoRoot: root)
+            case .remove(let branch): removeWorktree(path: path, repoRoot: root, deletingBranch: branch)
+            }
         }
     }
 
@@ -2301,6 +2350,9 @@ final class AppState: ObservableObject {
     /// running yet — a resumed agent re-announces itself with its first hook.
     private var liveAgentIDs: Set<UUID> = []
 
+    /// An agent (Claude Code, Codex) is alive in this terminal, idle or not.
+    func isAgentLive(_ id: UUID) -> Bool { liveAgentIDs.contains(id) }
+
     /// Whether a live **Claude Code** session owns this terminal. Both halves
     /// matter for the ⌃V image paste: the agent must be running *and* be the one
     /// that reads images off the clipboard. Codex gets the path instead.
@@ -2758,7 +2810,8 @@ final class AppState: ObservableObject {
             tabLayout: tabLayout,
             projectColor: projectColor,
             backgroundCountsAsRunning: backgroundCountsAsRunning,
-            notepad: notepad
+            notepad: notepad,
+            reviews: reviews
         )
         do {
             let encoder = JSONEncoder()
@@ -2845,6 +2898,7 @@ final class AppState: ObservableObject {
         projectColor = state.projectColor
         backgroundCountsAsRunning = state.backgroundCountsAsRunning
         notepad = state.notepad
+        reviews = state.reviews
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
             session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }
         })
@@ -2966,6 +3020,14 @@ final class AppState: ObservableObject {
         backgroundCountsAsRunning = previous?.backgroundCountsAsRunning ?? backgroundCountsAsRunning
         notepad = previous?.notepad ?? notepad
         notepadText = [:]
+        // The reviews outlive the workspace (they come from GitHub), but the
+        // terminals and projects they pointed at are gone.
+        reviews = reviews.mapValues { record in
+            var kept = record
+            kept.sessionID = nil
+            kept.groupID = nil
+            return kept
+        }
     }
 
     // MARK: Surface notifications (title / pwd / child exit)
