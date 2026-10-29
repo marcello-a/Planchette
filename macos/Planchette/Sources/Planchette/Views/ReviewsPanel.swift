@@ -55,7 +55,11 @@ struct ReviewsPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
-        .onAppear { openFocused() }
+        .onAppear {
+            // The panel was opened: the feature needs no introduction any more.
+            appState.completeHint(.reviews)
+            openFocused()
+        }
         .onChange(of: appState.reviewFocus) { _, _ in openFocused() }
     }
 

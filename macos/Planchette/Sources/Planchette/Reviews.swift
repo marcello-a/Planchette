@@ -86,6 +86,8 @@ extension AppState {
         reviewsReachable = true
         guard after != before else { return }
         reviews = after
+        // The first request for the user is the moment to say what the panel can do.
+        if unseenReviewCount > 0 { offerHint(.reviews) }
         for url in Set(before.keys).subtracting(after.keys) {
             reviewFindings[url] = nil
             reviewCheckouts[url] = nil
@@ -193,6 +195,13 @@ extension AppState {
         UserDefaults.standard.set(InboxMode.reviews.rawValue, forKey: InboxMode.storageKey)
         reviewFocus = url
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// The hint's button: the panel in its Reviews mode.
+    func showReviews() {
+        UserDefaults.standard.set(true, forKey: "inboxShown")
+        UserDefaults.standard.set(InboxMode.reviews.rawValue, forKey: InboxMode.storageKey)
+        completeHint(.reviews)
     }
 
     /// Jump to the terminal a review runs in.

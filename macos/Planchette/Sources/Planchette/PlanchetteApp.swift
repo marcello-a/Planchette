@@ -812,6 +812,7 @@ struct ReviewsToolbarButton: View {
         }
         .toggleStyle(.button)
         .help(L10n.t(.reviewsPanelHelp))
+        .featureHint(.reviews)
         .accessibilityLabel(L10n.t(.reviewsPanel))
         .accessibilityValue(count > 0 ? "\(count)" : "")
     }

@@ -25,6 +25,7 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **A default `review-pr` skill.** A review runs as the Claude Code skill `review-pr`. Without one
   of your own, Planchette adds its default to `~/.claude/skills/review-pr` the first time a review
   starts, and keeps it up to date; a `review-pr` skill of your own there is never touched.
+- A first-use hint for the Reviews, with a looping picture, when the first review request arrives.
 - `planchette review list` / `review.list`: the Reviews panel as data.
 
 ## [0.2.46] — 2026-10-23

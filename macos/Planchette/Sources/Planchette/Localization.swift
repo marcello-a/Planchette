@@ -268,7 +268,7 @@ enum LKey: String, CaseIterable {
     case detailNoteHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
     // The Reviews mode of the notifications panel
     case reviewBusyUnread, reviewBusyAgentOnBranch, reviewBusyCountOne
-    case reviewSkillTitle, reviewSkillHelp, reviewSkillInstalled
+    case reviewSkillTitle, reviewSkillHelp, reviewSkillInstalled, reviewsHintTitle, reviewsHintBody, reviewsHintTry
     case reviewsPanel, reviewsPanelHelp, reviewsRefresh, reviewsCheckedAt, reviewsOnlyMine
     case reviewsOnlyMineHelp, reviewsShowSent, reviewsShowSentHelp, reviewsNeedsYou, reviewsReviewing
     case reviewsSent, reviewsEmpty, reviewsNoGh, reviewChipRequested, reviewChipUpdated
@@ -615,6 +615,9 @@ enum L10n {
         .reviewSkillTitle: "The review-pr skill",
         .reviewSkillHelp: "A review runs as the Claude Code skill review-pr. Without one of your own, Planchette adds its default to ~/.claude/skills/review-pr and keeps it up to date. A review-pr skill of your own there is never touched.",
         .reviewSkillInstalled: "Planchette added its default review-pr skill to ~/.claude/skills. Put your own there to replace it.",
+        .reviewsHintTitle: "Reviews, beside the bell",
+        .reviewsHintBody: "A PR asks for your review. Start it in a checkout nobody works in, decide on each finding, then send.",
+        .reviewsHintTry: "Show the reviews",
         .reviewBusyCountOne: "1 checkout is busy",
         .reviewBusyRunning: "Claude is running",
         .reviewBusyWaiting: "a terminal waits for an answer",
@@ -970,6 +973,9 @@ enum L10n {
         .reviewSkillTitle: "Der Skill review-pr",
         .reviewSkillHelp: "Ein Review läuft als Claude-Code-Skill review-pr. Ohne einen eigenen legt Planchette seinen Standard in ~/.claude/skills/review-pr an und hält ihn aktuell. Ein eigener Skill review-pr dort wird nie angefasst.",
         .reviewSkillInstalled: "Planchette hat seinen Standard-Skill review-pr in ~/.claude/skills angelegt. Lege deinen eigenen dort ab, um ihn zu ersetzen.",
+        .reviewsHintTitle: "Reviews, neben der Glocke",
+        .reviewsHintBody: "Ein PR wartet auf dein Review. Starte es in einem Checkout, in dem niemand arbeitet, entscheide pro Befund, dann sende.",
+        .reviewsHintTry: "Reviews zeigen",
         .reviewBusyCountOne: "1 Checkout ist belegt",
         .reviewBusyRunning: "Claude arbeitet",
         .reviewBusyWaiting: "ein Terminal wartet auf eine Antwort",
@@ -1325,6 +1331,9 @@ enum L10n {
         .reviewSkillTitle: "Le skill review-pr",
         .reviewSkillHelp: "Une revue s'exécute avec le skill Claude Code review-pr. Sans skill à vous, Planchette ajoute le sien dans ~/.claude/skills/review-pr et le tient à jour. Un skill review-pr à vous n'est jamais modifié.",
         .reviewSkillInstalled: "Planchette a ajouté son skill review-pr par défaut dans ~/.claude/skills. Mettez le vôtre à sa place pour le remplacer.",
+        .reviewsHintTitle: "Les revues, à côté de la cloche",
+        .reviewsHintBody: "Une PR attend votre revue. Lancez-la dans un checkout où personne ne travaille, décidez pour chaque remarque, puis envoyez.",
+        .reviewsHintTry: "Afficher les revues",
         .reviewBusyCountOne: "1 checkout est occupé",
         .reviewBusyRunning: "Claude travaille",
         .reviewBusyWaiting: "un terminal attend une réponse",
@@ -1680,6 +1689,9 @@ enum L10n {
         .reviewSkillTitle: "El skill review-pr",
         .reviewSkillHelp: "Una revisión se ejecuta con el skill de Claude Code review-pr. Sin uno propio, Planchette añade el suyo en ~/.claude/skills/review-pr y lo mantiene al día. Un skill review-pr propio nunca se toca.",
         .reviewSkillInstalled: "Planchette añadió su skill review-pr por defecto en ~/.claude/skills. Pon el tuyo ahí para reemplazarlo.",
+        .reviewsHintTitle: "Revisiones, junto a la campana",
+        .reviewsHintBody: "Un PR espera tu revisión. Iníciala en un checkout donde nadie trabaja, decide cada hallazgo y envía.",
+        .reviewsHintTry: "Mostrar las revisiones",
         .reviewBusyCountOne: "1 checkout está ocupado",
         .reviewBusyRunning: "Claude está trabajando",
         .reviewBusyWaiting: "un terminal espera una respuesta",
@@ -2035,6 +2047,9 @@ enum L10n {
         .reviewSkillTitle: "Lo skill review-pr",
         .reviewSkillHelp: "Una revisione gira come skill di Claude Code review-pr. Senza uno tuo, Planchette aggiunge il suo in ~/.claude/skills/review-pr e lo tiene aggiornato. Uno skill review-pr tuo non viene mai toccato.",
         .reviewSkillInstalled: "Planchette ha aggiunto il suo skill review-pr predefinito in ~/.claude/skills. Mettici il tuo per sostituirlo.",
+        .reviewsHintTitle: "Revisioni, accanto alla campanella",
+        .reviewsHintBody: "Una PR attende la tua revisione. Avviala in un checkout dove nessuno lavora, decidi su ogni rilievo, poi invia.",
+        .reviewsHintTry: "Mostra le revisioni",
         .reviewBusyCountOne: "1 checkout è occupato",
         .reviewBusyRunning: "Claude sta lavorando",
         .reviewBusyWaiting: "un terminale attende una risposta",
@@ -2390,6 +2405,9 @@ enum L10n {
         .reviewSkillTitle: "De skill review-pr",
         .reviewSkillHelp: "Een review draait als de Claude Code-skill review-pr. Zonder een eigen skill zet Planchette zijn standaard in ~/.claude/skills/review-pr en houdt die bij. Een eigen skill review-pr daar wordt nooit aangeraakt.",
         .reviewSkillInstalled: "Planchette heeft zijn standaard-skill review-pr in ~/.claude/skills gezet. Zet je eigen skill daar om hem te vervangen.",
+        .reviewsHintTitle: "Reviews, naast de bel",
+        .reviewsHintBody: "Een PR wacht op je review. Start hem in een checkout waar niemand werkt, beslis per bevinding en verstuur.",
+        .reviewsHintTry: "Reviews tonen",
         .reviewBusyCountOne: "1 checkout is bezet",
         .reviewBusyRunning: "Claude is bezig",
         .reviewBusyWaiting: "een terminal wacht op een antwoord",
@@ -2745,6 +2763,9 @@ enum L10n {
         .reviewSkillTitle: "O skill review-pr",
         .reviewSkillHelp: "Uma revisão corre como o skill do Claude Code review-pr. Sem um teu, o Planchette adiciona o seu em ~/.claude/skills/review-pr e mantém-no atualizado. Um skill review-pr teu nunca é tocado.",
         .reviewSkillInstalled: "O Planchette adicionou o seu skill review-pr predefinido em ~/.claude/skills. Põe lá o teu para o substituir.",
+        .reviewsHintTitle: "Revisões, ao lado do sino",
+        .reviewsHintBody: "Um PR espera a tua revisão. Inicia-a num checkout onde ninguém trabalha, decide cada achado e envia.",
+        .reviewsHintTry: "Mostrar as revisões",
         .reviewBusyCountOne: "1 checkout está ocupado",
         .reviewBusyRunning: "O Claude está a trabalhar",
         .reviewBusyWaiting: "um terminal espera uma resposta",
