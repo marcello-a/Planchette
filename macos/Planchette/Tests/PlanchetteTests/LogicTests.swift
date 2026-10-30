@@ -3091,6 +3091,65 @@ final class PullRequestTests: XCTestCase {
         XCTAssertTrue(PullRequests.isWorkBranch("marcello/feat/NIE-1-x"))
     }
 
+    func testASwitchedBranchLosesItsPullRequest() {
+        let stays = UUID(), switched = UUID(), left = UUID(), new = UUID()
+        let old = [stays: "feat/a", switched: "feat/a", left: "feat/b"]
+        let now = [stays: "feat/a", switched: "feat/c", new: "feat/d"]
+        // A terminal that left a git checkout lost its branch too; a new one had no PR.
+        XCTAssertEqual(PullRequests.movedSessions(from: old, to: now), [switched, left])
+        XCTAssertEqual(PullRequests.movedSessions(from: old, to: old), [])
+    }
+
+    func testAFailedLookupKeepsThePillAndAMovedTerminalDropsIt() {
+        let pr = { (n: Int) in
+            PullRequest(number: n, status: .open, review: nil,
+                        url: URL(string: "https://x/\(n)")!, title: "")
+        }
+        let found = UUID(), none = UUID(), failed = UUID(), switched = UUID(), neverHad = UUID()
+        let asked = [found: "a", none: "b", failed: "c", switched: "d", neverHad: "e"]
+        let branches = [found: "a", none: "b", failed: "c", switched: "z", neverHad: "e"]
+        let previous = [found: pr(1), none: pr(2), failed: pr(3), switched: pr(4)]
+        let answers: [UUID: PullRequests.Lookup] = [
+            found: .found(pr(10)), none: .none, failed: .failed,
+            switched: .found(pr(40)), neverHad: .failed,
+        ]
+        let merged = PullRequests.merge(
+            answers: answers, asked: asked, branches: branches, previous: previous)
+        // `gh` answered: its answer wins, "no PR" included.
+        XCTAssertEqual(merged[found], pr(10))
+        XCTAssertNil(merged[none])
+        // No answer: the pill stays as it was, and nothing appears from nowhere.
+        XCTAssertEqual(merged[failed], pr(3))
+        XCTAssertNil(merged[neverHad])
+        // Asked for the branch it left: neither the answer nor the old pill.
+        XCTAssertNil(merged[switched])
+    }
+
+    func testAForgottenBranchIsReadAgain() throws {
+        let repo = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-branch-\(UUID().uuidString)")
+        let git = repo.appendingPathComponent(".git")
+        try FileManager.default.createDirectory(at: git, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let head = git.appendingPathComponent("HEAD")
+        try "ref: refs/heads/feat/NIE-1-old\n".write(to: head, atomically: true, encoding: .utf8)
+        XCTAssertEqual(Titles.ticket(forDirectory: repo.path), "NIE-1")
+        try "ref: refs/heads/feat/NIE-2-new\n".write(to: head, atomically: true, encoding: .utf8)
+        // Within the cache's lifetime the old branch is still what it knows…
+        XCTAssertEqual(Titles.ticket(forDirectory: repo.path), "NIE-1")
+        // …until the branch poll says the branch changed.
+        Titles.forgetBranches()
+        XCTAssertEqual(Titles.ticket(forDirectory: repo.path), "NIE-2")
+    }
+
+    func testAFinishedTurnAsksGhAtMostOncePerGap() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(PullRequests.eagerRefreshDue(last: nil, now: start))
+        XCTAssertFalse(PullRequests.eagerRefreshDue(last: start, now: start.addingTimeInterval(5)))
+        XCTAssertTrue(PullRequests.eagerRefreshDue(
+            last: start, now: start.addingTimeInterval(PullRequests.eagerGap)))
+    }
+
     func testGhIsFoundAbsolutely() {
         XCTAssertEqual(
             PullRequests.ghPath(searching: ["/a/gh", "/b/gh"], isExecutable: { $0 == "/b/gh" }),

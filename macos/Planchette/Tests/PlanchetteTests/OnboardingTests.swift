@@ -116,3 +116,42 @@ final class OnboardingStateTests: XCTestCase {
         XCTAssertEqual(round.hints.done, ["notepad", "future"])
     }
 }
+
+final class AskBeforeRestoreTests: XCTestCase {
+    func testTheLastSessionIsRestoredWithoutAskingByDefault() throws {
+        // A state file from before the setting, and one that says nothing about it.
+        let old = #"{"groups":[],"sessions":[],"windows":[]}"#.data(using: .utf8)!
+        XCTAssertFalse(try JSONDecoder().decode(PersistedState.self, from: old).askBeforeRestore)
+    }
+
+    func testTheSettingSurvivesASave() throws {
+        var state = try JSONDecoder().decode(PersistedState.self, from: #"{"groups":[],"sessions":[],"windows":[]}"#.data(using: .utf8)!)
+        state.askBeforeRestore = true
+        let back = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(back.askBeforeRestore)
+    }
+}
+
+final class UpdateDecisionTests: XCTestCase {
+    private func decide(_ latest: String, current: String = "0.2.44", staged: String? = nil) -> UpdateService.UpdateDecision {
+        UpdateService.decide(latest: latest, current: current, staged: staged)
+    }
+
+    func testTheLatestIsOfferedWhenSeveralReleasesAreNewer() {
+        XCTAssertEqual(decide("0.2.47"), .offer)
+    }
+
+    func testNothingIsOfferedWhenUpToDate() {
+        XCTAssertEqual(decide("0.2.44"), .upToDate)
+        XCTAssertEqual(decide("0.2.43"), .upToDate)
+    }
+
+    func testAnOlderStagedBundleIsReplacedByTheLatest() {
+        XCTAssertEqual(decide("0.2.47", staged: "0.2.45"), .offer)
+    }
+
+    func testTheLatestStagedAlreadyIsNotOfferedAgain() {
+        XCTAssertEqual(decide("0.2.47", staged: "0.2.47"), .alreadyStaged)
+        XCTAssertEqual(decide("0.2.46", staged: "0.2.47"), .alreadyStaged)
+    }
+}

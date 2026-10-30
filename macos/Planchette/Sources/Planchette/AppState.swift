@@ -32,6 +32,11 @@ final class AppState: ObservableObject {
     @Published var autoUpdateCheck = true {
         didSet { scheduleSave() }
     }
+    /// Ask "Restore your last session?" at every launch. Off by default: the last session comes
+    /// back without a question — after an update, a crash or a plain quit.
+    @Published var askBeforeRestore = false {
+        didSet { scheduleSave() }
+    }
     /// New terminals run inside tmux, so their agents outlive the app (see
     /// Durable.swift). Only takes effect for terminals created from now on —
     /// existing ones keep whatever they were created as.
@@ -234,6 +239,7 @@ final class AppState: ObservableObject {
             L10n.current = saved.language
             appearance = saved.appearance
             autoUpdateCheck = saved.autoUpdateCheck
+            askBeforeRestore = saved.askBeforeRestore
             durableTerminals = saved.durableTerminals
             peekCollapsedProjects = saved.peekCollapsedProjects
             doneExpiry = saved.doneExpiry
@@ -757,6 +763,16 @@ final class AppState: ObservableObject {
                 // Publish only a real change: an unconditional assignment
                 // invalidated every observing view on every poll tick.
                 if self.branches != found {
+                    // The PR of the branch a terminal left is not its PR any more:
+                    // take it away now, not when `gh` answers for the new one.
+                    let moved = PullRequests.movedSessions(from: self.branches, to: found)
+                    if !moved.isEmpty {
+                        var kept = self.pullRequests
+                        for id in moved { kept[id] = nil }
+                        if kept != self.pullRequests { self.pullRequests = kept }
+                    }
+                    // Tab names and tickets read the branch through a cache.
+                    Titles.forgetBranches()
                     self.branches = found
                     // A new branch may already have a PR — do not make it wait
                     // a whole PR poll interval to show it.
@@ -769,6 +785,22 @@ final class AppState: ObservableObject {
 
     /// One branch poll at a time (see `SingleFlight`).
     private var branchFlight = SingleFlight()
+
+    /// When `gitMayHaveChanged` last asked `gh` (see `PullRequests.eagerGap`).
+    private var lastEagerPullRequestRefresh: Date?
+
+    /// A command or an agent's turn just ended in a terminal: it may have switched
+    /// the branch (`git checkout`, `git switch`) or made or changed a PR
+    /// (`gh pr create`, `git push`). Look now rather than at the next poll. The
+    /// branch is a local read; `gh` goes over the network, so it is asked at most
+    /// once per `PullRequests.eagerGap` — a branch that did change asks anyway.
+    func gitMayHaveChanged(now: Date = Date()) {
+        refreshBranches()
+        if PullRequests.eagerRefreshDue(last: lastEagerPullRequestRefresh, now: now) {
+            lastEagerPullRequestRefresh = now
+            refreshPullRequests()
+        }
+    }
 
     // MARK: Pull request per terminal
 
@@ -794,6 +826,13 @@ final class AppState: ObservableObject {
         timer.tolerance = 10
         RunLoop.main.add(timer, forMode: .common)
         pullRequestTimer = timer
+        // In the background the poll slows to one sweep in four minutes; coming
+        // back to the app is when a stale pill would be read.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.gitMayHaveChanged() }
+        }
     }
 
     /// One `gh pr list` per distinct checkout + branch, off-main. Terminals on a
@@ -813,16 +852,24 @@ final class AppState: ObservableObject {
             _ = pullRequestFlight.end()
             return
         }
+        let asked = checkouts.values.reduce(into: [UUID: String]()) { acc, checkout in
+            for id in checkout.ids { acc[id] = checkout.branch }
+        }
         Task.detached {
-            var found: [UUID: PullRequest] = [:]
+            var found: [UUID: PullRequests.Lookup] = [:]
             for checkout in checkouts.values {
-                guard let pr = PullRequests.lookup(branch: checkout.branch, in: checkout.dir)
-                else { continue }
-                for id in checkout.ids { found[id] = pr }
+                let answer = PullRequests.lookup(branch: checkout.branch, in: checkout.dir)
+                for id in checkout.ids { found[id] = answer }
             }
-            let result = found
+            let answers = found
             await MainActor.run { [weak self] in
                 guard let self else { return }
+                // A terminal that switched branch while `gh` was asked keeps no
+                // answer for the branch it left (the rerun asks for the new one),
+                // and one whose lookup failed keeps the PR it showed.
+                let result = PullRequests.merge(
+                    answers: answers, asked: asked, branches: self.branches,
+                    previous: self.pullRequests)
                 if self.pullRequests != result { self.pullRequests = result }
                 if self.pullRequestFlight.end() { self.refreshPullRequests() }
             }
@@ -2254,6 +2301,7 @@ final class AppState: ObservableObject {
                 background: .reset)
         }
         setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
+        gitMayHaveChanged()
     }
 
     private func setState(_ id: UUID, _ requested: AttentionState, message: String? = nil, settle: Bool = true) {
@@ -2390,6 +2438,10 @@ final class AppState: ObservableObject {
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
             aiAssist.sessionUpdated(sessionID)
+            gitMayHaveChanged()
+        case "PostToolUse":
+            // A tool call can be the `git checkout` or `gh pr create` itself.
+            gitMayHaveChanged()
         default:
             break
         }
@@ -2746,6 +2798,7 @@ final class AppState: ObservableObject {
             language: language,
             appearance: appearance,
             autoUpdateCheck: autoUpdateCheck,
+            askBeforeRestore: askBeforeRestore,
             durableTerminals: durableTerminals,
             peekCollapsedProjects: peekCollapsedProjects,
             doneExpiry: doneExpiry,
@@ -2832,6 +2885,7 @@ final class AppState: ObservableObject {
         language = state.language
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
+        askBeforeRestore = state.askBeforeRestore
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
         doneExpiry = state.doneExpiry
@@ -2951,6 +3005,7 @@ final class AppState: ObservableObject {
         language = previous?.language ?? language
         appearance = previous?.appearance ?? appearance
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
+        askBeforeRestore = previous?.askBeforeRestore ?? askBeforeRestore
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
         doneExpiry = previous?.doneExpiry ?? doneExpiry
@@ -2985,7 +3040,13 @@ final class AppState: ObservableObject {
         center.addObserver(forName: .planchetteSurfacePwd, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID,
                   let pwd = note.userInfo?["pwd"] as? String else { return }
-            Task { @MainActor in self?.update(id) { $0.currentDirectory = pwd } }
+            Task { @MainActor in
+                guard let self, self.sessions[id]?.currentDirectory != pwd else { return }
+                self.update(id) { $0.currentDirectory = pwd }
+                // Another directory can be another repo: its branch, and its PR,
+                // are due now, not at the next poll.
+                self.gitMayHaveChanged()
+            }
         }
         center.addObserver(forName: .planchetteSurfaceChildExited, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID else { return }

@@ -8,6 +8,16 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- The notepad button in the tab bar is yellow while the pad is closed, so it is easy to find.
+- The pull request next to a branch follows a branch switch at once. When you or an agent run `git checkout`, `git switch`, `gh pr create` or `git push`, Planchette looks again after the command or the turn ends. Before, it took up to a minute. The PR of the old branch goes away right away and does not stay until the new one loads.
+- A `cd` into another repository shows its branch and PR at once, and so does coming back to Planchette from another app.
+- A failed GitHub request (no network, a timeout) keeps the PR pills as they were. Before, one failed request took every pill away for a minute.
+- After a branch switch, the ticket in a tab name follows the new branch. Before, it could keep the old ticket until something else redrew the tab.
+- **Only the latest release is installed, never one after the other.** A update that waits for the next quit is replaced when a newer release comes out, and the repeating check keeps looking while one waits. Before, the old one installed first and the newer one was offered at the next launch.
+- **The last session comes back without a question.** After an update, a crash or a plain quit, Planchette restores your workspace at launch by itself. Settings → General → "Ask before restoring the last session" brings the Restore / Start fresh question back (off by default).
+- The update dialog puts **Install & Relaunch** on top as the highlighted default button; "Install on quit" is second.
+
 ## [0.2.46] — 2026-10-23
 
 ### Fixed
