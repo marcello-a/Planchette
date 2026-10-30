@@ -8,8 +8,10 @@ final class ReviewRequestsParseTests: XCTestCase {
         return try! JSONSerialization.data(withJSONObject: ["data": data])
     }
 
-    private func node(_ number: Int, reviewers: [[String: Any]], rollup: String? = "SUCCESS") -> [String: Any] {
+    private func node(_ number: Int, reviewers: [[String: Any]], rollup: String? = "SUCCESS",
+                      asked: [(String, [String: Any])] = []) -> [String: Any] {
         [
+            "timelineItems": ["nodes": asked.map { ["createdAt": $0.0, "requestedReviewer": $0.1] }],
             "url": "https://github.com/o/r/pull/\(number)", "number": number, "title": "PR \(number)",
             "isDraft": false, "updatedAt": "2026-10-27T08:47:57Z", "additions": 10, "deletions": 2,
             "changedFiles": 3, "headRefName": "feat/x", "headRefOid": "abc", "baseRefName": "master",
@@ -52,6 +54,33 @@ final class ReviewRequestsParseTests: XCTestCase {
         XCTAssertEqual(fetch.tracked.count, 1, "an unanswered PR is missing, not closed")
     }
 
+    func testRequestedAtIsTheLatestRequestToYou() throws {
+        let me: [String: Any] = ["__typename": "User", "login": "marcello-a"]
+        let fetch = try XCTUnwrap(ReviewRequests.parse(answer([
+            node(3, reviewers: [me], asked: [
+                ("2026-10-20T08:00:00Z", me),
+                ("2026-10-25T08:00:00Z", ["__typename": "User", "login": "someone"]),
+                ("2026-10-22T09:30:00Z", ["__typename": "User", "login": "Marcello-A"]),
+            ]),
+        ])))
+        XCTAssertEqual(fetch.requested.first?.requestedAt, ISO8601DateFormatter().date(from: "2026-10-22T09:30:00Z"),
+                       "asked again: the newer request counts, somebody else's does not")
+    }
+
+    func testRequestedAtOfATeamRequestIsTheTeams() throws {
+        let team: [String: Any] = ["__typename": "Team", "name": "frontend"]
+        let fetch = try XCTUnwrap(ReviewRequests.parse(answer([
+            node(4, reviewers: [team], asked: [("2026-10-21T10:00:00Z", team)]),
+            node(5, reviewers: [team]),
+        ])))
+        XCTAssertEqual(fetch.requested[0].requestedAt, ISO8601DateFormatter().date(from: "2026-10-21T10:00:00Z"))
+        XCTAssertNil(fetch.requested[1].requestedAt, "no event: no time, the panel falls back to when it saw it")
+    }
+
+    func testTheQueryAsksWhenTheReviewWasRequested() {
+        XCTAssertTrue(ReviewRequests.query(trackedCount: 0).contains("REVIEW_REQUESTED_EVENT"))
+    }
+
     func testGarbageIsNil() {
         XCTAssertNil(ReviewRequests.parse(Data("{\"errors\":[]}".utf8)))
     }
@@ -67,10 +96,11 @@ final class ReviewRequestsParseTests: XCTestCase {
 final class ReviewRequestsMergeTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_800_000_000)
 
-    private func pr(_ number: Int, sha: String = "a1", mine: Bool = true) -> ReviewPR {
+    private func pr(_ number: Int, sha: String = "a1", mine: Bool = true, asked: TimeInterval? = nil) -> ReviewPR {
         ReviewPR(url: "https://github.com/o/r/pull/\(number)", repo: "o/r", number: number, title: "PR \(number)",
                  author: "lea", isDraft: false, additions: 1, deletions: 1, changedFiles: 1, headRef: "feat/x",
-                 headSha: sha, baseRef: "master", checks: .passed, updatedAt: nil, requestedFromMe: mine, team: nil)
+                 headSha: sha, baseRef: "master", checks: .passed, updatedAt: nil, requestedFromMe: mine, team: nil,
+                 requestedAt: asked.map { Date(timeIntervalSince1970: $0) })
     }
 
     private func record(_ pr: ReviewPR, _ stage: ReviewStage, reviewed: String? = nil) -> ReviewRecord {
@@ -86,6 +116,35 @@ final class ReviewRequestsMergeTests: XCTestCase {
             tracked: Dictionary(uniqueKeysWithValues: tracked.map {
                 ("https://github.com/o/r/pull/\($0.key)", ReviewRequests.TrackedState(open: $0.value.0, headSha: $0.value.1))
             }))
+    }
+
+    func testARemovedRowStaysRemovedWhileTheSameRequestStands() throws {
+        var removed = record(pr(1, asked: 100), .requested)
+        removed.dismissed = true
+        let merged = ReviewRequests.merge([pr(1).url: removed], with: fetch([pr(1, asked: 100)]), now: now)
+        XCTAssertEqual(merged[pr(1).url]?.dismissed, true)
+        let unknown = ReviewRequests.merge([pr(1).url: removed], with: fetch([pr(1)]), now: now)
+        XCTAssertEqual(unknown[pr(1).url]?.dismissed, true, "a timeline that did not answer is no new request")
+    }
+
+    func testARemovedRowComesBackWhenAskedAgain() throws {
+        var removed = record(pr(1, asked: 100), .requested)
+        removed.dismissed = true
+        let merged = ReviewRequests.merge([pr(1).url: removed], with: fetch([pr(1, asked: 200)]), now: now)
+        let row = try XCTUnwrap(merged[pr(1).url])
+        XCTAssertFalse(row.dismissed)
+        XCTAssertTrue(row.unread)
+
+        let withdrawn = ReviewRequests.merge([pr(1).url: removed], with: fetch([]), now: now)
+        let fresh = ReviewRequests.merge(withdrawn, with: fetch([pr(1, asked: 300)]), now: now)
+        XCTAssertEqual(fresh[pr(1).url]?.dismissed, false, "withdrawn, then asked again: a new row")
+    }
+
+    func testNewCommitsBringBackARemovedSentReview() throws {
+        var removed = record(pr(1), .sent, reviewed: "a1")
+        removed.dismissed = true
+        let merged = ReviewRequests.merge([pr(1).url: removed], with: fetch([], tracked: [1: (true, "b2")]), now: now)
+        XCTAssertEqual(merged[pr(1).url]?.dismissed, false)
     }
 
     func testANewRequestIsAnUnreadRow() throws {
@@ -298,12 +357,35 @@ final class ReviewCommandTests: XCTestCase {
     func testStartCommandIsOneQuotedWord() {
         let command = ReviewRequests.startCommand(
             pr: pr, directory: "/Users/me/Library/Application Support/Planchette/reviews/o-r-9",
-            keepCheckout: true, runChecks: false)
-        XCTAssertTrue(command.hasPrefix("claude '/review-pr "))
+            keepCheckout: true, run: ReviewRun())
+        XCTAssertTrue(command.hasPrefix("claude '/review-pr "), "no choice, no flag: Claude Code's settings decide")
         XCTAssertTrue(command.contains(#"--dir "/Users/me/Library/Application Support/Planchette/reviews/o-r-9""#))
         XCTAssertTrue(command.contains("--keep-checkout"))
         XCTAssertFalse(command.contains("--checks"))
         XCTAssertTrue(command.contains(#"9'\''; rm -rf ~"#), "a quote in remote text cannot end the word")
+    }
+
+    func testModelAndEffortAreFlagsBeforeThePrompt() {
+        let command = ReviewRequests.startCommand(
+            pr: pr, directory: "/d", keepCheckout: false,
+            run: ReviewRun(runChecks: true, model: "claude-opus-5-5", effort: .xhigh))
+        XCTAssertTrue(command.hasPrefix("claude --model 'claude-opus-5-5' --effort xhigh '/review-pr "), command)
+        XCTAssertTrue(command.hasSuffix(#"--checks'"#))
+    }
+
+    func testModelNames() {
+        XCTAssertEqual(ReviewRequests.modelName("opus"), "Opus")
+        XCTAssertEqual(ReviewRequests.modelName("claude-opus-5-5"), "Opus 5.5")
+        XCTAssertEqual(ReviewRequests.modelName("claude-haiku-5-5-20260601"), "Haiku 5.5", "the date is left out")
+        XCTAssertEqual(ReviewRequests.modelName("sonnet[1m]"), "Sonnet 1M")
+        XCTAssertEqual(ReviewRequests.modelName("42"), "42", "nothing to name: as written")
+    }
+
+    func testClaudeDefaultsComeFromItsSettings() {
+        let defaults = ReviewRequests.claudeDefaults(settings: Data(#"{"model":"opus","effortLevel":"high"}"#.utf8))
+        XCTAssertEqual(defaults, .init(model: "opus", effort: .high))
+        XCTAssertEqual(ReviewRequests.claudeDefaults(settings: Data(#"{"effortLevel":"turbo"}"#.utf8)), .init())
+        XCTAssertEqual(ReviewRequests.claudeDefaults(settings: nil), .init(), "no file: nothing known")
     }
 
     func testSingleQuotedDropsLineBreaks() {
@@ -332,6 +414,30 @@ final class ReviewPersistenceTests: XCTestCase {
 
         let old = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
         XCTAssertTrue(old.reviews.isEmpty, "a state from before reviews existed decodes")
+        XCTAssertFalse(old.reviewsEnabled, "the alpha is off for everybody until they switch it on")
+    }
+
+    func testTheAlphaSwitchIsSaved() throws {
+        let state = PersistedState(
+            groups: [], sessions: [], windows: [], aiEnabled: false, language: .en, appearance: .system,
+            autoUpdateCheck: true, durableTerminals: false, reviewsEnabled: true)
+        XCTAssertTrue(try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state)).reviewsEnabled)
+    }
+
+    func testARecordFromAnOlderBuildDecodes() throws {
+        var record = ReviewRecord(
+            pr: ReviewPR(url: "https://github.com/o/r/pull/1", repo: "o/r", number: 1, title: "T", author: "a",
+                         isDraft: false, additions: 1, deletions: 1, changedFiles: 1, headRef: "h", headSha: "s",
+                         baseRef: "master", checks: .passed, updatedAt: nil, requestedFromMe: true, team: nil),
+            stage: .requested, since: Date(timeIntervalSince1970: 100))
+        record.dismissed = true
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(record)) as? [String: Any])
+        for key in ["dismissed", "updated", "sending", "decisions"] { object[key] = nil }
+        let decoded = try JSONDecoder().decode(ReviewRecord.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertFalse(decoded.dismissed)
+        XCTAssertEqual(decoded.decisions, [:])
+        XCTAssertEqual(decoded.pr, record.pr)
+        XCTAssertNil(decoded.pr.requestedAt, "a PR saved before the request time existed")
     }
 }
 

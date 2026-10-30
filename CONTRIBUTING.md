@@ -134,6 +134,10 @@ kept current while its `.planchette-default` marker is there, and a skill of the
 user's own is never written. Keep its three-file contract (`findings.json`,
 `decisions.json`, `sent.json`) in step with `ReviewRequests.swift`.
 
+**The Reviews mode is an alpha**, off by default (Settings → General → Alpha,
+`reviewsEnabled` in the state). While it is off, nothing polls GitHub and the toolbar has no
+Reviews icon — a `scripts/perf` scene that shows it seeds `"reviewsEnabled": true`.
+
 ## Packaging
 
 ```sh

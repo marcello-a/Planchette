@@ -67,6 +67,9 @@ workspace. Write the next prompts while the agent works; send each one with a cl
 notifications bell switches the right panel to them (needs `gh`). Claude reviews each one in a
 checkout nobody works in; you decide per finding; nothing reaches GitHub before you click send.
 
+> **Alpha, off by default.** Switch it on in Settings → General → Alpha → Reviews. While it is
+> off there is no icon, and Planchette asks GitHub for no review requests.
+
 <p align="center">
   <img src="hints/reviews.gif" width="420" alt="The Reviews panel: a PR asks for a review, a free checkout is picked, Claude reviews it in its own terminal, the findings come back with Comment, Fix or Skip preselected, Set all changes them at once, and Send review posts it">
 </p>
@@ -74,12 +77,17 @@ checkout nobody works in; you decide per finding; nothing reaches GitHub before 
 - **A checkout nobody works in.** A request opens in place with the checkouts of its repo. A busy
   one — an agent running or open on a work branch, an unread result, uncommitted changes, a dev
   server — is named with its reason and never offered; the free one untouched longest is
-  suggested; a temporary worktree is always there and goes once the review is sent.
+  suggested; a temporary worktree is always there and goes once the review is sent. The start
+  button names the model and the effort ("Start review · Opus · High"); the menu beside it
+  changes them.
 - **One decision per finding.** Comment (with a suggestion where there is one), Fix (a commit on
   the author's branch) or Skip — preselected from the severity; "Set all" changes them at once,
   and the verdict follows.
 - **Calm.** A blue dot and one banner for a request to you; team-only requests stay out unless you
   want them; new commits or a new request after your review bring the row back as *Updated*.
+- **Your list.** A menu at the top shows one repository only. The × on a row takes it off the
+  list until the author asks again. A request counts its age from when GitHub asked, not from
+  when Planchette first saw it.
 - **Your skill or ours.** The review runs as the Claude Code skill `review-pr`. Without one of
   your own, Planchette adds [its default](skills/review-pr/SKILL.md) to `~/.claude/skills` and keeps
   it current; yours is never touched.
@@ -162,8 +170,8 @@ Also worth a second:
   when the command does.
 - Notifications panel: "Needs you" first, errors before questions, oldest first; read and unread,
   menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
-- **[Reviews](#reviews)** (the icon left of the bell, needs `gh`): the pull requests that ask for
-  your review, in the same panel.
+- **[Reviews](#reviews)** (alpha, Settings → General; the icon left of the bell, needs `gh`): the
+  pull requests that ask for your review, in the same panel.
 - Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
   a project you are not working on.
 - Background agents and shells show under the state icon, and the terminal stays purple (running,

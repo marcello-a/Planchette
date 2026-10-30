@@ -895,6 +895,8 @@ struct PersistedState: Codable {
     /// The review of each pull request that asked the user for one (the Reviews
     /// mode of the notifications panel), keyed by the PR's URL.
     var reviews: [String: ReviewRecord] = [:]
+    /// The Reviews mode (alpha): off by default, and for a state that never carried the key.
+    var reviewsEnabled = false
 
     init(
         groups: [SessionGroup],
@@ -919,7 +921,8 @@ struct PersistedState: Codable {
         projectColor: ProjectColorLook = ProjectColorLook(),
         backgroundCountsAsRunning: Bool = true,
         notepad: NotepadLook = NotepadLook(),
-        reviews: [String: ReviewRecord] = [:]
+        reviews: [String: ReviewRecord] = [:],
+        reviewsEnabled: Bool = false
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -944,6 +947,7 @@ struct PersistedState: Codable {
         self.backgroundCountsAsRunning = backgroundCountsAsRunning
         self.notepad = notepad
         self.reviews = reviews
+        self.reviewsEnabled = reviewsEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -984,5 +988,6 @@ struct PersistedState: Codable {
         // GitHub is the truth for what is requested: a record a newer build wrote
         // costs the review list, never the workspace.
         reviews = (try? c.decodeIfPresent([String: ReviewRecord].self, forKey: .reviews)) ?? [:]
+        reviewsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .reviewsEnabled)) ?? false
     }
 }

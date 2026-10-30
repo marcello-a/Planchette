@@ -293,19 +293,22 @@ the rest), then every other window's, and terminals in tab order.
 
 The Reviews panel as data: the pull requests that asked you for a review, in the
 panel's sections and order (`AppState.reviewSections`). GitHub is polled every
-five minutes through `gh`; an isolated instance (`PLANCHETTE_STATE_DIR`) does not
-poll and lists what its state holds.
+five minutes through `gh` while Settings → General → Alpha → Reviews is on (it is off
+by default; `enabled` says which). An isolated instance (`PLANCHETTE_STATE_DIR`) does not
+poll and lists what its state holds. A row removed with its × is not listed until it asks
+again.
 
 | Argument | Type | Meaning |
 |---|---|---|
 | `include_team` | bool | also the requests that went only to one of your teams (the panel's "Only mine" unticked) |
 | `hide_sent` | bool | leave out the reviews you sent that wait for the author |
+| `repo` | string | only this repository, `owner/name` (the panel's repository menu) |
 
 ```bash
 "$PLANCHETTE_CLI" review list --include-team
 ```
 
-Returns `{"reviews": [...], "counts": {"unseen": n, "listed": n}, "checked_at": "…" | null}`.
+Returns `{"reviews": [...], "counts": {"unseen": n, "listed": n}, "checked_at": "…" | null, "enabled": bool}`.
 Each review:
 
 | Field | Type | Meaning |
@@ -321,6 +324,7 @@ Each review:
 | `updated` | bool | the author asked again or pushed after your sent review |
 | `sending` | bool | "Send review" was clicked; the review terminal is posting |
 | `since` | string | ISO 8601 — when the stage last changed |
+| `requested_at` | string | ISO 8601 — when GitHub asked for the review (the latest request; absent when GitHub did not say) |
 | `checkout` | string | where the review runs or ran (absent before a start) |
 | `temporary` | bool | that checkout is a worktree Planchette removes after the review is sent |
 | `session` | UUID string | the review terminal |

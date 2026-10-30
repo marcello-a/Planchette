@@ -17,6 +17,15 @@ final class AppState: ObservableObject {
     @Published var aiEnabled = true {
         didSet { scheduleSave() }
     }
+    /// Settings → General → Alpha: the Reviews mode of the right panel. Off by default; while off
+    /// there is no icon, no GitHub query and no banner (`updateReviewPolling`).
+    @Published var reviewsEnabled = false {
+        didSet {
+            guard reviewsEnabled != oldValue else { return }
+            scheduleSave()
+            updateReviewPolling()
+        }
+    }
     @Published var language: AppLanguage = .system {
         didSet {
             L10n.current = language
@@ -272,6 +281,7 @@ final class AppState: ObservableObject {
             backgroundCountsAsRunning = saved.backgroundCountsAsRunning
             notepad = saved.notepad
             reviews = saved.reviews
+            reviewsEnabled = saved.reviewsEnabled
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -283,7 +293,7 @@ final class AppState: ObservableObject {
         startBranchPolling()
         startDevServerPolling()
         startPullRequestPolling()
-        startReviewPolling()
+        updateReviewPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -919,6 +929,8 @@ final class AppState: ObservableObject {
     @Published var reviewFindings: [String: ReviewFindings] = [:]
     /// The checkouts a review could run in, per PR URL — gathered when its row opens.
     @Published var reviewCheckouts: [String: [ReviewRequests.Checkout]] = [:]
+    /// What a review without a model or effort of its own runs with (`ReviewRequests.claudeDefaults`).
+    @Published var claudeDefaults = ReviewRequests.ClaudeDefaults()
     /// When GitHub last answered; nil until the first answer.
     @Published var reviewsCheckedAt: Date?
     /// False when `gh` is missing or not logged in: the panel says how to fix it.
@@ -2891,7 +2903,8 @@ final class AppState: ObservableObject {
             projectColor: projectColor,
             backgroundCountsAsRunning: backgroundCountsAsRunning,
             notepad: notepad,
-            reviews: reviews
+            reviews: reviews,
+            reviewsEnabled: reviewsEnabled
         )
         do {
             let encoder = JSONEncoder()
@@ -2985,6 +2998,7 @@ final class AppState: ObservableObject {
             notepad.openForAllFromOldState = false
         }
         reviews = state.reviews
+        reviewsEnabled = state.reviewsEnabled
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
             session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }
         })
@@ -3107,6 +3121,7 @@ final class AppState: ObservableObject {
         backgroundCountsAsRunning = previous?.backgroundCountsAsRunning ?? backgroundCountsAsRunning
         notepad = previous?.notepad ?? notepad
         notepadText = [:]
+        reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The reviews outlive the workspace (they come from GitHub), but the
         // terminals and projects they pointed at are gone.
         reviews = reviews.mapValues { record in

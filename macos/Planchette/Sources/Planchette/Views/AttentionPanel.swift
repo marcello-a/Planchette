@@ -25,7 +25,7 @@ struct AttentionPanel: View {
 
     var body: some View {
         // One panel, two lists: the toolbar icons pick which (`InboxMode`).
-        if mode == .reviews {
+        if mode == .reviews && appState.reviewsEnabled {
             ReviewsPanel()
         } else {
             notifications
