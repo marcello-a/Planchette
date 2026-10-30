@@ -128,13 +128,26 @@ final class AppState: ObservableObject {
     /// Read once by the text view that appears (`NotepadEditor.makeNSView`).
     var notepadWantsKeyboard = false
 
-    /// Open or close the pad (⌘J, the tab bar's button).
-    func toggleNotepad() {
-        notepadWantsKeyboard = !notepad.isOpen
-        if !notepad.isOpen {
+    /// Open or close the pad of one terminal (the tab bar's button) — or, with no terminal named,
+    /// of the one the key window shows (⌘J, the hint).
+    func toggleNotepad(for id: UUID? = nil) {
+        guard let id = id ?? keyTerminalID() else { return }
+        let opening = !notepad.isOpen(for: id)
+        notepadWantsKeyboard = opening
+        if opening {
             completeHint(.notepad)      // used: it needs no introduction any more
         }
-        notepad.isOpen.toggle()
+        notepad.setOpen(opening, for: id)
+    }
+
+    /// The terminal the key window shows: the active one of its selected project.
+    func keyTerminalID() -> UUID? {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
+              let groupID = window(for: windowID)?.selectedGroupID,
+              let group = groups.first(where: { $0.id == groupID }) else { return nil }
+        let strip = tabs(of: group)
+        let tab = group.activeSessionID.flatMap { TabStrip.index(of: $0, in: strip) }.map { strip[$0] }
+        return tab.flatMap { paneToFocus(in: $0, groupID: groupID) } ?? group.activeSessionID
     }
 
     /// Put a line of the pad into the terminal's prompt, the way `session.prompt` does: a paste,
@@ -2966,6 +2979,11 @@ final class AppState: ObservableObject {
         projectColor = state.projectColor
         backgroundCountsAsRunning = state.backgroundCountsAsRunning
         notepad = state.notepad
+        // One switch for all pads, from before they were per terminal: they all come up open.
+        if notepad.openForAllFromOldState {
+            notepad.openTerminals = Set(state.sessions.map(\.id))
+            notepad.openForAllFromOldState = false
+        }
         reviews = state.reviews
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
             session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }

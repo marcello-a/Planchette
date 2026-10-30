@@ -33,7 +33,7 @@ struct NotepadPanel: View {
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 Button {
-                    appState.notepad.isOpen = false
+                    appState.notepad.setOpen(false, for: session.id)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))

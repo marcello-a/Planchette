@@ -32,15 +32,26 @@ struct NotepadLook: Codable, Equatable {
     static let returnsRange = 1...3
     static let defaultReturns = 2
 
-    var isOpen = false
+    /// The terminals whose pad is open — per terminal: one you write prompts for keeps its pad, the
+    /// others stay wide. The width and the other settings are the same for every pad.
+    var openTerminals: Set<UUID> = []
+    /// A state from before the pad was per terminal had one switch for all of them. When it was
+    /// on, every terminal comes up with its pad open, once (`AppState.applyRestore`); not stored.
+    var openForAllFromOldState = false
     var width: Double = NotepadLook.defaultWidth
     var returnsPerPrompt = NotepadLook.defaultReturns
     var afterLoading = NotepadAfterLoading.default
 
-    init(isOpen: Bool = false, width: Double = NotepadLook.defaultWidth,
+    func isOpen(for id: UUID?) -> Bool { id.map(openTerminals.contains) ?? false }
+
+    mutating func setOpen(_ open: Bool, for id: UUID) {
+        if open { openTerminals.insert(id) } else { openTerminals.remove(id) }
+    }
+
+    init(openTerminals: Set<UUID> = [], width: Double = NotepadLook.defaultWidth,
          returnsPerPrompt: Int = NotepadLook.defaultReturns,
          afterLoading: NotepadAfterLoading = .default) {
-        self.isOpen = isOpen
+        self.openTerminals = openTerminals
         self.width = NotepadLook.sanitized(width)
         self.returnsPerPrompt = NotepadLook.sanitized(returns: returnsPerPrompt)
         self.afterLoading = afterLoading
@@ -49,12 +60,29 @@ struct NotepadLook: Codable, Equatable {
     // A state written by another build, or by hand, must not cost the whole workspace.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        isOpen = (try? c.decodeIfPresent(Bool.self, forKey: .isOpen)) ?? false
+        if let open = try? c.decodeIfPresent([UUID].self, forKey: .openTerminals) {
+            openTerminals = Set(open)
+        } else {
+            openForAllFromOldState = (try? c.decodeIfPresent(Bool.self, forKey: .isOpen)) ?? false
+        }
         width = Self.sanitized((try? c.decodeIfPresent(Double.self, forKey: .width)) ?? Self.defaultWidth)
         returnsPerPrompt = Self.sanitized(
             returns: (try? c.decodeIfPresent(Int.self, forKey: .returnsPerPrompt)) ?? Self.defaultReturns)
         // A word a newer build wrote falls back; a state from before this setting gets the default.
         afterLoading = (try? c.decodeIfPresent(NotepadAfterLoading.self, forKey: .afterLoading)) ?? .default
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(openTerminals.map(\.uuidString).sorted().compactMap(UUID.init), forKey: .openTerminals)
+        try c.encode(width, forKey: .width)
+        try c.encode(returnsPerPrompt, forKey: .returnsPerPrompt)
+        try c.encode(afterLoading, forKey: .afterLoading)
+    }
+
+    /// `isOpen` is read only: the one switch for all pads that states before 0.2.47 wrote.
+    private enum CodingKeys: String, CodingKey {
+        case isOpen, openTerminals, width, returnsPerPrompt, afterLoading
     }
 
     /// A width that can be stored: a number, and not below the minimum.
