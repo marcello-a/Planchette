@@ -42,6 +42,11 @@ struct MergedProjectRow<Trailing: View>: View {
         let shownBranch = facts.branch.flatMap { details.showsBranch($0) ? $0 : nil }
         let shownPrompt = details.shows(.task) ? facts.prompt.flatMap { $0.isEmpty ? nil : $0 } : nil
         let showsAge = details.shows(.age)
+        let hasSecondLine = shownPrompt != nil
+        // A terminal named after its branch's ticket says it twice once the branch is on the row.
+        let shownName = facts.terminalName.flatMap { name in
+            shownBranch.map { $0.localizedCaseInsensitiveContains(name) } == true ? nil : name
+        }
         HStack(alignment: .top, spacing: 6) {
             // The state, and under it what Claude still runs in the background — with one
             // terminal the sprite is the project's count as well.
@@ -70,13 +75,23 @@ struct MergedProjectRow<Trailing: View>: View {
                             .foregroundStyle(.secondary)
                             .help(L10n.t(.inactiveProject))
                     }
-                    if let name = facts.terminalName {
+                    // Which checkout, right after the name: the branch, or a name of its own. It
+                    // gives way first — the name and the pills on the right stay whole.
+                    if let shownBranch {
+                        BranchText(branch: shownBranch, trim: details.branchTrim)
+                            .layoutPriority(-1)
+                    } else if let name = shownName {
                         Text("· \(name)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .layoutPriority(-1)
                     }
                     Spacer(minLength: 4)
+                    // Without a prompt line the age moves up: a minimal row is one line.
+                    if showsAge, !hasSecondLine {
+                        WaitingTimeText(since: facts.stateSince)
+                    }
                     if let usage = facts.usage {
                         if details.shows(.model) { ModelLabel(model: usage.model) }
                         if details.shows(.contextUsage) { ContextRing(usage: usage) }
@@ -104,21 +119,14 @@ struct MergedProjectRow<Trailing: View>: View {
                 if details.shows(.note), let note = facts.note {
                     NoteLine(note: note)
                 }
-                // Where and what: a work branch, the prompt, and how long ago — the age at the
-                // right edge, where every list keeps it. A question or an error keeps its age
-                // even without a prompt.
-                if shownBranch != nil || shownPrompt != nil || (showsAge && facts.state.needsAttention) {
+                // What it is doing, over the whole width, and how long ago — the age at the right
+                // edge, where every list keeps it.
+                if let shownPrompt {
                     HStack(spacing: 5) {
-                        if let shownBranch {
-                            BranchText(branch: shownBranch, trim: details.branchTrim)
-                                .layoutPriority(-1)
-                        }
-                        if let shownPrompt {
-                            Text(shownPrompt)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                        Text(shownPrompt)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         Spacer(minLength: 4)
                         if showsAge {
                             WaitingTimeText(since: facts.stateSince)
