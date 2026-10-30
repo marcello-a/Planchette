@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.47] — 2026-10-30
+
 ### Added
 - **Main terminals.** Right-click a terminal (in the project panel or on its tab) → "Mark as main
   terminal": it carries a star and stays under its project, also while the project is folded —
