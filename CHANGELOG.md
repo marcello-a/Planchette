@@ -8,6 +8,17 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **A project with one terminal is one row.** No disclosure arrow, and no second row that repeats
+  the name, the path and the state: the state icon, the project's name, then what it is doing and
+  since when. A second terminal turns it back into a list. Settings → Project panel → Projects →
+  Layout turns it off.
+- **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
+  in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
+  change afterwards; the level then shows *Custom*.
+- The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say
+  nothing about a checkout. "Also main and master" shows them again.
+
 ### Added
 - **Reviews, beside the bell.** A new icon left of the notifications bell switches the right panel
   to the pull requests that ask for your review — the same panel, rows and colours, by stage:

@@ -67,6 +67,9 @@ enum Help {
             Entry(.minifySidebar, nil, where: .helpWhereSidebar),
             Entry(.helpBranchTitle, .helpBranchDetail, where: .helpWhereSidebar),
             Entry(.branchTrimTitle, .detailBranchHelp, where: .helpWhereSettings),
+            Entry(.mergeSingleTitle, .mergeSingleHelp, where: .helpWhereSettings),
+            Entry(.detailLevelTitle, .detailLevelHelp, where: .helpWhereSettings),
+            Entry(.detailTrunkBranch, .detailTrunkBranchHelp, where: .helpWhereSettings),
             Entry(.helpPullRequestTitle, .helpPullRequestDetail, where: .helpWhereSidebar),
         ]),
         Section(titleKey: .helpSectionTerminals, entries: [

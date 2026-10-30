@@ -224,10 +224,12 @@ final class SidebarDetailGroupTests: XCTestCase {
     }
 
     func testTheOptInDetailsAreTheClaudeGroup() {
-        // The footer under that group explains why they start off.
-        for detail in SidebarDetail.allCases {
+        // The footer under that group explains why they start off. The one other: "also main
+        // and master" refines the branch — the trunk says nothing about a checkout.
+        for detail in SidebarDetail.allCases where detail != .trunkBranch {
             XCTAssertEqual(!detail.defaultOn, detail.group == .claude, "\(detail)")
         }
+        XCTAssertFalse(SidebarDetail.trunkBranch.defaultOn)
     }
 
     func testEveryTextOfTheNewPagesIsTranslated() {

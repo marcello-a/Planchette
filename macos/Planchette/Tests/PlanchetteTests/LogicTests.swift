@@ -3388,7 +3388,7 @@ final class AgentTitleTests: XCTestCase {
 final class SidebarDetailsTests: XCTestCase {
     func testDefaultsAreOnExceptTheClaudeDetails() {
         let details = SidebarDetails()
-        let optional: Set<SidebarDetail> = [.model, .contextUsage, .cacheTimer]
+        let optional: Set<SidebarDetail> = [.model, .contextUsage, .cacheTimer, .trunkBranch]
         for detail in SidebarDetail.allCases {
             XCTAssertEqual(details.shows(detail), !optional.contains(detail), "\(detail)")
         }

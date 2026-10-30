@@ -36,7 +36,7 @@ enum SidebarDetailGroup: String, CaseIterable, Identifiable {
 /// On by default — except the model and the context usage, which cost a
 /// transcript read and are opinionated about what a row should say.
 enum SidebarDetail: String, CaseIterable, Identifiable {
-    case path, branch, pullRequest, task, age, tags, note, snooze, attentionCounts
+    case path, branch, trunkBranch, pullRequest, task, age, tags, note, snooze, attentionCounts
     case backgroundTasks
     case model, contextUsage, cacheTimer
 
@@ -45,7 +45,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
     /// The heading this detail sits under in Settings.
     var group: SidebarDetailGroup {
         switch self {
-        case .path, .branch, .pullRequest: .location
+        case .path, .branch, .trunkBranch, .pullRequest: .location
         case .task, .age, .backgroundTasks: .activity
         case .tags, .note, .snooze: .marks
         case .model, .contextUsage, .cacheTimer: .claude
@@ -55,7 +55,9 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
 
     var defaultOn: Bool {
         switch self {
-        case .model, .contextUsage, .cacheTimer: false
+        // The trunk says nothing about a checkout: `main` on every row is clutter. It shows
+        // once it is asked for, or as soon as the branch is a work branch.
+        case .model, .contextUsage, .cacheTimer, .trunkBranch: false
         default: true
         }
     }
@@ -64,6 +66,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         switch self {
         case .path: .detailPath
         case .branch: .detailBranch
+        case .trunkBranch: .detailTrunkBranch
         case .pullRequest: .detailPullRequest
         case .task: .detailTask
         case .age: .detailAge
@@ -83,6 +86,7 @@ enum SidebarDetail: String, CaseIterable, Identifiable {
         switch self {
         case .path: .detailPathHelp
         case .branch: .detailBranchHelp
+        case .trunkBranch: .detailTrunkBranchHelp
         case .pullRequest: .detailPullRequestHelp
         case .task: .detailTaskHelp
         case .age: .detailAgeHelp
@@ -160,6 +164,36 @@ enum PromptSource: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Three shortcuts for the detail switches, so a calm panel does not take thirteen ticks.
+/// A shortcut, not a mode: it sets the switches, and a switch changed afterwards turns the
+/// level into "Custom" (`SidebarDetails.level` is nil).
+enum SidebarDetailLevel: String, CaseIterable, Identifiable {
+    /// The state, the name, the PR, the age — one line per project of one terminal.
+    case minimal
+    /// The defaults: what a row needs to say what it is doing and where.
+    case standard
+    /// Every detail, the trunk branch and Claude's model, context and cache included.
+    case everything
+
+    var id: String { rawValue }
+
+    var titleKey: LKey {
+        switch self {
+        case .minimal: .detailLevelMinimal
+        case .standard: .detailLevelStandard
+        case .everything: .detailLevelEverything
+        }
+    }
+
+    func shows(_ detail: SidebarDetail) -> Bool {
+        switch self {
+        case .standard: detail.defaultOn
+        case .everything: true
+        case .minimal: [.pullRequest, .age, .snooze, .attentionCounts].contains(detail)
+        }
+    }
+}
+
 /// Which details are shown, and the two that are not a yes/no — how a branch is
 /// trimmed and where the prompt line gets its text.
 ///
@@ -173,6 +207,9 @@ struct SidebarDetails: Codable, Equatable {
     var overrides: [String: Bool] = [:]
     var branchTrim: BranchTrim = .back
     var promptSource: PromptSource = .agentTitle
+    /// A project with one terminal is one row: no disclosure arrow, no second row that
+    /// repeats the name and the path. On by default; a second terminal makes it a list again.
+    var mergesSingleTerminal = true
 
     init() {}
 
@@ -185,6 +222,7 @@ struct SidebarDetails: Codable, Equatable {
         // is a choice we do not have — the default stands.
         branchTrim = (try? c.decode(BranchTrim.self, forKey: .branchTrim)) ?? .back
         promptSource = (try? c.decode(PromptSource.self, forKey: .promptSource)) ?? .agentTitle
+        mergesSingleTerminal = (try? c.decode(Bool.self, forKey: .mergesSingleTerminal)) ?? true
     }
 
     /// The version that wrote the old default into every state file.
@@ -211,6 +249,36 @@ struct SidebarDetails: Codable, Equatable {
 
     mutating func set(_ detail: SidebarDetail, _ on: Bool) {
         overrides[detail.rawValue] = on == detail.defaultOn ? nil : on
+    }
+
+    /// Whether a project of `terminalCount` terminals is drawn as one merged row.
+    func merges(terminalCount: Int) -> Bool { mergesSingleTerminal && terminalCount == 1 }
+
+    /// Whether a branch is worth its place: the detail is on, and the branch is a work
+    /// branch — or the trunk is asked for too. The PR pill does not depend on this.
+    func showsBranch(_ branch: String) -> Bool {
+        shows(.branch) && (shows(.trunkBranch) || PullRequests.isWorkBranch(branch))
+    }
+
+    /// The path of a merged row: only when it says something the project name does not —
+    /// a worktree, a sub-folder, a folder named differently.
+    func showsPath(directory: String, projectName: String) -> Bool {
+        guard shows(.path) else { return false }
+        let folder = (directory as NSString).lastPathComponent
+        return folder.localizedCaseInsensitiveCompare(projectName) != .orderedSame
+    }
+
+    /// The preset these switches match; nil = a selection of the user's own ("Custom").
+    var level: SidebarDetailLevel? {
+        SidebarDetailLevel.allCases.first { level in
+            SidebarDetail.allCases.allSatisfy { shows($0) == level.shows($0) }
+        }
+    }
+
+    /// Set every switch the way a preset has it. The other choices (trim, prompt source,
+    /// the merged row) are not details and stay as they are.
+    mutating func apply(_ level: SidebarDetailLevel) {
+        for detail in SidebarDetail.allCases { set(detail, level.shows(detail)) }
     }
 
     /// Whether anything on a row is read out of a transcript — the sweep runs

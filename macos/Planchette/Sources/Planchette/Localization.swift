@@ -267,6 +267,8 @@ enum LKey: String, CaseIterable {
     case promptSourceTitle, promptSourceFirst, promptSourceLast, promptSourceAgentTitle
     case promptSourceFirstHelp, promptSourceLastHelp, promptSourceAgentTitleHelp
     case detailNoteHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
+    case detailTrunkBranch, detailTrunkBranchHelp, mergeSingleTitle, mergeSingleHelp, layoutSection
+    case detailLevelTitle, detailLevelHelp, detailLevelMinimal, detailLevelStandard, detailLevelEverything, detailLevelCustom
     // The Reviews mode of the notifications panel
     case reviewBusyUnread, reviewBusyAgentOnBranch, reviewBusyCountOne
     case reviewSkillTitle, reviewSkillHelp, reviewSkillInstalled, reviewsHintTitle, reviewsHintBody, reviewsHintTry
@@ -667,6 +669,18 @@ enum L10n {
         .reviewHelpReviewing: "Click to show the review terminal",
         .reviewHelpFindings: "Click to decide on the findings",
         .reviewHelpSent: "Click to open the pull request on GitHub",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Also main and master",
+        .detailTrunkBranchHelp: "Show the branch also when it is main, master, develop or trunk. Off: only a work branch shows, because the trunk says nothing about a checkout.",
+        .mergeSingleTitle: "One row for a project with one terminal",
+        .mergeSingleHelp: "The project and its terminal share one row: no disclosure arrow, no second row. The path shows only when the folder name differs from the project's. A second terminal turns it back into a list.",
+        .layoutSection: "Layout",
+        .detailLevelTitle: "Detail level",
+        .detailLevelHelp: "A shortcut for the switches below. Change any switch afterwards: the level then shows Custom.",
+        .detailLevelMinimal: "Minimal",
+        .detailLevelStandard: "Standard",
+        .detailLevelEverything: "Everything",
+        .detailLevelCustom: "Custom",
     ]
 
     // MARK: German
@@ -1026,6 +1040,18 @@ enum L10n {
         .reviewHelpReviewing: "Klicken, um das Review-Terminal zu zeigen",
         .reviewHelpFindings: "Klicken, um über die Befunde zu entscheiden",
         .reviewHelpSent: "Klicken, um den Pull Request auf GitHub zu öffnen",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Auch main und master",
+        .detailTrunkBranchHelp: "Den Branch auch zeigen, wenn er main, master, develop oder trunk ist. Aus: nur ein Arbeits-Branch erscheint, denn der Trunk sagt nichts über einen Checkout.",
+        .mergeSingleTitle: "Eine Zeile für ein Projekt mit einem Terminal",
+        .mergeSingleHelp: "Projekt und Terminal teilen sich eine Zeile: kein Aufklapp-Pfeil, keine zweite Zeile. Der Pfad erscheint nur, wenn der Ordnername vom Projektnamen abweicht. Ein zweites Terminal macht wieder eine Liste daraus.",
+        .layoutSection: "Layout",
+        .detailLevelTitle: "Detailgrad",
+        .detailLevelHelp: "Eine Abkürzung für die Schalter unten. Jeder Schalter lässt sich danach ändern; der Grad zeigt dann Eigene.",
+        .detailLevelMinimal: "Minimal",
+        .detailLevelStandard: "Standard",
+        .detailLevelEverything: "Alles",
+        .detailLevelCustom: "Eigene",
     ]
 
     // MARK: French
@@ -1385,6 +1411,18 @@ enum L10n {
         .reviewHelpReviewing: "Cliquez pour afficher le terminal de revue",
         .reviewHelpFindings: "Cliquez pour décider des remarques",
         .reviewHelpSent: "Cliquez pour ouvrir la pull request sur GitHub",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Aussi main et master",
+        .detailTrunkBranchHelp: "Afficher la branche aussi quand c'est main, master, develop ou trunk. Désactivé : seule une branche de travail s'affiche, car le tronc ne dit rien d'un checkout.",
+        .mergeSingleTitle: "Une ligne pour un projet à un terminal",
+        .mergeSingleHelp: "Le projet et son terminal partagent une ligne : pas de flèche, pas de seconde ligne. Le chemin n'apparaît que si le nom du dossier diffère de celui du projet. Un second terminal en refait une liste.",
+        .layoutSection: "Disposition",
+        .detailLevelTitle: "Niveau de détail",
+        .detailLevelHelp: "Un raccourci pour les interrupteurs ci-dessous. Chacun reste modifiable ; le niveau indique alors Personnalisé.",
+        .detailLevelMinimal: "Minimal",
+        .detailLevelStandard: "Standard",
+        .detailLevelEverything: "Tout",
+        .detailLevelCustom: "Personnalisé",
     ]
 
     // MARK: Spanish
@@ -1744,6 +1782,18 @@ enum L10n {
         .reviewHelpReviewing: "Haz clic para mostrar el terminal de revisión",
         .reviewHelpFindings: "Haz clic para decidir sobre los hallazgos",
         .reviewHelpSent: "Haz clic para abrir el pull request en GitHub",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "También main y master",
+        .detailTrunkBranchHelp: "Mostrar la rama también cuando es main, master, develop o trunk. Desactivado: solo aparece una rama de trabajo, porque el tronco no dice nada de un checkout.",
+        .mergeSingleTitle: "Una fila para un proyecto con un terminal",
+        .mergeSingleHelp: "El proyecto y su terminal comparten una fila: sin flecha y sin segunda fila. La ruta solo aparece si el nombre de la carpeta difiere del del proyecto. Un segundo terminal lo vuelve a convertir en lista.",
+        .layoutSection: "Diseño",
+        .detailLevelTitle: "Nivel de detalle",
+        .detailLevelHelp: "Un atajo para los interruptores de abajo. Cambia cualquiera después; el nivel muestra entonces Personalizado.",
+        .detailLevelMinimal: "Mínimo",
+        .detailLevelStandard: "Estándar",
+        .detailLevelEverything: "Todo",
+        .detailLevelCustom: "Personalizado",
     ]
 
     // MARK: Italian
@@ -2103,6 +2153,18 @@ enum L10n {
         .reviewHelpReviewing: "Fai clic per mostrare il terminale di revisione",
         .reviewHelpFindings: "Fai clic per decidere sui rilievi",
         .reviewHelpSent: "Fai clic per aprire la pull request su GitHub",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Anche main e master",
+        .detailTrunkBranchHelp: "Mostra il branch anche quando è main, master, develop o trunk. Disattivato: compare solo un branch di lavoro, perché il trunk non dice nulla di un checkout.",
+        .mergeSingleTitle: "Una riga per un progetto con un terminale",
+        .mergeSingleHelp: "Il progetto e il suo terminale condividono una riga: niente freccia, niente seconda riga. Il percorso compare solo se il nome della cartella è diverso da quello del progetto. Un secondo terminale lo trasforma di nuovo in un elenco.",
+        .layoutSection: "Layout",
+        .detailLevelTitle: "Livello di dettaglio",
+        .detailLevelHelp: "Una scorciatoia per gli interruttori qui sotto. Ognuno resta modificabile; il livello mostra allora Personalizzato.",
+        .detailLevelMinimal: "Minimo",
+        .detailLevelStandard: "Standard",
+        .detailLevelEverything: "Tutto",
+        .detailLevelCustom: "Personalizzato",
     ]
 
     // MARK: Dutch
@@ -2462,6 +2524,18 @@ enum L10n {
         .reviewHelpReviewing: "Klik om de reviewterminal te tonen",
         .reviewHelpFindings: "Klik om over de bevindingen te beslissen",
         .reviewHelpSent: "Klik om de pull request op GitHub te openen",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Ook main en master",
+        .detailTrunkBranchHelp: "Toon de branch ook als het main, master, develop of trunk is. Uit: alleen een werkbranch verschijnt, want de trunk zegt niets over een checkout.",
+        .mergeSingleTitle: "Eén rij voor een project met één terminal",
+        .mergeSingleHelp: "Het project en zijn terminal delen één rij: geen uitklappijl, geen tweede rij. Het pad verschijnt alleen als de mapnaam afwijkt van die van het project. Een tweede terminal maakt er weer een lijst van.",
+        .layoutSection: "Indeling",
+        .detailLevelTitle: "Detailniveau",
+        .detailLevelHelp: "Een snelkoppeling voor de schakelaars hieronder. Elke schakelaar kan daarna nog veranderen; het niveau toont dan Aangepast.",
+        .detailLevelMinimal: "Minimaal",
+        .detailLevelStandard: "Standaard",
+        .detailLevelEverything: "Alles",
+        .detailLevelCustom: "Aangepast",
     ]
 
     // MARK: Portuguese
@@ -2821,5 +2895,17 @@ enum L10n {
         .reviewHelpReviewing: "Clica para mostrar o terminal de revisão",
         .reviewHelpFindings: "Clica para decidir sobre os achados",
         .reviewHelpSent: "Clica para abrir o pull request no GitHub",
+        // Project panel: merged rows and detail levels
+        .detailTrunkBranch: "Também main e master",
+        .detailTrunkBranchHelp: "Mostrar o branch também quando é main, master, develop ou trunk. Desligado: só aparece um branch de trabalho, porque o trunk não diz nada sobre um checkout.",
+        .mergeSingleTitle: "Uma linha para um projeto com um terminal",
+        .mergeSingleHelp: "O projeto e o seu terminal partilham uma linha: sem seta e sem segunda linha. O caminho só aparece quando o nome da pasta difere do do projeto. Um segundo terminal volta a fazer dele uma lista.",
+        .layoutSection: "Disposição",
+        .detailLevelTitle: "Nível de detalhe",
+        .detailLevelHelp: "Um atalho para os interruptores abaixo. Qualquer um pode mudar depois; o nível mostra então Personalizado.",
+        .detailLevelMinimal: "Mínimo",
+        .detailLevelStandard: "Padrão",
+        .detailLevelEverything: "Tudo",
+        .detailLevelCustom: "Personalizado",
     ]
 }

@@ -180,8 +180,9 @@ Also worth a second:
 - Tabs that split, as in iTerm2: drag a tab onto a terminal's edge to split it, a pane's title back onto the tab bar to make it a tab; ⌘D / ⌘⇧D split off a new terminal; one button puts every tab in one view.
 - Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
-- Choose what every row of the project panel shows — path, branch, pull request, prompt, age,
-  tags — in *Settings → Project panel*.
+- A project with one terminal is one row; choose what every row of the project panel shows — path,
+  branch, pull request, prompt, age, tags — switch by switch or as a detail level (*Minimal*,
+  *Standard*, *Everything*), in *Settings → Project panel*, with a live example.
 - Multiple windows, and merging them back. Saved arrangements rebuild a whole workspace in one click.
 
 <p align="center">

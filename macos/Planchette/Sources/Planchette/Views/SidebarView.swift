@@ -678,7 +678,11 @@ struct SidebarView: View {
         // them to STAY folded can turn it off (`peekCollapsedProjects`).
         guard appState.peekCollapsedProjects else { return [] }
         guard collapsedGroups.contains(group.id) else { return [] }
-        return appState.sessions(in: group).filter {
+        let sessions = appState.sessions(in: group)
+        // A merged row cannot fold: its one terminal is on it already. A fold left over from
+        // when it had two must not stand a second copy of the terminal under it.
+        guard !appState.sidebarDetails.merges(terminalCount: sessions.count) else { return [] }
+        return sessions.filter {
             $0.state.needsAttention && $0.isUnread && !appState.isMuted($0)
                 && dismissedPeeks[$0.id] != $0.stateSince
         }
@@ -702,21 +706,142 @@ struct SidebarView: View {
     /// projects, or the loose ones), which is what "the gap below this row"
     /// resolves against.
     private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = []) -> some View {
+        let sessions = appState.sessions(in: group)
+        return Group {
+            // A project of one terminal is one row (Settings → Project panel → Layout): the
+            // project row and the terminal row said the same thing twice.
+            if appState.sidebarDetails.merges(terminalCount: sessions.count), let session = sessions.first {
+                mergedRow(group, session: session)
+            } else {
+                projectGroup(group, sessions: sessions)
+            }
+        }
+        .tag(group.id)
+        // Drag and drop belong on the ROW, not on the label inside it: a
+        // DisclosureGroup's label never sees the drag gesture. And it has to be
+        // `draggable`, not `onDrag` — the latter swallows the click that selects
+        // the row, so a project could be dragged but no longer opened.
+        // Drag a project — or the whole selection — onto a folder to file it,
+        // or onto another project to land next to it in that project's folder.
+        .draggable(ProjectDragPayload(ids: actionTargets(group))) { dragPreview(for: group) }
+        // Measured so the delegate can tell the upper half of the row from the
+        // lower one — that split is what makes a drop land in a chosen gap.
+        .background(
+            GeometryReader { geo in
+                Color.clear.onAppear { rowHeights[group.id] = geo.size.height }
+                    .onChange(of: geo.size.height) { _, new in rowHeights[group.id] = new }
+            }
+        )
+        .overlay(insertionLine(group))
+        .onDrop(
+            of: [.plainText, .utf8PlainText, .text],
+            delegate: ProjectDropDelegate(
+                rowID: group.id,
+                height: { rowHeights[group.id] ?? 24 },
+                slot: { dropSlot = $0 },
+                perform: { ids, below in
+                    dropNext(to: group, below: below, ids: ids, siblings: siblings)
+                }))
+    }
+
+    /// Whether this window shows the project's terminals right now. Only the terminal actually
+    /// on screen is marked: the mark answers "which one am I looking at", so exactly one row in
+    /// the whole sidebar may carry it — the active terminal of the project this window shows,
+    /// in cluster mode the focused pane, since that is the same id. A project you are not in
+    /// has no visible terminal, and neither has a window showing a folder overview.
+    private func showsTerminals(of group: SessionGroup) -> Bool {
+        appState.window(for: windowID).map { window in
+            window.selectedFolderID == nil && !window.showsProjectOverview
+                && window.selectedGroupID == group.id
+        } ?? false
+    }
+
+    /// A project and its one terminal as one row. A click opens the terminal, a drag moves the
+    /// project, the active terminal is outlined in its state colour — what the two rows did.
+    private func mergedRow(_ group: SessionGroup, session: TerminalSession) -> some View {
+        let isActive = showsTerminals(of: group) && session.id == group.activeSessionID
+        var facts = MergedRowFacts(group: group, session: session, state: appState)
+        // The project's colour as the dot when the terminal has none of its own: the wash
+        // behind the row can be switched off (Settings → General → Project color).
+        if facts.color == .none { facts.color = group.color }
+        return MergedProjectRow(facts: facts, details: appState.sidebarDetails) {
+            if hoveredGroup == group.id {
+                Button { confirmClose(group) } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(L10n.t(.closeProject))
+            }
+        }
+        .padding(.horizontal, 4).padding(.vertical, 3)
+        .background(ProjectGradient(color: group.color, look: appState.projectColor)
+            .clipShape(RoundedRectangle(cornerRadius: 5)))
+        .overlay(
+            RoundedRectangle(cornerRadius: 5)
+                .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
+        )
+        .contentShape(Rectangle())
+        // As on a project row: the List reports only a change of selection, so a click on the
+        // project you are in would do nothing without this. It opens the one terminal.
+        .simultaneousGesture(TapGesture().onEnded {
+            guard !NSEvent.modifierFlags.contains(.command),
+                  !NSEvent.modifierFlags.contains(.shift) else { return }
+            DispatchQueue.main.async {
+                appState.openProject(group, inWindow: windowID)
+            }
+        })
+        .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
+        .overlay(dropHighlight(group.id))
+        .help(sessionTooltip(session))
+        .contextMenu { mergedMenu(group, session: session) }
+    }
+
+    /// One menu for the merged row: the terminal's attention and marks first, then what the
+    /// project is and where it lives, closing alone at the end. A selection of several
+    /// projects gets the batch menu, as on any project row.
+    @ViewBuilder
+    private func mergedMenu(_ group: SessionGroup, session: TerminalSession) -> some View {
+        if actionTargets(group).count > 1 {
+            groupMenu(group)
+        } else {
+            SessionAttentionMenu(session: session)
+            Button(group.active ? L10n.t(.markProjectInactive) : L10n.t(.markProjectActive)) {
+                appState.setActive(!group.active, forGroups: [group.id])
+            }
+            .help(L10n.t(.markProjectActiveHelp))
+            Divider()
+            TagMenu(session: session)
+            Divider()
+            Button(group.favorite ? L10n.t(.unmakeFavorite) : L10n.t(.makeFavorite)) {
+                appState.updateGroup(group.id) { $0.favorite.toggle() }
+            }
+            .help(L10n.t(.favoriteHelp))
+            Button(L10n.t(.rename)) { rename(group: group) }
+            colorPicker(current: group.color) { color in
+                appState.updateGroup(group.id) { $0.color = color }
+            }
+            Button(L10n.t(.startupCommand)) { appState.promptStartupCommand(session: session) }
+                .help(L10n.t(.startupCommandHelp))
+            Divider()
+            folderPicker(for: group)
+            Button(L10n.t(.moveToNewWindow)) {
+                openWindow(value: appState.moveGroupToNewWindow(group.id))
+            }
+            .help(L10n.t(.moveToNewWindowHelp))
+            Divider()
+            Button(L10n.t(.closeProject), role: .destructive) { confirmClose(group) }
+        }
+    }
+
+    /// A project of several terminals: the project row, and its terminals under it.
+    private func projectGroup(_ group: SessionGroup, sessions: [TerminalSession]) -> some View {
         // The branch sits on the project row while every terminal of it is on
         // that branch, and moves into the terminal rows as soon as they differ —
         // it is stated once, where it is true.
         let shared = appState.sharedBranch(of: group)
-        // Only the terminal actually on screen is marked. The mark answers
-        // "which one am I looking at", so exactly one row in the whole sidebar
-        // may carry it: the active terminal of the project this window shows —
-        // in cluster mode the focused pane, since that is the same id. A project
-        // you are not in has no visible terminal, and neither has a window
-        // showing a folder overview.
-        let visible = appState.window(for: windowID).map { window in
-            window.selectedFolderID == nil && !window.showsProjectOverview
-                && window.selectedGroupID == group.id
-        } ?? false
-        let sessions = appState.sessions(in: group)
+        let visible = showsTerminals(of: group)
         return DisclosureGroup(isExpanded: expansion(of: group)) {
             ForEach(Array(sessions.enumerated()), id: \.element.id) { row, session in
                 sessionRow(session,
@@ -799,32 +924,6 @@ struct SidebarView: View {
             .overlay(dropHighlight(group.id))
             .contextMenu { groupMenu(group) }
         }
-        .tag(group.id)
-        // Drag and drop belong on the ROW, not on the label inside it: a
-        // DisclosureGroup's label never sees the drag gesture. And it has to be
-        // `draggable`, not `onDrag` — the latter swallows the click that selects
-        // the row, so a project could be dragged but no longer opened.
-        // Drag a project — or the whole selection — onto a folder to file it,
-        // or onto another project to land next to it in that project's folder.
-        .draggable(ProjectDragPayload(ids: actionTargets(group))) { dragPreview(for: group) }
-        // Measured so the delegate can tell the upper half of the row from the
-        // lower one — that split is what makes a drop land in a chosen gap.
-        .background(
-            GeometryReader { geo in
-                Color.clear.onAppear { rowHeights[group.id] = geo.size.height }
-                    .onChange(of: geo.size.height) { _, new in rowHeights[group.id] = new }
-            }
-        )
-        .overlay(insertionLine(group))
-        .onDrop(
-            of: [.plainText, .utf8PlainText, .text],
-            delegate: ProjectDropDelegate(
-                rowID: group.id,
-                height: { rowHeights[group.id] ?? 24 },
-                slot: { dropSlot = $0 },
-                perform: { ids, below in
-                    dropNext(to: group, below: below, ids: ids, siblings: siblings)
-                }))
     }
 
     /// The project context menu. With several projects selected it acts on all
@@ -1082,7 +1181,8 @@ struct SidebarView: View {
     /// losing the review state.
     @ViewBuilder
     private func branchLine(_ branch: String, pr: PullRequest?) -> some View {
-        let showsBranch = appState.shows(.branch)
+        // A trunk branch says nothing about a checkout: shown only when asked for (`trunkBranch`).
+        let showsBranch = appState.sidebarDetails.showsBranch(branch)
         let shownPR = appState.shows(.pullRequest) ? pr : nil
         if showsBranch || shownPR != nil {
             HStack(spacing: 4) {

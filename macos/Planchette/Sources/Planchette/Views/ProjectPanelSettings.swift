@@ -61,6 +61,27 @@ private struct TerminalPage: View {
 
     var body: some View {
         Form {
+            // The shortcut first: three presets over the switches below, and the row they
+            // make — the merged row, because it carries every detail at once.
+            Section {
+                Picker(L10n.t(.detailLevelTitle), selection: Binding<SidebarDetailLevel?>(
+                    get: { appState.sidebarDetails.level },
+                    set: { if let level = $0 { appState.sidebarDetails.apply(level) } })
+                ) {
+                    ForEach(SidebarDetailLevel.allCases) { Text(L10n.t($0.titleKey)).tag(Optional($0)) }
+                    // Shown, never picked: the switches below make it.
+                    Text(L10n.t(.detailLevelCustom)).tag(SidebarDetailLevel?.none)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                Text(L10n.t(.detailLevelHelp))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                SidebarRowExample()
+            } header: {
+                Text(L10n.t(.detailLevelTitle))
+            }
             ForEach(SidebarDetailGroup.terminalGroups) { group in
                 Section {
                     ForEach(SidebarDetail.allCases.filter { $0.group == group }) {
@@ -116,6 +137,20 @@ private struct ProjectPage: View {
 
     var body: some View {
         Form {
+            Section(L10n.t(.layoutSection)) {
+                Toggle(isOn: $appState.sidebarDetails.mergesSingleTerminal) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.t(.mergeSingleTitle))
+                        Text(L10n.t(.mergeSingleHelp))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        SidebarRowExample()
+                            .opacity(appState.sidebarDetails.mergesSingleTerminal ? 1 : 0.4)
+                    }
+                }
+                .help(L10n.t(.mergeSingleHelp))
+            }
             ForEach(SidebarDetailGroup.allCases.filter { !$0.isTerminal }) { group in
                 Section {
                     ForEach(SidebarDetail.allCases.filter { $0.group == group }) {
@@ -169,6 +204,9 @@ private struct DetailSwitch: View {
                 .disabled(!appState.shows(detail))
                 .opacity(appState.shows(detail) ? 1 : 0.4)
         }
+        // "Also main and master" refines the branch: with the branch off it has nothing to say.
+        .disabled(detail == .trunkBranch && !appState.shows(.branch))
+        .opacity(detail == .trunkBranch && !appState.shows(.branch) ? 0.5 : 1)
     }
 
     @ViewBuilder
@@ -348,5 +386,29 @@ private struct TagRow: View {
         } else {
             draft = tag
         }
+    }
+}
+
+/// The demo of a whole row: the merged row the sidebar draws for a project of one terminal,
+/// fed a sample that has something to say in every detail, drawn with the switches as they
+/// are now — so every switch on this page shows what it does to a real row.
+struct SidebarRowExample: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(L10n.t(.detailExample))
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 5)
+            MergedProjectRow(
+                facts: .sample(promptSource: appState.sidebarDetails.promptSource),
+                details: appState.sidebarDetails) { EmptyView() }
+                .padding(.horizontal, 6).padding(.vertical, 4)
+                // About as wide as the project panel, on its own ground.
+                .frame(width: 270, alignment: .leading)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .allowsHitTesting(false)
     }
 }
