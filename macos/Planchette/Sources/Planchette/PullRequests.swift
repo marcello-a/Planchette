@@ -53,6 +53,22 @@ enum PullRequests {
         !branch.isEmpty && !trunkBranches.contains(branch)
     }
 
+    /// The terminals whose branch is not the one it was: their PR belongs to the
+    /// old branch. A terminal that is new to the map had no PR to lose.
+    static func movedSessions(from old: [UUID: String], to new: [UUID: String]) -> Set<UUID> {
+        Set(old.keys.filter { new[$0] != old[$0] })
+    }
+
+    /// The least time between two `gh` sweeps that a finished command or turn
+    /// asks for. An agent ends many tool calls a minute; the regular poll stays
+    /// `AppState.pullRequestPollInterval`.
+    static let eagerGap: TimeInterval = 15
+
+    static func eagerRefreshDue(last: Date?, now: Date) -> Bool {
+        guard let last else { return true }
+        return now.timeIntervalSince(last) >= eagerGap
+    }
+
     /// The fields `lookup` asks `gh` for — kept next to `parse`, which reads them.
     static let jsonFields = "number,state,isDraft,reviewDecision,url,title"
 
@@ -90,12 +106,39 @@ enum PullRequests {
                            title: item["title"] as? String ?? "")
     }
 
+    /// What `gh` said about a branch.
+    enum Lookup: Equatable {
+        case found(PullRequest)
+        /// `gh` answered: the branch has no PR.
+        case none
+        /// `gh` did not answer — no network, a timeout, not logged in, not a
+        /// GitHub remote. Says nothing about the PR, so the pill stays as it was.
+        case failed
+    }
+
+    /// The PR each terminal shows after a sweep. A terminal whose lookup failed
+    /// keeps what it showed — one dropped connection must not take every pill
+    /// away for a minute — but only while it is on the branch that was asked for.
+    static func merge(
+        answers: [UUID: Lookup], asked: [UUID: String], branches: [UUID: String],
+        previous: [UUID: PullRequest]
+    ) -> [UUID: PullRequest] {
+        answers.reduce(into: [:]) { result, entry in
+            let id = entry.key
+            guard let branch = asked[id], branches[id] == branch else { return }
+            switch entry.value {
+            case .found(let pr): result[id] = pr
+            case .none: break
+            case .failed: result[id] = previous[id]
+            }
+        }
+    }
+
     /// Ask `gh` for the PR of `branch`, run inside `directory` so `gh` resolves
     /// the repo (and its remote host) the way it would in that terminal.
-    /// Returns nil for no PR and for every failure — no `gh`, not logged in, no
-    /// network, not a GitHub remote: all of them mean "no pill", never an alert.
-    static func lookup(branch: String, in directory: String) -> PullRequest? {
-        guard let gh = ghPath() else { return nil }
+    /// No failure is an alert: no `gh`, no login, no network all mean "no pill".
+    static func lookup(branch: String, in directory: String) -> Lookup {
+        guard let gh = ghPath() else { return .none }
         // A hung network call must not hold a poll forever.
         guard let result = Subprocess.run(
             gh,
@@ -103,7 +146,7 @@ enum PullRequests {
              "--limit", "5", "--json", jsonFields],
             in: directory, timeout: 20),
               result.succeeded
-        else { return nil }
-        return parse(result.stdout)
+        else { return .failed }
+        return parse(result.stdout).map(Lookup.found) ?? .none
     }
 }

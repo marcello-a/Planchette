@@ -55,6 +55,16 @@ enum Titles {
         return branch
     }
 
+    /// Drop the remembered branches. Called when the branch poll saw a change:
+    /// it publishes, the views redraw, and a name read from a cache entry made
+    /// before the checkout would still show the old ticket — and keep it until
+    /// something else redraws.
+    static func forgetBranches() {
+        branchCacheLock.lock()
+        branchCache = [:]
+        branchCacheLock.unlock()
+    }
+
     private static func readGitBranch(forDirectory dir: String) -> String? {
         if case .branch(let name) = headState(forDirectory: dir) { return name }
         return nil
