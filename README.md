@@ -199,8 +199,11 @@ Also worth a second:
 - **Projects in folders, everything by drag and drop:** a project into any folder or next to a
   project in another one, a terminal into another project or to another place in its own, a folder
   above or below another. Thin tree lines in the folder's or the project's colour show what belongs
-  where. Click a folder for an overview — every project, its state, its terminals — while the
-  panel tints what is in it, faintly.
+  where — in full for the folder and the project you are in, stepped back for the rest. Click a
+  folder for an overview — every project, its state, its terminals — while the panel tints what is
+  in it.
+- **Main terminals:** right-click a terminal → *Mark as main terminal*. It carries a star and stays
+  under its project when you fold it, so the terminal you come back to is always a click away.
 - Tabs that split, as in iTerm2: drag a tab onto a terminal's edge to split it, a pane's title back onto the tab bar to make it a tab; ⌘D / ⌘⇧D split off a new terminal; one button puts every tab in one view.
 - Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.

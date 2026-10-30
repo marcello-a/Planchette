@@ -49,8 +49,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Tree lines.** Thin lines in the folder's or the project's colour tie a folder to its projects
   and a project to its terminals; each ends at the child's state icon. A project with one terminal
   stands in the same column as the arrow of the others.
-- **A selected folder marks what is in it:** its projects and terminals get a faint tint of the
-  folder's colour, barely there.
+- **A selected folder marks what is in it:** its projects and terminals get a light tint of the
+  folder's colour.
+- **The tree lines follow the focus:** the lines of the folder and the project you are in are drawn
+  in full, the others step back.
 - The colour dot of a project sits at the right end of its row and turns into the close button on
   hover; the count badges stay visible.
 - The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say

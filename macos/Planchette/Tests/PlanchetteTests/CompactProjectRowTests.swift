@@ -110,3 +110,13 @@ final class TreeLinesTests: XCTestCase {
         XCTAssertLessThan(TreeLines.stubEnd(.folder), TreeLines.x(.project))
     }
 }
+
+final class TreeLineFocusTests: XCTestCase {
+    func testALineInFocusIsDrawnInFullTheOthersStepBack() {
+        XCTAssertEqual(TreeLines.opacity(focused: true, colored: true), 1)
+        XCTAssertLessThan(TreeLines.opacity(focused: false, colored: true), 0.5)
+        XCTAssertLessThan(TreeLines.opacity(focused: false, colored: false), TreeLines.opacity(focused: true, colored: false))
+        XCTAssertLessThan(TreeLines.opacity(focused: false, colored: false), TreeLines.opacity(focused: false, colored: true),
+                          "a grey line stays lighter than a coloured one")
+    }
+}
