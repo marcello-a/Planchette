@@ -160,6 +160,7 @@ enum Help {
         Section(titleKey: .updates, entries: [
             Entry(.checkForUpdates, nil, where: .helpWhereMenuBar),
             Entry(.autoUpdateCheck, .autoUpdateHelp, where: .helpWhereSettings),
+            Entry(.askBeforeRestore, .askBeforeRestoreHelp, where: .helpWhereSettings),
             Entry(.updateInstallOnQuit, .helpInstallOnQuitDetail),
         ]),
     ]

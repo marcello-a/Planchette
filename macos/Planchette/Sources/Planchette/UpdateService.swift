@@ -91,7 +91,8 @@ final class UpdateService: ObservableObject {
         if repeating {
             // Never interrupt work in progress, and never re-open a dialog the
             // user is already dealing with or has answered.
-            guard !isChecking, !isInstalling, stagedUpdate == nil else { return }
+            // A staged update does not stop the check: a newer release replaces it (`decide`).
+            guard !isChecking, !isInstalling else { return }
         } else {
             guard !didAutoCheck else { return }
             didAutoCheck = true
@@ -164,6 +165,17 @@ final class UpdateService: ObservableObject {
             configuration: configuration, delegate: TrustedRedirects(), delegateQueue: nil)
     }()
 
+    enum UpdateDecision: Equatable { case upToDate, offer, alreadyStaged }
+
+    /// What a check that found `latest` does. Newer than the running app: offer it — unless a
+    /// bundle for exactly that version (or a newer one) is staged already. A staged bundle for an
+    /// older version does not count: the latest is offered and replaces it.
+    nonisolated static func decide(latest: String, current: String, staged: String?) -> UpdateDecision {
+        guard Semver.isNewer(latest, than: current) else { return .upToDate }
+        if let staged, !Semver.isNewer(latest, than: staged) { return .alreadyStaged }
+        return .offer
+    }
+
     private func check(userInitiated: Bool) async {
         isChecking = true
         defer { isChecking = false }
@@ -189,15 +201,24 @@ final class UpdateService: ObservableObject {
             // not wait for the user to accept an app update.
             await refreshDetectionRules(from: release)
             let latest = release.tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-            if Semver.isNewer(latest, than: currentVersion) {
+            switch Self.decide(latest: latest, current: currentVersion, staged: stagedUpdate?.version) {
+            case .offer:
+                // Only the latest release is ever offered, however many came out since the one
+                // the user has: `/releases/latest` is one release, and a bundle staged for an
+                // older one is dropped, or the next quit would install it first and the next
+                // launch would offer the newer one all over again.
+                if stagedUpdate != nil { discardStagedUpdate() }
                 // A background check must not re-open a dialog the user already
                 // dismissed — checks now repeat while the app runs, so without
                 // this the same version would interrupt them every few hours.
                 // Asking again is always fine when they asked us to look.
                 guard userInitiated || latest != declinedVersion else { return }
                 await offerUpdate(version: latest, release: release)
-            } else if userInitiated {
-                showUpToDate()
+            case .alreadyStaged:
+                // The latest one is already waiting for the next quit: nothing to offer.
+                if userInitiated, let staged = stagedUpdate { showStaged(version: staged.version) }
+            case .upToDate:
+                if userInitiated { showUpToDate() }
             }
         } catch {
             if userInitiated { showError(error.localizedDescription) }
@@ -276,10 +297,10 @@ final class UpdateService: ObservableObject {
             alert.messageText = L10n.t(.updateAvailable, version)
             alert.informativeText = L10n.t(.updateInstallBody)
             alert.accessoryView = whatsNew(release)
-            // Staging first: it is the choice that costs the user nothing, and
-            // relaunching now ends every running turn.
-            alert.addButton(withTitle: L10n.t(.updateInstallOnQuit))
+            // Install & Relaunch first: the top button is the highlighted default, and it is the
+            // one that takes the update. The session comes back by itself (no restore question).
             alert.addButton(withTitle: L10n.t(.updateInstallRelaunch))
+            alert.addButton(withTitle: L10n.t(.updateInstallOnQuit))
             alert.addButton(withTitle: L10n.t(.updateLater))
             // Awaited from a run-loop callout, never `runModal()` from here: an open
             // alert must not stop libghostty and the control API (see `ModalAlert`).
@@ -290,13 +311,13 @@ final class UpdateService: ObservableObject {
                 Task {
                     await install(
                         zipURL: zipURL, checksumURL: checksumURL,
-                        version: version, mode: .onQuit)
+                        version: version, mode: .now)
                 }
             case .alertSecondButtonReturn:
                 Task {
                     await install(
                         zipURL: zipURL, checksumURL: checksumURL,
-                        version: version, mode: .now)
+                        version: version, mode: .onQuit)
                 }
             default:
                 // "Later" means later, not "in six hours".

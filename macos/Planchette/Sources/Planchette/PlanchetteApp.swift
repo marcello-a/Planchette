@@ -167,6 +167,8 @@ struct SettingsView: View {
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))
+                Toggle(L10n.t(.askBeforeRestore), isOn: $appState.askBeforeRestore)
+                    .help(L10n.t(.askBeforeRestoreHelp))
                 HStack {
                     Button(L10n.t(.checkForUpdates)) { updater.checkNow() }
                         .disabled(updater.isChecking || updater.isInstalling)
@@ -288,10 +290,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let saved = AppState.loadPersistedState()
             // Localize the dialog in the previously chosen language.
             L10n.current = saved?.language ?? .system
-            if let saved, !saved.sessions.isEmpty, SupportPaths.isIsolated {
-                // An instance running against its own state directory is a demo
-                // or a test: it was handed a workspace on purpose, and there is
-                // nobody to answer a modal before it can be driven.
+            if let saved, !saved.sessions.isEmpty, SupportPaths.isIsolated || !saved.askBeforeRestore {
+                // Restored without a question: the default (Settings → General), and always for
+                // an instance running against its own state directory — a demo or a test, handed
+                // a workspace on purpose, with nobody to answer a modal before it can be driven.
                 appState.applyRestore(saved)
             } else if let saved, !saved.sessions.isEmpty {
                 let alert = NSAlert()

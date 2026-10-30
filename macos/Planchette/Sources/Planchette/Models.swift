@@ -833,6 +833,8 @@ struct PersistedState: Codable {
     var language: AppLanguage = .system
     var appearance: AppAppearance = .system
     var autoUpdateCheck: Bool = true
+    /// Ask before restoring the last session at launch (default off: it is restored without asking).
+    var askBeforeRestore: Bool = false
     /// Whether new terminals are created durable (tmux-backed). On by default
     /// since 0.2.24, with its cost stated in Settings: tmux cannot pass the
     /// terminal's keyboard protocol through, so `Shift+Enter` and friends reach an
@@ -884,6 +886,7 @@ struct PersistedState: Codable {
         language: AppLanguage,
         appearance: AppAppearance,
         autoUpdateCheck: Bool,
+        askBeforeRestore: Bool = false,
         durableTerminals: Bool,
         durableDefaultApplied: Bool = true,
         peekCollapsedProjects: Bool = true,
@@ -908,6 +911,7 @@ struct PersistedState: Codable {
         self.language = language
         self.appearance = appearance
         self.autoUpdateCheck = autoUpdateCheck
+        self.askBeforeRestore = askBeforeRestore
         self.durableTerminals = durableTerminals
         self.peekCollapsedProjects = peekCollapsedProjects
         self.doneExpiry = doneExpiry
@@ -934,6 +938,7 @@ struct PersistedState: Codable {
         language = try c.decodeIfPresent(AppLanguage.self, forKey: .language) ?? .system
         appearance = try c.decodeIfPresent(AppAppearance.self, forKey: .appearance) ?? .system
         autoUpdateCheck = try c.decodeIfPresent(Bool.self, forKey: .autoUpdateCheck) ?? true
+        askBeforeRestore = (try? c.decodeIfPresent(Bool.self, forKey: .askBeforeRestore)) ?? false
         durableTerminals = try c.decodeIfPresent(Bool.self, forKey: .durableTerminals) ?? true
         durableDefaultApplied =
             try c.decodeIfPresent(Bool.self, forKey: .durableDefaultApplied) ?? true
