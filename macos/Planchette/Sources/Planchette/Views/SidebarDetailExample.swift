@@ -32,6 +32,12 @@ struct SidebarDetailExample: View {
             BranchText(branch: "marcello/feat/NIE-2008-gallery-wall-menu",
                        trim: appState.sidebarDetails.branchTrim)
                 .frame(maxWidth: 190, alignment: .leading)
+        case .trunkBranch:
+            // Both kinds side by side: the trunk is what this switch adds.
+            HStack(spacing: 8) {
+                BranchText(branch: "main", trim: appState.sidebarDetails.branchTrim)
+                BranchText(branch: "feat/NIE-2008-gallery", trim: appState.sidebarDetails.branchTrim)
+            }
         case .pullRequest:
             HStack(spacing: 4) {
                 PullRequestPill(pr: Self.samplePR(.open, .approved, 5576))
@@ -81,7 +87,7 @@ struct SidebarDetailExample: View {
     }
 
     /// The same terminal, said three ways — so the picker shows what it picks.
-    private static func samplePrompt(_ source: PromptSource) -> String {
+    static func samplePrompt(_ source: PromptSource) -> String {
         switch source {
         case .firstPrompt: "Add a gallery wall to the designer"
         case .lastPrompt: "Fix preview proportions for the reland"
