@@ -220,11 +220,13 @@ def demo_state(root, selected="storefront", active=0, view="tabs", appearance="d
 REVIEW_REPO = "acme/storefront"
 
 
-def review_pr(number, title, author, add, delete, files, mine=True, team=None, checks="passed"):
+def review_pr(number, title, author, add, delete, files, mine=True, team=None, checks="passed", asked=None):
+    """`asked`: minutes since GitHub requested the review — what a request's age shows."""
     return {"url": f"https://github.com/{REVIEW_REPO}/pull/{number}", "repo": REVIEW_REPO, "number": number,
             "title": title, "author": author, "isDraft": False, "additions": add, "deletions": delete,
             "changedFiles": files, "headRef": f"{author}/feat-{number}", "headSha": f"sha{number}",
-            "baseRef": "main", "checks": checks, "requestedFromMe": mine, **({"team": team} if team else {})}
+            "baseRef": "main", "checks": checks, "requestedFromMe": mine, **({"team": team} if team else {}),
+            **({"requestedAt": ago(asked * 60)} if asked is not None else {})}
 
 
 def review_record(pr, stage, minutes, unread, **extra):
@@ -248,7 +250,7 @@ def reviews_state(root):
                    cwd=os.path.join(work, "storefront"), capture_output=True)
     subprocess.run(["git", "worktree", "add", "-q", "--detach", os.path.join(work, "storefront-api.worktrees", "old-spike")],
                    cwd=os.path.join(work, "storefront-api"), capture_output=True)
-    a = review_pr(5612, "SHOP-2093 · Express checkout button in the cart", "lea-m", 142, 38, 9)
+    a = review_pr(5612, "SHOP-2093 · Express checkout button in the cart", "lea-m", 142, 38, 9, asked=60 * 5)
     b = review_pr(5620, "SHOP-2101 · Round cart totals per line", "jonas-b", 64, 21, 4)
     c = review_pr(5598, "SHOP-2088 · Format menu as a bottom sheet", "lea-m", 311, 120, 14, checks="pending")
     d = review_pr(5571, "SHOP-2070 · Retry failed uploads", "tim-r", 88, 12, 5)
@@ -260,6 +262,7 @@ def reviews_state(root):
         d["url"]: review_record(d, "sent", 60 * 26, False, verdict="REQUEST_CHANGES", reviewedSha="sha5571"),
     }
     state["reviews"] = reviews
+    state["reviewsEnabled"] = True
     findings_dir = os.path.join(root, "state", "reviews", f"{REVIEW_REPO.replace('/', '-')}-5620")
     os.makedirs(findings_dir, exist_ok=True)
     with open(os.path.join(findings_dir, "findings.json"), "w") as handle:

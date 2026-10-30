@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """The Reviews panel end to end, in the real app.
 
-usage: reviews_flow.py <path-to-Planchette-binary> <scratch-folder> [ui] [cleanup] [gif]
-       (run through with_displays.sh; default: ui and cleanup)
+usage: reviews_flow.py <path-to-Planchette-binary> <scratch-folder> [ui] [cleanup] [alpha] [gif]
+       (run through with_displays.sh; default: ui, cleanup and alpha)
 
   ui       start a review in a temporary worktree from the panel, let the findings arrive, open the
            row, set all findings to Skip, send. The buttons are pressed through the accessibility
            API (tools/axpress): no mouse, no keyboard, your pointer stays where it is.
   cleanup  a review that was sent: once sent.json is there, the row is "Sent", and the temporary
            worktree, its project and its branch are gone. Seeded, so no button is pressed.
+  alpha    the switch in Settings → General → Alpha: off, there is no Reviews icon; pressed, it is
+           on and saved; pressed again, off and saved.
   gif      not a check: records hints/reviews.gif, the loop the Reviews hint shows — the real
            panel, real presses, one frame per step, captioned. Set HINT_GIF_OUT to the file to
            write (needs ImageMagick).
@@ -32,7 +34,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from perf_common import RESOURCES, FocusGuard, UserFilesGuard, scratch_root, system_events_process, tool
+from perf_common import RESOURCES, FocusGuard, UserFilesGuard, scratch_root, system_events_process, tool, wait_until_idle
 
 URL = "https://github.com/acme/shop/pull/7"
 PR = {"url": URL, "repo": "acme/shop", "number": 7, "title": "SHOP-7 · Round cart totals", "author": "lea",
@@ -96,7 +98,7 @@ class Scene:
     def git(self, *args):
         return subprocess.run(["/usr/bin/git", *args], cwd=self.repo, capture_output=True, text=True)
 
-    def seed(self, groups, sessions, reviews, appearance="system"):
+    def seed(self, groups, sessions, reviews, appearance="system", enabled=True):
         with open(os.path.join(self.state_dir, "state.json"), "w") as handle:
             json.dump({
                 "autoUpdateCheck": False, "aiEnabled": False, "durableTerminals": False, "language": "en",
@@ -105,7 +107,7 @@ class Scene:
                 "groups": groups, "sessions": sessions,
                 "windows": [{"id": "00000000-0000-0000-0000-0000000000a1", "groupIDs": [g["id"] for g in groups],
                              "selectedGroupID": groups[0]["id"], "folders": [], "showsProjectOverview": False}],
-                "reviews": reviews,
+                "reviews": reviews, "reviewsEnabled": enabled,
             }, handle)
 
     @staticmethod
@@ -124,10 +126,24 @@ class Scene:
         env.update(PLANCHETTE_STATE_DIR=self.state_dir, GHOSTTY_RESOURCES_DIR=RESOURCES, ZDOTDIR=self.zdot, PATH=self.path)
         self.focus = FocusGuard()
         self.app = subprocess.Popen(
-            [binary, "-ApplePersistenceIgnoreState", "YES", "-inboxShown", "YES", "-inboxMode", "reviews", *args],
+            [binary, "-ApplePersistenceIgnoreState", "YES", "-inboxShown", "YES", "-inboxMode", "reviews",
+             "-reviewModel", "", "-reviewEffort", "", *args],
             env=env, cwd="/", stdout=open(os.path.join(self.root, "app.log"), "w"), stderr=subprocess.STDOUT)
         self.focus.start(self.app.pid)
         check("socket published", wait(lambda: os.path.exists(os.path.join(self.state_dir, "socket")), 30))
+
+    def front(self):
+        """Bring the instance to the front and keep it there. A window behind an app on another
+        Space (a full-screen one) is not on screen and has no accessibility tree — and Settings is
+        a window of its own. The focus guard would hand the focus back, so it stops; a quiet
+        machine first, so nobody's typing lands in it."""
+        proc = system_events_process(self.app.pid)
+        wait_until_idle(20, 1800, quiet=True)
+        self.focus.stop()
+        subprocess.run(["osascript", "-e", f'tell application "System Events" to set frontmost of {proc} to true'],
+                       capture_output=True)
+        time.sleep(1.5)
+        return proc
 
     def stop(self):
         if self.app:
@@ -186,19 +202,21 @@ def scene_ui(root):
            {URL: {"pr": PR, "stage": "requested", "since": 780000000, "unread": True, "updated": False,
                   "temporary": False, "decisions": {}, "sending": False}})
     try:
-        s.launch("-reviewFocus", URL)
-        system_events_process(s.app.pid)          # never script a pid System Events confuses with another
+        # A model and an effort of its own: the command must carry them as flags, before the prompt.
+        s.launch("-reviewFocus", URL, "-reviewModel", "sonnet", "-reviewEffort", "high")
+        s.front()
         row = wait(s.review, 20)
         check("the seeded request is listed", row and row["stage"] == "requested" and row["section"] == "needs_you", str(row))
         check("press Temporary worktree", s.press("Temporary worktree*"))
-        check("press Start review", s.press("Start review"))
+        check("press Start review · Sonnet · High", s.press("Start review · Sonnet · High"))
         row = wait(lambda: (r := s.review()) and r.get("checkout") and r, 30)
         check("stage is reviewing, in a temporary worktree", row and row["stage"] == "reviewing" and row["temporary"], str(row))
         worktree = row and row.get("checkout")
         check("the worktree exists beside the repo",
               bool(worktree) and os.path.isdir(worktree) and worktree.endswith("shop.worktrees/review-pr-7"), str(worktree))
         args = wait(lambda: next((l for l in s.log_lines() if l.startswith("args: ")), None), 20)
-        check("claude got the review command", args == f'args: /review-pr {URL} --dir "{s.review_dir}" --keep-checkout', str(args))
+        check("claude got the review command, with the model and the effort",
+              args == f'args: --model sonnet --effort high /review-pr {URL} --dir "{s.review_dir}" --keep-checkout', str(args))
 
         s.write("findings.json", FINDINGS)
         row = wait(lambda: (r := s.review()) and r["stage"] == "findings" and r, 10)
@@ -224,6 +242,34 @@ def scene_ui(root):
         check("the review terminal got the submit prompt", submit == f'input: /review-pr submit "{s.review_dir}"', str(submit))
         row = s.review()
         check("the row says sending", row and row["sending"], str(row))
+    finally:
+        s.stop()
+
+
+def scene_alpha(root):
+    s = Scene(root)
+    G, S = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+    s.seed([s.group(G, "shop", S)], [s.session(S, G, s.repo)],
+           {URL: {"pr": PR, "stage": "requested", "since": 780000000, "unread": True, "updated": False,
+                  "temporary": False, "decisions": {}, "sending": False}}, enabled=False)
+
+    def saved():
+        return json.load(open(os.path.join(s.state_dir, "state.json"))).get("reviewsEnabled")
+
+    try:
+        s.launch("-settingsTab", "general")
+        proc = s.front()
+        check("off: the API says so", wait(lambda: s.rpc({"planchette_request": "review.list"})["result"]["enabled"] is False, 10))
+        check("off: no Reviews icon in the toolbar", not s.press("Reviews", seconds=3))
+        subprocess.run(["osascript", "-e", f'tell application "System Events" to tell {proc} to click menu item '
+                        f'"Settings…" of menu 1 of menu bar item "Planchette" of menu bar 1'], capture_output=True)
+        check("press the Alpha → Reviews switch", s.press("Reviews"))
+        check("on, and saved", wait(lambda: saved() is True, 10), str(saved()))
+        check("on: the API says so", wait(lambda: s.rpc({"planchette_request": "review.list"})["result"]["enabled"], 10))
+        # The toolbar icon is back: now there are two "Reviews" — the switch and the icon.
+        check("on: the Reviews icon is back", s.press("Reviews", seconds=10, nth=1))
+        check("press the switch again", s.press("Reviews"))
+        check("off again, and saved", wait(lambda: saved() is False, 10), str(saved()))
     finally:
         s.stop()
 
@@ -310,7 +356,7 @@ def scene_gif(root):
         check("press the row", s.press("SHOP-7 · Round cart totals*"))
         time.sleep(2)                                          # the checkout scan
         shot("picker")
-        check("press Start review", s.press("Start review"))
+        check("press Start review", s.press("Start review*"))
         wait(lambda: (r := s.review()) and r["stage"] == "reviewing" and r, 20)
         shot("reviewing")
         s.write("findings.json", dict(FINDINGS, summary="Rounds each line before the sum. One place still uses the raw total."))
@@ -356,11 +402,11 @@ def build_gif(shots, out, box):
 
 binary = os.path.abspath(sys.argv[1])
 base = scratch_root(sys.argv[2])
-wanted = sys.argv[3:] or ["ui", "cleanup"]
+wanted = sys.argv[3:] or ["ui", "cleanup", "alpha"]
 files = UserFilesGuard()
 for name in wanted:
     print(f"[reviews] --- {name}", flush=True)
-    {"ui": scene_ui, "cleanup": scene_cleanup, "gif": scene_gif}[name](scratch_root(os.path.join(base, name)))
+    {"ui": scene_ui, "cleanup": scene_cleanup, "alpha": scene_alpha, "gif": scene_gif}[name](scratch_root(os.path.join(base, name)))
 files.report("reviews")
 print(f"[reviews] {'all checks passed' if not failures else 'FAILED: ' + ', '.join(failures)}")
 sys.exit(1 if failures else 0)
