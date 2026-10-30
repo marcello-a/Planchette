@@ -288,3 +288,18 @@ struct SidebarDetails: Codable, Equatable {
             || (shows(.task) && promptSource == .agentTitle)
     }
 }
+
+/// What stands under a folded project. Folding a project is a way to get space, never a way to
+/// lose what matters: its main terminals stay, always, and — while the peek is on (Settings →
+/// Project panel) — the terminals asking for you that you have not read, until you do.
+enum CollapsedProject {
+    static func visible(
+        _ sessions: [TerminalSession], peekAttention: Bool,
+        isMuted: (TerminalSession) -> Bool, dismissed: [UUID: Date]
+    ) -> [TerminalSession] {
+        sessions.filter { session in
+            session.isMain || (peekAttention && session.state.needsAttention && session.isUnread
+                && !isMuted(session) && dismissed[session.id] != session.stateSince)
+        }
+    }
+}

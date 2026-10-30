@@ -259,6 +259,7 @@ struct TerminalAreaView: View {
                         IDEMenuItems(group: group)
                         Divider()
                         TagMenu(session: session)
+                        MainTerminalMenuItem(session: session)
                         Divider()
                         closeMenu(at: index, in: strip, session: session)
                     }

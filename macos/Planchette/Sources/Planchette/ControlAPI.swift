@@ -95,6 +95,7 @@ enum ControlAPI {
             "state": session.state.rawValue,
             "agent": session.agentKind.rawValue,
             "seen": session.seen,
+            "main": session.isMain,
         ]
         if let task = session.currentTask { dict["task"] = task }
         if let message = session.lastMessage { dict["message"] = message }

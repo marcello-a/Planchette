@@ -698,11 +698,19 @@ struct SidebarView: View {
     private func projectRows(_ group: SessionGroup, siblings: [SessionGroup],
                              inFolder folder: FolderPlace? = nil) -> some View {
         groupRow(group, siblings: siblings, inFolder: folder)
-        ForEach(peeking(group)) { session in
+        let peeks = peeking(group)
+        ForEach(Array(peeks.enumerated()), id: \.element.id) { index, session in
             sessionRow(session,
                        isActive: false,
                        showBranch: appState.sharedBranch(of: group) == nil)
-                .listRowBackground(TreeRowBackground(folder: folder, lines: folder?.line(isProjectRow: false) ?? []))
+                // A row beside the folded project, not inside it: it starts one step in, where the
+                // terminals of an open project stand, so the project's line ends at its icon.
+                .padding(.leading, Self.disclosureIndent)
+                // The folder's line passes by; the project's line reaches what stands under it.
+                .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: false) ?? []) + [
+                    TreeLines.Line(column: .project, kind: TreeLines.projectLine(index: index, of: peeks.count),
+                                   color: group.color),
+                ]))
         }
     }
 
@@ -713,18 +721,16 @@ struct SidebarView: View {
     /// lose a prompt. An expanded project already shows everything, and a parked
     /// or snoozed one is silent on purpose (`AppState.isMuted`).
     private func peeking(_ group: SessionGroup) -> [TerminalSession] {
-        // The peek is a Setting: whoever folds projects to get space and wants
-        // them to STAY folded can turn it off (`peekCollapsedProjects`).
-        guard appState.peekCollapsedProjects else { return [] }
         guard collapsedGroups.contains(group.id) else { return [] }
         let sessions = appState.sessions(in: group)
         // A merged row cannot fold: its one terminal is on it already. A fold left over from
         // when it had two must not stand a second copy of the terminal under it.
         guard !appState.sidebarDetails.merges(terminalCount: sessions.count) else { return [] }
-        return sessions.filter {
-            $0.state.needsAttention && $0.isUnread && !appState.isMuted($0)
-                && dismissedPeeks[$0.id] != $0.stateSince
-        }
+        // Main terminals always; the questions and errors only while the peek is on — whoever
+        // folds projects to get space can turn that off (`peekCollapsedProjects`).
+        return CollapsedProject.visible(
+            sessions, peekAttention: appState.peekCollapsedProjects,
+            isMuted: { appState.isMuted($0) }, dismissed: dismissedPeeks)
     }
 
     /// A project's open/closed state. Not persisted (see `collapsedGroups`).
@@ -964,7 +970,9 @@ struct SidebarView: View {
         // The folder's stub to this project. A background on a DisclosureGroup reaches every
         // row of it, but its terminals set their own above, so this one is the label's alone.
         .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: true) ?? [])
-            + (collapsedGroups.contains(group.id) || sessions.isEmpty ? [] : [
+            // The project's line starts under its arrow while anything stands under it: its
+            // terminals when open, its main terminals and peeks when folded.
+            + ((collapsedGroups.contains(group.id) ? peeking(group).isEmpty : sessions.isEmpty) ? [] : [
                 TreeLines.Line(column: .project, kind: .start, color: group.color),
             ])))
     }
@@ -1133,6 +1141,10 @@ struct SidebarView: View {
                         if let name = session.rowName {
                             Text(name).lineLimit(1)
                         }
+                        if session.isMain {
+                            PixelIcon(sprite: PixelSprites.star, size: 10, tint: .yellow)
+                                .help(L10n.t(.mainTerminalHelp))
+                        }
                         // A terminal without a name keeps its path either way —
                         // turning the path off must not leave a blank row.
                         if appState.shows(.path) || session.rowName == nil {
@@ -1231,6 +1243,7 @@ struct SidebarView: View {
             SessionAttentionMenu(session: session)
             Divider()
             TagMenu(session: session)
+            MainTerminalMenuItem(session: session)
             Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
             colorPicker(current: session.color) { color in
@@ -1432,5 +1445,19 @@ struct WaitingTimeText: View {
     /// says everything.
     private static func with(_ head: String, _ rest: Int, _ key: LKey) -> String {
         rest == 0 ? head : "\(head) \(L10n.t(key, rest))"
+    }
+}
+
+/// "Mark as main terminal" and back: the star on the row, and a place under its project that
+/// folding the project does not take away. In the project panel and on the tab.
+struct MainTerminalMenuItem: View {
+    @EnvironmentObject var appState: AppState
+    let session: TerminalSession
+
+    var body: some View {
+        Button(session.isMain ? L10n.t(.unmarkMainTerminal) : L10n.t(.markMainTerminal)) {
+            appState.update(session.id) { $0.isMain.toggle() }
+        }
+        .help(L10n.t(.mainTerminalHelp))
     }
 }

@@ -28,7 +28,7 @@ guard AXIsProcessTrusted() else {
 let wanted = args[2]
 var skip = args.count > 3 ? Int(args[3]) ?? 0 : 0
 let prefix = wanted.hasSuffix("*") ? String(wanted.dropLast()) : nil
-let roles: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXMenuButton", "AXPopUpButton"]
+let roles: Set<String> = ["AXButton", "AXRadioButton", "AXCheckBox", "AXMenuButton", "AXPopUpButton", "AXDisclosureTriangle"]
 
 func matches(_ element: AXUIElement) -> Bool {
     guard roles.contains(text(element, kAXRoleAttribute as String)) else { return false }

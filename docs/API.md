@@ -350,6 +350,7 @@ Returned by every `session.*` command.
 | `turn_state` | string | `ready` or `free`, present only when `state` is `running` for that reason: the state the turn itself is in. `session.prompt` and `session.wait` go by it |
 | `agent` | string | `claude` · `codex` · `none` |
 | `seen` | bool | has its last report been looked at |
+| `main` | bool | marked as a main terminal: a star, and it stays under its project while the project is folded |
 | `task` | string | the last prompt submitted here (absent if none) |
 | `message` | string | the last question or error (absent if none) |
 | `background_tasks` | object | `{"shells": n, "agents": n}` — what Claude Code still runs in the background of this terminal (absent if nothing). A `ready` terminal can still be busy: a dev server, a review agent. A watch (an artifact's live link, an MCP stream) or an idle teammate is not counted: it never ends on its own. Claude Code only; older versions do not report it |
