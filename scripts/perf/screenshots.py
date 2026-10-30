@@ -2,7 +2,7 @@
 
 usage: screenshots.py <binary> [--out <folder>] [scene ...]      (run through with_displays.sh)
 
-Scenes: overview folder cluster search welcome settings update   (default: all)
+Scenes: overview folder cluster search welcome settings update reviews reviews-picker   (default: all)
 
 Every scene starts its own ISOLATED instance (PLANCHETTE_STATE_DIR) on a demo workspace that is
 made up here — nothing of yours is in it — waits for the first frame, and captures the window by
@@ -198,6 +198,71 @@ def demo_state(root, selected="storefront", active=0, view="tabs", appearance="d
     if folder_page:   # the first folder's overview page fills the main area
         state["windows"][0]["selectedFolderID"] = folders[0]["id"]
     state.update(extra)
+    return state, plan
+
+
+# ---- the Reviews panel ------------------------------------------------------------------------
+
+REVIEW_REPO = "acme/storefront"
+
+
+def review_pr(number, title, author, add, delete, files, mine=True, team=None, checks="passed"):
+    return {"url": f"https://github.com/{REVIEW_REPO}/pull/{number}", "repo": REVIEW_REPO, "number": number,
+            "title": title, "author": author, "isDraft": False, "additions": add, "deletions": delete,
+            "changedFiles": files, "headRef": f"{author}/feat-{number}", "headSha": f"sha{number}",
+            "baseRef": "main", "checks": checks, "requestedFromMe": mine, **({"team": team} if team else {})}
+
+
+def review_record(pr, stage, minutes, unread, **extra):
+    record = {"pr": pr, "stage": stage, "since": ago(minutes * 60), "unread": unread, "updated": False,
+              "temporary": False, "decisions": {}, "sending": False}
+    record.update(extra)
+    return record
+
+
+def reviews_state(root):
+    """The demo workspace with reviews in every stage. The storefront projects become real git
+    checkouts of one repo, plus a worktree nobody works in — so the picker has free and busy ones."""
+    state, plan = demo_state(root, selected="storefront", active=0)
+    work = os.path.join(root, "work")
+    for name in ("storefront", "storefront-api"):
+        repo = os.path.join(work, name)
+        for args in (["init", "-q", "-b", "main"], ["remote", "add", "origin", f"git@github.com:{REVIEW_REPO}.git"],
+                     ["-c", "user.name=demo", "-c", "user.email=demo@example.com", "commit", "-q", "--allow-empty", "-m", "init"]):
+            subprocess.run(["git", *args], cwd=repo, capture_output=True)
+    subprocess.run(["git", "worktree", "add", "-q", "--detach", os.path.join(work, "storefront.worktrees", "spare")],
+                   cwd=os.path.join(work, "storefront"), capture_output=True)
+    subprocess.run(["git", "worktree", "add", "-q", "--detach", os.path.join(work, "storefront-api.worktrees", "old-spike")],
+                   cwd=os.path.join(work, "storefront-api"), capture_output=True)
+    a = review_pr(5612, "SHOP-2093 · Express checkout button in the cart", "lea-m", 142, 38, 9)
+    b = review_pr(5620, "SHOP-2101 · Round cart totals per line", "jonas-b", 64, 21, 4)
+    c = review_pr(5598, "SHOP-2088 · Format menu as a bottom sheet", "lea-m", 311, 120, 14, checks="pending")
+    d = review_pr(5571, "SHOP-2070 · Retry failed uploads", "tim-r", 88, 12, 5)
+    reviews = {
+        a["url"]: review_record(a, "requested", 12, True),
+        b["url"]: review_record(b, "findings", 3, True, checkout=os.path.join(work, "storefront.worktrees", "review-pr-5620"),
+                                temporary=True, decisions={"f4": "skip"}),
+        c["url"]: review_record(c, "reviewing", 6, False, checkout=os.path.join(work, "storefront-api")),
+        d["url"]: review_record(d, "sent", 60 * 26, False, verdict="REQUEST_CHANGES", reviewedSha="sha5571"),
+    }
+    state["reviews"] = reviews
+    findings_dir = os.path.join(root, "state", "reviews", f"{REVIEW_REPO.replace('/', '-')}-5620")
+    os.makedirs(findings_dir, exist_ok=True)
+    with open(os.path.join(findings_dir, "findings.json"), "w") as handle:
+        json.dump({"version": 1, "pr": {"url": b["url"], "repo": REVIEW_REPO, "number": 5620, "headSha": "sha5620"},
+                   "summary": "Rounds each cart line before the sum. The idea is right; two places still use the unrounded total.",
+                   "findings": [
+                       {"id": "f1", "severity": "high", "path": "src/cart/useCartTotals.ts", "line": 41,
+                        "text": "Each line is rounded before the sum, but the voucher applies to the unrounded total. Cart and checkout can differ by 1 cent.",
+                        "comment": "The voucher still uses the raw total here.", "decision": "comment"},
+                       {"id": "f2", "severity": "medium", "path": "src/cart/CartSummary.tsx", "line": 88,
+                        "text": "toFixed(2) returns a string, and the template compares it with a number, so the free-shipping hint never shows.",
+                        "suggestion": "const total = Math.round(sum * 100) / 100", "decision": "comment"},
+                       {"id": "f3", "severity": "low", "path": "src/cart/useCartTotals.ts", "line": 12,
+                        "text": "The import formatPrice is not used.", "suggestion": "", "decision": "skip"},
+                       {"id": "f4", "severity": "low", "path": "src/cart/cart.test.ts",
+                        "text": "No test for a cart with a voucher and three or more lines.", "decision": "comment"},
+                   ]}, handle)
     return state, plan
 
 
@@ -435,6 +500,12 @@ SCENES = {
     "settings": dict(state=lambda root: demo_state(root), args=("-settingsTab", "tabs"),
                      menu=("Planchette", "Settings…"), pick="title:Tabs"),
     "update": dict(state=lambda root: demo_state(root, autoUpdateCheck=True), wait=14, pick="other"),
+    "reviews": dict(state=lambda root: reviews_state(root),
+                    args=("-inboxShown", "YES", "-inboxMode", "reviews",
+                          "-reviewFocus", f"https://github.com/{REVIEW_REPO}/pull/5620")),
+    "reviews-picker": dict(state=lambda root: reviews_state(root),
+                           args=("-inboxShown", "YES", "-inboxMode", "reviews",
+                                 "-reviewFocus", f"https://github.com/{REVIEW_REPO}/pull/5612")),
 }
 
 

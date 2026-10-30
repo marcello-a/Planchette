@@ -29,6 +29,7 @@ enum ControlAPI {
         case sessionWait = "session.wait"
         case projectList = "project.list"
         case notificationList = "notification.list"
+        case reviewList = "review.list"
     }
 
     /// A parsed request: the command plus its raw arguments.
@@ -118,6 +119,31 @@ enum ControlAPI {
     /// Raw values *and* the labels on screen: `state` is the stable key to branch
     /// on, `state_label` and `age` are the strings the panel prints, in the app's
     /// current language.
+    /// One row of the Reviews panel as data: the PR, the stage, and where its
+    /// review runs. Stable keys; no labels in the app's language.
+    @MainActor
+    static func describeReview(_ record: ReviewRecord, section: String, in state: AppState) -> [String: Any] {
+        let pr = record.pr
+        var dict: [String: Any] = [
+            "url": pr.url, "repo": pr.repo, "number": pr.number, "title": pr.title,
+            "author": pr.author, "draft": pr.isDraft, "additions": pr.additions,
+            "deletions": pr.deletions, "changed_files": pr.changedFiles, "checks": pr.checks.rawValue,
+            "requested_from_me": pr.requestedFromMe, "section": section, "stage": record.stage.rawValue,
+            "unread": record.unread, "updated": record.updated, "sending": record.sending,
+            "since": iso.string(from: record.since), "temporary": record.temporary,
+        ]
+        if let team = pr.team { dict["team"] = team }
+        if let checkout = record.checkout { dict["checkout"] = checkout }
+        if let id = record.sessionID { dict["session"] = id.uuidString }
+        if let until = record.snoozedUntil, until > Date() { dict["snoozed_until"] = iso.string(from: until) }
+        if let findings = state.reviewFindings[pr.url] { dict["findings"] = findings.findings.count }
+        if record.stage == .findings || record.stage == .sent {
+            dict["verdict"] = (record.stage == .sent ? record.verdict : state.reviewVerdict(of: pr.url))?.rawValue
+        }
+        if let error = record.lastError { dict["error"] = error }
+        return dict
+    }
+
     @MainActor
     static func describeNotification(
         _ session: TerminalSession, in state: AppState
@@ -256,6 +282,24 @@ enum ControlAPI {
             ]
             return encode(
                 ok: true, result: ["notifications": notifications, "counts": counts])
+
+        case .reviewList:
+            // The Reviews panel's own sections and order — the same rule as
+            // notification.list: what a program reads and what the panel shows
+            // must be one list.
+            let sections = state.reviewSections(
+                onlyMine: request.bool("include_team") != true,
+                showSent: request.bool("hide_sent") != true)
+            let rows = [("needs_you", sections.needsYou), ("reviewing", sections.reviewing),
+                        ("sent", sections.sent)]
+                .flatMap { name, records in records.map { describeReview($0, section: name, in: state) } }
+            // Null until GitHub answered once: an empty list then means "not asked yet".
+            let checked: Any = state.reviewsCheckedAt.map { iso.string(from: $0) } ?? NSNull()
+            return encode(ok: true, result: [
+                "reviews": rows,
+                "counts": ["unseen": state.unseenReviewCount, "listed": rows.count],
+                "checked_at": checked,
+            ])
 
         case .sessionGet:
             guard let session = resolve(request, state: state) else {

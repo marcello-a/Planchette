@@ -151,6 +151,22 @@ enum Worktrees {
         return Self.repoRoot(of: path) ?? path
     }
 
+    /// Create a detached worktree named `name` beside the repo — for a review,
+    /// whose branch the review itself checks out. A folder that is already a
+    /// worktree of this repo (left from an earlier round) is used again.
+    static func createDetached(repoRoot: String, name: String) throws -> String {
+        let path = defaultPath(repoRoot: repoRoot, branch: name)
+        if FileManager.default.fileExists(atPath: path) {
+            let existing = Self.repoRoot(of: path) ?? path
+            guard list(repoRoot: repoRoot).contains(existing) else {
+                throw GitError(message: "\(path) already exists")
+            }
+            return existing
+        }
+        try git(["worktree", "add", "--detach", path], in: repoRoot, timeout: mutationTimeout)
+        return Self.repoRoot(of: path) ?? path
+    }
+
     /// Remove a worktree checkout. Without `force` git refuses while there are
     /// uncommitted changes — that refusal *is* the guard, so it is surfaced to
     /// the user rather than worked around.

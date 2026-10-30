@@ -21,7 +21,19 @@ struct AttentionPanel: View {
     /// finished turn — has not been looked at.
     private func isUnread(_ session: TerminalSession) -> Bool { session.isUnread }
 
+    @AppStorage(InboxMode.storageKey) private var mode: InboxMode = .notifications
+
     var body: some View {
+        // One panel, two lists: the toolbar icons pick which (`InboxMode`).
+        if mode == .reviews {
+            ReviewsPanel()
+        } else {
+            notifications
+        }
+    }
+
+    @ViewBuilder
+    private var notifications: some View {
         // Order and filtering live in `AppState.notificationSections`, which the
         // control API answers from as well: what another program can read and
         // what this panel shows must be one list (see `ControlAPI`).
@@ -169,57 +181,19 @@ struct AttentionPanel: View {
         return Button {
             appState.select(session: session)
         } label: {
-            HStack(alignment: .top, spacing: 9) {
-                // Unread is carried by the bar down the leading edge of the row
-                // and the weight of the title — never by colour alone, and never
-                // by a ring: a circle drawn around a pixel sprite fights it.
+            PanelRow(
+                unread: unread, tint: session.state.tint,
+                title: appState.notificationHeadline(for: session),
+                detail: detail.flatMap { $0.isEmpty ? nil : Text($0) }
+            ) {
                 SessionStateIcon(session: session, size: 14)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 2) {
-                    // The state belongs in the corner, next to the name it
-                    // describes. The clock time it replaces is gone: "12m" below
-                    // answers "how long" without arithmetic, and the wall-clock
-                    // hour of a state change answered nothing.
-                    HStack(spacing: 5) {
-                        Text(appState.notificationHeadline(for: session))
-                            .font(.subheadline).fontWeight(unread ? .bold : .medium)
-                            .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 4)
-                        StateChip(state: session.state, inBackground: appState.runsInBackground(session))
-                    }
-                    // Prompt and age on one line: two rows of prompt at most, and
-                    // it ends before the age instead of running under it — the age
-                    // is short, fixed and always in the same place, so the eye
-                    // finds it without a line of its own.
-                    HStack(alignment: .bottom, spacing: 8) {
-                        if let detail, !detail.isEmpty {
-                            Text(detail)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 4)
-                        if let until = appState.snoozeEnd(for: session), until > Date() {
-                            SnoozeBadge(until: until)
-                        } else {
-                            WaitingTimeText(since: session.stateSince)
-                        }
-                    }
-                }
-            }
-            .padding(.leading, 18).padding(.trailing, 12).padding(.vertical, 6)
-            .contentShape(Rectangle())
-            // The unread mark: a bar in the margin, in the state's own colour.
-            // It sits outside the text and outside the sprite, so it can be
-            // scanned down the edge of the list without crowding either.
-            .overlay(alignment: .leading) {
-                if unread {
-                    Capsule().fill(session.state.tint)
-                        .frame(width: 3)
-                        .padding(.vertical, 4)
-                        .padding(.leading, 5)
+            } chip: {
+                StateChip(state: session.state, inBackground: appState.runsInBackground(session))
+            } trailing: {
+                if let until = appState.snoozeEnd(for: session), until > Date() {
+                    SnoozeBadge(until: until)
+                } else {
+                    WaitingTimeText(since: session.stateSince)
                 }
             }
         }
@@ -236,6 +210,71 @@ struct AttentionPanel: View {
             }
             Divider()
             SessionAttentionMenu(session: session, includesDone: false)
+        }
+    }
+}
+
+/// One row of the right panel, in either of its modes — the same sprite, title,
+/// chip, second line and age, so a review reads like a terminal does.
+///
+/// Unread is carried by the bar down the leading edge of the row and the weight
+/// of the title — never by colour alone, and never by a ring: a circle drawn
+/// around a pixel sprite fights it.
+struct PanelRow<Icon: View, Chip: View, Trailing: View>: View {
+    let unread: Bool
+    /// The colour of the unread bar: the state's own.
+    let tint: Color
+    let title: String
+    /// Middle for a terminal (its name ends in what matters), tail for a PR title.
+    var truncation: Text.TruncationMode = .middle
+    /// The row's middle line, at most two lines; it ends before the age instead
+    /// of running under it.
+    let detail: Text?
+    @ViewBuilder let icon: () -> Icon
+    @ViewBuilder let chip: () -> Chip
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 9) {
+            icon()
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 2) {
+                // The state belongs in the corner, next to the name it describes.
+                HStack(spacing: 5) {
+                    Text(title)
+                        .font(.subheadline).fontWeight(unread ? .bold : .medium)
+                        .foregroundStyle(unread ? .primary : .secondary).lineLimit(1)
+                        .truncationMode(truncation)
+                    Spacer(minLength: 4)
+                    chip()
+                }
+                // The age is short, fixed and always in the same place, so the
+                // eye finds it without a line of its own.
+                HStack(alignment: .bottom, spacing: 8) {
+                    if let detail {
+                        detail
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 4)
+                    trailing()
+                }
+            }
+        }
+        .padding(.leading, 18).padding(.trailing, 12).padding(.vertical, 6)
+        .contentShape(Rectangle())
+        // The unread mark: a bar in the margin, in the state's own colour. It
+        // sits outside the text and outside the sprite, so it can be scanned
+        // down the edge of the list without crowding either.
+        .overlay(alignment: .leading) {
+            if unread {
+                Capsule().fill(tint)
+                    .frame(width: 3)
+                    .padding(.vertical, 4)
+                    .padding(.leading, 5)
+            }
         }
     }
 }

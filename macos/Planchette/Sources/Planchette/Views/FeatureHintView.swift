@@ -30,6 +30,10 @@ struct FeatureHintContent {
             return FeatureHintContent(title: .notepadHintTitle, body: .notepadHintBody, action: .notepadHintTry) { state in
                 if state.notepad.isOpen { state.completeHint(.notepad) } else { state.toggleNotepad() }
             }
+        case .reviews:
+            return FeatureHintContent(title: .reviewsHintTitle, body: .reviewsHintBody, action: .reviewsHintTry) { state in
+                state.showReviews()
+            }
         }
     }
 }

@@ -114,7 +114,7 @@ one prerequisite exists — nothing to configure:
 | **Claude Code** | **Live states with zero setup.** Planchette installs its hooks into `~/.claude/settings.json` on first launch. Every color in the sidebar — running, waiting, error, done — comes straight from the agent. Tabs take their names from Claude's own name for the conversation. |
 | **Codex** | Recognized too: a hook claims the terminal (auto-installed into `~/.codex/hooks.json` when `~/.codex` exists), and screen detection reads the states off its TUI. |
 | **`claude` on your PATH** | **AI summaries** — one line per terminal saying what it is actually doing, via headless `claude -p` on your existing login. On by default; toggle in Settings → AI. |
-| **`gh`** (GitHub CLI) | **Pull request pills.** The PR of each terminal's branch and its review state, on its row; click it to open the PR. |
+| **`gh`** (GitHub CLI) | **Pull request pills.** The PR of each terminal's branch and its review state, on its row; click it to open the PR. **Reviews:** the PRs that ask for your review, in the right panel (icon left of the bell). |
 
 Also worth a second:
 
@@ -138,6 +138,11 @@ Also worth a second:
   when the command does.
 - Notifications panel: "Needs you" first, errors before questions, oldest first; read and unread,
   menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
+- **Reviews** (the icon left of the bell, needs `gh`): the pull requests that ask for your review,
+  in the same panel. Start one in a checkout nobody works in, or in a temporary worktree that goes
+  afterwards; the `review-pr` Claude Code skill reviews it (yours, or Planchette's default from
+  [`skills/review-pr`](skills/review-pr/SKILL.md)); you decide per finding — Comment, Fix or
+  Skip, preselected — and nothing reaches GitHub before "Send review".
 - Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
   a project you are not working on.
 - Background agents and shells show under the state icon, and the terminal stays purple (running,
@@ -273,7 +278,7 @@ scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
 | `macos/Planchette` | the app (Swift/SwiftUI) |
 | `hook/` | `planchette-hook`, forwards Claude Code hook events to the socket |
 | `scripts/` | install, package, release; `perf/` measures and photographs the running app |
-| `skills/` | the planchette skill for agents |
+| `skills/` | the planchette skill for agents, and the default `review-pr` skill the Reviews panel installs |
 | `docs/` | concept, architecture, the API manual |
 
 ## Docs

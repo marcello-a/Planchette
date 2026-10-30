@@ -10,6 +10,8 @@ enum NotificationService {
     /// userInfo key carrying the terminal a notification belongs to, so a click
     /// can jump straight to it.
     static let sessionKey = "planchetteSession"
+    /// A review banner carries its PR instead: a click opens the Reviews panel on it.
+    static let reviewKey = "planchetteReview"
 
     /// UNUserNotificationCenter requires a real app bundle; touching it from a
     /// bare SwiftPM executable (dev runs) throws. Gate every call on this so
@@ -24,9 +26,10 @@ enum NotificationService {
 
     /// Route notification clicks to `handler`. Must be called before the app
     /// finishes launching, otherwise a click that launched the app is lost.
-    static func handleClicks(_ handler: @escaping (UUID) -> Void) {
+    static func handleClicks(_ handler: @escaping (UUID) -> Void, reviews: @escaping (String) -> Void) {
         guard isAvailable else { return }
         delegate.onSessionClick = handler
+        delegate.onReviewClick = reviews
         UNUserNotificationCenter.current().delegate = delegate
     }
 
@@ -34,11 +37,15 @@ enum NotificationService {
     /// its delegate weakly.
     private static let delegate = NotificationDelegate()
 
-    static func post(title: String, body: String, sessionID: UUID? = nil) {
+    static func post(title: String, body: String, sessionID: UUID? = nil, reviewURL: String? = nil) {
         guard isAvailable else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+        if let reviewURL {
+            content.userInfo = [reviewKey: reviewURL]
+            content.threadIdentifier = reviewURL
+        }
         if let sessionID {
             content.userInfo = [sessionKey: sessionID.uuidString]
             // Group a terminal's alerts together in Notification Center.
@@ -58,6 +65,7 @@ enum NotificationService {
 /// needs you, which matters most while you're working in this app.
 private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     var onSessionClick: ((UUID) -> Void)?
+    var onReviewClick: ((String) -> Void)?
 
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -74,8 +82,13 @@ private final class NotificationDelegate: NSObject, UNUserNotificationCenterDele
     ) {
         defer { completionHandler() }
         // Only a click on the banner itself jumps; dismissing must not steal focus.
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let raw = response.notification.request.content.userInfo[NotificationService.sessionKey] as? String,
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        let info = response.notification.request.content.userInfo
+        if let url = info[NotificationService.reviewKey] as? String {
+            DispatchQueue.main.async { [weak self] in self?.onReviewClick?(url) }
+            return
+        }
+        guard let raw = info[NotificationService.sessionKey] as? String,
               let id = UUID(uuidString: raw)
         else { return }
         DispatchQueue.main.async { [weak self] in self?.onSessionClick?(id) }

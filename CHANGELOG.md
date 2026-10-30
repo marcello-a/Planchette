@@ -8,6 +8,26 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Reviews, beside the bell.** A new icon left of the notifications bell switches the right panel
+  to the pull requests that ask for your review — the same panel, rows and colours, by stage:
+  *Needs you*, *Reviewing*, *Sent*. A blue dot says a new request is in; a banner says it once.
+  GitHub is asked every five minutes through `gh`.
+- **Start a review where nobody works.** A request opens in place and offers the checkouts of its
+  repo that are free — no agent running or open on a work branch, no unread result, no
+  uncommitted changes, no dev server — the one untouched longest first, or a temporary worktree
+  that goes once the review is sent. The review runs as the `review-pr` Claude Code skill in a
+  new terminal there; a click on the row goes to it.
+- **Decide on every finding before anything is sent.** The findings open in the panel, most
+  severe first, each with Comment (with a suggestion where the finding has one), Fix (a commit on
+  the author's branch) or Skip — preselected from the severity, and "Set all" changes them at once.
+  The verdict follows the decisions. Nothing reaches GitHub before "Send review".
+- **A default `review-pr` skill.** A review runs as the Claude Code skill `review-pr`. Without one
+  of your own, Planchette adds its default to `~/.claude/skills/review-pr` the first time a review
+  starts, and keeps it up to date; a `review-pr` skill of your own there is never touched.
+- A first-use hint for the Reviews, with a looping picture, when the first review request arrives.
+- `planchette review list` / `review.list`: the Reviews panel as data.
+
 ### Changed
 - The notepad button in the tab bar is yellow while the pad is closed, so it is easy to find.
 - The pull request next to a branch follows a branch switch at once. When you or an agent run `git checkout`, `git switch`, `gh pr create` or `git push`, Planchette looks again after the command or the turn ends. Before, it took up to a minute. The PR of the old branch goes away right away and does not stay until the new one loads.

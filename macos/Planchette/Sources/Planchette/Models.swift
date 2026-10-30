@@ -874,6 +874,9 @@ struct PersistedState: Codable {
     var backgroundCountsAsRunning = true
     /// Whether the notepad is open and how wide (see `NotepadLook`).
     var notepad = NotepadLook()
+    /// The review of each pull request that asked the user for one (the Reviews
+    /// mode of the notifications panel), keyed by the PR's URL.
+    var reviews: [String: ReviewRecord] = [:]
 
     init(
         groups: [SessionGroup],
@@ -897,7 +900,8 @@ struct PersistedState: Codable {
         tabLayout: TabLayout = TabLayout(),
         projectColor: ProjectColorLook = ProjectColorLook(),
         backgroundCountsAsRunning: Bool = true,
-        notepad: NotepadLook = NotepadLook()
+        notepad: NotepadLook = NotepadLook(),
+        reviews: [String: ReviewRecord] = [:]
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -921,6 +925,7 @@ struct PersistedState: Codable {
         self.projectColor = projectColor
         self.backgroundCountsAsRunning = backgroundCountsAsRunning
         self.notepad = notepad
+        self.reviews = reviews
     }
 
     init(from decoder: Decoder) throws {
@@ -958,5 +963,8 @@ struct PersistedState: Codable {
         projectColor = (try? c.decodeIfPresent(ProjectColorLook.self, forKey: .projectColor)) ?? ProjectColorLook()
         backgroundCountsAsRunning = (try? c.decodeIfPresent(Bool.self, forKey: .backgroundCountsAsRunning)) ?? true
         notepad = (try? c.decodeIfPresent(NotepadLook.self, forKey: .notepad)) ?? NotepadLook()
+        // GitHub is the truth for what is requested: a record a newer build wrote
+        // costs the review list, never the workspace.
+        reviews = (try? c.decodeIfPresent([String: ReviewRecord].self, forKey: .reviews)) ?? [:]
     }
 }

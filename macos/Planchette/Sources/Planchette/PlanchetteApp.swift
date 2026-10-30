@@ -270,9 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Wired here, not in applicationDidFinishLaunching: the restore dialog
         // runs a nested modal loop, and a click that launched the app would be
         // delivered (and lost) before the delegate existed.
-        NotificationService.handleClicks { [weak state] id in
+        NotificationService.handleClicks({ [weak state] id in
             MainActor.assumeIsolated { state?.focusSession(id) }
-        }
+        }, reviews: { [weak state] url in
+            MainActor.assumeIsolated { state?.focusReview(url) }
+        })
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -511,6 +513,9 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            ReviewsToolbarButton(shown: $inboxShown)
+        }
         ToolbarItem(placement: .primaryAction) {
             InboxToolbarButton(shown: $inboxShown)
         }
@@ -764,23 +769,53 @@ struct AIMenu: View {
     }
 }
 
-/// Top-right bell: toggles the persistent notifications sidebar, with a live
-/// count badge to its left.
+/// Top-right bell: shows the right panel with the notifications, or hides it.
+/// The bell and the reviews icon beside it share one panel: each one shows its
+/// own list, and the one whose list is shown looks pressed.
 struct InboxToolbarButton: View {
     @EnvironmentObject var appState: AppState
     @Binding var shown: Bool
+    @AppStorage(InboxMode.storageKey) private var mode: InboxMode = .notifications
 
     var body: some View {
         let count = appState.attentionQueue.count
-        Button {
-            shown.toggle()
-        } label: {
+        Toggle(isOn: InboxMode.binding(.notifications, shown: $shown, mode: $mode)) {
             // The red dot says "something wants you"; how many is for the panel to tell.
             Image(systemName: count > 0 ? "bell.badge.fill" : "bell")
                 .symbolRenderingMode(count > 0 ? .multicolor : .monochrome)
         }
+        .toggleStyle(.button)
         .help(L10n.t(.notificationsPanelHelp))
         // The number left the picture, not the information: a screen reader still hears it.
+        .accessibilityValue(count > 0 ? "\(count)" : "")
+    }
+}
+
+/// Left of the bell: the pull requests that wait for your review. Its dot is
+/// blue, not red — red means an error in this app, and a review request is a
+/// question, so it wears a question's colour.
+struct ReviewsToolbarButton: View {
+    @EnvironmentObject var appState: AppState
+    @Binding var shown: Bool
+    @AppStorage(InboxMode.storageKey) private var mode: InboxMode = .notifications
+
+    var body: some View {
+        let count = appState.unseenReviewCount
+        Toggle(isOn: InboxMode.binding(.reviews, shown: $shown, mode: $mode)) {
+            Image(systemName: "arrow.triangle.pull")
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Circle()
+                            .fill(AttentionState.waiting.tint)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 3, y: -2)
+                    }
+                }
+        }
+        .toggleStyle(.button)
+        .help(L10n.t(.reviewsPanelHelp))
+        .featureHint(.reviews)
+        .accessibilityLabel(L10n.t(.reviewsPanel))
         .accessibilityValue(count > 0 ? "\(count)" : "")
     }
 }

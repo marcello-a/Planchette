@@ -12,6 +12,7 @@ one JSON request per connection, one JSON response back.
     planchette session wait --id <uuid> --until ready --timeout-ms 120000
     planchette session read --id <uuid> --lines 80
     planchette notification list --unread-only
+    planchette review list --include-team
 
 Only works inside a Planchette terminal: the socket path and the calling
 terminal's own id arrive as env vars ($PLANCHETTE_SOCKET, $PLANCHETTE_SESSION).
@@ -35,6 +36,8 @@ COMMANDS = {
     # The read side of the notifications panel: the same rows, the same order,
     # every fact the panel prints (state, prompt, age, branch, tags, project).
     "notification": ["list"],
+    # The read side of the Reviews panel: the PRs that wait for your review.
+    "review": ["list"],
 }
 
 
@@ -194,6 +197,11 @@ def main(argv):
         help="notification list: with --only-active, the terminals that are running too")
     parser.add_argument(
         "--limit", type=int, help="notification list: stop after this many rows")
+    parser.add_argument(
+        "--include-team", action="store_true",
+        help="review list: also the requests that went only to one of your teams")
+    parser.add_argument(
+        "--hide-sent", action="store_true", help="review list: leave out the reviews you sent")
     args = parser.parse_args(argv)
 
     if not args.group or not args.action:
@@ -239,6 +247,10 @@ def main(argv):
         payload["include_running"] = True
     if args.limit is not None:
         payload["limit"] = args.limit
+    if args.include_team:
+        payload["include_team"] = True
+    if args.hide_sent:
+        payload["hide_sent"] = True
 
     # A wait blocks in the app, so the socket timeout must outlive it.
     wait_ms = args.timeout_ms or (120000 if args.action == "wait" else 10000)

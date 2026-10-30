@@ -6,6 +6,7 @@ import Foundation
 /// still due. The card is in `Views/FeatureHintView.swift`, the offer logic in `AppState`.
 enum FeatureHint: String, CaseIterable, Codable {
     case notepad
+    case reviews
 
     /// The picture: `hints/<name>.gif` in the repository, `Contents/Resources/hints` in the app.
     var mediaName: String { rawValue }
