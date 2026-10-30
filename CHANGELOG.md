@@ -8,17 +8,6 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
-### Changed
-- **A project with one terminal is one row.** No disclosure arrow, and no second row that repeats
-  the name, the path and the state: the state icon, the project's name, then what it is doing and
-  since when. A second terminal turns it back into a list. Settings → Project panel → Projects →
-  Layout turns it off.
-- **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
-  in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
-  change afterwards; the level then shows *Custom*.
-- The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say
-  nothing about a checkout. "Also main and master" shows them again.
-
 ### Added
 - **Reviews, beside the bell.** A new icon left of the notifications bell switches the right panel
   to the pull requests that ask for your review — the same panel, rows and colours, by stage:
@@ -40,6 +29,23 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - `planchette review list` / `review.list`: the Reviews panel as data.
 
 ### Changed
+- **A project with one terminal is one row.** No disclosure arrow, and no second row that repeats
+  the name, the path and the state: the state icon, the project's name, then what it is doing and
+  since when. A second terminal turns it back into a list. Settings → Project panel → Projects →
+  Layout turns it off.
+- **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
+  in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
+  change afterwards; the level then shows *Custom*.
+- **Tree lines.** Thin lines in the folder's or the project's colour tie a folder to its projects
+  and a project to its terminals; each ends at the child's state icon. A project with one terminal
+  stands in the same column as the arrow of the others.
+- **A selected folder lights up what is in it:** its projects and terminals in a soft gradient of
+  the folder's colour.
+- The colour dot of a project sits at the right end of its row and turns into the close button on
+  hover; the count badges stay visible.
+- The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say
+  nothing about a checkout. "Also main and master" shows them again.
+
 - The notepad button in the tab bar is yellow while the pad is closed, so it is easy to find.
 - The pull request next to a branch follows a branch switch at once. When you or an agent run `git checkout`, `git switch`, `gh pr create` or `git push`, Planchette looks again after the command or the turn ends. Before, it took up to a minute. The PR of the old branch goes away right away and does not stay until the new one loads.
 - A `cd` into another repository shows its branch and PR at once, and so does coming back to Planchette from another app.

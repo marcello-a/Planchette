@@ -35,7 +35,8 @@ struct MergedRowFacts {
 struct MergedProjectRow<Trailing: View>: View {
     let facts: MergedRowFacts
     let details: SidebarDetails
-    /// What sits at the right end of the first line: the close button on hover in the sidebar.
+    /// What sits at the right end of the first line: the colour dot, which turns into the close
+    /// button on hover in the sidebar (`ColorDotOrClose`).
     @ViewBuilder var trailing: () -> Trailing
 
     var body: some View {
@@ -59,9 +60,6 @@ struct MergedProjectRow<Trailing: View>: View {
             .padding(.top, 2)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
-                    if let color = facts.color.color {
-                        Circle().fill(color).frame(width: 7, height: 7)
-                    }
                     Text(facts.projectName)
                         .fontWeight(facts.favorite ? .semibold : .regular)
                         .foregroundStyle(facts.active ? .primary : .secondary)
@@ -175,5 +173,31 @@ extension MergedRowFacts {
             tags: ["review"], note: "Wait for QA on staging before merge",
             backgroundTasks: [BackgroundTask(id: "sample", kind: .shell, title: "npm run dev")],
             usage: ContextUsage(model: "claude-opus-5-5", usedTokens: 120_000, windowTokens: 200_000))
+    }
+}
+
+/// The right end of a project's first line: its colour as a dot, and — while the pointer is over
+/// the row — the close button in the same place. One fixed slot, so nothing moves on hover, and
+/// the name keeps the left edge to itself.
+struct ColorDotOrClose: View {
+    let color: SessionColor
+    let hovered: Bool
+    var close: (() -> Void)?
+
+    var body: some View {
+        ZStack {
+            if hovered, let close {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(L10n.t(.closeProject))
+            } else if let tint = color.color {
+                Circle().fill(tint).frame(width: 8, height: 8)
+            }
+        }
+        .frame(width: 14, height: 14)
     }
 }

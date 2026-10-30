@@ -406,8 +406,14 @@ struct SidebarView: View {
 
     private func folderSection(_ folder: ProjectFolder) -> some View {
         let projects = appState.groups(inFolder: folder)
+        // A selected folder shows its overview; what belongs to it lights up with it.
+        let selected = appState.window(for: windowID)?.selectedFolderID == folder.id
         return DisclosureGroup(isExpanded: expansion(of: folder)) {
-            ForEach(projects) { group in projectRows(group, siblings: projects) }
+            ForEach(Array(projects.enumerated()), id: \.element.id) { index, group in
+                projectRows(group, siblings: projects,
+                            inFolder: FolderPlace(color: folder.color, index: index, count: projects.count,
+                                                  highlighted: selected))
+            }
                 .onMove { from, to in
                     var ids = projects.map(\.id)
                     ids.move(fromOffsets: from, toOffset: to)
@@ -416,6 +422,11 @@ struct SidebarView: View {
         } label: {
             folderLabel(folder, projects: projects)
         }
+        // The folder's line begins under its arrow — on its own row only: every project row in
+        // it sets its own background, which wins over this one.
+        .listRowBackground(TreeLinesSlice(lines: projects.isEmpty || folder.collapsed ? [] : [
+            TreeLines.Line(column: .folder, kind: .start, color: folder.color),
+        ]))
         // Selecting the folder row shows its overview in the main area: what is
         // in this box, what each project is doing, what it reported last.
         .tag(folder.id)
@@ -657,13 +668,29 @@ struct SidebarView: View {
 
     /// A project and whatever has to be visible under it: the row itself, plus
     /// the terminals that peek out of it while it is folded away.
+    /// Where a project stands in its folder — for the folder's tree line.
+    struct FolderPlace {
+        var color: SessionColor
+        var index: Int
+        var count: Int
+        /// The folder is selected (its overview is open): every row in it is washed in its colour.
+        var highlighted = false
+
+        func line(isProjectRow: Bool) -> [TreeLines.Line] {
+            TreeLines.folderLine(index: index, of: count, isProjectRow: isProjectRow)
+                .map { [TreeLines.Line(column: .folder, kind: $0, color: color)] } ?? []
+        }
+    }
+
     @ViewBuilder
-    private func projectRows(_ group: SessionGroup, siblings: [SessionGroup]) -> some View {
-        groupRow(group, siblings: siblings)
+    private func projectRows(_ group: SessionGroup, siblings: [SessionGroup],
+                             inFolder folder: FolderPlace? = nil) -> some View {
+        groupRow(group, siblings: siblings, inFolder: folder)
         ForEach(peeking(group)) { session in
             sessionRow(session,
                        isActive: false,
                        showBranch: appState.sharedBranch(of: group) == nil)
+                .listRowBackground(TreeRowBackground(folder: folder, lines: folder?.line(isProjectRow: false) ?? []))
         }
     }
 
@@ -705,15 +732,17 @@ struct SidebarView: View {
     /// A project row. `siblings` is the list it is displayed in (a folder's
     /// projects, or the loose ones), which is what "the gap below this row"
     /// resolves against.
-    private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = []) -> some View {
+    private func groupRow(_ group: SessionGroup, siblings: [SessionGroup] = [],
+                          inFolder folder: FolderPlace? = nil) -> some View {
         let sessions = appState.sessions(in: group)
         return Group {
             // A project of one terminal is one row (Settings → Project panel → Layout): the
             // project row and the terminal row said the same thing twice.
             if appState.sidebarDetails.merges(terminalCount: sessions.count), let session = sessions.first {
                 mergedRow(group, session: session)
+                    .listRowBackground(TreeRowBackground(folder: folder, lines: folder?.line(isProjectRow: true) ?? []))
             } else {
-                projectGroup(group, sessions: sessions)
+                projectGroup(group, sessions: sessions, inFolder: folder)
             }
         }
         .tag(group.id)
@@ -756,6 +785,9 @@ struct SidebarView: View {
         } ?? false
     }
 
+    /// How far a disclosure row's label sits right of a plain row's start: the arrow's column.
+    static let disclosureIndent: CGFloat = 17
+
     /// A project and its one terminal as one row. A click opens the terminal, a drag moves the
     /// project, the active terminal is outlined in its state colour — what the two rows did.
     private func mergedRow(_ group: SessionGroup, session: TerminalSession) -> some View {
@@ -765,15 +797,7 @@ struct SidebarView: View {
         // behind the row can be switched off (Settings → General → Project color).
         if facts.color == .none { facts.color = group.color }
         return MergedProjectRow(facts: facts, details: appState.sidebarDetails) {
-            if hoveredGroup == group.id {
-                Button { confirmClose(group) } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .help(L10n.t(.closeProject))
-            }
+            ColorDotOrClose(color: facts.color, hovered: hoveredGroup == group.id) { confirmClose(group) }
         }
         .padding(.horizontal, 4).padding(.vertical, 3)
         .background(ProjectGradient(color: group.color, look: appState.projectColor)
@@ -782,6 +806,10 @@ struct SidebarView: View {
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
         )
+        // A plain row starts where a project's NAME starts, one step right of its disclosure
+        // arrow — which read as a terminal of the project above. Pulled into the arrow's
+        // column, it stands beside the other projects, the sprite where their arrow is.
+        .padding(.leading, -Self.disclosureIndent)
         .contentShape(Rectangle())
         // As on a project row: the List reports only a change of selection, so a click on the
         // project you are in would do nothing without this. It opens the one terminal.
@@ -836,7 +864,8 @@ struct SidebarView: View {
     }
 
     /// A project of several terminals: the project row, and its terminals under it.
-    private func projectGroup(_ group: SessionGroup, sessions: [TerminalSession]) -> some View {
+    private func projectGroup(_ group: SessionGroup, sessions: [TerminalSession],
+                              inFolder folder: FolderPlace?) -> some View {
         // The branch sits on the project row while every terminal of it is on
         // that branch, and moves into the terminal rows as soon as they differ —
         // it is stated once, where it is true.
@@ -852,14 +881,18 @@ struct SidebarView: View {
                     // belongs on the row — a background on the DisclosureGroup is given to every row
                     // of it and comes out as a band per terminal. A closed project has no rows, so
                     // it is its label alone.
-                    .listRowBackground(ProjectGradient(
-                        color: group.color, look: appState.projectColor, shape: .body(row: row, of: sessions.count)))
+                    // The folder's line passes by, the project's own line reaches this terminal.
+                    .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: false) ?? []) + [
+                        TreeLines.Line(column: .project,
+                                       kind: TreeLines.projectLine(index: row, of: sessions.count),
+                                       color: group.color),
+                    ]) {
+                        ProjectGradient(
+                            color: group.color, look: appState.projectColor, shape: .body(row: row, of: sessions.count))
+                    })
             }
         } label: {
             HStack(spacing: 6) {
-                if let color = group.color.color {
-                    Circle().fill(color).frame(width: 9, height: 9)
-                }
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         // A parked project reads dimmed and carries the pause
@@ -886,18 +919,12 @@ struct SidebarView: View {
                     }
                 }
                 Spacer()
-                // Close (X) appears on hover; attention summary otherwise.
-                if hoveredGroup == group.id {
-                    Button { confirmClose(group) } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .help(L10n.t(.closeProject))
-                } else if appState.shows(.attentionCounts) {
+                if appState.shows(.attentionCounts) {
                     attentionSummary(group)
                 }
+                // The colour at the right end, turning into the close button on hover — the
+                // badges stay readable while you reach for it.
+                ColorDotOrClose(color: group.color, hovered: hoveredGroup == group.id) { confirmClose(group) }
             }
             // The project's color: the same wash the project's header has in the main area, so the
             // two read as one thing. A project without a color has none.
@@ -924,6 +951,12 @@ struct SidebarView: View {
             .overlay(dropHighlight(group.id))
             .contextMenu { groupMenu(group) }
         }
+        // The folder's stub to this project. A background on a DisclosureGroup reaches every
+        // row of it, but its terminals set their own above, so this one is the label's alone.
+        .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: true) ?? [])
+            + (collapsedGroups.contains(group.id) || sessions.isEmpty ? [] : [
+                TreeLines.Line(column: .project, kind: .start, color: group.color),
+            ])))
     }
 
     /// The project context menu. With several projects selected it acts on all
@@ -1065,7 +1098,9 @@ struct SidebarView: View {
         return Button {
             appState.select(session: session)
         } label: {
-            HStack(spacing: 6) {
+            // Top-aligned: the state icon stands on the row's first line, where the project's
+            // tree line ends — not in the middle of a row that may be three lines high.
+            HStack(alignment: .top, spacing: 6) {
                 // The state, and under it what Claude still runs in the
                 // background: a terminal that looks idle may be busy with a dev
                 // server or an agent, and the state alone does not say so.
@@ -1076,8 +1111,10 @@ struct SidebarView: View {
                         BackgroundTasksBadge(tasks: tasks)
                     }
                 }
+                .padding(.top, 1)
                 if let color = session.color.color {
                     Circle().fill(color).frame(width: 7, height: 7)
+                        .padding(.top, 4)
                 }
                 VStack(alignment: .leading, spacing: 1) {
                     // Where this terminal is: the ticket of its checkout (or the
