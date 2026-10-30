@@ -2,7 +2,8 @@
 
 usage: screenshots.py <binary> [--out <folder>] [scene ...]      (run through with_displays.sh)
 
-Scenes: overview folder cluster search welcome settings update reviews reviews-picker settings-panel settings-layout   (default: all)
+Scenes: overview folder cluster search welcome settings update reviews reviews-picker settings-panel settings-layout
+        compact levels (the three level-* scenes, set side by side in detail-levels.png)   (default: all)
 
 Every scene starts its own ISOLATED instance (PLANCHETTE_STATE_DIR) on a demo workspace that is
 made up here — nothing of yours is in it — waits for the first frame, and captures the window by
@@ -279,6 +280,49 @@ def reviews_state(root):
     return state, plan
 
 
+# ---- the detail levels, side by side ---------------------------------------------------------
+
+LEVEL_OVERRIDES = {
+    # What each level sets apart from the defaults (SidebarDetailLevel in SidebarDetails.swift).
+    "minimal": {"path": False, "branch": False, "task": False, "tags": False, "note": False,
+                "backgroundTasks": False},
+    "standard": {},
+    "everything": {"trunkBranch": True, "model": True, "contextUsage": True, "cacheTimer": True},
+}
+LEVEL_BRANCHES = {"storefront": "feat/SHOP-2093-express", "storefront-api": "fix/SHOP-2101-rate-limit",
+                  "design-system": "main", "checkout": "feat/SHOP-2110-e2e", "infra": "main",
+                  "docs-site": "fix/sidebar-links"}
+
+
+def levels_state(root, level):
+    """The one-terminal workspace at one detail level, every project a git checkout on its branch."""
+    state, plan = demo_state(root, selected="storefront", active=0, projects=SINGLE_PROJECTS,
+                             sidebarDetails={"overrides": LEVEL_OVERRIDES[level]})
+    for name, branch in LEVEL_BRANCHES.items():
+        repo = os.path.join(root, "work", name)
+        if os.path.isdir(repo):
+            for args in (["init", "-q", "-b", branch],
+                         ["-c", "user.name=demo", "-c", "user.email=demo@example.com",
+                          "commit", "-q", "--allow-empty", "-m", "init"]):
+                subprocess.run(["git", *args], cwd=repo, capture_output=True)
+    return state, plan
+
+
+def build_levels(shots, out):
+    """Crop the project panel of each level and set the three side by side, captioned."""
+    magick = shutil.which("magick") or "/opt/homebrew/bin/magick"
+    parts = []
+    for level in ("minimal", "standard", "everything"):
+        src, dst = os.path.join(shots, f"level-{level}.png"), os.path.join(shots, f"crop-{level}.png")
+        # The project panel of a 1800 px wide picture: below the toolbar, above the bottom bar.
+        subprocess.run([magick, src, "-crop", "512x960+0+108", "+repage", "-gravity", "North",
+                        "-background", "#1d1d1f", "-fill", "white", "-pointsize", "30", "-splice", "0x64",
+                        "-annotate", "+0+14", level.capitalize(), dst], check=True)
+        parts.append(dst)
+    subprocess.run([magick, parts[0], parts[1], parts[2], "-background", "#1d1d1f", "-splice", "16x0",
+                    "+append", "-chop", "16x0", "-strip", out], check=True)
+
+
 # ---- a build, wrapped as an app ---------------------------------------------------------------
 
 INFO_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
@@ -517,6 +561,9 @@ SCENES = {
     "update": dict(state=lambda root: demo_state(root, autoUpdateCheck=True), wait=14, pick="other"),
     "compact": dict(state=lambda root: demo_state(root, selected="storefront-api", projects=SINGLE_PROJECTS),
                     args=("-inboxShown", "NO")),
+    "level-minimal": dict(state=lambda root: levels_state(root, "minimal"), args=("-inboxShown", "YES"), wait=13),
+    "level-standard": dict(state=lambda root: levels_state(root, "standard"), args=("-inboxShown", "YES"), wait=13),
+    "level-everything": dict(state=lambda root: levels_state(root, "everything"), args=("-inboxShown", "YES"), wait=13),
     "settings-panel": dict(state=lambda root: demo_state(root),
                            args=("-settingsTab", "projectPanel", "-projectPanelPage", "terminals"),
                            menu=("Planchette", "Settings…"), pick="title:Project panel"),
@@ -543,6 +590,9 @@ def main():
         out_dir = os.path.abspath(args[at + 1])
         del args[at:at + 2]
     wanted = args or list(SCENES)
+    # "levels" is the three level scenes, composed into one picture.
+    if "levels" in wanted:
+        wanted = [n for n in wanted if n != "levels"] + ["level-minimal", "level-standard", "level-everything"]
     unknown = [name for name in wanted if name not in SCENES]
     if unknown:
         raise SystemExit(f"unknown scene: {', '.join(unknown)} (known: {', '.join(SCENES)})")
@@ -550,10 +600,17 @@ def main():
     holder = os.path.realpath(tempfile.mkdtemp(prefix="plt-shots-app-"))
     try:
         exe = make_app(binary, holder)
+        level_shots = os.path.realpath(tempfile.mkdtemp(prefix="plt-shots-levels-"))
         for name in wanted:
-            path = run_scene(exe, name, out_dir, **SCENES[name])
+            target = level_shots if name.startswith("level-") else out_dir
+            path = run_scene(exe, name, target, **SCENES[name])
             size = f"{os.path.getsize(path) // 1024} KB" if path else "no picture"
             print(f"{name}: {path or '-'} ({size})", flush=True)
+        if all(os.path.exists(os.path.join(level_shots, f"level-{l}.png")) for l in LEVEL_OVERRIDES):
+            out = os.path.join(out_dir, "detail-levels.png")
+            build_levels(level_shots, out)
+            print(f"levels: {out} ({os.path.getsize(out) // 1024} KB)", flush=True)
+        shutil.rmtree(level_shots, ignore_errors=True)
     finally:
         shutil.rmtree(holder, ignore_errors=True)
         forget_wrapper()

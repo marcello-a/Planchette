@@ -15,12 +15,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/overview.png" width="900" alt="Planchette: projects in folders with their own colors, a project's tabs named after what each session is about, and the notifications panel listing who needs you">
+  <img src="docs/images/overview.png" width="900" alt="Planchette: projects in folders with their own colors — a project with one terminal is one row — a project's tabs named after what each session is about, and the notifications panel listing who needs you">
 </p>
 
-> **Two things set Planchette apart:** [everything stays](#everything-stays) — quit, update or crash,
-> and the next launch puts every session back — and [the notepad](#the-notepad) — prompts written
-> ahead, sent with one click.
+> **Three things set Planchette apart:** [everything stays](#everything-stays) — quit, update or
+> crash, and the next launch puts every session back — [the notepad](#the-notepad) — prompts
+> written ahead, sent with one click — and [reviews](#reviews) — the pull requests that wait for
+> you, reviewed by Claude where nobody works, sent only after you decided.
 
 ## Everything stays
 
@@ -59,6 +60,29 @@ workspace. Write the next prompts while the agent works; send each one with a cl
   pad. The text stays as typed, so what reaches the terminal is what you wrote.
 - **A prompt is a block** that ends at a blank line (one to three Returns, a setting), and a code
   fence is one prompt. A prompt that was sent leaves the pad, or is struck through (Settings → Tabs).
+
+## Reviews
+
+**The pull requests that ask for your review, beside the bell.** The icon left of the
+notifications bell switches the right panel to them (needs `gh`). Claude reviews each one in a
+checkout nobody works in; you decide per finding; nothing reaches GitHub before you click send.
+
+<p align="center">
+  <img src="hints/reviews.gif" width="420" alt="The Reviews panel: a PR asks for a review, a free checkout is picked, Claude reviews it in its own terminal, the findings come back with Comment, Fix or Skip preselected, Set all changes them at once, and Send review posts it">
+</p>
+
+- **A checkout nobody works in.** A request opens in place with the checkouts of its repo. A busy
+  one — an agent running or open on a work branch, an unread result, uncommitted changes, a dev
+  server — is named with its reason and never offered; the free one untouched longest is
+  suggested; a temporary worktree is always there and goes once the review is sent.
+- **One decision per finding.** Comment (with a suggestion where there is one), Fix (a commit on
+  the author's branch) or Skip — preselected from the severity; "Set all" changes them at once,
+  and the verdict follows.
+- **Calm.** A blue dot and one banner for a request to you; team-only requests stay out unless you
+  want them; new commits or a new request after your review bring the row back as *Updated*.
+- **Your skill or ours.** The review runs as the Claude Code skill `review-pr`. Without one of
+  your own, Planchette adds [its default](skills/review-pr/SKILL.md) to `~/.claude/skills` and keeps
+  it current; yours is never touched.
 
 ## See it work
 
@@ -114,7 +138,7 @@ one prerequisite exists — nothing to configure:
 | **Claude Code** | **Live states with zero setup.** Planchette installs its hooks into `~/.claude/settings.json` on first launch. Every color in the sidebar — running, waiting, error, done — comes straight from the agent. Tabs take their names from Claude's own name for the conversation. |
 | **Codex** | Recognized too: a hook claims the terminal (auto-installed into `~/.codex/hooks.json` when `~/.codex` exists), and screen detection reads the states off its TUI. |
 | **`claude` on your PATH** | **AI summaries** — one line per terminal saying what it is actually doing, via headless `claude -p` on your existing login. On by default; toggle in Settings → AI. |
-| **`gh`** (GitHub CLI) | **Pull request pills.** The PR of each terminal's branch and its review state, on its row; click it to open the PR. **Reviews:** the PRs that ask for your review, in the right panel (icon left of the bell). |
+| **`gh`** (GitHub CLI) | **Pull request pills.** The PR of each terminal's branch and its review state, on its row; click it to open the PR. It follows a `git checkout`, a `gh pr create` or a `cd` at once. **[Reviews](#reviews):** the PRs that ask for your review, in the right panel (icon left of the bell). |
 
 Also worth a second:
 
@@ -138,11 +162,8 @@ Also worth a second:
   when the command does.
 - Notifications panel: "Needs you" first, errors before questions, oldest first; read and unread,
   menu-bar and dock badges, and ⌘⇧K jumps to the most urgent waiting terminal.
-- **Reviews** (the icon left of the bell, needs `gh`): the pull requests that ask for your review,
-  in the same panel. Start one in a checkout nobody works in, or in a temporary worktree that goes
-  afterwards; the `review-pr` Claude Code skill reviews it (yours, or Planchette's default from
-  [`skills/review-pr`](skills/review-pr/SKILL.md)); you decide per finding — Comment, Fix or
-  Skip, preselected — and nothing reaches GitHub before "Send review".
+- **[Reviews](#reviews)** (the icon left of the bell, needs `gh`): the pull requests that ask for
+  your review, in the same panel.
 - Snooze a terminal or a project (1 h / 2 h / tomorrow 9:00) with a reminder when it ends, or park
   a project you are not working on.
 - Background agents and shells show under the state icon, and the terminal stays purple (running,
@@ -180,9 +201,18 @@ Also worth a second:
 - Tabs that split, as in iTerm2: drag a tab onto a terminal's edge to split it, a pane's title back onto the tab bar to make it a tab; ⌘D / ⌘⇧D split off a new terminal; one button puts every tab in one view.
 - Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
-- A project with one terminal is one row; choose what every row of the project panel shows — path,
-  branch, pull request, prompt, age, tags — switch by switch or as a detail level (*Minimal*,
-  *Standard*, *Everything*), in *Settings → Project panel*, with a live example.
+- **A project with one terminal is one row:** the state, the name and its work branch, then what it
+  is doing and since when — no arrow, no second row repeating the name. `main` and `master` stay
+  out of the way: they say nothing about a checkout.
+- **As much detail as you want.** A detail level — *Minimal*, *Standard*, *Everything* — sets the
+  project panel in one click, and every detail (path, branch, pull request, prompt, age, tags,
+  notes, Claude's model and context) has its own switch, each with a live example, in
+  *Settings → Project panel*.
+
+<p align="center">
+  <img src="docs/images/detail-levels.png" width="900" alt="The project panel at the three detail levels side by side: Minimal, one line per project; Standard, the work branch after the name and the prompt under it; Everything, main and master too">
+</p>
+
 - Multiple windows, and merging them back. Saved arrangements rebuild a whole workspace in one click.
 
 <p align="center">
@@ -217,6 +247,9 @@ Also worth a second:
 - **After an update**, if you do not have durable terminals, one offer — with "don't show this
   again".
 - **The update dialog lists every change**, each opening to its full text, with "Expand all".
+  *Install & Relaunch* is the default, and the session comes back by itself.
+- **Only the latest release is installed.** One that waits for the next quit is replaced when a
+  newer one comes out, never installed one after the other.
 
 <p align="center">
   <img src="docs/images/settings.png" width="340" alt="Settings, Tabs: what names a tab, with an example">
@@ -226,9 +259,9 @@ Also worth a second:
 
 ### For agents
 
-- Socket API + `planchette` CLI in every terminal: list, open, focus, prompt, wait, read, and
-  `notification list` — the notifications panel as JSON for anything else you want to show it in
-  ([manual](docs/API.md)). `session get` also says what an agent still runs in the background.
+- Socket API + `planchette` CLI in every terminal: list, open, focus, prompt, wait, read,
+  `notification list` and `review list` — the notifications and the Reviews panel as JSON for
+  anything else you want to show them in ([manual](docs/API.md)). `session get` also says what an agent still runs in the background.
 - So an agent can start a reviewer beside itself and block on its verdict
   ([skill](skills/planchette/SKILL.md)).
 - Optional AI assist: one-line summaries per session via headless `claude -p`.
