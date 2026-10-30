@@ -16,6 +16,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
   in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
   change afterwards; the level then shows *Custom*.
+- **Tree lines.** Thin lines in the folder's or the project's colour tie a folder to its projects
+  and a project to its terminals; each ends at the child's state icon. A project with one terminal
+  stands in the same column as the arrow of the others.
+- **A selected folder lights up what is in it:** its projects and terminals in a soft gradient of
+  the folder's colour.
+- The colour dot of a project sits at the right end of its row and turns into the close button on
+  hover; the count badges stay visible.
 - The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say
   nothing about a checkout. "Also main and master" shows them again.
 

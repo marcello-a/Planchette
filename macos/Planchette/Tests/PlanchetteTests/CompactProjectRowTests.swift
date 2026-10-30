@@ -85,3 +85,28 @@ final class CompactProjectRowTests: XCTestCase {
         }
     }
 }
+
+final class TreeLinesTests: XCTestCase {
+    func testAFolderLineTeesToEachProjectAndBendsAtTheLast() {
+        XCTAssertEqual(TreeLines.folderLine(index: 0, of: 3, isProjectRow: true), .tee)
+        XCTAssertEqual(TreeLines.folderLine(index: 2, of: 3, isProjectRow: true), .corner)
+        XCTAssertEqual(TreeLines.folderLine(index: 0, of: 1, isProjectRow: true), .corner)
+    }
+
+    func testTheFolderLinePassesTheTerminalsOfAllButTheLastProject() {
+        XCTAssertEqual(TreeLines.folderLine(index: 0, of: 3, isProjectRow: false), .through)
+        XCTAssertNil(TreeLines.folderLine(index: 2, of: 3, isProjectRow: false),
+                     "below the last project the folder line has ended")
+    }
+
+    func testAProjectLineReachesEveryTerminal() {
+        XCTAssertEqual(TreeLines.projectLine(index: 0, of: 3), .tee)
+        XCTAssertEqual(TreeLines.projectLine(index: 1, of: 3), .tee)
+        XCTAssertEqual(TreeLines.projectLine(index: 2, of: 3), .corner)
+    }
+
+    func testTheProjectLineHangsRightOfTheFolderLine() {
+        XCTAssertLessThan(TreeLines.x(.folder), TreeLines.x(.project))
+        XCTAssertLessThan(TreeLines.stubEnd(.folder), TreeLines.x(.project))
+    }
+}

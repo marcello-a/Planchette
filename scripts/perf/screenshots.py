@@ -551,7 +551,8 @@ SCENES = {
     # Mostly projects of one terminal, as most workspaces are: the README shows the merged rows.
     "overview": dict(state=lambda root: demo_state(root, selected="storefront", active=0,
                                                    projects=SINGLE_PROJECTS), **BIG),
-    "folder": dict(state=lambda root: demo_state(root, selected="storefront", active=0, folder_page=True), **BIG),
+    "folder": dict(state=lambda root: demo_state(root, selected="storefront", active=0, folder_page=True,
+                                                 projects=SINGLE_PROJECTS), **BIG),
     "cluster": dict(state=lambda root: demo_state(root, selected="storefront", active=0, view="cluster"), **BIG),
     "search": dict(state=lambda root: demo_state(root, selected="storefront", active=0),
                    menu=("Session", "Quick switcher"), **BIG),

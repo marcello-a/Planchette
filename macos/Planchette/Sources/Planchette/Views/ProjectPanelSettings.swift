@@ -403,7 +403,7 @@ struct SidebarRowExample: View {
                 .padding(.top, 5)
             MergedProjectRow(
                 facts: .sample(promptSource: appState.sidebarDetails.promptSource),
-                details: appState.sidebarDetails) { EmptyView() }
+                details: appState.sidebarDetails) { ColorDotOrClose(color: .blue, hovered: false) }
                 .padding(.horizontal, 6).padding(.vertical, 4)
                 // About as wide as the project panel, on its own ground.
                 .frame(width: 270, alignment: .leading)
