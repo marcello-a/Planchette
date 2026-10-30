@@ -8,6 +8,21 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Reviews: one repository at a time.** A menu at the top of the Reviews panel shows the requests
+  of one repository, or of all of them.
+- **Reviews: × removes a row.** Hover a row and click ×, or right-click → "Remove from list". It
+  comes back when the author asks again, or pushes new commits after your review.
+- **Reviews: the model and the effort.** The start button says what the review runs with
+  ("Start review · Opus · High"); the menu beside it changes both, and the choice is kept.
+  "Default" passes no flag: your Claude Code settings decide, and the button names what they say.
+
+### Changed
+- **Reviews is an alpha, off by default.** Switch it on in Settings → General → Alpha → Reviews.
+  While it is off there is no icon, no GitHub query and no banner.
+- **Reviews: a request's age is GitHub's.** The row counts from when the review was requested
+  (the latest request, when asked again), not from when Planchette first saw it.
+
 ## [0.2.47] — 2026-10-30
 
 ### Added
