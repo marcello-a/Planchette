@@ -108,7 +108,8 @@ struct TerminalAreaView: View {
             splitButton("note.text", help: .notepadHelp, label: .notepad) {
                 appState.toggleNotepad()
             }
-            .foregroundStyle(appState.notepad.isOpen ? Color.accentColor : Color.primary)
+            // Yellow while the pad is closed, so it is easy to find; the accent color while it is open.
+            .foregroundStyle(appState.notepad.isOpen ? Color.accentColor : Color(nsColor: .systemYellow))
             .featureHint(.notepad)
         }
     }

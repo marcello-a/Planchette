@@ -8,6 +8,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- The notepad button in the tab bar is yellow while the pad is closed, so it is easy to find.
+
 ## [0.2.46] — 2026-10-23
 
 ### Fixed
