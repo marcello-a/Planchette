@@ -202,6 +202,8 @@ def main(argv):
         help="review list: also the requests that went only to one of your teams")
     parser.add_argument(
         "--hide-sent", action="store_true", help="review list: leave out the reviews you sent")
+    parser.add_argument(
+        "--repo", help="review list: only this repository (owner/name)")
     args = parser.parse_args(argv)
 
     if not args.group or not args.action:
@@ -251,6 +253,8 @@ def main(argv):
         payload["include_team"] = True
     if args.hide_sent:
         payload["hide_sent"] = True
+    if args.repo:
+        payload["repo"] = args.repo
 
     # A wait blocks in the app, so the socket timeout must outlive it.
     wait_ms = args.timeout_ms or (120000 if args.action == "wait" else 10000)

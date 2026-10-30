@@ -134,6 +134,7 @@ enum ControlAPI {
             "since": iso.string(from: record.since), "temporary": record.temporary,
         ]
         if let team = pr.team { dict["team"] = team }
+        if let asked = pr.requestedAt { dict["requested_at"] = iso.string(from: asked) }
         if let checkout = record.checkout { dict["checkout"] = checkout }
         if let id = record.sessionID { dict["session"] = id.uuidString }
         if let until = record.snoozedUntil, until > Date() { dict["snoozed_until"] = iso.string(from: until) }
@@ -290,7 +291,8 @@ enum ControlAPI {
             // must be one list.
             let sections = state.reviewSections(
                 onlyMine: request.bool("include_team") != true,
-                showSent: request.bool("hide_sent") != true)
+                showSent: request.bool("hide_sent") != true,
+                repo: request.string("repo"))
             let rows = [("needs_you", sections.needsYou), ("reviewing", sections.reviewing),
                         ("sent", sections.sent)]
                 .flatMap { name, records in records.map { describeReview($0, section: name, in: state) } }
@@ -300,6 +302,7 @@ enum ControlAPI {
                 "reviews": rows,
                 "counts": ["unseen": state.unseenReviewCount, "listed": rows.count],
                 "checked_at": checked,
+                "enabled": state.reviewsEnabled,
             ])
 
         case .sessionGet:

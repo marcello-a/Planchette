@@ -11,15 +11,22 @@ struct ReviewsPanel: View {
     /// the ones meant for you.
     @AppStorage("reviewsOnlyMine") private var onlyMine = true
     @AppStorage("reviewsShowSent") private var showSent = true
+    /// One repository's rows only; empty for all of them.
+    @AppStorage("reviewsRepo") private var repoFilter = ""
     @State private var expanded: String?
+    @State private var hovered: String?
     /// The checkout picked per PR: a path, or `temporaryChoice`.
     @State private var choice: [String: String] = [:]
     @State private var runChecks: [String: Bool] = [:]
+    /// The model and the effort of the next review, kept for the one after; empty is Claude
+    /// Code's own default.
+    @AppStorage("reviewModel") private var model = ""
+    @AppStorage("reviewEffort") private var effort = ""
 
     private static let temporaryChoice = "\u{0}temporary"
 
     var body: some View {
-        let sections = appState.reviewSections(onlyMine: onlyMine, showSent: showSent)
+        let sections = appState.reviewSections(onlyMine: onlyMine, showSent: showSent, repo: shownRepo)
         VStack(spacing: 0) {
             header
             Divider()
@@ -87,6 +94,19 @@ struct ReviewsPanel: View {
                 .foregroundStyle(.secondary)
                 .help(L10n.t(.reviewsRefresh))
             }
+            let repos = appState.reviewRepos
+            if !repos.isEmpty {
+                Picker(L10n.t(.reviewsRepoFilterHelp), selection: $repoFilter) {
+                    Text(L10n.t(.reviewsAllRepos)).tag("")
+                    Divider()
+                    ForEach(repos, id: \.self) { Text(verbatim: $0).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .help(L10n.t(.reviewsRepoFilterHelp))
+            }
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 10) { filters; Spacer(minLength: 0) }
                 VStack(alignment: .leading, spacing: 4) { filters }
@@ -112,6 +132,12 @@ struct ReviewsPanel: View {
             .toggleStyle(.checkbox)
             .font(.caption)
             .help(L10n.t(.reviewsShowSentHelp))
+    }
+
+    /// The chosen repository while it still has rows; once its last row is gone the list shows
+    /// everything again instead of standing empty behind a filter you cannot see.
+    private var shownRepo: String? {
+        repoFilter.isEmpty || !appState.reviewRepos.contains(repoFilter) ? nil : repoFilter
     }
 
     private func placeholder(_ symbol: String, _ text: String) -> some View {
@@ -170,22 +196,58 @@ struct ReviewsPanel: View {
             ) {
                 StateIcon(state: state, size: 14)
             } chip: {
-                ReviewChip(text: chipText(record), tint: state.tint)
+                HStack(spacing: 5) {
+                    ReviewChip(text: chipText(record), tint: state.tint)
+                    // The ×'s slot, kept free in every row so nothing moves on hover. The button
+                    // lies over it: a button inside the row's button never gets the click.
+                    Color.clear.frame(width: 14, height: 14)
+                }
             } trailing: {
                 if let until = record.snoozedUntil, until > Date() {
                     SnoozeBadge(until: until)
                 } else {
-                    WaitingTimeText(since: record.since)
+                    WaitingTimeText(since: waitingSince(record))
                 }
             }
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            if hovered == record.id {
+                Button {
+                    dismiss(record)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 14, height: 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help(L10n.t(.reviewDismissHelp))
+                .padding(.top, 8)
+                .padding(.trailing, 12)
+            }
+        }
+        .onHover { inside in
+            if inside { hovered = record.id } else if hovered == record.id { hovered = nil }
+        }
         // A row is one element with a name: the PR, then its stage. Without this
         // the button had no label at all, for VoiceOver and for the perf scripts.
         .accessibilityLabel(Text(verbatim: record.pr.title))
         .accessibilityValue(Text(verbatim: chipText(record)))
         .help(hoverDetail(record))
         .contextMenu { rowMenu(record) }
+    }
+
+    /// A request waits since GitHub asked — not since Planchette first saw it, which may be
+    /// days later. Every later stage counts from its own start.
+    private func waitingSince(_ record: ReviewRecord) -> Date {
+        record.stage == .requested ? record.pr.requestedAt ?? record.since : record.since
+    }
+
+    private func dismiss(_ record: ReviewRecord) {
+        if expanded == record.id { expanded = nil }
+        appState.dismissReview(record.id)
     }
 
     private func tap(_ record: ReviewRecord) {
@@ -284,6 +346,9 @@ struct ReviewsPanel: View {
         if pr.isDraft { lines.append(L10n.t(.reviewDraft)) }
         lines.append(pr.requestedFromMe ? L10n.t(.reviewRequestedFromYou)
             : L10n.t(.reviewRequestedFromTeam, pr.team ?? "—"))
+        if let asked = pr.requestedAt {
+            lines.append(L10n.t(.reviewRequestedAgo, asked.formatted(.relative(presentation: .named))))
+        }
         if let error = record.lastError { lines.append("⚠︎ \(error)") }
         switch record.stage {
         case .requested: lines.append(L10n.t(.reviewHelpRequested))
@@ -304,6 +369,7 @@ struct ReviewsPanel: View {
         laterMenu(record)
         Divider()
         Button(L10n.t(.reviewOpenOnGitHub)) { appState.openReviewOnGitHub(record.id) }
+        Button(L10n.t(.reviewDismiss)) { dismiss(record) }
     }
 
     @ViewBuilder
@@ -396,14 +462,22 @@ struct ReviewsPanel: View {
                 .font(.caption)
                 .help(L10n.t(.reviewRunChecksHelp))
             HStack(spacing: 8) {
-                Button(L10n.t(.reviewStart)) {
-                    let checkout = free.first { $0.path == selected }
-                    appState.startReview(url, in: checkout, repoRoot: repoRoot, runChecks: runChecks[url] ?? false)
-                    expanded = nil
+                // The button says what it starts: the model and the effort, beside it the menu
+                // that changes them.
+                HStack(spacing: 2) {
+                    Button(L10n.t(.reviewStartWith, modelLabel, effortLabel)) {
+                        let checkout = free.first { $0.path == selected }
+                        let run = ReviewRun(runChecks: runChecks[url] ?? false,
+                                            model: model.isEmpty ? nil : model,
+                                            effort: ReviewEffort(rawValue: effort))
+                        appState.startReview(url, in: checkout, repoRoot: repoRoot, run: run)
+                        expanded = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(selected == nil)
+                    runMenu
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(selected == nil)
                 laterMenu(record)
                     .menuStyle(.borderlessButton)
                     .controlSize(.small)
@@ -414,6 +488,49 @@ struct ReviewsPanel: View {
         } else {
             ProgressView().controlSize(.small)
         }
+    }
+
+    /// The model and the effort, as the start button names them. A default names what it is,
+    /// when Claude Code's settings say so.
+    private var modelLabel: String {
+        if !model.isEmpty { return ReviewRequests.modelName(model) }
+        return appState.claudeDefaults.model.map(ReviewRequests.modelName) ?? L10n.t(.reviewDefaultModel)
+    }
+
+    private var effortLabel: String {
+        if let chosen = ReviewEffort(rawValue: effort) { return L10n.t(chosen.labelKey) }
+        return appState.claudeDefaults.effort.map { L10n.t($0.labelKey) } ?? L10n.t(.reviewDefaultEffort)
+    }
+
+    private var runMenu: some View {
+        Menu {
+            Picker(L10n.t(.reviewModelTitle), selection: $model) {
+                Text(defaultLabel(appState.claudeDefaults.model.map(ReviewRequests.modelName))).tag("")
+                ForEach(ReviewRequests.modelAliases, id: \.self) { alias in
+                    Text(verbatim: ReviewRequests.modelName(alias)).tag(alias)
+                }
+            }
+            .pickerStyle(.inline)
+            Picker(L10n.t(.reviewEffortTitle), selection: $effort) {
+                Text(defaultLabel(appState.claudeDefaults.effort.map { L10n.t($0.labelKey) })).tag("")
+                ForEach(ReviewEffort.allCases) { level in
+                    Text(L10n.t(level.labelKey)).tag(level.rawValue)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Image(systemName: "slider.horizontal.3")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .controlSize(.small)
+        .fixedSize()
+        .help(L10n.t(.reviewRunSettingsHelp))
+        .accessibilityLabel(L10n.t(.reviewRunSettingsHelp))
+    }
+
+    private func defaultLabel(_ name: String?) -> String {
+        name.map { L10n.t(.reviewDefaultWith, $0) } ?? L10n.t(.reviewDefault)
     }
 
     private func radio(title: String, detail: String, recommended: Bool, on: Bool,

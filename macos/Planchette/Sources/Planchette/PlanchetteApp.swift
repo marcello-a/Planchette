@@ -152,6 +152,16 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.t(.alphaSection)) {
+                Toggle(L10n.t(.reviewsEnableTitle), isOn: $appState.reviewsEnabled)
+                    .help(L10n.t(.reviewsEnableHelp))
+                    // A Form shows the label beside the switch, not as its name.
+                    .accessibilityLabel(L10n.t(.reviewsEnableTitle))
+                Text(L10n.t(.reviewsEnableExplanation))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Section(L10n.t(.durableSection)) {
                 Toggle(L10n.t(.durableActive), isOn: $appState.durableTerminals)
                     .disabled(!Durable.isAvailable)
@@ -513,8 +523,10 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            ReviewsToolbarButton(shown: $inboxShown)
+        if appState.reviewsEnabled {
+            ToolbarItem(placement: .primaryAction) {
+                ReviewsToolbarButton(shown: $inboxShown)
+            }
         }
         ToolbarItem(placement: .primaryAction) {
             InboxToolbarButton(shown: $inboxShown)

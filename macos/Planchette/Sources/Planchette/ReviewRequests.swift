@@ -42,6 +42,9 @@ enum ReviewRequests {
             reviewRequests(first: 20) { nodes { requestedReviewer {
               __typename ... on User { login } ... on Team { name }
             } } }
+            timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 30) { nodes { ... on ReviewRequestedEvent {
+              createdAt requestedReviewer { __typename ... on User { login } ... on Team { name } }
+            } } }
           } } }
           \(tracked)
         }
@@ -109,6 +112,18 @@ enum ReviewRequests {
                 && (($0["login"] as? String)?.caseInsensitiveCompare(viewer) == .orderedSame)
         }
         let team = reviewers.first { ($0["__typename"] as? String) == "Team" }?["name"] as? String
+        // When you were asked: the latest request to you by name — or to the team, when only the
+        // team was asked. A request asked again is the newer one: that is how long it has waited.
+        let events = (((node["timelineItems"] as? [String: Any])?["nodes"] as? [[String: Any]]) ?? [])
+        let asked = events.compactMap { event -> Date? in
+            guard let reviewer = event["requestedReviewer"] as? [String: Any],
+                  let at = (event["createdAt"] as? String).flatMap({ isoDate.date(from: $0) }) else { return nil }
+            let isUser = (reviewer["__typename"] as? String) == "User"
+            let matches = mine
+                ? isUser && (reviewer["login"] as? String)?.caseInsensitiveCompare(viewer) == .orderedSame
+                : !isUser && (reviewer["name"] as? String) == team
+            return matches ? at : nil
+        }.max()
         let rollup = ((((node["commits"] as? [String: Any])?["nodes"] as? [[String: Any]])?.first?["commit"]
             as? [String: Any])?["statusCheckRollup"] as? [String: Any])?["state"] as? String
         return ReviewPR(
@@ -127,7 +142,8 @@ enum ReviewRequests {
             checks: ReviewPR.Checks(rollup: rollup),
             updatedAt: (node["updatedAt"] as? String).flatMap { isoDate.date(from: $0) },
             requestedFromMe: mine,
-            team: mine ? nil : team)
+            team: mine ? nil : team,
+            requestedAt: asked)
     }
 
     // MARK: Merge
@@ -152,6 +168,11 @@ enum ReviewRequests {
                 continue
             }
             let askedAgain = record.stage == .sent
+            // A removed row comes back when the author asks again while the request still stands.
+            if record.dismissed, let old = record.pr.requestedAt, let new = pr.requestedAt, new > old {
+                record.dismissed = false
+                record.unread = true
+            }
             record.pr = pr
             if askedAgain { record.reopen(now: now) }
             result[url] = record
@@ -302,12 +323,54 @@ enum ReviewRequests {
 
     /// The shell line that starts the review in a new terminal. Every value is
     /// quoted: a PR URL is remote text (AGENTS.md: data, never a command).
-    static func startCommand(pr: ReviewPR, directory: String, keepCheckout: Bool, runChecks: Bool) -> String {
+    static func startCommand(pr: ReviewPR, directory: String, keepCheckout: Bool, run: ReviewRun) -> String {
         // The directory is quoted inside the prompt too: Application Support has a space.
         var prompt = "/review-pr \(pr.url) --dir \"\(directory)\""
         if keepCheckout { prompt += " --keep-checkout" }
-        if runChecks { prompt += " --checks" }
-        return "claude \(Shell.singleQuoted(prompt))"
+        if run.runChecks { prompt += " --checks" }
+        var command = "claude"
+        // No flag for a default: Claude Code's own settings then decide, as in any terminal.
+        if let model = run.model { command += " --model \(Shell.singleQuoted(model))" }
+        if let effort = run.effort { command += " --effort \(effort.rawValue)" }
+        return "\(command) \(Shell.singleQuoted(prompt))"
+    }
+
+    // MARK: Model and effort
+
+    /// The models the start menu offers, as Claude Code's aliases: each one the latest of its kind.
+    static let modelAliases = ["fable", "opus", "sonnet", "haiku"]
+
+    /// A model as a person says it: "opus" → "Opus", "claude-opus-5-5" → "Opus 5.5",
+    /// "sonnet[1m]" → "Sonnet 1M". A date at the end of an id is left out.
+    static func modelName(_ model: String) -> String {
+        var id = model.trimmingCharacters(in: .whitespaces).lowercased()
+        var suffix = ""
+        if let open = id.firstIndex(of: "["), id.hasSuffix("]") {
+            suffix = " " + id[id.index(after: open)..<id.index(before: id.endIndex)].uppercased()
+            id = String(id[..<open])
+        }
+        if id.hasPrefix("claude-") { id.removeFirst("claude-".count) }
+        let parts = id.split(separator: "-").map(String.init)
+        let words = parts.filter { Int($0) == nil }.map(\.capitalized)
+        let numbers = parts.filter { Int($0) != nil && $0.count < 8 }
+        guard !words.isEmpty else { return model }
+        return words.joined(separator: " ") + (numbers.isEmpty ? "" : " " + numbers.joined(separator: ".")) + suffix
+    }
+
+    /// What Claude Code runs with when the review passes no flag: `model` and `effortLevel` of
+    /// `~/.claude/settings.json`. Nil for what the file does not set.
+    struct ClaudeDefaults: Equatable {
+        var model: String?
+        var effort: ReviewEffort?
+    }
+
+    static func claudeDefaults(settings data: Data?) -> ClaudeDefaults {
+        guard let data, let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return ClaudeDefaults()
+        }
+        let model = (object["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let effort = (object["effortLevel"] as? String).flatMap(ReviewEffort.init(rawValue:))
+        return ClaudeDefaults(model: model, effort: effort)
     }
 
     /// What the review terminal gets when the user clicks "Send review".
@@ -321,6 +384,30 @@ enum ReviewRequests {
 }
 
 // MARK: - Models
+
+/// How a review's Claude runs. Nil is Claude Code's own default: no flag is passed.
+struct ReviewRun: Equatable {
+    var runChecks = false
+    var model: String?
+    var effort: ReviewEffort?
+}
+
+/// Claude Code's `--effort` levels.
+enum ReviewEffort: String, CaseIterable, Identifiable {
+    case low, medium, high, xhigh, max
+
+    var id: String { rawValue }
+
+    var labelKey: LKey {
+        switch self {
+        case .low: .reviewEffortLow
+        case .medium: .reviewEffortMedium
+        case .high: .reviewEffortHigh
+        case .xhigh: .reviewEffortXHigh
+        case .max: .reviewEffortMax
+        }
+    }
+}
 
 /// A pull request as the Reviews panel shows it.
 struct ReviewPR: Codable, Equatable, Identifiable {
@@ -343,6 +430,9 @@ struct ReviewPR: Codable, Equatable, Identifiable {
     var requestedFromMe: Bool
     /// The team that was asked, when the user was not asked by name.
     var team: String?
+    /// When GitHub asked for the review (the latest request): how long it has waited. Nil when the
+    /// timeline did not say.
+    var requestedAt: Date?
 
     var id: String { url }
     var repoName: String { repo.split(separator: "/").last.map(String.init) ?? repo }
@@ -414,6 +504,9 @@ struct ReviewRecord: Codable, Equatable, Identifiable {
     /// The head commit the sent review looked at: a new one reopens the row.
     var reviewedSha: String?
     var lastError: String?
+    /// Taken off the list with its ×. It comes back on its own when it asks again: a new request,
+    /// or new commits after a sent review (`reopen`).
+    var dismissed = false
 
     var id: String { pr.url }
 
@@ -436,6 +529,7 @@ struct ReviewRecord: Codable, Equatable, Identifiable {
         checkout = nil
         temporary = false
         lastError = nil
+        dismissed = false
     }
 
     func isSnoozed(at now: Date) -> Bool { (snoozedUntil ?? .distantPast) > now }
@@ -552,5 +646,30 @@ struct ReviewSent: Codable, Equatable {
     static func load(from directory: URL) -> ReviewSent? {
         guard let data = try? Data(contentsOf: directory.appendingPathComponent("sent.json")) else { return nil }
         return try? JSONDecoder().decode(ReviewSent.self, from: data)
+    }
+}
+
+extension ReviewRecord {
+    /// Every field may be missing: a record written by an older build lacks the newer ones, and
+    /// one record that fails to decode would cost the whole review list.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pr = try c.decode(ReviewPR.self, forKey: .pr)
+        stage = try c.decode(ReviewStage.self, forKey: .stage)
+        since = try c.decode(Date.self, forKey: .since)
+        unread = (try? c.decodeIfPresent(Bool.self, forKey: .unread)) ?? true
+        updated = (try? c.decodeIfPresent(Bool.self, forKey: .updated)) ?? false
+        snoozedUntil = try? c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
+        checkout = try? c.decodeIfPresent(String.self, forKey: .checkout)
+        temporary = (try? c.decodeIfPresent(Bool.self, forKey: .temporary)) ?? false
+        repoRoot = try? c.decodeIfPresent(String.self, forKey: .repoRoot)
+        sessionID = try? c.decodeIfPresent(UUID.self, forKey: .sessionID)
+        groupID = try? c.decodeIfPresent(UUID.self, forKey: .groupID)
+        decisions = (try? c.decodeIfPresent([String: ReviewDecision].self, forKey: .decisions)) ?? [:]
+        verdict = try? c.decodeIfPresent(ReviewVerdict.self, forKey: .verdict)
+        sending = (try? c.decodeIfPresent(Bool.self, forKey: .sending)) ?? false
+        reviewedSha = try? c.decodeIfPresent(String.self, forKey: .reviewedSha)
+        lastError = try? c.decodeIfPresent(String.self, forKey: .lastError)
+        dismissed = (try? c.decodeIfPresent(Bool.self, forKey: .dismissed)) ?? false
     }
 }

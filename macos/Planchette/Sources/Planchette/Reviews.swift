@@ -12,7 +12,24 @@ import Foundation
 extension AppState {
     // MARK: Poll
 
-    func startReviewPolling() {
+    /// Start the poll and the file watch while the Reviews mode is on, stop both while it is off
+    /// (and show the notifications in the panel instead).
+    func updateReviewPolling() {
+        if reviewsEnabled {
+            guard reviewWatchTimer == nil else { return }
+            startReviewPolling()
+        } else {
+            reviewTimer?.invalidate()
+            reviewTimer = nil
+            reviewWatchTimer?.invalidate()
+            reviewWatchTimer = nil
+            if UserDefaults.standard.string(forKey: InboxMode.storageKey) == InboxMode.reviews.rawValue {
+                UserDefaults.standard.set(InboxMode.notifications.rawValue, forKey: InboxMode.storageKey)
+            }
+        }
+    }
+
+    private func startReviewPolling() {
         applyLaunchReviewFocus()
         // An isolated instance (a demo, a screenshot, a test) shows its seeded
         // reviews and asks GitHub for nothing. It still watches the review files.
@@ -51,7 +68,7 @@ extension AppState {
     /// Ask GitHub now. `manual` is the panel's refresh button: it may not repeat
     /// faster than `ReviewRequests.minimumManualInterval`.
     func refreshReviews(manual: Bool = false) {
-        guard !SupportPaths.isIsolated else { return }
+        guard reviewsEnabled, !SupportPaths.isIsolated else { return }
         if manual {
             let now = Date()
             if let last = reviewLastManualRefresh,
@@ -95,7 +112,7 @@ extension AppState {
         scheduleSave()
         guard announce else { return }
         let requestedNow = Set(fetch.requested.map(\.url))
-        for (url, record) in after where isMine(record) && !record.isSnoozed(at: now) {
+        for (url, record) in after where isMine(record) && !record.isSnoozed(at: now) && !record.dismissed {
             let old = before[url]
             let isNew = old == nil
             let askedAgain = old?.stage == .sent && record.stage == .requested && requestedNow.contains(url)
@@ -125,9 +142,11 @@ extension AppState {
     /// The three sections, in the order the eye wants them: a result waiting
     /// before a fresh request, the oldest of each first, so nothing ages at the
     /// bottom. The control API answers from this list too.
-    func reviewSections(onlyMine: Bool, showSent: Bool) -> ReviewSections {
+    func reviewSections(onlyMine: Bool, showSent: Bool, repo: String? = nil) -> ReviewSections {
         var sections = ReviewSections()
-        let rows = reviews.values.filter { !onlyMine || isMine($0) }
+        let rows = reviews.values.filter {
+            !$0.dismissed && (!onlyMine || isMine($0)) && (repo == nil || $0.pr.repo == repo)
+        }
         sections.needsYou = rows.filter { $0.stage.needsYou }.sorted { a, b in
             if a.stage != b.stage { return a.stage == .findings }
             return a.since < b.since
@@ -143,8 +162,9 @@ extension AppState {
     /// are the user's, not looked at, and not snoozed.
     var unseenReviewCount: Int {
         let now = Date()
+        guard reviewsEnabled else { return 0 }
         return reviews.values.filter {
-            $0.unread && $0.stage.needsYou && isMine($0) && !$0.isSnoozed(at: now)
+            $0.unread && $0.stage.needsYou && isMine($0) && !$0.isSnoozed(at: now) && !$0.dismissed
         }.count
     }
 
@@ -176,6 +196,19 @@ extension AppState {
     }
 
     func markReviewSeen(_ url: String) { updateReview(url) { $0.unread = false } }
+
+    /// The ×: off the list until it asks again (`ReviewRecord.dismissed`).
+    func dismissReview(_ url: String) {
+        updateReview(url) {
+            $0.dismissed = true
+            $0.unread = false
+        }
+    }
+
+    /// The repositories the list has rows of, for its filter.
+    var reviewRepos: [String] {
+        Array(Set(reviews.values.filter { !$0.dismissed }.map(\.pr.repo))).sorted()
+    }
     func markReviewUnread(_ url: String) { updateReview(url) { $0.unread = true } }
 
     func snoozeReview(_ url: String, until: Date) {
@@ -191,6 +224,7 @@ extension AppState {
 
     /// A banner was clicked: show the panel in its Reviews mode with that row open.
     func focusReview(_ url: String) {
+        guard reviewsEnabled else { return }
         UserDefaults.standard.set(true, forKey: "inboxShown")
         UserDefaults.standard.set(InboxMode.reviews.rawValue, forKey: InboxMode.storageKey)
         reviewFocus = url
@@ -199,6 +233,7 @@ extension AppState {
 
     /// The hint's button: the panel in its Reviews mode.
     func showReviews() {
+        guard reviewsEnabled else { return }
         UserDefaults.standard.set(true, forKey: "inboxShown")
         UserDefaults.standard.set(InboxMode.reviews.rawValue, forKey: InboxMode.storageKey)
         completeHint(.reviews)
@@ -267,11 +302,20 @@ extension AppState {
             let found = Self.scanCheckouts(
                 repo: slug, directories: directories, terminals: terminals,
                 servers: servers, running: running)
+            // Read again at every opening: the start button names what "default" is right now.
+            let defaults = ReviewRequests.claudeDefaults(settings: try? Data(contentsOf: Self.claudeSettingsURL))
             await MainActor.run { [weak self] in
-                guard let self, self.reviews[url] != nil else { return }
+                guard let self else { return }
+                if self.claudeDefaults != defaults { self.claudeDefaults = defaults }
+                guard self.reviews[url] != nil else { return }
                 if self.reviewCheckouts[url] != found { self.reviewCheckouts[url] = found }
             }
         }
+    }
+
+    /// Claude Code's user settings, read only — of the user record, as every other path of the app.
+    nonisolated static var claudeSettingsURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".claude/settings.json")
     }
 
     /// Off-main: find the repo's checkouts and read each one with git.
@@ -328,7 +372,7 @@ extension AppState {
     /// temporary worktree when `checkout` is nil — that runs the `review-pr`
     /// skill. The terminal opens in the background: the row says where it runs,
     /// and a click on the row goes there.
-    func startReview(_ url: String, in checkout: ReviewRequests.Checkout?, repoRoot: String?, runChecks: Bool) {
+    func startReview(_ url: String, in checkout: ReviewRequests.Checkout?, repoRoot: String?, run: ReviewRun) {
         guard let record = reviews[url], record.stage == .requested else { return }
         let directory = reviewDirectory(for: record)
         // A new round starts clean: the files of an earlier one would read as its answers.
@@ -342,7 +386,7 @@ extension AppState {
 
         if let checkout {
             let session = openReviewTerminal(in: checkout.path, groupID: projectHolding(checkout.path))
-            launch(record.pr, in: session, directory: directory, keepCheckout: false, runChecks: runChecks)
+            launch(record.pr, in: session, directory: directory, keepCheckout: false, run: run)
             updateReview(url) {
                 $0.stage = .reviewing
                 $0.since = Date()
@@ -390,7 +434,7 @@ extension AppState {
                     $0.worktreeRepoRoot = repoRoot
                 }
                 let session = self.openReviewTerminal(in: path, groupID: group.id)
-                self.launch(pr, in: session, directory: directory, keepCheckout: true, runChecks: runChecks)
+                self.launch(pr, in: session, directory: directory, keepCheckout: true, run: run)
                 self.updateReview(url) {
                     $0.checkout = path
                     $0.sessionID = session.id
@@ -421,9 +465,9 @@ extension AppState {
     /// is typed until the shell reads it, so a terminal that is still starting
     /// gets it at its first prompt (as `openTerminalTyping` relies on).
     private func launch(_ pr: ReviewPR, in session: TerminalSession, directory: URL,
-                        keepCheckout: Bool, runChecks: Bool) {
+                        keepCheckout: Bool, run: ReviewRun) {
         let command = ReviewRequests.startCommand(
-            pr: pr, directory: directory.path, keepCheckout: keepCheckout, runChecks: runChecks)
+            pr: pr, directory: directory.path, keepCheckout: keepCheckout, run: run)
         Task { @MainActor in
             // The skill has to be in place before Claude starts and reads its skills: the user's
             // own, or Planchette's default (`ReviewSkill`).
