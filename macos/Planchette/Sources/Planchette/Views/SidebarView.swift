@@ -405,12 +405,16 @@ struct SidebarView: View {
     private func folderSection(_ folder: ProjectFolder) -> some View {
         let projects = appState.groups(inFolder: folder)
         // A selected folder shows its overview; what belongs to it lights up with it.
-        let selected = appState.window(for: windowID)?.selectedFolderID == folder.id
+        let window = appState.window(for: windowID)
+        let selected = window?.selectedFolderID == folder.id
+        // Its line is in focus while it is selected or holds the project you are in.
+        let focused = selected || (window?.selectedFolderID == nil
+            && projects.contains { $0.id == window?.selectedGroupID })
         return DisclosureGroup(isExpanded: expansion(of: folder)) {
             ForEach(Array(projects.enumerated()), id: \.element.id) { index, group in
                 projectRows(group, siblings: projects,
                             inFolder: FolderPlace(color: folder.color, index: index, count: projects.count,
-                                                  highlighted: selected))
+                                                  highlighted: selected, focused: focused))
             }
                 .onMove { from, to in
                     var ids = projects.map(\.id)
@@ -430,7 +434,7 @@ struct SidebarView: View {
         // The folder's line begins under its arrow — on its own row only: every project row in
         // it sets its own background, which wins over this one.
         .listRowBackground(TreeLinesSlice(lines: projects.isEmpty || folder.collapsed ? [] : [
-            TreeLines.Line(column: .folder, kind: .start, color: folder.color),
+            TreeLines.Line(column: .folder, kind: .start, color: folder.color, focused: focused),
         ]))
         // Selecting the folder row shows its overview in the main area: what is
         // in this box, what each project is doing, what it reported last.
@@ -687,10 +691,12 @@ struct SidebarView: View {
         var count: Int
         /// The folder is selected (its overview is open): every row in it is washed in its colour.
         var highlighted = false
+        /// The folder is selected or holds the selected project: its line is drawn in full.
+        var focused = false
 
         func line(isProjectRow: Bool) -> [TreeLines.Line] {
             TreeLines.folderLine(index: index, of: count, isProjectRow: isProjectRow)
-                .map { [TreeLines.Line(column: .folder, kind: $0, color: color)] } ?? []
+                .map { [TreeLines.Line(column: .folder, kind: $0, color: color, focused: focused)] } ?? []
         }
     }
 
@@ -709,7 +715,7 @@ struct SidebarView: View {
                 // The folder's line passes by; the project's line reaches what stands under it.
                 .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: false) ?? []) + [
                     TreeLines.Line(column: .project, kind: TreeLines.projectLine(index: index, of: peeks.count),
-                                   color: group.color),
+                                   color: group.color, focused: isFocused(group)),
                 ]))
         }
     }
@@ -803,6 +809,12 @@ struct SidebarView: View {
 
     /// How far a disclosure row's label sits right of a plain row's start: the arrow's column.
     static let disclosureIndent: CGFloat = 17
+
+    /// The project you are in: its tree line is drawn in full.
+    private func isFocused(_ group: SessionGroup) -> Bool {
+        guard let window = appState.window(for: windowID) else { return false }
+        return window.selectedFolderID == nil && window.selectedGroupID == group.id
+    }
 
     /// A project and its one terminal as one row. A click opens the terminal, a drag moves the
     /// project, the active terminal is outlined in its state colour — what the two rows did.
@@ -901,7 +913,7 @@ struct SidebarView: View {
                     .listRowBackground(TreeRowBackground(folder: folder, lines: (folder?.line(isProjectRow: false) ?? []) + [
                         TreeLines.Line(column: .project,
                                        kind: TreeLines.projectLine(index: row, of: sessions.count),
-                                       color: group.color),
+                                       color: group.color, focused: isFocused(group)),
                     ]) {
                         ProjectGradient(
                             color: group.color, look: appState.projectColor, shape: .body(row: row, of: sessions.count))
@@ -973,7 +985,7 @@ struct SidebarView: View {
             // The project's line starts under its arrow while anything stands under it: its
             // terminals when open, its main terminals and peeks when folded.
             + ((collapsedGroups.contains(group.id) ? peeking(group).isEmpty : sessions.isEmpty) ? [] : [
-                TreeLines.Line(column: .project, kind: .start, color: group.color),
+                TreeLines.Line(column: .project, kind: .start, color: group.color, focused: isFocused(group)),
             ])))
     }
 

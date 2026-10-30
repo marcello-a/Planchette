@@ -25,6 +25,9 @@ enum TreeLines {
         var column: Column
         var kind: Kind
         var color: SessionColor
+        /// Its parent is where you are: the selected folder or project, or the folder holding the
+        /// selected project. Such a line is drawn in full, the others step back.
+        var focused = false
     }
 
     /// The folder's slice of a row that belongs to project `index` of `count` in it: the project
@@ -47,6 +50,17 @@ enum TreeLines {
     static func stubEnd(_ column: Column) -> CGFloat { column == .folder ? 24 : 50 }
     /// The stub meets a child's first line, not the middle of a row that may be three lines high.
     static let stubY: CGFloat = 13
+
+    /// How strong a line is drawn: 1 in focus; about a third elsewhere. A grey line without a
+    /// colour of its own is a little lighter still, in both states.
+    static func opacity(focused: Bool, colored: Bool) -> Double {
+        switch (focused, colored) {
+        case (true, true): 1
+        case (true, false): 0.75
+        case (false, true): 0.35
+        case (false, false): 0.22
+        }
+    }
     static let radius: CGFloat = 3
 }
 
@@ -81,16 +95,18 @@ struct TreeLinesSlice: View {
                     path.addQuadCurve(to: CGPoint(x: x + r, y: y), control: CGPoint(x: x, y: y))
                     path.addLine(to: CGPoint(x: end, y: y))
                 }
-                context.stroke(path, with: .color(Self.tint(line.color)), lineWidth: 1)
+                context.stroke(path, with: .color(Self.tint(line.color, focused: line.focused)), lineWidth: 1)
             }
         }
         .allowsHitTesting(false)
     }
 
-    /// The parent's colour, softened so the line stays a hint; a parent without one gets a grey
-    /// that only just shows.
-    static func tint(_ color: SessionColor) -> Color {
-        color.color.map { $0.opacity(0.55) } ?? Color.secondary.opacity(0.3)
+    /// The parent's colour: in full where you are, stepped back everywhere else, so the lines of
+    /// the folder and the project in focus stand out from the rest. A parent without a colour
+    /// gets a grey.
+    static func tint(_ color: SessionColor, focused: Bool) -> Color {
+        let opacity = TreeLines.opacity(focused: focused, colored: color.color != nil)
+        return (color.color ?? Color.secondary).opacity(opacity)
     }
 }
 
@@ -127,8 +143,8 @@ struct FolderHighlight: View {
 
     var body: some View {
         let tint = color.color ?? Color.accentColor
-        // Close to nothing on purpose: a hint of what belongs to the folder, never a block of colour.
-        LinearGradient(colors: [tint.opacity(0.06), tint.opacity(0.02)],
+        // A light hint of what belongs to the folder, never a block of colour.
+        LinearGradient(colors: [tint.opacity(0.12), tint.opacity(0.04)],
                        startPoint: .leading, endPoint: .trailing)
     }
 }
