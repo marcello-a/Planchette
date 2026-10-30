@@ -119,7 +119,7 @@ extension TreeRowBackground where Own == EmptyView {
     }
 }
 
-/// A selected folder's colour behind what belongs to it: soft, and fading to the right, so the
+/// A selected folder's colour behind what belongs to it: barely there, fading to the right, so the
 /// rows stay readable and their own colours still show. A folder without a colour lends the
 /// selection's.
 struct FolderHighlight: View {
@@ -127,7 +127,8 @@ struct FolderHighlight: View {
 
     var body: some View {
         let tint = color.color ?? Color.accentColor
-        LinearGradient(colors: [tint.opacity(0.22), tint.opacity(0.06)],
+        // Close to nothing on purpose: a hint of what belongs to the folder, never a block of colour.
+        LinearGradient(colors: [tint.opacity(0.06), tint.opacity(0.02)],
                        startPoint: .leading, endPoint: .trailing)
     }
 }
