@@ -2,7 +2,7 @@
 
 usage: screenshots.py <binary> [--out <folder>] [scene ...]      (run through with_displays.sh)
 
-Scenes: overview folder cluster search welcome settings update reviews reviews-picker   (default: all)
+Scenes: overview folder cluster search welcome settings update reviews reviews-picker settings-panel settings-layout   (default: all)
 
 Every scene starts its own ISOLATED instance (PLANCHETTE_STATE_DIR) on a demo workspace that is
 made up here — nothing of yours is in it — waits for the first frame, and captures the window by
@@ -146,14 +146,27 @@ PROJECTS = [
     ]),
 ]
 
+# Most projects hold one terminal: each one is a single row (Settings → Project panel → Layout).
+SINGLE_PROJECTS = [
+    PROJECTS[0],
+    (PROJECTS[1][0], "Storefront", "green", False, PROJECTS[1][4][:1]),
+    (PROJECTS[2][0], "Storefront", "pink", False, PROJECTS[2][4][2:3]),
+    ("checkout", "Storefront", "none", False, [
+        ("Checkout tests", "ready", "done", "Cover the express checkout with an e2e test", None, ["review"], 18),
+    ]),
+    PROJECTS[3],
+    PROJECTS[4],
+]
+
 FOLDER_COLORS = {"Storefront": "blue", "Platform": "none"}
 
 
-def demo_state(root, selected="storefront", active=0, view="tabs", appearance="dark", folder_page=False, **extra):
+def demo_state(root, selected="storefront", active=0, view="tabs", appearance="dark", folder_page=False,
+               projects=None, **extra):
     """The workspace as a state.json, plus a plan: what to do in each terminal once its shell is up."""
     work = os.path.join(root, "work")
     groups, sessions, folder_ids, plan = [], [], {}, []
-    for index, (name, folder, color, favorite, terminals) in enumerate(PROJECTS):
+    for index, (name, folder, color, favorite, terminals) in enumerate(projects or PROJECTS):
         gid = f"11111111-0000-0000-0000-{index:012d}"
         directory = os.path.join(work, name)
         os.makedirs(directory, exist_ok=True)
@@ -491,7 +504,9 @@ def run_scene(binary, name, out_dir, state=None, args=(), menu=None, wait=9.0, p
 BIG = dict(args=("-inboxShown", "YES"))
 
 SCENES = {
-    "overview": dict(state=lambda root: demo_state(root, selected="storefront", active=0), **BIG),
+    # Mostly projects of one terminal, as most workspaces are: the README shows the merged rows.
+    "overview": dict(state=lambda root: demo_state(root, selected="storefront", active=0,
+                                                   projects=SINGLE_PROJECTS), **BIG),
     "folder": dict(state=lambda root: demo_state(root, selected="storefront", active=0, folder_page=True), **BIG),
     "cluster": dict(state=lambda root: demo_state(root, selected="storefront", active=0, view="cluster"), **BIG),
     "search": dict(state=lambda root: demo_state(root, selected="storefront", active=0),
@@ -500,6 +515,14 @@ SCENES = {
     "settings": dict(state=lambda root: demo_state(root), args=("-settingsTab", "tabs"),
                      menu=("Planchette", "Settings…"), pick="title:Tabs"),
     "update": dict(state=lambda root: demo_state(root, autoUpdateCheck=True), wait=14, pick="other"),
+    "compact": dict(state=lambda root: demo_state(root, selected="storefront-api", projects=SINGLE_PROJECTS),
+                    args=("-inboxShown", "NO")),
+    "settings-panel": dict(state=lambda root: demo_state(root),
+                           args=("-settingsTab", "projectPanel", "-projectPanelPage", "terminals"),
+                           menu=("Planchette", "Settings…"), pick="title:Project panel"),
+    "settings-layout": dict(state=lambda root: demo_state(root),
+                            args=("-settingsTab", "projectPanel", "-projectPanelPage", "projects"),
+                            menu=("Planchette", "Settings…"), pick="title:Project panel"),
     "reviews": dict(state=lambda root: reviews_state(root),
                     args=("-inboxShown", "YES", "-inboxMode", "reviews",
                           "-reviewFocus", f"https://github.com/{REVIEW_REPO}/pull/5620")),
