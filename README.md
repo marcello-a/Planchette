@@ -193,16 +193,20 @@ Also worth a second:
 ### Organise work
 
 <p align="center">
-  <img src="docs/images/folder.png" width="900" alt="A folder's overview page: every project in it, its state and its terminals">
+  <img src="docs/images/folder.png" width="900" alt="A folder's overview page: every project in it, its state and its terminals; in the project panel the folder's projects light up in its colour, tied to it by thin tree lines">
 </p>
 
-- Projects in folders; drag one into a folder and drop it into an exact slot. Click a folder for an
-  overview: every project, its state, its terminals.
+- **Projects in folders, everything by drag and drop:** a project into any folder or next to a
+  project in another one, a terminal into another project or to another place in its own, a folder
+  above or below another. Thin tree lines in the folder's or the project's colour show what belongs
+  where. Click a folder for an overview — every project, its state, its terminals — while the
+  panel tints what is in it, faintly.
 - Tabs that split, as in iTerm2: drag a tab onto a terminal's edge to split it, a pane's title back onto the tab bar to make it a tab; ⌘D / ⌘⇧D split off a new terminal; one button puts every tab in one view.
 - Tags (with a list you edit), colors, favorites, notes; multi-select (⌘/⇧-click)
   for batch actions.
 - **A project with one terminal is one row:** the state, the name and its work branch, then what it
-  is doing and since when — no arrow, no second row repeating the name. `main` and `master` stay
+  is doing and since when — no arrow, no second row repeating the name. Its colour is a dot at the
+  right end, which turns into the close button on hover. `main` and `master` stay
   out of the way: they say nothing about a checkout.
 - **As much detail as you want.** A detail level — *Minimal*, *Standard*, *Everything* — sets the
   project panel in one click, and every detail (path, branch, pull request, prompt, age, tags,

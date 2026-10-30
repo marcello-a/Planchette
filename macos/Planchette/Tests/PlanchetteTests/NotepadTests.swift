@@ -130,9 +130,33 @@ final class NotepadPromptsTests: XCTestCase {
 }
 
 final class NotepadLookTests: XCTestCase {
+    func testThePadIsOpenPerTerminal() throws {
+        let a = UUID(), b = UUID()
+        var look = NotepadLook()
+        look.setOpen(true, for: a)
+        XCTAssertTrue(look.isOpen(for: a))
+        XCTAssertFalse(look.isOpen(for: b), "opening one pad leaves the others closed")
+        let decoded = try JSONDecoder().decode(NotepadLook.self, from: JSONEncoder().encode(look))
+        XCTAssertEqual(decoded.openTerminals, [a])
+        XCTAssertFalse(decoded.openForAllFromOldState)
+        look.setOpen(false, for: a)
+        XCTAssertTrue(look.openTerminals.isEmpty)
+    }
+
+    func testTheOldSwitchForAllPadsIsReadOnce() throws {
+        let old = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"isOpen":true,"width":300}"#.utf8))
+        XCTAssertTrue(old.openForAllFromOldState, "every terminal comes up with its pad open")
+        XCTAssertEqual(old.width, 300)
+        let closed = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"isOpen":false}"#.utf8))
+        XCTAssertFalse(closed.openForAllFromOldState)
+        let written = try JSONSerialization.jsonObject(with: JSONEncoder().encode(old)) as? [String: Any]
+        XCTAssertNil(written?["isOpen"], "the old switch is not written again")
+    }
+
     func testItStartsClosedAndWideEnough() {
         let look = NotepadLook()
-        XCTAssertFalse(look.isOpen)
+        XCTAssertFalse(look.isOpen(for: UUID()))
+        XCTAssertFalse(look.isOpen(for: nil))
         XCTAssertEqual(look.width, NotepadLook.defaultWidth)
         XCTAssertEqual(look.returnsPerPrompt, 2, "a prompt ends at a blank line unless Settings say otherwise")
     }
@@ -161,11 +185,11 @@ final class NotepadLookTests: XCTestCase {
         XCTAssertEqual(NotepadLook.sanitized(.nan), NotepadLook.defaultWidth)
         XCTAssertEqual(NotepadLook.sanitized(.infinity), NotepadLook.defaultWidth)
         XCTAssertEqual(NotepadLook.sanitized(-40), NotepadLook.minimumWidth)
-        XCTAssertEqual(NotepadLook(isOpen: true, width: 3).width, NotepadLook.minimumWidth)
+        XCTAssertEqual(NotepadLook(openTerminals: [UUID()], width: 3).width, NotepadLook.minimumWidth)
     }
 
     func testRoundTripAndOddFilesDecode() throws {
-        let look = NotepadLook(isOpen: true, width: 333, returnsPerPrompt: 3)
+        let look = NotepadLook(openTerminals: [UUID()], width: 333, returnsPerPrompt: 3)
         XCTAssertEqual(try JSONDecoder().decode(NotepadLook.self, from: JSONEncoder().encode(look)), look)
         let older = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"isOpen":true,"width":300}"#.utf8))
         XCTAssertEqual(older.returnsPerPrompt, 2, "a state from before the setting gets the default")
@@ -194,9 +218,10 @@ final class NotepadPersistenceTests: XCTestCase {
 
     func testTheLookRidesWithTheState() throws {
         var state = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
-        state.notepad = NotepadLook(isOpen: true, width: 410)
+        let terminal = UUID()
+        state.notepad = NotepadLook(openTerminals: [terminal], width: 410)
         let again = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state))
-        XCTAssertEqual(again.notepad, NotepadLook(isOpen: true, width: 410))
+        XCTAssertEqual(again.notepad, NotepadLook(openTerminals: [terminal], width: 410))
     }
 }
 
@@ -339,7 +364,7 @@ final class NotepadAfterLoadingTests: XCTestCase {
 
     func testTheSettingRoundTripsAndOldOrOddFilesGetTheDefault() throws {
         for action in NotepadAfterLoading.allCases {
-            let look = NotepadLook(isOpen: true, width: 300, returnsPerPrompt: 2, afterLoading: action)
+            let look = NotepadLook(openTerminals: [UUID()], width: 300, returnsPerPrompt: 2, afterLoading: action)
             XCTAssertEqual(try JSONDecoder().decode(NotepadLook.self, from: JSONEncoder().encode(look)), look)
         }
         let older = try JSONDecoder().decode(NotepadLook.self, from: Data(#"{"isOpen":true,"width":300,"returnsPerPrompt":1}"#.utf8))

@@ -37,7 +37,7 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from perf_common import REPO, RESOURCES, FocusGuard, UserFilesGuard, system_events_process, tool
+from perf_common import REPO, RESOURCES, FocusGuard, UserFilesGuard, system_events_process, tool, wait_until_idle
 
 NOW = time.time()
 REFERENCE = 978307200  # 2001-01-01 in Unix time: the app stores dates as seconds since then
@@ -508,6 +508,14 @@ def run_scene(binary, name, out_dir, state=None, args=(), menu=None, wait=9.0, p
         time.sleep(wait)
         drive(state_dir, plan)
         proc = system_events_process(app.pid)
+        # A window that is not on screen (another Space, a full-screen app in front) cannot be
+        # captured: bring the instance to the front for the picture. FocusGuard gives the focus
+        # back afterwards; waiting for a quiet machine first keeps it out of somebody's typing.
+        wait_until_idle(5, 900, quiet=True)
+        guard.stop()           # it would hand the focus back before the picture is taken
+        subprocess.run(["osascript", "-e", f"tell application \"System Events\" to set frontmost of {proc} to true"],
+                       capture_output=True)
+        time.sleep(1.5)
         if menu:
             script = (f'tell application "System Events" to tell {proc} to click menu item "{menu[1]}" '
                       f'of menu 1 of menu bar item "{menu[0]}" of menu bar 1')
@@ -532,6 +540,9 @@ def run_scene(binary, name, out_dir, state=None, args=(), menu=None, wait=9.0, p
     finally:
         guard.stop()
         app.send_signal(signal.SIGKILL)
+        if guard.user_pid:     # the focus goes back to whoever had it before the scene
+            subprocess.run(["osascript", "-e", 'tell application "System Events" to set frontmost of '
+                            f"(first process whose unix id is {guard.user_pid}) to true"], capture_output=True)
         try:
             app.wait(timeout=10)
         except subprocess.TimeoutExpired:

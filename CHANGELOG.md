@@ -36,11 +36,18 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
   in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
   change afterwards; the level then shows *Custom*.
+- **The notepad opens and closes per terminal.** ⌘J and the tab bar's button act on the terminal
+  you are in; the others keep their own pad, open or closed. A pad that was open for all comes up
+  open for every terminal once after the update.
+- **Drag and drop in the project panel.** A terminal onto a project moves it there, onto another
+  terminal places it above or below; a folder onto a folder reorders them, its projects with it;
+  a project goes into any folder, or next to a project in another folder. The drags travel as
+  JSON, so a project dropped on a terminal no longer types its id into the shell.
 - **Tree lines.** Thin lines in the folder's or the project's colour tie a folder to its projects
   and a project to its terminals; each ends at the child's state icon. A project with one terminal
   stands in the same column as the arrow of the others.
-- **A selected folder lights up what is in it:** its projects and terminals in a soft gradient of
-  the folder's colour.
+- **A selected folder marks what is in it:** its projects and terminals get a faint tint of the
+  folder's colour, barely there.
 - The colour dot of a project sits at the right end of its row and turns into the close button on
   hover; the count badges stay visible.
 - The branch shows only when it is a work branch: `main`, `master`, `develop` and `trunk` say
@@ -54,6 +61,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Only the latest release is installed, never one after the other.** A update that waits for the next quit is replaced when a newer release comes out, and the repeating check keeps looking while one waits. Before, the old one installed first and the newer one was offered at the next launch.
 - **The last session comes back without a question.** After an update, a crash or a plain quit, Planchette restores your workspace at launch by itself. Settings → General → "Ask before restoring the last session" brings the Restore / Start fresh question back (off by default).
 - The update dialog puts **Install & Relaunch** on top as the highlighted default button; "Install on quit" is second.
+
+### Fixed
+- Closing the notepad widens the terminal at once. It used to keep its old width until its next
+  redraw, a moment later.
 
 ## [0.2.46] — 2026-10-23
 

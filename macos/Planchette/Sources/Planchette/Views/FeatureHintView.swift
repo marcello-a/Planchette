@@ -28,7 +28,7 @@ struct FeatureHintContent {
         switch hint {
         case .notepad:
             return FeatureHintContent(title: .notepadHintTitle, body: .notepadHintBody, action: .notepadHintTry) { state in
-                if state.notepad.isOpen { state.completeHint(.notepad) } else { state.toggleNotepad() }
+                if state.notepad.isOpen(for: state.keyTerminalID()) { state.completeHint(.notepad) } else { state.toggleNotepad() }
             }
         case .reviews:
             return FeatureHintContent(title: .reviewsHintTitle, body: .reviewsHintBody, action: .reviewsHintTry) { state in

@@ -31,24 +31,30 @@ struct TerminalAreaView: View {
 
     /// The tab in front, and — when the notepad is open — the notepad of the terminal that has the
     /// keyboard at its right, behind a handle that changes its width.
-    @ViewBuilder
+    ///
+    /// One structure whether the pad is open or not: the tab is always the first child of the
+    /// same stack, and only the pad comes and goes. Two branches (the tab alone, or the tab in a
+    /// stack with the pad) made SwiftUI tear the terminal's host view down and build a new one on
+    /// every open and close; the terminal moved into a new parent and showed its new width only at
+    /// its next redraw — a moment after the pad had gone.
     private func tabWithNotepad(_ tab: SplitLayout) -> some View {
-        if appState.notepad.isOpen,
-           let id = appState.paneToFocus(in: tab, groupID: group.id),
-           let session = appState.sessions[id] {
-            GeometryReader { geometry in
-                let width = padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: geometry.size.width)
-                HStack(spacing: 0) {
-                    SplitTabView(tab: tab, group: group)
+        // The pad of the terminal with the keyboard, when that terminal's pad is open.
+        let focused = appState.paneToFocus(in: tab, groupID: group.id)
+        let padSession: TerminalSession? = appState.notepad.isOpen(for: focused)
+            ? focused.flatMap { appState.sessions[$0] }
+            : nil
+        return GeometryReader { geometry in
+            HStack(spacing: 0) {
+                SplitTabView(tab: tab, group: group)
+                if let session = padSession {
+                    let width = padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: geometry.size.width)
                     NotepadResizeHandle(live: $padWidth, available: geometry.size.width)
-                    NotepadPanel(session: session, text: appState.notepadText(for: id))
+                    NotepadPanel(session: session, text: appState.notepadText(for: session.id))
                         // One pad per terminal: another terminal is a new panel, with its own state.
                         .id(session.id)
                         .frame(width: width)
                 }
             }
-        } else {
-            SplitTabView(tab: tab, group: group)
         }
     }
 
@@ -80,14 +86,14 @@ struct TerminalAreaView: View {
             // and every tab in one view or every pane in its own tab.
             // Font size lives in the terminal's own right-click menu, next to
             // copy and paste: it belongs to the text you are looking at.
-            splitControls(strip)
+            splitControls(strip, current: current)
                 .padding(.trailing, 8)
         }
         .padding(.vertical, 5)
         .background(ProjectGradient(color: group.color, look: appState.projectColor))
     }
 
-    private func splitControls(_ strip: [SplitLayout]) -> some View {
+    private func splitControls(_ strip: [SplitLayout], current: SplitLayout?) -> some View {
         HStack(spacing: 2) {
             splitButton("rectangle.split.2x1", help: .splitRightHelp, label: .splitRight) {
                 appState.splitTerminal(in: group.id, edge: .right)
@@ -105,11 +111,13 @@ struct TerminalAreaView: View {
             }
             .disabled(!strip.contains { $0.leaves.count > 1 })
             Divider().frame(height: 14).padding(.horizontal, 3)
+            // The pad of the terminal this tab bar shows, and only of that one.
+            let padOwner = current.flatMap { appState.paneToFocus(in: $0, groupID: group.id) }
             splitButton("note.text", help: .notepadHelp, label: .notepad) {
-                appState.toggleNotepad()
+                appState.toggleNotepad(for: padOwner)
             }
             // Yellow while the pad is closed, so it is easy to find; the accent color while it is open.
-            .foregroundStyle(appState.notepad.isOpen ? Color.accentColor : Color(nsColor: .systemYellow))
+            .foregroundStyle(appState.notepad.isOpen(for: padOwner) ? Color.accentColor : Color(nsColor: .systemYellow))
             .featureHint(.notepad)
         }
     }
