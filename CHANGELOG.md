@@ -10,6 +10,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ### Changed
 - The notepad button in the tab bar is yellow while the pad is closed, so it is easy to find.
+- **Only the latest release is installed, never one after the other.** A update that waits for the next quit is replaced when a newer release comes out, and the repeating check keeps looking while one waits. Before, the old one installed first and the newer one was offered at the next launch.
+- The update dialog puts **Install & Relaunch** on top as the highlighted default button; "Install on quit" is second.
 
 ## [0.2.46] — 2026-10-23
 
