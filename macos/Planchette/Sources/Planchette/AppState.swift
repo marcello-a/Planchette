@@ -32,6 +32,11 @@ final class AppState: ObservableObject {
     @Published var autoUpdateCheck = true {
         didSet { scheduleSave() }
     }
+    /// Ask "Restore your last session?" at every launch. Off by default: the last session comes
+    /// back without a question — after an update, a crash or a plain quit.
+    @Published var askBeforeRestore = false {
+        didSet { scheduleSave() }
+    }
     /// New terminals run inside tmux, so their agents outlive the app (see
     /// Durable.swift). Only takes effect for terminals created from now on —
     /// existing ones keep whatever they were created as.
@@ -234,6 +239,7 @@ final class AppState: ObservableObject {
             L10n.current = saved.language
             appearance = saved.appearance
             autoUpdateCheck = saved.autoUpdateCheck
+            askBeforeRestore = saved.askBeforeRestore
             durableTerminals = saved.durableTerminals
             peekCollapsedProjects = saved.peekCollapsedProjects
             doneExpiry = saved.doneExpiry
@@ -2792,6 +2798,7 @@ final class AppState: ObservableObject {
             language: language,
             appearance: appearance,
             autoUpdateCheck: autoUpdateCheck,
+            askBeforeRestore: askBeforeRestore,
             durableTerminals: durableTerminals,
             peekCollapsedProjects: peekCollapsedProjects,
             doneExpiry: doneExpiry,
@@ -2878,6 +2885,7 @@ final class AppState: ObservableObject {
         language = state.language
         appearance = state.appearance
         autoUpdateCheck = state.autoUpdateCheck
+        askBeforeRestore = state.askBeforeRestore
         durableTerminals = state.durableTerminals
         peekCollapsedProjects = state.peekCollapsedProjects
         doneExpiry = state.doneExpiry
@@ -2997,6 +3005,7 @@ final class AppState: ObservableObject {
         language = previous?.language ?? language
         appearance = previous?.appearance ?? appearance
         autoUpdateCheck = previous?.autoUpdateCheck ?? autoUpdateCheck
+        askBeforeRestore = previous?.askBeforeRestore ?? askBeforeRestore
         durableTerminals = previous?.durableTerminals ?? durableTerminals
         peekCollapsedProjects = previous?.peekCollapsedProjects ?? peekCollapsedProjects
         doneExpiry = previous?.doneExpiry ?? doneExpiry

@@ -27,9 +27,9 @@
 **This is the feature the rest is built around: whatever happens to the app or the Mac, the next
 launch puts your work back.** Every project and folder; every terminal in its working directory,
 with what it had printed and the line you were halfway through typing; every Claude conversation,
-resumed where it stopped; your tags, colors, notes, window layout and settings. One dialog at
-launch — *Restore* or *Start fresh* — and a fresh start archives the old workspace
-(`state-previous.json`) instead of deleting it. Saved arrangements are never touched.
+resumed where it stopped; your tags, colors, notes, window layout and settings. It comes back by itself, with no question
+(Settings → General can bring back the *Restore* or *Start fresh* dialog), and a fresh start archives
+the old workspace (`state-previous.json`) instead of deleting it. Saved arrangements are never touched.
 
 | | Quit, update (*Install & Relaunch*), crash | Reboot or logout |
 |---|---|---|

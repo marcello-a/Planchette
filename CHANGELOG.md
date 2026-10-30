@@ -15,6 +15,7 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - A failed GitHub request (no network, a timeout) keeps the PR pills as they were. Before, one failed request took every pill away for a minute.
 - After a branch switch, the ticket in a tab name follows the new branch. Before, it could keep the old ticket until something else redrew the tab.
 - **Only the latest release is installed, never one after the other.** A update that waits for the next quit is replaced when a newer release comes out, and the repeating check keeps looking while one waits. Before, the old one installed first and the newer one was offered at the next launch.
+- **The last session comes back without a question.** After an update, a crash or a plain quit, Planchette restores your workspace at launch by itself. Settings → General → "Ask before restoring the last session" brings the Restore / Start fresh question back (off by default).
 - The update dialog puts **Install & Relaunch** on top as the highlighted default button; "Install on quit" is second.
 
 ## [0.2.46] — 2026-10-23

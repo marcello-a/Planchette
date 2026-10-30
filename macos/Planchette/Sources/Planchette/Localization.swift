@@ -167,6 +167,7 @@ enum LKey: String, CaseIterable {
 
     // Updates
     case updates, checkForUpdates, autoUpdateCheck, autoUpdateHelp
+    case askBeforeRestore, askBeforeRestoreHelp
     case updateAvailable, updateAvailableBody, updateDownload
     case updateUpToDate, updateCurrentVersion, updateFailed
     case updateInstallRelaunch, updateInstallBody, updateInstalling, updateLater, updateNoReleases, updateDownloading
@@ -430,6 +431,7 @@ enum L10n {
         .importMenu: "Import", .importFromITerm: "Import from iTerm2", .importFromTerminal: "Import from Terminal.app",
         .importNothing: "no open terminals found", .importNotRunning: "is not running", .importNotAuthorized: "Automation not allowed", .importAuthHint: "Allow Planchette to control the terminal app in System Settings → Privacy & Security → Automation, then try again.", .importFailed: "Import failed", .importMenuHelp: "Open the working directories of another terminal app as Planchette terminals", .dropHint: "Drop a folder here to open a terminal",
         .updates: "Updates", .checkForUpdates: "Check for updates…", .autoUpdateCheck: "Automatically check for updates", .autoUpdateHelp: "Check GitHub for a newer stable release on launch",
+        .askBeforeRestore: "Ask before restoring the last session", .askBeforeRestoreHelp: "Off (default): the last session comes back at every launch, with no question. On: you choose Restore or Start fresh.",
         .updateAvailable: "Version %@ is available", .updateAvailableBody: "Download the new version and drag it into Applications.", .updateDownload: "Download",
         .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
         .updateInstallRelaunch: "Install & Relaunch", .updateInstallBody: "Planchette will download the new version, install it, and relaunch itself.", .updateInstalling: "Installing update…", .updateLater: "Later", .updateNoReleases: "Couldn't find any releases yet.", .updateDownloading: "Downloading update… %d%%",
@@ -695,6 +697,7 @@ enum L10n {
         .importMenu: "Import", .importFromITerm: "Aus iTerm2 importieren", .importFromTerminal: "Aus Terminal.app importieren",
         .importNothing: "keine offenen Terminals gefunden", .importNotRunning: "läuft nicht", .importNotAuthorized: "Automatisierung nicht erlaubt", .importAuthHint: "Erlaube Planchette in Systemeinstellungen → Datenschutz & Sicherheit → Automatisierung, die Terminal-App zu steuern, und versuche es erneut.", .importFailed: "Import fehlgeschlagen", .importMenuHelp: "Die Arbeitsverzeichnisse einer anderen Terminal-App als Planchette-Terminals öffnen", .dropHint: "Ordner hierher ziehen, um ein Terminal zu öffnen",
         .updates: "Updates", .checkForUpdates: "Nach Updates suchen…", .autoUpdateCheck: "Automatisch nach Updates suchen", .autoUpdateHelp: "Beim Start auf GitHub nach einer neueren stabilen Version prüfen",
+        .askBeforeRestore: "Vor dem Wiederherstellen der letzten Sitzung fragen", .askBeforeRestoreHelp: "Aus (Standard): Die letzte Sitzung kommt bei jedem Start ohne Rückfrage zurück. An: Du wählst Wiederherstellen oder Neu starten.",
         .updateAvailable: "Version %@ ist verfügbar", .updateAvailableBody: "Lade die neue Version herunter und ziehe sie in „Programme“.", .updateDownload: "Herunterladen",
         .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
         .updateInstallRelaunch: "Installieren & Neustart", .updateInstallBody: "Planchette lädt die neue Version herunter, installiert sie und startet sich neu.", .updateInstalling: "Update wird installiert…", .updateLater: "Später", .updateNoReleases: "Noch keine Releases gefunden.", .updateDownloading: "Update wird geladen… %d%%",
@@ -960,6 +963,7 @@ enum L10n {
         .importMenu: "Importer", .importFromITerm: "Importer depuis iTerm2", .importFromTerminal: "Importer depuis Terminal.app",
         .importNothing: "aucun terminal ouvert trouvé", .importNotRunning: "n'est pas en cours d'exécution", .importNotAuthorized: "Automatisation non autorisée", .importAuthHint: "Autorisez Planchette à contrôler l'app de terminal dans Réglages Système → Confidentialité et sécurité → Automatisation, puis réessayez.", .importFailed: "Échec de l'import", .importMenuHelp: "Ouvrir les répertoires de travail d'une autre app de terminal comme terminaux Planchette", .dropHint: "Déposez un dossier ici pour ouvrir un terminal",
         .updates: "Mises à jour", .checkForUpdates: "Rechercher des mises à jour…", .autoUpdateCheck: "Rechercher automatiquement les mises à jour", .autoUpdateHelp: "Vérifier sur GitHub une nouvelle version stable au lancement",
+        .askBeforeRestore: "Demander avant de restaurer la dernière session", .askBeforeRestoreHelp: "Désactivé (par défaut) : la dernière session revient à chaque lancement, sans question. Activé : vous choisissez Restaurer ou Repartir de zéro.",
         .updateAvailable: "La version %@ est disponible", .updateAvailableBody: "Téléchargez la nouvelle version et glissez-la dans Applications.", .updateDownload: "Télécharger",
         .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
         .updateInstallRelaunch: "Installer et relancer", .updateInstallBody: "Planchette va télécharger la nouvelle version, l'installer et se relancer.", .updateInstalling: "Installation de la mise à jour…", .updateLater: "Plus tard", .updateNoReleases: "Aucune version trouvée pour l'instant.", .updateDownloading: "Téléchargement… %d%%",
@@ -1225,6 +1229,7 @@ enum L10n {
         .importMenu: "Importar", .importFromITerm: "Importar desde iTerm2", .importFromTerminal: "Importar desde Terminal.app",
         .importNothing: "no se encontraron terminales abiertos", .importNotRunning: "no se está ejecutando", .importNotAuthorized: "Automatización no permitida", .importAuthHint: "Permite que Planchette controle la app de terminal en Ajustes del Sistema → Privacidad y seguridad → Automatización, y vuelve a intentarlo.", .importFailed: "Error al importar", .importMenuHelp: "Abrir los directorios de trabajo de otra app de terminal como terminales de Planchette", .dropHint: "Suelta una carpeta aquí para abrir un terminal",
         .updates: "Actualizaciones", .checkForUpdates: "Buscar actualizaciones…", .autoUpdateCheck: "Buscar actualizaciones automáticamente", .autoUpdateHelp: "Comprobar en GitHub una nueva versión estable al iniciar",
+        .askBeforeRestore: "Preguntar antes de restaurar la última sesión", .askBeforeRestoreHelp: "Desactivado (predeterminado): la última sesión vuelve en cada inicio, sin preguntar. Activado: eliges Restaurar o Empezar de cero.",
         .updateAvailable: "La versión %@ está disponible", .updateAvailableBody: "Descarga la nueva versión y arrástrala a Aplicaciones.", .updateDownload: "Descargar",
         .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
         .updateInstallRelaunch: "Instalar y reiniciar", .updateInstallBody: "Planchette descargará la nueva versión, la instalará y se reiniciará.", .updateInstalling: "Instalando actualización…", .updateLater: "Más tarde", .updateNoReleases: "Aún no se encontraron versiones.", .updateDownloading: "Descargando… %d%%",
@@ -1490,6 +1495,7 @@ enum L10n {
         .importMenu: "Importa", .importFromITerm: "Importa da iTerm2", .importFromTerminal: "Importa da Terminal.app",
         .importNothing: "nessun terminale aperto trovato", .importNotRunning: "non è in esecuzione", .importNotAuthorized: "Automazione non consentita", .importAuthHint: "Consenti a Planchette di controllare l'app Terminale in Impostazioni di Sistema → Privacy e sicurezza → Automazione, poi riprova.", .importFailed: "Importazione non riuscita", .importMenuHelp: "Apri le directory di lavoro di un'altra app terminale come terminali Planchette", .dropHint: "Trascina qui una cartella per aprire un terminale",
         .updates: "Aggiornamenti", .checkForUpdates: "Cerca aggiornamenti…", .autoUpdateCheck: "Cerca aggiornamenti automaticamente", .autoUpdateHelp: "Controlla su GitHub una nuova versione stabile all'avvio",
+        .askBeforeRestore: "Chiedi prima di ripristinare l'ultima sessione", .askBeforeRestoreHelp: "Disattivato (predefinito): l'ultima sessione torna a ogni avvio, senza domande. Attivato: scegli Ripristina o Ricomincia.",
         .updateAvailable: "La versione %@ è disponibile", .updateAvailableBody: "Scarica la nuova versione e trascinala in Applicazioni.", .updateDownload: "Scarica",
         .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
         .updateInstallRelaunch: "Installa e riavvia", .updateInstallBody: "Planchette scaricherà la nuova versione, la installerà e si riavvierà.", .updateInstalling: "Installazione dell'aggiornamento…", .updateLater: "Più tardi", .updateNoReleases: "Nessuna versione trovata per ora.", .updateDownloading: "Download… %d%%",
@@ -1755,6 +1761,7 @@ enum L10n {
         .importMenu: "Importeren", .importFromITerm: "Importeren uit iTerm2", .importFromTerminal: "Importeren uit Terminal.app",
         .importNothing: "geen open terminals gevonden", .importNotRunning: "is niet actief", .importNotAuthorized: "Automatisering niet toegestaan", .importAuthHint: "Sta Planchette toe de terminal-app te bedienen in Systeeminstellingen → Privacy en beveiliging → Automatisering en probeer opnieuw.", .importFailed: "Importeren mislukt", .importMenuHelp: "De werkmappen van een andere terminal-app als Planchette-terminals openen", .dropHint: "Sleep een map hierheen om een terminal te openen",
         .updates: "Updates", .checkForUpdates: "Zoeken naar updates…", .autoUpdateCheck: "Automatisch naar updates zoeken", .autoUpdateHelp: "Bij het starten op GitHub naar een nieuwere stabiele versie zoeken",
+        .askBeforeRestore: "Vragen voor het herstellen van de laatste sessie", .askBeforeRestoreHelp: "Uit (standaard): de laatste sessie komt bij elke start terug, zonder vraag. Aan: je kiest Herstellen of Opnieuw beginnen.",
         .updateAvailable: "Versie %@ is beschikbaar", .updateAvailableBody: "Download de nieuwe versie en sleep die naar Programma's.", .updateDownload: "Downloaden",
         .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
         .updateInstallRelaunch: "Installeren en herstarten", .updateInstallBody: "Planchette downloadt de nieuwe versie, installeert die en start opnieuw op.", .updateInstalling: "Update installeren…", .updateLater: "Later", .updateNoReleases: "Nog geen releases gevonden.", .updateDownloading: "Update downloaden… %d%%",
@@ -2020,6 +2027,7 @@ enum L10n {
         .importMenu: "Importar", .importFromITerm: "Importar do iTerm2", .importFromTerminal: "Importar do Terminal.app",
         .importNothing: "nenhum terminal aberto encontrado", .importNotRunning: "não está em execução", .importNotAuthorized: "Automação não permitida", .importAuthHint: "Permite que o Planchette controle a app de terminal em Definições do Sistema → Privacidade e segurança → Automação e tenta de novo.", .importFailed: "Falha na importação", .importMenuHelp: "Abrir os diretórios de trabalho de outra app de terminal como terminais do Planchette", .dropHint: "Arrasta uma pasta para aqui para abrir um terminal",
         .updates: "Atualizações", .checkForUpdates: "Procurar atualizações…", .autoUpdateCheck: "Procurar atualizações automaticamente", .autoUpdateHelp: "Verificar no GitHub uma nova versão estável ao iniciar",
+        .askBeforeRestore: "Perguntar antes de restaurar a última sessão", .askBeforeRestoreHelp: "Desativado (predefinição): a última sessão volta em cada arranque, sem perguntar. Ativado: escolhes Restaurar ou Começar de novo.",
         .updateAvailable: "A versão %@ está disponível", .updateAvailableBody: "Descarrega a nova versão e arrasta-a para Aplicações.", .updateDownload: "Descarregar",
         .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
         .updateInstallRelaunch: "Instalar e reiniciar", .updateInstallBody: "O Planchette vai descarregar a nova versão, instalá-la e reiniciar.", .updateInstalling: "A instalar atualização…", .updateLater: "Mais tarde", .updateNoReleases: "Ainda não foram encontradas versões.", .updateDownloading: "A descarregar… %d%%",
