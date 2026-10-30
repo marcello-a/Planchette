@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.48] — 2026-10-30
+
 ### Added
 - **Reviews: one repository at a time.** A menu at the top of the Reviews panel shows the requests
   of one repository, or of all of them.
