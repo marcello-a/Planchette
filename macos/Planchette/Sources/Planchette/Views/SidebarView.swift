@@ -1,71 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// What a sidebar project drag carries: the ids of the projects being moved —
-/// several of them when a multi-selection is dragged, so the whole batch is one
-/// drag and one move.
-///
-/// Exported as plain text rather than a custom UTI: a custom type would have to
-/// be declared in Info.plist to survive a real drag session, and the payload is
-/// just ids. Text from elsewhere yields no valid UUIDs, so it is a no-op.
-struct ProjectDragPayload: Transferable {
-    let ids: [UUID]
-
-    static var transferRepresentation: some TransferRepresentation {
-        ProxyRepresentation(
-            exporting: { (payload: ProjectDragPayload) in
-                payload.ids.map(\.uuidString).joined(separator: "\n")
-            },
-            importing: { (text: String) in
-                ProjectDragPayload(
-                    ids: text.split(separator: "\n").compactMap { UUID(uuidString: String($0)) })
-            })
-    }
-}
-
-/// Drop handling for one project row. `dropDestination` only reports whether a
-/// drag is over a view, never where — and "where" is the whole point of dropping
-/// a project into a list: above this row or below it. `DropDelegate` reports the
-/// live location, which is what lets the insertion line follow the pointer and a
-/// project land exactly in the gap you aimed at, in any folder.
-private struct ProjectDropDelegate: DropDelegate {
-    let rowID: UUID
-    /// Row height, read from the row itself — the midpoint decides the gap.
-    let height: () -> CGFloat
-    let slot: (SidebarView.DropSlot?) -> Void
-    let perform: (_ ids: [UUID], _ below: Bool) -> Void
-
-    private func below(_ info: DropInfo) -> Bool {
-        info.location.y > height() / 2
-    }
-
-    func dropEntered(info: DropInfo) {
-        slot(SidebarView.DropSlot(rowID: rowID, below: below(info)))
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        slot(SidebarView.DropSlot(rowID: rowID, below: below(info)))
-        return DropProposal(operation: .move)
-    }
-
-    func dropExited(info: DropInfo) {
-        slot(nil)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        let landsBelow = below(info)
-        let providers = info.itemProviders(for: [.plainText, .utf8PlainText, .text])
-        guard let provider = providers.first else { slot(nil); return false }
-        _ = provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let text = object as? String else { return }
-            let ids = text.split(separator: "\n").compactMap { UUID(uuidString: String($0)) }
-            guard !ids.isEmpty else { return }
-            DispatchQueue.main.async { perform(ids, landsBelow) }
-        }
-        return true
-    }
-}
-
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
     @Environment(\.openWindow) private var openWindow
@@ -293,9 +228,8 @@ struct SidebarView: View {
     /// Accept a project drag. `folderID` nil means the top level; `before` the
     /// row it was dropped on (the model rejects a drop on the dragged rows).
     @discardableResult
-    private func acceptProjectDrop(_ payloads: [ProjectDragPayload],
+    private func acceptProjectDrop(_ ids: [UUID],
                                    toFolder folderID: UUID?, before: UUID?) -> Bool {
-        let ids = payloads.flatMap(\.ids)
         guard !ids.isEmpty else { return false }
         appState.moveGroups(ids, toFolder: folderID, before: before, inWindow: windowID)
         dropTarget = nil
@@ -334,10 +268,73 @@ struct SidebarView: View {
         dropTarget = nil
     }
 
+    /// What a drop on a project row does: projects land beside it (in its folder, wherever they
+    /// came from), a terminal joins it as its last tab.
+    private func drop(_ item: SidebarDragItem, onProject group: SessionGroup, below: Bool,
+                      siblings: [SessionGroup]) {
+        switch item {
+        case .projects(let ids): dropNext(to: group, below: below, ids: ids, siblings: siblings)
+        case .terminal(let id): appState.placeTerminal(id, inProject: group.id, before: nil)
+        case .folder: break
+        }
+        dropSlot = nil
+        dropTarget = nil
+    }
+
+    /// What a drop on a folder row does: projects go into it, a folder lands above or below it.
+    private func drop(_ item: SidebarDragItem, onFolder folder: ProjectFolder, below: Bool) {
+        switch item {
+        case .projects(let ids):
+            acceptProjectDrop(ids, toFolder: folder.id, before: nil)
+        case .folder(let id):
+            let folders = appState.window(for: windowID)?.folders ?? []
+            var before: UUID? = folder.id
+            if below {
+                // "Below this one" is "before whatever follows it"; nothing following is the end.
+                before = folders.drop { $0.id != folder.id }.dropFirst().first { $0.id != id }?.id
+            }
+            appState.moveFolder(id, before: before, inWindow: windowID)
+        case .terminal:
+            break
+        }
+        dropSlot = nil
+        dropTarget = nil
+    }
+
+    /// What a drop on a terminal row does: a terminal lands above or below it — in its project,
+    /// from this project or another one; projects land beside its project.
+    private func drop(_ item: SidebarDragItem, onTerminal session: TerminalSession, below: Bool) {
+        guard let group = appState.groups.first(where: { $0.id == session.groupID }) else { return }
+        switch item {
+        case .terminal(let id):
+            // The terminal becomes a tab of its own: "below this one" is "before the next tab".
+            let strip = appState.tabs(of: group)
+            var before: UUID? = session.id
+            if below, let at = TabStrip.index(of: session.id, in: strip) {
+                before = strip.dropFirst(at + 1).first { !$0.leaves.contains(id) }?.leaves.first
+            }
+            appState.placeTerminal(id, inProject: group.id, before: before)
+        case .projects(let ids):
+            let window = appState.window(for: windowID)
+            let siblings = window?.folder(of: group.id).map { appState.groups(inFolder: $0) }
+                ?? looseGroups(appState.groups(inWindow: window ?? WindowModel(id: windowID)))
+            dropNext(to: group, below: true, ids: ids, siblings: siblings)
+        case .folder:
+            break
+        }
+        dropSlot = nil
+        dropTarget = nil
+    }
+
     /// The line drawn in the gap a drop would land in.
     @ViewBuilder
-    private func insertionLine(_ group: SessionGroup) -> some View {
-        if let slot = dropSlot, slot.rowID == group.id {
+    private func folderInsertionLine(_ folder: ProjectFolder) -> some View {
+        insertionLine(folder.id)
+    }
+
+    @ViewBuilder
+    private func insertionLine(_ id: UUID) -> some View {
+        if let slot = dropSlot, slot.rowID == id {
             VStack(spacing: 0) {
                 if !slot.below { line } else { Spacer(minLength: 0) }
                 if slot.below { line } else { Spacer(minLength: 0) }
@@ -367,8 +364,9 @@ struct SidebarView: View {
                     active ? Color.accentColor : Color.clear,
                     style: StrokeStyle(lineWidth: 1.5, dash: [3]))
         )
-        .dropDestination(for: ProjectDragPayload.self) { payloads, _ in
-            acceptProjectDrop(payloads, toFolder: nil, before: nil)
+        .dropDestination(for: SidebarDragItem.self) { items, _ in
+            guard case .projects(let ids)? = items.first else { return false }
+            return acceptProjectDrop(ids, toFolder: nil, before: nil)
         } isTargeted: { setDropTarget(Self.looseZoneID, over: $0) }
     }
 
@@ -421,6 +419,13 @@ struct SidebarView: View {
                 }
         } label: {
             folderLabel(folder, projects: projects)
+                // On the label: an overlay or a background on the DisclosureGroup would be
+                // drawn on every row of the folder.
+                .background(GeometryReader { geo in
+                    Color.clear.onAppear { rowHeights[folder.id] = geo.size.height }
+                        .onChange(of: geo.size.height) { _, new in rowHeights[folder.id] = new }
+                })
+                .overlay(folderInsertionLine(folder))
         }
         // The folder's line begins under its arrow — on its own row only: every project row in
         // it sets its own background, which wins over this one.
@@ -430,11 +435,18 @@ struct SidebarView: View {
         // Selecting the folder row shows its overview in the main area: what is
         // in this box, what each project is doing, what it reported last.
         .tag(folder.id)
-        // On the row, not the label — see groupRow. A project row inside the
-        // folder is nested deeper, so its own target still wins over this one.
-        .dropDestination(for: ProjectDragPayload.self) { payloads, _ in
-            acceptProjectDrop(payloads, toFolder: folder.id, before: nil)
-        } isTargeted: { setDropTarget(folder.id, over: $0) }
+        // On the row, not the label — see groupRow. Every row inside the folder sets its own
+        // drag and its own target, which win over these.
+        .draggable(SidebarDragItem.folder(folder.id)) {
+            Label(folder.name, systemImage: "folder").padding(.horizontal, 8).padding(.vertical, 4)
+        }
+        .onDrop(
+            of: [.json],
+            delegate: SidebarDropDelegate(
+                rowID: folder.id,
+                height: { rowHeights[folder.id] ?? 26 },
+                slot: { dropSlot = $0 },
+                perform: { item, below in drop(item, onFolder: folder, below: below) }))
     }
 
     /// A folder's open/closed state lives in the model, so it survives a
@@ -752,7 +764,7 @@ struct SidebarView: View {
         // the row, so a project could be dragged but no longer opened.
         // Drag a project — or the whole selection — onto a folder to file it,
         // or onto another project to land next to it in that project's folder.
-        .draggable(ProjectDragPayload(ids: actionTargets(group))) { dragPreview(for: group) }
+        .draggable(SidebarDragItem.projects(actionTargets(group))) { dragPreview(for: group) }
         // Measured so the delegate can tell the upper half of the row from the
         // lower one — that split is what makes a drop land in a chosen gap.
         .background(
@@ -761,16 +773,14 @@ struct SidebarView: View {
                     .onChange(of: geo.size.height) { _, new in rowHeights[group.id] = new }
             }
         )
-        .overlay(insertionLine(group))
+        .overlay(insertionLine(group.id))
         .onDrop(
-            of: [.plainText, .utf8PlainText, .text],
-            delegate: ProjectDropDelegate(
+            of: [.json],
+            delegate: SidebarDropDelegate(
                 rowID: group.id,
                 height: { rowHeights[group.id] ?? 24 },
                 slot: { dropSlot = $0 },
-                perform: { ids, below in
-                    dropNext(to: group, below: below, ids: ids, siblings: siblings)
-                }))
+                perform: { item, below in drop(item, onProject: group, below: below, siblings: siblings) }))
     }
 
     /// Whether this window shows the project's terminals right now. Only the terminal actually
@@ -1095,9 +1105,9 @@ struct SidebarView: View {
         // asks for. Its own row, so the line above can stay the fixed answer to
         // "which checkout is this?" while this one changes with the work.
         let task = appState.rowPrompt(for: session)
-        return Button {
-            appState.select(session: session)
-        } label: {
+        // Not a Button: a button keeps the mouse for its click, so a drag never started from a
+        // terminal row. A tap opens the terminal; for accessibility the row stays a button.
+        return Group {
             // Top-aligned: the state icon stands on the row's first line, where the project's
             // tree line ends — not in the middle of a row that may be three lines high.
             HStack(alignment: .top, spacing: 6) {
@@ -1184,18 +1194,38 @@ struct SidebarView: View {
                     SnoozeBadge(until: until)
                 }
             }
-            // The whole row is the button, not only its text: a plain button
-            // hit-tests its drawn content alone, so a click into the empty part
-            // of the row fell through to the project and opened that instead.
+            // The whole row is the target, not only its text: a click into the empty part of
+            // the row fell through to the project and opened that instead.
             .padding(.vertical, 3)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .onTapGesture { appState.select(session: session) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { appState.select(session: session) }
         .overlay(
             RoundedRectangle(cornerRadius: 5)
                 .strokeBorder(isActive ? session.state.tint : .clear, lineWidth: 1.5)
         )
+        // A terminal is dragged on its own — into another project, or to another place in its
+        // own. It travels as a pane does, so the tab bar takes it too.
+        .draggable(SidebarDragItem.terminal(session.id)) {
+            Label(session.rowName ?? session.shortPath, systemImage: "terminal")
+                .padding(.horizontal, 8).padding(.vertical, 4)
+        }
+        .background(GeometryReader { geo in
+            Color.clear.onAppear { rowHeights[session.id] = geo.size.height }
+                .onChange(of: geo.size.height) { _, new in rowHeights[session.id] = new }
+        })
+        .overlay(insertionLine(session.id))
+        .onDrop(
+            of: [.json],
+            delegate: SidebarDropDelegate(
+                rowID: session.id,
+                height: { rowHeights[session.id] ?? 30 },
+                slot: { dropSlot = $0 },
+                perform: { item, below in drop(item, onTerminal: session, below: below) }))
         .help(sessionTooltip(session))
         .contextMenu {
             SessionAttentionMenu(session: session)

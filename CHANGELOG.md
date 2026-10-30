@@ -36,6 +36,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Detail level:** *Minimal*, *Standard* or *Everything* sets the project panel's detail switches
   in one click (Settings → Project panel → Terminals), with a live example of a row. Any switch can
   change afterwards; the level then shows *Custom*.
+- **Drag and drop in the project panel.** A terminal onto a project moves it there, onto another
+  terminal places it above or below; a folder onto a folder reorders them, its projects with it;
+  a project goes into any folder, or next to a project in another folder. The drags travel as
+  JSON, so a project dropped on a terminal no longer types its id into the shell.
 - **Tree lines.** Thin lines in the folder's or the project's colour tie a folder to its projects
   and a project to its terminals; each ends at the child's state icon. A project with one terminal
   stands in the same column as the arrow of the others.

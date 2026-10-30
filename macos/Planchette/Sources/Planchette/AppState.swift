@@ -633,6 +633,20 @@ final class AppState: ObservableObject {
         updateWindow(windowID) { $0.move(ids, toFolder: folderID, before: before) }
     }
 
+    /// Drag-and-drop: reorder the folders of a window.
+    func moveFolder(_ id: UUID, before: UUID?, inWindow windowID: UUID) {
+        updateWindow(windowID) { $0.moveFolder(id, before: before) }
+    }
+
+    /// Drag-and-drop in the project panel: put a terminal into project `groupID` as a tab of its
+    /// own, before the tab of terminal `before` (nil = at the end). From another project it moves
+    /// over first; a project it leaves empty closes, as when its tab is dragged away.
+    func placeTerminal(_ id: UUID, inProject groupID: UUID, before target: UUID?) {
+        guard let session = sessions[id], target != id else { return }
+        if session.groupID != groupID { moveSession(id, to: groupID) }
+        extractPane(id, before: target, groupID: groupID)
+    }
+
     /// Bulk versions of the single-project actions, for a multi-selection.
     func markGroupsReady(_ ids: [UUID]) {
         for id in ids { markGroupReady(id) }

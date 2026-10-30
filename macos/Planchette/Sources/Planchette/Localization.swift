@@ -268,6 +268,7 @@ enum LKey: String, CaseIterable {
     case promptSourceFirstHelp, promptSourceLastHelp, promptSourceAgentTitleHelp
     case detailNoteHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
     case detailTrunkBranch, detailTrunkBranchHelp, mergeSingleTitle, mergeSingleHelp, layoutSection
+    case dragTerminalTitle, dragTerminalHelp, dragFolderTitle, dragFolderHelp
     case detailLevelTitle, detailLevelHelp, detailLevelMinimal, detailLevelStandard, detailLevelEverything, detailLevelCustom
     // The Reviews mode of the notifications panel
     case reviewBusyUnread, reviewBusyAgentOnBranch, reviewBusyCountOne
@@ -681,6 +682,11 @@ enum L10n {
         .detailLevelStandard: "Standard",
         .detailLevelEverything: "Everything",
         .detailLevelCustom: "Custom",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Move a terminal by dragging",
+        .dragTerminalHelp: "Drag a terminal in the project panel onto a project to move it there, or onto another terminal to place it above or below. A project it leaves empty closes.",
+        .dragFolderTitle: "Reorder folders by dragging",
+        .dragFolderHelp: "Drag a folder onto another folder to put it above or below. Its projects go with it.",
     ]
 
     // MARK: German
@@ -1052,6 +1058,11 @@ enum L10n {
         .detailLevelStandard: "Standard",
         .detailLevelEverything: "Alles",
         .detailLevelCustom: "Eigene",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Terminal per Drag & Drop verschieben",
+        .dragTerminalHelp: "Zieh ein Terminal im Projektpanel auf ein Projekt, um es dorthin zu verschieben, oder auf ein anderes Terminal, um es darüber oder darunter einzuordnen. Ein Projekt, das dabei leer wird, schließt sich.",
+        .dragFolderTitle: "Ordner per Drag & Drop umsortieren",
+        .dragFolderHelp: "Zieh einen Ordner auf einen anderen, um ihn darüber oder darunter zu setzen. Seine Projekte wandern mit.",
     ]
 
     // MARK: French
@@ -1423,6 +1434,11 @@ enum L10n {
         .detailLevelStandard: "Standard",
         .detailLevelEverything: "Tout",
         .detailLevelCustom: "Personnalisé",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Déplacer un terminal par glisser-déposer",
+        .dragTerminalHelp: "Glissez un terminal du panneau des projets sur un projet pour l'y déplacer, ou sur un autre terminal pour le placer au-dessus ou au-dessous. Un projet qu'il laisse vide se ferme.",
+        .dragFolderTitle: "Réordonner les dossiers par glisser-déposer",
+        .dragFolderHelp: "Glissez un dossier sur un autre pour le placer au-dessus ou au-dessous. Ses projets le suivent.",
     ]
 
     // MARK: Spanish
@@ -1794,6 +1810,11 @@ enum L10n {
         .detailLevelStandard: "Estándar",
         .detailLevelEverything: "Todo",
         .detailLevelCustom: "Personalizado",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Mover un terminal arrastrando",
+        .dragTerminalHelp: "Arrastra un terminal del panel de proyectos a un proyecto para moverlo allí, o a otro terminal para colocarlo encima o debajo. Un proyecto que queda vacío se cierra.",
+        .dragFolderTitle: "Reordenar carpetas arrastrando",
+        .dragFolderHelp: "Arrastra una carpeta sobre otra para ponerla encima o debajo. Sus proyectos van con ella.",
     ]
 
     // MARK: Italian
@@ -2165,6 +2186,11 @@ enum L10n {
         .detailLevelStandard: "Standard",
         .detailLevelEverything: "Tutto",
         .detailLevelCustom: "Personalizzato",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Sposta un terminale trascinandolo",
+        .dragTerminalHelp: "Trascina un terminale del pannello progetti su un progetto per spostarlo lì, o su un altro terminale per metterlo sopra o sotto. Un progetto che resta vuoto si chiude.",
+        .dragFolderTitle: "Riordina le cartelle trascinandole",
+        .dragFolderHelp: "Trascina una cartella su un'altra per metterla sopra o sotto. I suoi progetti la seguono.",
     ]
 
     // MARK: Dutch
@@ -2536,6 +2562,11 @@ enum L10n {
         .detailLevelStandard: "Standaard",
         .detailLevelEverything: "Alles",
         .detailLevelCustom: "Aangepast",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Een terminal verslepen",
+        .dragTerminalHelp: "Sleep een terminal in het projectpaneel naar een project om hem daarheen te verplaatsen, of naar een andere terminal om hem erboven of eronder te zetten. Een project dat leeg raakt, sluit.",
+        .dragFolderTitle: "Mappen verslepen om ze te ordenen",
+        .dragFolderHelp: "Sleep een map naar een andere om hem erboven of eronder te zetten. De projecten gaan mee.",
     ]
 
     // MARK: Portuguese
@@ -2907,5 +2938,10 @@ enum L10n {
         .detailLevelStandard: "Padrão",
         .detailLevelEverything: "Tudo",
         .detailLevelCustom: "Personalizado",
+        // Project panel: drag and drop
+        .dragTerminalTitle: "Mover um terminal arrastando",
+        .dragTerminalHelp: "Arrasta um terminal do painel de projetos para um projeto para o mover para lá, ou para outro terminal para o pôr acima ou abaixo. Um projeto que fica vazio fecha-se.",
+        .dragFolderTitle: "Reordenar pastas arrastando",
+        .dragFolderHelp: "Arrasta uma pasta para outra para a pôr acima ou abaixo. Os seus projetos vão com ela.",
     ]
 }

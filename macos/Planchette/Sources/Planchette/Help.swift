@@ -52,6 +52,8 @@ enum Help {
             Entry(.folderOverviewTitle, .folderOverviewHelp, where: .helpWhereSidebar),
             Entry(.helpWhereProjectOverview, .helpProjectOverviewDetail, where: .helpWhereSidebar),
             Entry(.moveToFolder, .dropIntoFolderHelp, where: .helpWhereSidebar),
+            Entry(.dragTerminalTitle, .dragTerminalHelp, where: .helpWhereSidebar),
+            Entry(.dragFolderTitle, .dragFolderHelp, where: .helpWhereSidebar),
             Entry(.dissolveFolder, .dissolveFolderHelp, where: .helpWhereSidebar),
             Entry(.makeFavorite, .favoriteHelp, where: .helpWhereSidebar),
             Entry(.selectedProjectsShort, .helpMultiSelectDetail, where: .helpWhereSidebar),

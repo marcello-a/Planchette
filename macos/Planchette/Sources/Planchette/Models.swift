@@ -813,6 +813,19 @@ struct WindowModel: Identifiable, Codable, Equatable {
         normalizeGroupOrder()
     }
 
+    /// Drag-and-drop: put folder `id` before folder `before` (nil = at the end). The filed
+    /// projects follow their folders, so the project order is brought along.
+    mutating func moveFolder(_ id: UUID, before: UUID?) {
+        guard id != before, let from = folders.firstIndex(where: { $0.id == id }) else { return }
+        var rest = folders
+        let folder = rest.remove(at: from)
+        let at = before.flatMap { target in rest.firstIndex { $0.id == target } } ?? rest.count
+        rest.insert(folder, at: at)
+        guard rest.map(\.id) != folders.map(\.id) else { return }
+        folders = rest
+        normalizeGroupOrder()
+    }
+
     /// `groupIDs` mirrors the sidebar: filed projects first (in folder order),
     /// then the loose ones. Keeping the two in step is what lets `looseGroupIDs`
     /// carry the top-level order without a second list to maintain.
