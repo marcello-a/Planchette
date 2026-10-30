@@ -368,6 +368,10 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// not redraw the window. Never written by the app: it is yours.
     var notepad: String?
 
+    /// A main terminal: it carries a star and stays under its project even while the project is
+    /// folded — the one you come back to, a click away. Yours: never set by the app.
+    var isMain = false
+
     // AI assist
     var transcriptPath: String?   // Claude transcript JSONL, from hook events
     var aiSummary: String?        // one-liner, only when AI assist is enabled
@@ -408,6 +412,7 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         notepad = try c.decodeIfPresent(String.self, forKey: .notepad)
+        isMain = (try? c.decodeIfPresent(Bool.self, forKey: .isMain)) ?? false
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)
         aiTopic = try c.decodeIfPresent(String.self, forKey: .aiTopic)

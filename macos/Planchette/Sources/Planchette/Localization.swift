@@ -269,6 +269,7 @@ enum LKey: String, CaseIterable {
     case detailNoteHelp, detailSnoozeHelp, detailAttentionCountsHelp, detailModelHelp, detailContextUsageHelp
     case detailTrunkBranch, detailTrunkBranchHelp, mergeSingleTitle, mergeSingleHelp, layoutSection
     case dragTerminalTitle, dragTerminalHelp, dragFolderTitle, dragFolderHelp
+    case markMainTerminal, unmarkMainTerminal, mainTerminalHelp
     case detailLevelTitle, detailLevelHelp, detailLevelMinimal, detailLevelStandard, detailLevelEverything, detailLevelCustom
     // The Reviews mode of the notifications panel
     case reviewBusyUnread, reviewBusyAgentOnBranch, reviewBusyCountOne
@@ -687,6 +688,10 @@ enum L10n {
         .dragTerminalHelp: "Drag a terminal in the project panel onto a project to move it there, or onto another terminal to place it above or below. A project it leaves empty closes.",
         .dragFolderTitle: "Reorder folders by dragging",
         .dragFolderHelp: "Drag a folder onto another folder to put it above or below. Its projects go with it.",
+        // Main terminals
+        .markMainTerminal: "Mark as main terminal",
+        .unmarkMainTerminal: "Not a main terminal",
+        .mainTerminalHelp: "A main terminal carries a star and stays under its project, also while the project is folded.",
     ]
 
     // MARK: German
@@ -1063,6 +1068,10 @@ enum L10n {
         .dragTerminalHelp: "Zieh ein Terminal im Projektpanel auf ein Projekt, um es dorthin zu verschieben, oder auf ein anderes Terminal, um es darüber oder darunter einzuordnen. Ein Projekt, das dabei leer wird, schließt sich.",
         .dragFolderTitle: "Ordner per Drag & Drop umsortieren",
         .dragFolderHelp: "Zieh einen Ordner auf einen anderen, um ihn darüber oder darunter zu setzen. Seine Projekte wandern mit.",
+        // Main terminals
+        .markMainTerminal: "Als Hauptterminal markieren",
+        .unmarkMainTerminal: "Kein Hauptterminal mehr",
+        .mainTerminalHelp: "Ein Hauptterminal trägt einen Stern und bleibt unter seinem Projekt sichtbar, auch wenn das Projekt eingeklappt ist.",
     ]
 
     // MARK: French
@@ -1439,6 +1448,10 @@ enum L10n {
         .dragTerminalHelp: "Glissez un terminal du panneau des projets sur un projet pour l'y déplacer, ou sur un autre terminal pour le placer au-dessus ou au-dessous. Un projet qu'il laisse vide se ferme.",
         .dragFolderTitle: "Réordonner les dossiers par glisser-déposer",
         .dragFolderHelp: "Glissez un dossier sur un autre pour le placer au-dessus ou au-dessous. Ses projets le suivent.",
+        // Main terminals
+        .markMainTerminal: "Marquer comme terminal principal",
+        .unmarkMainTerminal: "Ne plus être terminal principal",
+        .mainTerminalHelp: "Un terminal principal porte une étoile et reste sous son projet, même quand le projet est replié.",
     ]
 
     // MARK: Spanish
@@ -1815,6 +1828,10 @@ enum L10n {
         .dragTerminalHelp: "Arrastra un terminal del panel de proyectos a un proyecto para moverlo allí, o a otro terminal para colocarlo encima o debajo. Un proyecto que queda vacío se cierra.",
         .dragFolderTitle: "Reordenar carpetas arrastrando",
         .dragFolderHelp: "Arrastra una carpeta sobre otra para ponerla encima o debajo. Sus proyectos van con ella.",
+        // Main terminals
+        .markMainTerminal: "Marcar como terminal principal",
+        .unmarkMainTerminal: "Quitar como terminal principal",
+        .mainTerminalHelp: "Un terminal principal lleva una estrella y sigue bajo su proyecto, también cuando el proyecto está plegado.",
     ]
 
     // MARK: Italian
@@ -2191,6 +2208,10 @@ enum L10n {
         .dragTerminalHelp: "Trascina un terminale del pannello progetti su un progetto per spostarlo lì, o su un altro terminale per metterlo sopra o sotto. Un progetto che resta vuoto si chiude.",
         .dragFolderTitle: "Riordina le cartelle trascinandole",
         .dragFolderHelp: "Trascina una cartella su un'altra per metterla sopra o sotto. I suoi progetti la seguono.",
+        // Main terminals
+        .markMainTerminal: "Segna come terminale principale",
+        .unmarkMainTerminal: "Non più terminale principale",
+        .mainTerminalHelp: "Un terminale principale porta una stella e resta sotto il suo progetto, anche quando il progetto è chiuso.",
     ]
 
     // MARK: Dutch
@@ -2567,6 +2588,10 @@ enum L10n {
         .dragTerminalHelp: "Sleep een terminal in het projectpaneel naar een project om hem daarheen te verplaatsen, of naar een andere terminal om hem erboven of eronder te zetten. Een project dat leeg raakt, sluit.",
         .dragFolderTitle: "Mappen verslepen om ze te ordenen",
         .dragFolderHelp: "Sleep een map naar een andere om hem erboven of eronder te zetten. De projecten gaan mee.",
+        // Main terminals
+        .markMainTerminal: "Als hoofdterminal markeren",
+        .unmarkMainTerminal: "Geen hoofdterminal meer",
+        .mainTerminalHelp: "Een hoofdterminal draagt een ster en blijft onder zijn project staan, ook als het project is ingeklapt.",
     ]
 
     // MARK: Portuguese
@@ -2943,5 +2968,9 @@ enum L10n {
         .dragTerminalHelp: "Arrasta um terminal do painel de projetos para um projeto para o mover para lá, ou para outro terminal para o pôr acima ou abaixo. Um projeto que fica vazio fecha-se.",
         .dragFolderTitle: "Reordenar pastas arrastando",
         .dragFolderHelp: "Arrasta uma pasta para outra para a pôr acima ou abaixo. Os seus projetos vão com ela.",
+        // Main terminals
+        .markMainTerminal: "Marcar como terminal principal",
+        .unmarkMainTerminal: "Deixar de ser terminal principal",
+        .mainTerminalHelp: "Um terminal principal tem uma estrela e fica sob o seu projeto, também quando o projeto está recolhido.",
     ]
 }

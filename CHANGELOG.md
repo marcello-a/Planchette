@@ -9,6 +9,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Main terminals.** Right-click a terminal (in the project panel or on its tab) → "Mark as main
+  terminal": it carries a star and stays under its project, also while the project is folded —
+  with "Collapse all" too.
 - **Reviews, beside the bell.** A new icon left of the notifications bell switches the right panel
   to the pull requests that ask for your review — the same panel, rows and colours, by stage:
   *Needs you*, *Reviewing*, *Sent*. A blue dot says a new request is in; a banner says it once.
