@@ -90,7 +90,7 @@ commit() {   # commit <subject>
 
 run() {   # run the script in $R; its output goes to $R.out, its exit status to $STATUS
     STATUS=0
-    AUTO_RELEASE_ROOT="$R" RELEASE_SCRIPT="$TMP/release-stub.sh" GH="$TMP/bin/gh" \
+    AUTO_RELEASE_ROOT="$R" RELEASE_SCRIPT="$TMP/release-stub.sh" GH="$TMP/bin/gh" AUTO_RELEASE_RETRY_DELAY=0 \
         sh "$AUTO" > "$R.out" 2>&1 || STATUS=$?
 }
 
@@ -221,6 +221,42 @@ git -C "$TMP/raced-other" push -q origin main
 run
 expect "raced: exit status" "$STATUS" 0
 expect "raced: releases nothing (the newer push does)" "$(released)" ""
+
+# --- 12. GitHub refuses the push once (a server error): the run tries again and releases ------------------------------
+
+refuse_pushes() {   # refuse_pushes <how many> — the origin turns down that many pushes, then takes them
+    echo "$1" > "$ORIGIN/refusals"
+    cat > "$ORIGIN/hooks/pre-receive" <<'EOF'
+#!/bin/sh
+left="$(cat refusals)"
+[ "$left" -gt 0 ] || exit 0
+echo $((left - 1)) > refusals
+echo "Internal Server Error" >&2
+exit 1
+EOF
+    chmod +x "$ORIGIN/hooks/pre-receive"
+}
+
+new_repo flaky
+commit "feat: mine"
+git -C "$R" push -q origin main    # CI builds a commit that is already on main
+refuse_pushes 1
+run
+expect "flaky: exit status" "$STATUS" 0
+expect "flaky: releases after the retry" "$(released)" "0.2.37"
+expect "flaky: the release commit reached origin" "$(git -C "$ORIGIN" log -1 --format=%s main)" "chore: release v0.2.37"
+
+# --- 13. GitHub keeps refusing: the run fails, visibly, and publishes nothing ------------------------------------------
+
+new_repo down
+commit "feat: mine"
+git -C "$R" push -q origin main
+refuse_pushes 9
+run
+count=$((count + 1))
+[ "$STATUS" -ne 0 ] || { failures=$((failures + 1)); echo "FAIL  down: a push that never goes through must fail the run"; }
+expect "down: releases nothing" "$(released)" ""
+expect_contains "down: says so" "$R.out" "could not push the release commit"
 
 # --- 11. a VERSION that is not X.Y.Z stops the run ---------------------------------------------------------------------
 
