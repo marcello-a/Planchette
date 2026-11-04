@@ -1,0 +1,36 @@
+name: Checks
+
+# Every pull request: builds GhosttyKit and the app, runs the tests and the release rules.
+# It never releases and cannot (read-only token, no release step) — that is the release
+# workflow's job, on main. Its GhosttyKit artifact is the one to download on a Mac that
+# cannot build it (CONTRIBUTING.md).
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The same runner as the release: ghostty v1.3.1 needs the recent macOS SDK of macos-15.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: ./.github/actions/ghosttykit
+
+      - name: Test
+        run: cd macos/Planchette && swift test
+
+      - name: Test the release rules
+        run: sh scripts/test-auto-release.sh
