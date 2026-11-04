@@ -16,13 +16,23 @@ struct PlanchetteApp: App {
             AppState.mainWindowID
         }
         .commands {
-            CommandGroup(after: .newItem) {
+            // Replacing, not after: the WindowGroup's own "New Planchette Window" also took ⌘N,
+            // and it opens a window without a WindowModel. "New window" (⇧⌘N) is the real one.
+            CommandGroup(replacing: .newItem) {
                 Button(L10n.t(.newProject)) { delegate.appState.promptNewProjectInKeyWindow() }
                     .keyboardShortcut("n")
                 Button(L10n.t(.newWindow)) {
                     openWindow(value: delegate.appState.newWindow())
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            // Replaces the system "Close" (⌘W closed the whole window): ⌘W closes the terminal
+            // you are in, ⇧⌘W the window.
+            CommandGroup(replacing: .saveItem) {
+                Button(L10n.t(.closeTabMenu)) { delegate.appState.closeInKeyWindow() }
+                    .keyboardShortcut("w")
+                Button(L10n.t(.closeWindowMenu)) { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
             }
             CommandMenu(L10n.t(.sessionMenu)) {
                 Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
@@ -42,6 +52,21 @@ struct PlanchetteApp: App {
                     .keyboardShortcut("k")
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
+                Divider()
+                // ⌃Tab as a menu shortcut: without one, AppKit's key-view loop moved the
+                // keyboard out of the terminal into the sidebar.
+                Button(L10n.t(.nextTab)) { delegate.appState.selectNextTabInKeyWindow() }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button(L10n.t(.nextProject)) { delegate.appState.selectNextProjectInKeyWindow() }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                Menu(L10n.t(.goToTab)) {
+                    ForEach(1..<9) { digit in
+                        Button(L10n.t(.tabNumber, digit)) { delegate.appState.selectTabInKeyWindow(digit: digit) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")))
+                    }
+                    Button(L10n.t(.lastTab)) { delegate.appState.selectTabInKeyWindow(digit: 9) }
+                        .keyboardShortcut("9")
+                }
             }
             // Find in the terminal in front: Edit menu, after the text editing group.
             CommandGroup(after: .textEditing) {

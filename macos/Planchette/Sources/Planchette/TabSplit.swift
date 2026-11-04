@@ -251,3 +251,23 @@ extension TabDragItem {
         }
     }
 }
+
+// MARK: Keyboard navigation
+
+/// Where ⌘1–⌘9, ⌃Tab and ⌃⇧Tab land, as plain index arithmetic over a list (the tabs of a
+/// project, or the projects of a window in sidebar order).
+enum KeyboardNavigation {
+    /// ⌘1–⌘8 pick that tab, ⌘9 the last one — the browser rule. `nil` past the end.
+    static func tabIndex(forDigit digit: Int, count: Int) -> Int? {
+        guard count > 0, (1...9).contains(digit) else { return nil }
+        if digit == 9 { return count - 1 }
+        return digit <= count ? digit - 1 : nil
+    }
+
+    /// The next one after `current`, wrapping around; the first when nothing is current.
+    static func next(after current: Int?, count: Int) -> Int? {
+        guard count > 0 else { return nil }
+        guard let current else { return 0 }
+        return (current + 1) % count
+    }
+}

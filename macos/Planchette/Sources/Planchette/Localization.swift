@@ -118,6 +118,8 @@ enum LKey: String, CaseIterable {
 
     // Menus / commands
     case newWindow, sessionMenu, newTerminal, quickSwitcher, jumpToWaiting
+    case nextTab, nextProject, goToTab, goToTabHelp, tabNumber, lastTab
+    case closeTabMenu, closeTabMenuHelp, closeWindowMenu
     case aiMenu, aiActive, aiExplanation, summarizeAll, groupByTopic
 
     // Toolbar
@@ -372,6 +374,8 @@ enum L10n {
         .newWindowHelp: "Open a new, empty window (⌘⇧N)",
         .quickSwitcherHelp: "Search and jump to any terminal",
         .jumpToWaitingHelp: "Jump to the most urgent waiting session (⌘⇧K)",
+        .closeTabMenu: "Close Tab", .closeTabMenuHelp: "Closes the terminal you are in (in a split, only that pane) after asking; in a project without terminals, the project", .closeWindowMenu: "Close Window",
+        .nextTab: "Next tab", .nextProject: "Next project", .goToTab: "Go to tab", .goToTabHelp: "⌘1–⌘8 open that tab of the project in front, ⌘9 the last one", .tabNumber: "Tab %d", .lastTab: "Last tab",
         .moveToNewWindowHelp: "Pull this group out into its own window",
         .favoriteHelp: "Main projects are prioritized in the inbox, notifications and switcher",
         .tagsHelp: "Tag this terminal (to test, review, …) — searchable in the switcher",
@@ -774,6 +778,8 @@ enum L10n {
         .newWindowHelp: "Neues, leeres Fenster öffnen (⌘⇧N)",
         .quickSwitcherHelp: "Beliebiges Terminal suchen und dorthin springen",
         .jumpToWaitingHelp: "Zur dringendsten wartenden Session springen (⌘⇧K)",
+        .closeTabMenu: "Tab schließen", .closeTabMenuHelp: "Schließt nach Rückfrage das Terminal, in dem du bist (im Split nur diesen Bereich); in einem Projekt ohne Terminals das Projekt", .closeWindowMenu: "Fenster schließen",
+        .nextTab: "Nächster Tab", .nextProject: "Nächstes Projekt", .goToTab: "Gehe zu Tab", .goToTabHelp: "⌘1–⌘8 öffnen diesen Tab des aktuellen Projekts, ⌘9 den letzten", .tabNumber: "Tab %d", .lastTab: "Letzter Tab",
         .moveToNewWindowHelp: "Diese Gruppe in ein eigenes Fenster herausziehen",
         .favoriteHelp: "Hauptprojekte werden in Inbox, Notifications und Switcher bevorzugt",
         .tagsHelp: "Terminal taggen (to test, review, …) — im Switcher durchsuchbar",
@@ -1176,6 +1182,8 @@ enum L10n {
         .newWindowHelp: "Ouvrir une nouvelle fenêtre vide (⌘⇧N)",
         .quickSwitcherHelp: "Rechercher et aller vers n'importe quel terminal",
         .jumpToWaitingHelp: "Aller à la session en attente la plus urgente (⌘⇧K)",
+        .closeTabMenu: "Fermer l’onglet", .closeTabMenuHelp: "Ferme, après confirmation, le terminal actif (dans une division, ce seul panneau) ; dans un projet sans terminal, le projet", .closeWindowMenu: "Fermer la fenêtre",
+        .nextTab: "Onglet suivant", .nextProject: "Projet suivant", .goToTab: "Aller à l’onglet", .goToTabHelp: "⌘1–⌘8 ouvrent cet onglet du projet affiché, ⌘9 le dernier", .tabNumber: "Onglet %d", .lastTab: "Dernier onglet",
         .moveToNewWindowHelp: "Extraire ce groupe dans sa propre fenêtre",
         .favoriteHelp: "Les projets principaux sont prioritaires dans la boîte, les notifications et le sélecteur",
         .tagsHelp: "Étiqueter ce terminal (to test, review, …) — recherchable dans le sélecteur",
@@ -1578,6 +1586,8 @@ enum L10n {
         .newWindowHelp: "Abrir una nueva ventana vacía (⌘⇧N)",
         .quickSwitcherHelp: "Buscar y saltar a cualquier terminal",
         .jumpToWaitingHelp: "Ir a la sesión en espera más urgente (⌘⇧K)",
+        .closeTabMenu: "Cerrar pestaña", .closeTabMenuHelp: "Cierra, tras preguntar, el terminal en el que estás (en una división, solo ese panel); en un proyecto sin terminales, el proyecto", .closeWindowMenu: "Cerrar ventana",
+        .nextTab: "Pestaña siguiente", .nextProject: "Proyecto siguiente", .goToTab: "Ir a la pestaña", .goToTabHelp: "⌘1–⌘8 abren esa pestaña del proyecto visible, ⌘9 la última", .tabNumber: "Pestaña %d", .lastTab: "Última pestaña",
         .moveToNewWindowHelp: "Extraer este grupo a su propia ventana",
         .favoriteHelp: "Los proyectos principales tienen prioridad en la bandeja, notificaciones y selector",
         .tagsHelp: "Etiquetar este terminal (to test, review, …) — se busca en el selector",
@@ -1980,6 +1990,8 @@ enum L10n {
         .newWindowHelp: "Apri una nuova finestra vuota (⌘⇧N)",
         .quickSwitcherHelp: "Cerca e salta a qualsiasi terminale",
         .jumpToWaitingHelp: "Vai alla sessione in attesa più urgente (⌘⇧K)",
+        .closeTabMenu: "Chiudi scheda", .closeTabMenuHelp: "Chiude, dopo conferma, il terminale in cui sei (in una divisione, solo quel riquadro); in un progetto senza terminali, il progetto", .closeWindowMenu: "Chiudi finestra",
+        .nextTab: "Scheda successiva", .nextProject: "Progetto successivo", .goToTab: "Vai alla scheda", .goToTabHelp: "⌘1–⌘8 aprono quella scheda del progetto visibile, ⌘9 l’ultima", .tabNumber: "Scheda %d", .lastTab: "Ultima scheda",
         .moveToNewWindowHelp: "Estrai questo gruppo in una finestra propria",
         .favoriteHelp: "I progetti principali hanno priorità in casella, notifiche e selettore",
         .tagsHelp: "Tagga questo terminale (to test, review, …) — ricercabile nel selettore",
@@ -2382,6 +2394,8 @@ enum L10n {
         .newWindowHelp: "Open een nieuw, leeg venster (⌘⇧N)",
         .quickSwitcherHelp: "Zoek en spring naar een terminal",
         .jumpToWaitingHelp: "Ga naar de meest dringende wachtende sessie (⌘⇧K)",
+        .closeTabMenu: "Tabblad sluiten", .closeTabMenuHelp: "Sluit na bevestiging de terminal waarin je zit (in een splitsing alleen dat deelvenster); in een project zonder terminals het project", .closeWindowMenu: "Venster sluiten",
+        .nextTab: "Volgend tabblad", .nextProject: "Volgend project", .goToTab: "Ga naar tabblad", .goToTabHelp: "⌘1–⌘8 openen dat tabblad van het zichtbare project, ⌘9 het laatste", .tabNumber: "Tabblad %d", .lastTab: "Laatste tabblad",
         .moveToNewWindowHelp: "Trek deze groep in een eigen venster",
         .favoriteHelp: "Hoofdprojecten hebben voorrang in postvak, meldingen en snelkiezer",
         .tagsHelp: "Tag deze terminal (to test, review, …) — doorzoekbaar in de snelkiezer",
@@ -2784,6 +2798,8 @@ enum L10n {
         .newWindowHelp: "Abrir uma nova janela vazia (⌘⇧N)",
         .quickSwitcherHelp: "Procurar e saltar para qualquer terminal",
         .jumpToWaitingHelp: "Ir para a sessão em espera mais urgente (⌘⇧K)",
+        .closeTabMenu: "Fechar aba", .closeTabMenuHelp: "Fecha, após confirmar, o terminal em que você está (numa divisão, só esse painel); num projeto sem terminais, o projeto", .closeWindowMenu: "Fechar janela",
+        .nextTab: "Próxima aba", .nextProject: "Próximo projeto", .goToTab: "Ir para a aba", .goToTabHelp: "⌘1–⌘8 abrem essa aba do projeto visível, ⌘9 a última", .tabNumber: "Aba %d", .lastTab: "Última aba",
         .moveToNewWindowHelp: "Extrair este grupo para a sua própria janela",
         .favoriteHelp: "Os projetos principais têm prioridade na caixa, notificações e seletor",
         .tagsHelp: "Etiquetar este terminal (to test, review, …) — pesquisável no seletor",

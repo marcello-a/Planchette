@@ -681,7 +681,9 @@ final class GhosttySurfaceNSView: NSView {
         // ⌘F, ⌘G and ⌘⇧G are the menu's too: the find bar is the app's, and it has to
         // answer for a durable terminal, whose history libghostty cannot see.
         // ⌘D and ⌘⇧D split the tab and ⌘J opens the notepad (Session menu); the terminal would type them otherwise.
-        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g", "d", "j"]
+        // ⌘1–⌘9 pick a tab (Session menu → Go to Tab).
+        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g", "d", "j",
+                                         "1", "2", "3", "4", "5", "6", "7", "8", "9"]
         // charactersIgnoringModifiers still applies Shift, so a shifted app
         // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree", ⌘⇧D "Split down") arrives here as
         // "K"/"T". Lowercase before matching so those reach the menu instead of

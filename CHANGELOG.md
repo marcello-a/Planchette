@@ -8,6 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Switch tabs and projects from the keyboard.** ⌘1–⌘8 open that tab of the project in front, ⌘9
+  the last one; ⌃Tab goes to the next tab, ⌃⇧Tab to the next project (Session menu).
+
+### Fixed
+- **⌘N had two menu items.** "New Planchette Window" is gone; ⌘N is "New project…", ⇧⌘N
+  "New window".
+- **⌃Tab no longer moves the keyboard into the sidebar.**
+
+### Changed
+- **⌘W closes the terminal you are in, not the window.** It asks first; in a split it closes
+  only that pane, and in a project with no terminal left it closes the project. ⇧⌘W closes the
+  window.
+
 ## [0.2.48] — 2026-10-30
 
 ### Added

@@ -153,8 +153,13 @@ enum Help {
         ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
+            Entry(.nextTab, nil, shortcut: "⌃⇥", where: .helpWhereMenuBar),
+            Entry(.nextProject, nil, shortcut: "⌃⇧⇥", where: .helpWhereMenuBar),
+            Entry(.goToTab, .goToTabHelp, shortcut: "⌘1–9", where: .helpWhereMenuBar),
             Entry(.searchShortcutTitle, .searchShortcutHelp, shortcut: "⇧⇧", where: .helpWhereSettings),
             Entry(.newWindow, .newWindowHelp, shortcut: "⌘⇧N"),
+            Entry(.closeTabMenu, .closeTabMenuHelp, shortcut: "⌘W", where: .helpWhereMenuBar),
+            Entry(.closeWindowMenu, nil, shortcut: "⌘⇧W", where: .helpWhereMenuBar),
             Entry(.moveToNewWindow, .moveToNewWindowHelp, where: .helpWhereContextMenu),
             Entry(.mergeIntoMain, .mergeIntoMainHelp, where: .helpWhereToolbar),
             Entry(.settingsTitle, .settingsHelp, shortcut: "⌘,"),

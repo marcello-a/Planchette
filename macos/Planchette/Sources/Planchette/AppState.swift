@@ -1992,6 +1992,76 @@ final class AppState: ObservableObject {
         select(session: next)
     }
 
+    /// The project the key window shows.
+    private func keyGroup() -> (window: WindowModel, group: SessionGroup?)? {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
+              let window = window(for: windowID) else { return nil }
+        return (window, window.selectedGroupID.flatMap { id in groups.first { $0.id == id } })
+    }
+
+    private func selectTab(_ tab: SplitLayout, of group: SessionGroup) {
+        guard let id = paneToFocus(in: tab, groupID: group.id), let session = sessions[id] else { return }
+        select(session: session)
+    }
+
+    /// ⌘1–⌘9: a tab of the project in front (⌘9 the last).
+    func selectTabInKeyWindow(digit: Int) {
+        guard let group = keyGroup()?.group else { return }
+        let strip = tabs(of: group)
+        guard let at = KeyboardNavigation.tabIndex(forDigit: digit, count: strip.count) else { return }
+        selectTab(strip[at], of: group)
+    }
+
+    /// ⌃Tab: the next tab of the project in front, wrapping around.
+    func selectNextTabInKeyWindow() {
+        guard let group = keyGroup()?.group else { return }
+        let strip = tabs(of: group)
+        let current = group.activeSessionID.flatMap { TabStrip.index(of: $0, in: strip) }
+        guard let at = KeyboardNavigation.next(after: current, count: strip.count) else { return }
+        selectTab(strip[at], of: group)
+    }
+
+    /// ⌃⇧Tab: the next project of the key window, in sidebar order (folders, favorites, the rest).
+    func selectNextProjectInKeyWindow() {
+        guard let (window, current) = keyGroup() else { return }
+        let all = groups(inWindow: window)
+        let loose = all.filter { window.looseGroupIDs.contains($0.id) }
+        let order = window.folders.flatMap(\.groupIDs)
+            + loose.filter(\.favorite).map(\.id) + loose.filter { !$0.favorite }.map(\.id)
+        let at = current.flatMap { order.firstIndex(of: $0.id) }
+        guard let next = KeyboardNavigation.next(after: at, count: order.count),
+              let group = groups.first(where: { $0.id == order[next] }) else { return }
+        select(group: group)
+    }
+
+    /// ⌘W: the terminal you are in (in a split, only that pane), after asking; in a project with
+    /// no terminal left, the project. On an overview page it does nothing, and in any other window
+    /// (Settings, …) it closes that window as ⌘W always did.
+    func closeInKeyWindow() {
+        guard let windowID = WindowRegistry.shared.keyWindowID() else {
+            NSApp.keyWindow?.performClose(nil)
+            return
+        }
+        guard let window = window(for: windowID), !window.showsProjectOverview, window.selectedFolderID == nil,
+              let groupID = window.selectedGroupID,
+              let group = groups.first(where: { $0.id == groupID }) else { return }
+        if let id = keyTerminalID(), let session = sessions[id] {
+            TabCloser.confirmAndClose([id], title: L10n.t(.closeTabAlertTitle, tabName(for: session)), appState: self)
+            return
+        }
+        guard group.sessionIDs.isEmpty else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.t(.closeProject)
+        alert.informativeText = L10n.t(.closeProjectBody, group.name, 0)
+        alert.addButton(withTitle: L10n.t(.closeProject))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        Task { @MainActor in
+            guard await ModalAlert.run(alert) == .alertFirstButtonReturn else { return }
+            self.closeGroup(groupID)
+        }
+    }
+
     func showQuickSwitcher() {
         quickSwitcherWindowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
     }
