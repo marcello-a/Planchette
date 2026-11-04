@@ -37,6 +37,8 @@ struct PlanchetteApp: App {
             CommandMenu(L10n.t(.sessionMenu)) {
                 Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
                     .keyboardShortcut("t")
+                Button(L10n.t(.reopenClosedTab)) { delegate.appState.reopenClosedTerminal() }
+                    .keyboardShortcut("t", modifiers: [.command, .control])
                 Button(L10n.t(.splitRight)) { delegate.appState.splitInKeyWindow(edge: .right) }
                     .keyboardShortcut("d")
                 Button(L10n.t(.splitDown)) { delegate.appState.splitInKeyWindow(edge: .bottom) }

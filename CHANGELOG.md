@@ -13,6 +13,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   the last one; ⌃Tab goes to the next tab, ⌃⇧Tab to the next project (Session menu).
 - **…and back.** ⌥⌘← / ⌥⌘→ go to the previous / next tab, ⌥⌘↑ / ⌥⌘↓ to the previous / next
   project, ⌥⌘1–⌥⌘9 to a project in sidebar order.
+- **Reopen a closed tab with ⌃⌘T.** The terminal you closed last comes back in its project and
+  folder, with its name, tags and startup command — and the Claude conversation it was running,
+  via `claude --resume`.
 - **Your own shortcuts.** Re-assign any menu item in System Settings → Keyboard → Keyboard
   Shortcuts → App Shortcuts; it now works inside a terminal too.
 

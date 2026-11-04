@@ -309,6 +309,24 @@ enum AgentKind: String, Codable, CaseIterable {
     }
 }
 
+extension TerminalSession {
+    /// What a reopened terminal (⌃⌘T) takes over from the one that was closed: where it was and
+    /// what the user set on it. Not its id, its state or its agent: the reopened one starts fresh,
+    /// and an agent comes back only through `claude --resume`.
+    func reopened(into fresh: TerminalSession) -> TerminalSession {
+        var session = fresh
+        session.workingDirectory = workingDirectory
+        session.currentDirectory = currentDirectory
+        session.customTitle = customTitle
+        session.color = color
+        session.tags = tags
+        session.startupCommand = startupCommand
+        session.note = note
+        session.resumeClaudeOnRestore = resumeClaudeOnRestore
+        return session
+    }
+}
+
 struct TerminalSession: Identifiable, Codable, Equatable {
     let id: UUID
     var groupID: UUID

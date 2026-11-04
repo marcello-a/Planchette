@@ -21,3 +21,26 @@ final class KeyboardNavigationTests: XCTestCase {
         XCTAssertNil(KeyboardNavigation.step(from: nil, by: 1, count: 0))
     }
 }
+
+final class ReopenTerminalTests: XCTestCase {
+    func testReopenedKeepsPlaceAndSettingsButNotIdentityOrState() {
+        var closed = TerminalSession(groupID: UUID(), workingDirectory: "/repo")
+        closed.currentDirectory = "/repo/sub"
+        closed.customTitle = "api"
+        closed.tags = ["x"]
+        closed.startupCommand = "npm run dev"
+        closed.state = .running
+        closed.claudeSessionID = "abc"
+        let fresh = TerminalSession(groupID: UUID(), workingDirectory: "/elsewhere")
+        let reopened = closed.reopened(into: fresh)
+        XCTAssertEqual(reopened.id, fresh.id)
+        XCTAssertEqual(reopened.groupID, fresh.groupID)
+        XCTAssertEqual(reopened.workingDirectory, "/repo")
+        XCTAssertEqual(reopened.currentDirectory, "/repo/sub")
+        XCTAssertEqual(reopened.customTitle, "api")
+        XCTAssertEqual(reopened.tags, ["x"])
+        XCTAssertEqual(reopened.startupCommand, "npm run dev")
+        XCTAssertEqual(reopened.state, .free)
+        XCTAssertNil(reopened.claudeSessionID)
+    }
+}

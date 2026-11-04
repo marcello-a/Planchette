@@ -163,6 +163,7 @@ enum Help {
             Entry(.searchShortcutTitle, .searchShortcutHelp, shortcut: "⇧⇧", where: .helpWhereSettings),
             Entry(.newWindow, .newWindowHelp, shortcut: "⌘⇧N"),
             Entry(.closeTabMenu, .closeTabMenuHelp, shortcut: "⌘W", where: .helpWhereMenuBar),
+            Entry(.reopenClosedTab, .reopenClosedTabHelp, shortcut: "⌃⌘T", where: .helpWhereMenuBar),
             Entry(.closeWindowMenu, nil, shortcut: "⌘⇧W", where: .helpWhereMenuBar),
             Entry(.moveToNewWindow, .moveToNewWindowHelp, where: .helpWhereContextMenu),
             Entry(.mergeIntoMain, .mergeIntoMainHelp, where: .helpWhereToolbar),

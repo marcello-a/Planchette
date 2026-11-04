@@ -1064,7 +1064,8 @@ final class TerminalRegistry {
                 environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id))
         }
 
-        var initialInput: String? = nil
+        // A reopened terminal (⌃⌘T) brings what it types first: its startup command, `claude --resume`.
+        var initialInput: String? = appState.takeStartInput(for: session.id)
         // Nothing to replay when the agent survived: tmux hands back the live
         // screen, scrollback and all. Replaying here would `cat` a stale
         // snapshot over a running TUI and start a *second* Claude next to the

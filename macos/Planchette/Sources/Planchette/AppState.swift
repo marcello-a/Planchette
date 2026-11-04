@@ -1505,6 +1505,12 @@ final class AppState: ObservableObject {
 
     func closeSession(_ id: UUID) {
         guard let session = sessions[id] else { return }
+        // Remembered for ⌃⌘T. Whether Claude was running is decided now: after the close, its
+        // hooks are gone. ponytail: in memory only, the list is lost on quit; persist it if
+        // reopening after a restart is asked for.
+        recentlyClosed.append(ClosedTerminal(
+            session: session, claudeWasLive: session.agentKind == .claude && liveAgentIDs.contains(id)))
+        if recentlyClosed.count > 20 { recentlyClosed.removeFirst() }
         TerminalRegistry.shared.close(id)
         // Closing a terminal on purpose ends its agent — durability is about
         // surviving *our* restarts, not about outliving the terminal itself.
@@ -2046,6 +2052,47 @@ final class AppState: ObservableObject {
         let order = projectOrder(of: window)
         guard let at = KeyboardNavigation.tabIndex(forDigit: digit, count: order.count) else { return }
         select(group: order[at])
+    }
+
+    struct ClosedTerminal {
+        let session: TerminalSession
+        let claudeWasLive: Bool
+    }
+
+    /// Terminals closed in this run, the newest last.
+    private(set) var recentlyClosed: [ClosedTerminal] = []
+
+    /// What a terminal types when it starts, for a terminal that is not being restored — set
+    /// before its surface exists, taken once by `TerminalRegistry`.
+    private var startInputs: [UUID: String] = [:]
+
+    func takeStartInput(for id: UUID) -> String? {
+        startInputs.removeValue(forKey: id)
+    }
+
+    /// ⌃⌘T: the terminal closed last, back in its project (or the one in front, when its project
+    /// is gone too) — in its folder, with its name, tags and startup command, and the Claude
+    /// conversation it was running. The scrollback is not replayed: it is deleted on close.
+    func reopenClosedTerminal() {
+        guard let closed = recentlyClosed.popLast() else { return }
+        let groupID = groups.contains { $0.id == closed.session.groupID }
+            ? closed.session.groupID : keyGroup()?.group?.id
+        guard let groupID else { return }
+        let fresh = addSession(directory: closed.session.currentDirectory, groupID: groupID)
+        var session = closed.session.reopened(into: fresh)
+        let resumeID = closed.claudeWasLive
+            ? ClaudeResume.resolveSessionID(
+                claudeSessionID: closed.session.claudeSessionID,
+                transcriptPath: closed.session.transcriptPath,
+                currentDirectory: closed.session.currentDirectory)
+            : nil
+        session.claudeSessionID = resumeID
+        update(session.id) { $0 = session }
+        startInputs[session.id] = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "",
+            startupCommand: session.startupCommand,
+            claudeSessionID: resumeID, resumeClaude: resumeID != nil)
+        select(session: session)
     }
 
     /// ⌘W: the terminal you are in (in a split, only that pane), after asking; in a project with
