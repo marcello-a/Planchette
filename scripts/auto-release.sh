@@ -132,11 +132,28 @@ git commit -q -m "chore: release v$NEXT" \
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 [ "$BRANCH" != "HEAD" ] || BRANCH="${GITHUB_REF_NAME:-main}"   # a detached checkout still knows its branch in CI
-if ! git push -q origin "HEAD:$BRANCH"; then
-    # Somebody merged while this run was building. Their push starts a run of its
-    # own, which sees everything since the last release — this one steps aside.
-    echo "≡ $BRANCH moved on while this run was building: the run for the newer push releases." >&2
-    exit 0
+# A refused push has two causes, and only one of them is somebody else's business.
+# Somebody merged while this run was building: their push starts a run of its own,
+# which sees everything since the last release — this one steps aside. Or GitHub
+# failed ("Internal Server Error", v0.2.48): the branch is still where this run
+# started, nobody else releases, so try again — and fail visibly if it stays down.
+# Stepping aside on a server error ended a run green with nothing published.
+pushed=false
+for attempt in 1 2 3; do
+    if git push -q origin "HEAD:$BRANCH"; then
+        pushed=true
+        break
+    fi
+    if git fetch -q origin "$BRANCH" && [ "$(git rev-parse FETCH_HEAD)" != "$(git rev-parse HEAD~1)" ]; then
+        echo "≡ $BRANCH moved on while this run was building: the run for the newer push releases." >&2
+        exit 0
+    fi
+    echo "→ the push of the release commit failed (attempt $attempt of 3); $BRANCH has not moved." >&2
+    [ "$attempt" -eq 3 ] || sleep "${AUTO_RELEASE_RETRY_DELAY:-15}"
+done
+if [ "$pushed" != true ]; then
+    echo "✗ could not push the release commit to $BRANCH: nothing is published. Run the workflow again." >&2
+    exit 1
 fi
 
 release "$NEXT"

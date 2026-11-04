@@ -1,7 +1,8 @@
 name: Build & Release
 
 # Builds GhosttyKit + the app and runs tests on every push to the default
-# branch. When the merged pull request ticked "Trigger new release", then
+# branch (pull requests: checks.yml), and uploads GhosttyKit as an artifact.
+# When the merged pull request ticked "Trigger new release", then
 # scripts/auto-release.sh decides whether the push releases (tag + DMG/zip/checksums):
 #
 #   - VERSION names a version that is not published yet: that version goes out as
@@ -41,32 +42,13 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      - name: Use latest Xcode
-        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)/Contents/Developer" || true
-
       - name: Read version
         id: ver
         run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
 
-      - name: Install Zig 0.15.2
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Cache GhosttyKit build
-        uses: actions/cache@v4
-        with:
-          path: |
-            vendor/ghostty/.zig-cache
-            vendor/ghostty/zig-out
-            ~/.cache/zig
-          key: ghostty-${{ runner.os }}-${{ hashFiles('.gitmodules') }}-v1.3.1
-
-      - name: Build GhosttyKit
-        run: |
-          set -eu
-          ( cd vendor/ghostty && zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast )
-          cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/Planchette/
+      # Xcode, Zig 0.15.2, the cached build, and the "GhosttyKit" artifact — shared with the
+      # pull request checks (.github/actions/ghosttykit).
+      - uses: ./.github/actions/ghosttykit
 
       - name: Test
         run: cd macos/Planchette && swift test

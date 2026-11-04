@@ -1,0 +1,48 @@
+name: Build GhosttyKit
+description: >
+  Builds GhosttyKit.xcframework from the pinned vendor/ghostty submodule, puts it where the
+  app expects it, and uploads it zipped as the workflow artifact "GhosttyKit". One recipe for
+  the release workflow and the pull request checks, so the two cannot build it differently.
+
+runs:
+  using: composite
+  steps:
+    - name: Use latest Xcode
+      shell: bash
+      run: sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)/Contents/Developer" || true
+
+    - name: Install Zig 0.15.2
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.15.2
+
+    - name: Cache GhosttyKit build
+      uses: actions/cache@v4
+      with:
+        path: |
+          vendor/ghostty/.zig-cache
+          vendor/ghostty/zig-out
+          ~/.cache/zig
+        key: ghostty-${{ runner.os }}-${{ hashFiles('.gitmodules') }}-v1.3.1
+
+    - name: Build GhosttyKit
+      shell: bash
+      run: |
+        set -eu
+        ( cd vendor/ghostty && zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast )
+        cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/Planchette/
+
+    # Zig 0.15.2 does not link on macOS 27 (undefined _abort, _bzero, … in its own build
+    # runner), so a contributor there cannot build GhosttyKit. This is the one they download:
+    # unzip it into macos/Planchette/ (CONTRIBUTING.md, "First-time setup"). Zipped with
+    # ditto, because an artifact upload drops the framework's symlinks.
+    - name: Zip GhosttyKit
+      shell: bash
+      run: ditto -c -k --sequesterRsrc --keepParent macos/Planchette/GhosttyKit.xcframework GhosttyKit.xcframework.zip
+
+    - name: Upload GhosttyKit
+      uses: actions/upload-artifact@v4
+      with:
+        name: GhosttyKit
+        path: GhosttyKit.xcframework.zip
+        retention-days: 90

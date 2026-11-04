@@ -31,6 +31,21 @@ cp -R macos/GhosttyKit.xcframework ../../macos/Planchette/
 cd ../..
 ```
 
+**On macOS 27, download GhosttyKit instead.** Zig 0.15.2 does not link there: its own
+build runner stops with `undefined symbol: _abort`, `_bzero`, … whatever the SDK. CI builds
+on macos-15 and uploads the framework of every run as the artifact `GhosttyKit`; take the one
+of the latest green run on `main`:
+
+```sh
+RUN="$(gh run list --repo marcello-a/Planchette --workflow release.yml --branch main \
+  --status success --limit 1 --json databaseId -q '.[0].databaseId')"
+gh run download "$RUN" --repo marcello-a/Planchette -n GhosttyKit -D /tmp/ghosttykit
+ditto -x -k /tmp/ghosttykit/GhosttyKit.xcframework.zip macos/Planchette/
+```
+
+Artifacts are kept 90 days. A pull request that changes the submodule builds its own, in
+its **Checks** run.
+
 ## Build & run (dev)
 
 ```sh
@@ -55,6 +70,9 @@ An isolated instance polls no review requests (its PR pills still ask `gh`), nev
 writes into `~/.claude`, and shows no first-use hints. An unbundled build reports version `0.0.0`.
 
 ## Test
+
+Every pull request runs the **Checks** workflow (`.github/workflows/checks.yml`): it builds
+GhosttyKit and the app, runs `swift test` and the release rules, and never releases.
 
 ```sh
 cd macos/Planchette
