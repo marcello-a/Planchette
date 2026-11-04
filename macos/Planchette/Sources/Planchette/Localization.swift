@@ -120,6 +120,8 @@ enum LKey: String, CaseIterable {
     case newWindow, sessionMenu, newTerminal, quickSwitcher, jumpToWaiting
     case nextTab, nextProject, goToTab, goToTabHelp, tabNumber, lastTab
     case closeTabMenu, closeTabMenuHelp, closeWindowMenu
+    case previousTab, previousProject, goToProject, goToProjectHelp, projectNumber, lastProject
+    case helpCustomShortcutsTitle, helpCustomShortcutsDetail
     case aiMenu, aiActive, aiExplanation, summarizeAll, groupByTopic
 
     // Toolbar
@@ -375,6 +377,7 @@ enum L10n {
         .quickSwitcherHelp: "Search and jump to any terminal",
         .jumpToWaitingHelp: "Jump to the most urgent waiting session (⌘⇧K)",
         .closeTabMenu: "Close Tab", .closeTabMenuHelp: "Closes the terminal you are in (in a split, only that pane) after asking; in a project without terminals, the project", .closeWindowMenu: "Close Window",
+        .previousTab: "Previous tab", .previousProject: "Previous project", .goToProject: "Go to project", .goToProjectHelp: "⌥⌘1–⌥⌘8 open that project in sidebar order, ⌥⌘9 the last one", .projectNumber: "Project %d", .lastProject: "Last project", .helpCustomShortcutsTitle: "Change a shortcut", .helpCustomShortcutsDetail: "System Settings → Keyboard → Keyboard Shortcuts → App Shortcuts: pick Planchette and type the menu item's exact name",
         .nextTab: "Next tab", .nextProject: "Next project", .goToTab: "Go to tab", .goToTabHelp: "⌘1–⌘8 open that tab of the project in front, ⌘9 the last one", .tabNumber: "Tab %d", .lastTab: "Last tab",
         .moveToNewWindowHelp: "Pull this group out into its own window",
         .favoriteHelp: "Main projects are prioritized in the inbox, notifications and switcher",
@@ -779,6 +782,7 @@ enum L10n {
         .quickSwitcherHelp: "Beliebiges Terminal suchen und dorthin springen",
         .jumpToWaitingHelp: "Zur dringendsten wartenden Session springen (⌘⇧K)",
         .closeTabMenu: "Tab schließen", .closeTabMenuHelp: "Schließt nach Rückfrage das Terminal, in dem du bist (im Split nur diesen Bereich); in einem Projekt ohne Terminals das Projekt", .closeWindowMenu: "Fenster schließen",
+        .previousTab: "Vorheriger Tab", .previousProject: "Vorheriges Projekt", .goToProject: "Gehe zu Projekt", .goToProjectHelp: "⌥⌘1–⌥⌘8 öffnen dieses Projekt in Sidebar-Reihenfolge, ⌥⌘9 das letzte", .projectNumber: "Projekt %d", .lastProject: "Letztes Projekt", .helpCustomShortcutsTitle: "Kürzel ändern", .helpCustomShortcutsDetail: "Systemeinstellungen → Tastatur → Tastaturkurzbefehle → App-Kurzbefehle: Planchette wählen und den Namen des Menüpunkts genau eintragen",
         .nextTab: "Nächster Tab", .nextProject: "Nächstes Projekt", .goToTab: "Gehe zu Tab", .goToTabHelp: "⌘1–⌘8 öffnen diesen Tab des aktuellen Projekts, ⌘9 den letzten", .tabNumber: "Tab %d", .lastTab: "Letzter Tab",
         .moveToNewWindowHelp: "Diese Gruppe in ein eigenes Fenster herausziehen",
         .favoriteHelp: "Hauptprojekte werden in Inbox, Notifications und Switcher bevorzugt",
@@ -1183,6 +1187,7 @@ enum L10n {
         .quickSwitcherHelp: "Rechercher et aller vers n'importe quel terminal",
         .jumpToWaitingHelp: "Aller à la session en attente la plus urgente (⌘⇧K)",
         .closeTabMenu: "Fermer l’onglet", .closeTabMenuHelp: "Ferme, après confirmation, le terminal actif (dans une division, ce seul panneau) ; dans un projet sans terminal, le projet", .closeWindowMenu: "Fermer la fenêtre",
+        .previousTab: "Onglet précédent", .previousProject: "Projet précédent", .goToProject: "Aller au projet", .goToProjectHelp: "⌥⌘1–⌥⌘8 ouvrent ce projet dans l’ordre de la barre latérale, ⌥⌘9 le dernier", .projectNumber: "Projet %d", .lastProject: "Dernier projet", .helpCustomShortcutsTitle: "Modifier un raccourci", .helpCustomShortcutsDetail: "Réglages Système → Clavier → Raccourcis clavier → Raccourcis des apps : choisissez Planchette et saisissez le nom exact de l’élément de menu",
         .nextTab: "Onglet suivant", .nextProject: "Projet suivant", .goToTab: "Aller à l’onglet", .goToTabHelp: "⌘1–⌘8 ouvrent cet onglet du projet affiché, ⌘9 le dernier", .tabNumber: "Onglet %d", .lastTab: "Dernier onglet",
         .moveToNewWindowHelp: "Extraire ce groupe dans sa propre fenêtre",
         .favoriteHelp: "Les projets principaux sont prioritaires dans la boîte, les notifications et le sélecteur",
@@ -1587,6 +1592,7 @@ enum L10n {
         .quickSwitcherHelp: "Buscar y saltar a cualquier terminal",
         .jumpToWaitingHelp: "Ir a la sesión en espera más urgente (⌘⇧K)",
         .closeTabMenu: "Cerrar pestaña", .closeTabMenuHelp: "Cierra, tras preguntar, el terminal en el que estás (en una división, solo ese panel); en un proyecto sin terminales, el proyecto", .closeWindowMenu: "Cerrar ventana",
+        .previousTab: "Pestaña anterior", .previousProject: "Proyecto anterior", .goToProject: "Ir al proyecto", .goToProjectHelp: "⌥⌘1–⌥⌘8 abren ese proyecto en el orden de la barra lateral, ⌥⌘9 el último", .projectNumber: "Proyecto %d", .lastProject: "Último proyecto", .helpCustomShortcutsTitle: "Cambiar un atajo", .helpCustomShortcutsDetail: "Ajustes del Sistema → Teclado → Funciones rápidas de teclado → Funciones rápidas de apps: elige Planchette y escribe el nombre exacto del elemento de menú",
         .nextTab: "Pestaña siguiente", .nextProject: "Proyecto siguiente", .goToTab: "Ir a la pestaña", .goToTabHelp: "⌘1–⌘8 abren esa pestaña del proyecto visible, ⌘9 la última", .tabNumber: "Pestaña %d", .lastTab: "Última pestaña",
         .moveToNewWindowHelp: "Extraer este grupo a su propia ventana",
         .favoriteHelp: "Los proyectos principales tienen prioridad en la bandeja, notificaciones y selector",
@@ -1991,6 +1997,7 @@ enum L10n {
         .quickSwitcherHelp: "Cerca e salta a qualsiasi terminale",
         .jumpToWaitingHelp: "Vai alla sessione in attesa più urgente (⌘⇧K)",
         .closeTabMenu: "Chiudi scheda", .closeTabMenuHelp: "Chiude, dopo conferma, il terminale in cui sei (in una divisione, solo quel riquadro); in un progetto senza terminali, il progetto", .closeWindowMenu: "Chiudi finestra",
+        .previousTab: "Scheda precedente", .previousProject: "Progetto precedente", .goToProject: "Vai al progetto", .goToProjectHelp: "⌥⌘1–⌥⌘8 aprono quel progetto nell’ordine della barra laterale, ⌥⌘9 l’ultimo", .projectNumber: "Progetto %d", .lastProject: "Ultimo progetto", .helpCustomShortcutsTitle: "Cambiare una scorciatoia", .helpCustomShortcutsDetail: "Impostazioni di Sistema → Tastiera → Abbreviazioni da tastiera → Abbreviazioni app: scegli Planchette e scrivi il nome esatto della voce di menu",
         .nextTab: "Scheda successiva", .nextProject: "Progetto successivo", .goToTab: "Vai alla scheda", .goToTabHelp: "⌘1–⌘8 aprono quella scheda del progetto visibile, ⌘9 l’ultima", .tabNumber: "Scheda %d", .lastTab: "Ultima scheda",
         .moveToNewWindowHelp: "Estrai questo gruppo in una finestra propria",
         .favoriteHelp: "I progetti principali hanno priorità in casella, notifiche e selettore",
@@ -2395,6 +2402,7 @@ enum L10n {
         .quickSwitcherHelp: "Zoek en spring naar een terminal",
         .jumpToWaitingHelp: "Ga naar de meest dringende wachtende sessie (⌘⇧K)",
         .closeTabMenu: "Tabblad sluiten", .closeTabMenuHelp: "Sluit na bevestiging de terminal waarin je zit (in een splitsing alleen dat deelvenster); in een project zonder terminals het project", .closeWindowMenu: "Venster sluiten",
+        .previousTab: "Vorig tabblad", .previousProject: "Vorig project", .goToProject: "Ga naar project", .goToProjectHelp: "⌥⌘1–⌥⌘8 openen dat project in de volgorde van de zijbalk, ⌥⌘9 het laatste", .projectNumber: "Project %d", .lastProject: "Laatste project", .helpCustomShortcutsTitle: "Sneltoets wijzigen", .helpCustomShortcutsDetail: "Systeeminstellingen → Toetsenbord → Toetscombinaties → Toetscombinaties voor apps: kies Planchette en typ de exacte naam van het menu-onderdeel",
         .nextTab: "Volgend tabblad", .nextProject: "Volgend project", .goToTab: "Ga naar tabblad", .goToTabHelp: "⌘1–⌘8 openen dat tabblad van het zichtbare project, ⌘9 het laatste", .tabNumber: "Tabblad %d", .lastTab: "Laatste tabblad",
         .moveToNewWindowHelp: "Trek deze groep in een eigen venster",
         .favoriteHelp: "Hoofdprojecten hebben voorrang in postvak, meldingen en snelkiezer",
@@ -2799,6 +2807,7 @@ enum L10n {
         .quickSwitcherHelp: "Procurar e saltar para qualquer terminal",
         .jumpToWaitingHelp: "Ir para a sessão em espera mais urgente (⌘⇧K)",
         .closeTabMenu: "Fechar aba", .closeTabMenuHelp: "Fecha, após confirmar, o terminal em que você está (numa divisão, só esse painel); num projeto sem terminais, o projeto", .closeWindowMenu: "Fechar janela",
+        .previousTab: "Aba anterior", .previousProject: "Projeto anterior", .goToProject: "Ir para o projeto", .goToProjectHelp: "⌥⌘1–⌥⌘8 abrem esse projeto na ordem da barra lateral, ⌥⌘9 o último", .projectNumber: "Projeto %d", .lastProject: "Último projeto", .helpCustomShortcutsTitle: "Alterar um atalho", .helpCustomShortcutsDetail: "Ajustes do Sistema → Teclado → Atalhos de Teclado → Atalhos de Apps: escolha o Planchette e digite o nome exato do item de menu",
         .nextTab: "Próxima aba", .nextProject: "Próximo projeto", .goToTab: "Ir para a aba", .goToTabHelp: "⌘1–⌘8 abrem essa aba do projeto visível, ⌘9 a última", .tabNumber: "Aba %d", .lastTab: "Última aba",
         .moveToNewWindowHelp: "Extrair este grupo para a sua própria janela",
         .favoriteHelp: "Os projetos principais têm prioridade na caixa, notificações e seletor",

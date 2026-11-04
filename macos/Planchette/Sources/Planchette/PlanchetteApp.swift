@@ -55,17 +55,36 @@ struct PlanchetteApp: App {
                 Divider()
                 // ⌃Tab as a menu shortcut: without one, AppKit's key-view loop moved the
                 // keyboard out of the terminal into the sidebar.
-                Button(L10n.t(.nextTab)) { delegate.appState.selectNextTabInKeyWindow() }
+                Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
                     .keyboardShortcut(.tab, modifiers: .control)
-                Button(L10n.t(.nextProject)) { delegate.appState.selectNextProjectInKeyWindow() }
+                Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
                     .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                // Arrows, not [ and ]: on a German keyboard [ is ⌥5.
                 Menu(L10n.t(.goToTab)) {
+                    Button(L10n.t(.previousTab)) { delegate.appState.stepTabInKeyWindow(by: -1) }
+                        .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                    Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
+                        .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                    Divider()
                     ForEach(1..<9) { digit in
                         Button(L10n.t(.tabNumber, digit)) { delegate.appState.selectTabInKeyWindow(digit: digit) }
                             .keyboardShortcut(KeyEquivalent(Character("\(digit)")))
                     }
                     Button(L10n.t(.lastTab)) { delegate.appState.selectTabInKeyWindow(digit: 9) }
                         .keyboardShortcut("9")
+                }
+                Menu(L10n.t(.goToProject)) {
+                    Button(L10n.t(.previousProject)) { delegate.appState.stepProjectInKeyWindow(by: -1) }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                    Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                    Divider()
+                    ForEach(1..<9) { digit in
+                        Button(L10n.t(.projectNumber, digit)) { delegate.appState.selectProjectInKeyWindow(digit: digit) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")), modifiers: [.command, .option])
+                    }
+                    Button(L10n.t(.lastProject)) { delegate.appState.selectProjectInKeyWindow(digit: 9) }
+                        .keyboardShortcut("9", modifiers: [.command, .option])
                 }
             }
             // Find in the terminal in front: Edit menu, after the text editing group.

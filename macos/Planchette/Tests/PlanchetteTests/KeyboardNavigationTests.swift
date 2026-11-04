@@ -11,10 +11,13 @@ final class KeyboardNavigationTests: XCTestCase {
         XCTAssertNil(KeyboardNavigation.tabIndex(forDigit: 1, count: 0))
     }
 
-    func testNextWraps() {
-        XCTAssertEqual(KeyboardNavigation.next(after: 0, count: 3), 1)
-        XCTAssertEqual(KeyboardNavigation.next(after: 2, count: 3), 0)
-        XCTAssertEqual(KeyboardNavigation.next(after: nil, count: 3), 0)
-        XCTAssertNil(KeyboardNavigation.next(after: nil, count: 0))
+    func testStepWrapsBothWays() {
+        XCTAssertEqual(KeyboardNavigation.step(from: 0, by: 1, count: 3), 1)
+        XCTAssertEqual(KeyboardNavigation.step(from: 2, by: 1, count: 3), 0)
+        XCTAssertEqual(KeyboardNavigation.step(from: 1, by: -1, count: 3), 0)
+        XCTAssertEqual(KeyboardNavigation.step(from: 0, by: -1, count: 3), 2)
+        XCTAssertEqual(KeyboardNavigation.step(from: nil, by: 1, count: 3), 0)
+        XCTAssertEqual(KeyboardNavigation.step(from: nil, by: -1, count: 3), 2)
+        XCTAssertNil(KeyboardNavigation.step(from: nil, by: 1, count: 0))
     }
 }

@@ -264,10 +264,11 @@ enum KeyboardNavigation {
         return digit <= count ? digit - 1 : nil
     }
 
-    /// The next one after `current`, wrapping around; the first when nothing is current.
-    static func next(after current: Int?, count: Int) -> Int? {
+    /// One step forward (`by: 1`) or back (`by: -1`) from `current`, wrapping around. With nothing
+    /// current, forward starts at the first and back at the last.
+    static func step(from current: Int?, by delta: Int, count: Int) -> Int? {
         guard count > 0 else { return nil }
-        guard let current else { return 0 }
-        return (current + 1) % count
+        guard let current else { return delta > 0 ? 0 : count - 1 }
+        return ((current + delta) % count + count) % count
     }
 }

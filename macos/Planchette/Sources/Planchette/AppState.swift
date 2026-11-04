@@ -2012,26 +2012,40 @@ final class AppState: ObservableObject {
         selectTab(strip[at], of: group)
     }
 
-    /// ⌃Tab: the next tab of the project in front, wrapping around.
-    func selectNextTabInKeyWindow() {
+    /// ⌃Tab / ⌥⌘→ (`by: 1`) and ⌥⌘← (`by: -1`): the next or previous tab of the project in front,
+    /// wrapping around.
+    func stepTabInKeyWindow(by delta: Int) {
         guard let group = keyGroup()?.group else { return }
         let strip = tabs(of: group)
         let current = group.activeSessionID.flatMap { TabStrip.index(of: $0, in: strip) }
-        guard let at = KeyboardNavigation.next(after: current, count: strip.count) else { return }
+        guard let at = KeyboardNavigation.step(from: current, by: delta, count: strip.count) else { return }
         selectTab(strip[at], of: group)
     }
 
-    /// ⌃⇧Tab: the next project of the key window, in sidebar order (folders, favorites, the rest).
-    func selectNextProjectInKeyWindow() {
-        guard let (window, current) = keyGroup() else { return }
+    /// The key window's projects in sidebar order: folders, then favorites, then the rest.
+    private func projectOrder(of window: WindowModel) -> [SessionGroup] {
         let all = groups(inWindow: window)
         let loose = all.filter { window.looseGroupIDs.contains($0.id) }
-        let order = window.folders.flatMap(\.groupIDs)
+        let ids = window.folders.flatMap(\.groupIDs)
             + loose.filter(\.favorite).map(\.id) + loose.filter { !$0.favorite }.map(\.id)
-        let at = current.flatMap { order.firstIndex(of: $0.id) }
-        guard let next = KeyboardNavigation.next(after: at, count: order.count),
-              let group = groups.first(where: { $0.id == order[next] }) else { return }
-        select(group: group)
+        return ids.compactMap { id in all.first { $0.id == id } }
+    }
+
+    /// ⌃⇧Tab / ⌥⌘↓ (`by: 1`) and ⌥⌘↑ (`by: -1`): the next or previous project of the key window.
+    func stepProjectInKeyWindow(by delta: Int) {
+        guard let (window, current) = keyGroup() else { return }
+        let order = projectOrder(of: window)
+        let at = current.flatMap { current in order.firstIndex { $0.id == current.id } }
+        guard let next = KeyboardNavigation.step(from: at, by: delta, count: order.count) else { return }
+        select(group: order[next])
+    }
+
+    /// ⌥⌘1–⌥⌘9: a project of the key window in sidebar order (⌥⌘9 the last).
+    func selectProjectInKeyWindow(digit: Int) {
+        guard let window = keyGroup()?.window else { return }
+        let order = projectOrder(of: window)
+        guard let at = KeyboardNavigation.tabIndex(forDigit: digit, count: order.count) else { return }
+        select(group: order[at])
     }
 
     /// ⌘W: the terminal you are in (in a split, only that pane), after asking; in a project with
