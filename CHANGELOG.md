@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.49] — 2026-11-06
+
 ### Added
 - **Switch tabs and projects from the keyboard.** ⌘1–⌘8 open that tab of the project in front, ⌘9
   the last one; ⌃Tab goes to the next tab, ⌃⇧Tab to the next project (Session menu).
