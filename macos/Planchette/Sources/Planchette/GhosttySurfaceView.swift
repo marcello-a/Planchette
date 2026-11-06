@@ -675,18 +675,9 @@ final class GhosttySurfaceNSView: NSView {
         // window, ⌘V, ⌘A and ⌘Z belong to the field you are typing in, and with several panes the
         // first one in the view tree would otherwise take every ⌘ shortcut.
         guard window?.firstResponder === self else { return false }
-        // Let app-level shortcuts (⌘K, ⌘N, ⌘T, ⌘, …) reach the menus.
+        // Without ⌘ the key is not ours to answer here (⌃Tab and friends reach the menus on their own).
         guard event.modifierFlags.contains(.command) else { return false }
         let chars = event.charactersIgnoringModifiers ?? ""
-        // ⌘F, ⌘G and ⌘⇧G are the menu's too: the find bar is the app's, and it has to
-        // answer for a durable terminal, whose history libghostty cannot see.
-        // ⌘D and ⌘⇧D split the tab and ⌘J opens the notepad (Session menu); the terminal would type them otherwise.
-        let appShortcuts: Set<String> = ["k", "n", "t", "w", "q", ",", "f", "g", "d", "j"]
-        // charactersIgnoringModifiers still applies Shift, so a shifted app
-        // shortcut (⌘⇧K "Jump to waiting", ⌘⇧T "New worktree", ⌘⇧D "Split down") arrives here as
-        // "K"/"T". Lowercase before matching so those reach the menu instead of
-        // being swallowed and typed into the terminal.
-        if appShortcuts.contains(chars.lowercased()) { return false }
 
         // Font zoom: ⌘+ / ⌘- / ⌘0 (⌘= and ⌘⇧= both map to "+"/"=").
         switch chars {
@@ -711,6 +702,10 @@ final class GhosttySurfaceNSView: NSView {
             }
         }
 
+        // Every other ⌘ key that has a menu item belongs to the menu — ours, the system's (⌘M, ⌘H)
+        // and any the user re-assigned in System Settings → Keyboard → App Shortcuts. A matching
+        // item that is disabled swallows the key, as in every Mac app. The rest goes to the terminal.
+        if NSApp.mainMenu?.performKeyEquivalent(with: event) == true { return true }
         keyDown(with: event)
         return true
     }
@@ -1069,7 +1064,8 @@ final class TerminalRegistry {
                 environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id))
         }
 
-        var initialInput: String? = nil
+        // A reopened terminal (⌃⌘T) brings what it types first: its startup command, `claude --resume`.
+        var initialInput: String? = appState.takeStartInput(for: session.id)
         // Nothing to replay when the agent survived: tmux hands back the live
         // screen, scrollback and all. Replaying here would `cat` a stale
         // snapshot over a running TUI and start a *second* Claude next to the

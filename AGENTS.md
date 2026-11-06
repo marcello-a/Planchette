@@ -187,9 +187,10 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   accepts dropped text and types it. Verify drag and drop by `scripts/perf/tab_split.py`
   (real mouse events) — SwiftUI's `onDrop` cannot be tested otherwise, and an undeclared custom
   pasteboard type silently never arrives in an unbundled build.
-- **The terminal swallows ⌘-letters that are not in its allowlist.** `performKeyEquivalent` in
-  `GhosttySurfaceView` passes only `k n t w q , f g d` to the menus; any other ⌘ shortcut is
-  typed into the shell. A new menu shortcut needs its letter there, in the same change.
+- **A ⌘ key goes to the menu when the menu has it.** `performKeyEquivalent` in `GhosttySurfaceView`
+  keeps font zoom and ⌘C/⌘V/⌘A for the terminal, then asks `NSApp.mainMenu` — so a new menu
+  shortcut, the system's (⌘M, ⌘H) and one the user re-assigned in System Settings all work in a
+  terminal. A ⌘ key no menu item has is typed into the shell.
 - **Nothing takes the keyboard from a field next to a terminal.** `focusIfActive` gives the keyboard
   to the active terminal on every redraw; it must stay out of the way of anything you type in beside
   it. The find bar is `AppState.finds`, the notepad is `AppState.notepadEditing` — a new field needs

@@ -8,6 +8,28 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Switch tabs and projects from the keyboard.** ⌘1–⌘8 open that tab of the project in front, ⌘9
+  the last one; ⌃Tab goes to the next tab, ⌃⇧Tab to the next project (Session menu).
+- **…and back.** ⌥⌘← / ⌥⌘→ go to the previous / next tab, ⌥⌘↑ / ⌥⌘↓ to the previous / next
+  project, ⌥⌘1–⌥⌘9 to a project in sidebar order.
+- **Reopen a closed tab with ⌃⌘T.** The terminal you closed last comes back in its project and
+  folder, with its name, tags and startup command — and the Claude conversation it was running,
+  via `claude --resume`.
+- **Your own shortcuts.** Re-assign any menu item in System Settings → Keyboard → Keyboard
+  Shortcuts → App Shortcuts; it now works inside a terminal too.
+
+### Fixed
+- **⌘N had two menu items.** "New Planchette Window" is gone; ⌘N is "New project…", ⇧⌘N
+  "New window".
+- **⌃Tab no longer moves the keyboard into the sidebar.**
+- **⌘M and ⌘H typed "m" and "h" into the terminal** instead of minimizing or hiding the window.
+
+### Changed
+- **⌘W closes the terminal you are in, not the window.** It asks first; in a split it closes
+  only that pane, and in a project with no terminal left it closes the project. ⇧⌘W closes the
+  window.
+
 ## [0.2.48] — 2026-10-30
 
 ### Added

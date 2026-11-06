@@ -1505,6 +1505,12 @@ final class AppState: ObservableObject {
 
     func closeSession(_ id: UUID) {
         guard let session = sessions[id] else { return }
+        // Remembered for ⌃⌘T. Whether Claude was running is decided now: after the close, its
+        // hooks are gone. ponytail: in memory only, the list is lost on quit; persist it if
+        // reopening after a restart is asked for.
+        recentlyClosed.append(ClosedTerminal(
+            session: session, claudeWasLive: session.agentKind == .claude && liveAgentIDs.contains(id)))
+        if recentlyClosed.count > 20 { recentlyClosed.removeFirst() }
         TerminalRegistry.shared.close(id)
         // Closing a terminal on purpose ends its agent — durability is about
         // surviving *our* restarts, not about outliving the terminal itself.
@@ -1990,6 +1996,131 @@ final class AppState: ObservableObject {
     func jumpToNextWaiting() {
         guard let next = attentionQueue.first else { return }
         select(session: next)
+    }
+
+    /// The project the key window shows.
+    private func keyGroup() -> (window: WindowModel, group: SessionGroup?)? {
+        guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
+              let window = window(for: windowID) else { return nil }
+        return (window, window.selectedGroupID.flatMap { id in groups.first { $0.id == id } })
+    }
+
+    private func selectTab(_ tab: SplitLayout, of group: SessionGroup) {
+        guard let id = paneToFocus(in: tab, groupID: group.id), let session = sessions[id] else { return }
+        select(session: session)
+    }
+
+    /// ⌘1–⌘9: a tab of the project in front (⌘9 the last).
+    func selectTabInKeyWindow(digit: Int) {
+        guard let group = keyGroup()?.group else { return }
+        let strip = tabs(of: group)
+        guard let at = KeyboardNavigation.tabIndex(forDigit: digit, count: strip.count) else { return }
+        selectTab(strip[at], of: group)
+    }
+
+    /// ⌃Tab / ⌥⌘→ (`by: 1`) and ⌥⌘← (`by: -1`): the next or previous tab of the project in front,
+    /// wrapping around.
+    func stepTabInKeyWindow(by delta: Int) {
+        guard let group = keyGroup()?.group else { return }
+        let strip = tabs(of: group)
+        let current = group.activeSessionID.flatMap { TabStrip.index(of: $0, in: strip) }
+        guard let at = KeyboardNavigation.step(from: current, by: delta, count: strip.count) else { return }
+        selectTab(strip[at], of: group)
+    }
+
+    /// The key window's projects in sidebar order: folders, then favorites, then the rest.
+    private func projectOrder(of window: WindowModel) -> [SessionGroup] {
+        let all = groups(inWindow: window)
+        let loose = all.filter { window.looseGroupIDs.contains($0.id) }
+        let ids = window.folders.flatMap(\.groupIDs)
+            + loose.filter(\.favorite).map(\.id) + loose.filter { !$0.favorite }.map(\.id)
+        return ids.compactMap { id in all.first { $0.id == id } }
+    }
+
+    /// ⌃⇧Tab / ⌥⌘↓ (`by: 1`) and ⌥⌘↑ (`by: -1`): the next or previous project of the key window.
+    func stepProjectInKeyWindow(by delta: Int) {
+        guard let (window, current) = keyGroup() else { return }
+        let order = projectOrder(of: window)
+        let at = current.flatMap { current in order.firstIndex { $0.id == current.id } }
+        guard let next = KeyboardNavigation.step(from: at, by: delta, count: order.count) else { return }
+        select(group: order[next])
+    }
+
+    /// ⌥⌘1–⌥⌘9: a project of the key window in sidebar order (⌥⌘9 the last).
+    func selectProjectInKeyWindow(digit: Int) {
+        guard let window = keyGroup()?.window else { return }
+        let order = projectOrder(of: window)
+        guard let at = KeyboardNavigation.tabIndex(forDigit: digit, count: order.count) else { return }
+        select(group: order[at])
+    }
+
+    struct ClosedTerminal {
+        let session: TerminalSession
+        let claudeWasLive: Bool
+    }
+
+    /// Terminals closed in this run, the newest last.
+    private(set) var recentlyClosed: [ClosedTerminal] = []
+
+    /// What a terminal types when it starts, for a terminal that is not being restored — set
+    /// before its surface exists, taken once by `TerminalRegistry`.
+    private var startInputs: [UUID: String] = [:]
+
+    func takeStartInput(for id: UUID) -> String? {
+        startInputs.removeValue(forKey: id)
+    }
+
+    /// ⌃⌘T: the terminal closed last, back in its project (or the one in front, when its project
+    /// is gone too) — in its folder, with its name, tags and startup command, and the Claude
+    /// conversation it was running. The scrollback is not replayed: it is deleted on close.
+    func reopenClosedTerminal() {
+        guard let closed = recentlyClosed.popLast() else { return }
+        let groupID = groups.contains { $0.id == closed.session.groupID }
+            ? closed.session.groupID : keyGroup()?.group?.id
+        guard let groupID else { return }
+        let fresh = addSession(directory: closed.session.currentDirectory, groupID: groupID)
+        var session = closed.session.reopened(into: fresh)
+        let resumeID = closed.claudeWasLive
+            ? ClaudeResume.resolveSessionID(
+                claudeSessionID: closed.session.claudeSessionID,
+                transcriptPath: closed.session.transcriptPath,
+                currentDirectory: closed.session.currentDirectory)
+            : nil
+        session.claudeSessionID = resumeID
+        update(session.id) { $0 = session }
+        startInputs[session.id] = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "",
+            startupCommand: session.startupCommand,
+            claudeSessionID: resumeID, resumeClaude: resumeID != nil)
+        select(session: session)
+    }
+
+    /// ⌘W: the terminal you are in (in a split, only that pane), after asking; in a project with
+    /// no terminal left, the project. On an overview page it does nothing, and in any other window
+    /// (Settings, …) it closes that window as ⌘W always did.
+    func closeInKeyWindow() {
+        guard let windowID = WindowRegistry.shared.keyWindowID() else {
+            NSApp.keyWindow?.performClose(nil)
+            return
+        }
+        guard let window = window(for: windowID), !window.showsProjectOverview, window.selectedFolderID == nil,
+              let groupID = window.selectedGroupID,
+              let group = groups.first(where: { $0.id == groupID }) else { return }
+        if let id = keyTerminalID(), let session = sessions[id] {
+            TabCloser.confirmAndClose([id], title: L10n.t(.closeTabAlertTitle, tabName(for: session)), appState: self)
+            return
+        }
+        guard group.sessionIDs.isEmpty else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.t(.closeProject)
+        alert.informativeText = L10n.t(.closeProjectBody, group.name, 0)
+        alert.addButton(withTitle: L10n.t(.closeProject))
+        alert.addButton(withTitle: L10n.t(.cancel))
+        Task { @MainActor in
+            guard await ModalAlert.run(alert) == .alertFirstButtonReturn else { return }
+            self.closeGroup(groupID)
+        }
     }
 
     func showQuickSwitcher() {

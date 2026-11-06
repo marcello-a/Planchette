@@ -16,7 +16,9 @@ struct PlanchetteApp: App {
             AppState.mainWindowID
         }
         .commands {
-            CommandGroup(after: .newItem) {
+            // Replacing, not after: the WindowGroup's own "New Planchette Window" also took ⌘N,
+            // and it opens a window without a WindowModel. "New window" (⇧⌘N) is the real one.
+            CommandGroup(replacing: .newItem) {
                 Button(L10n.t(.newProject)) { delegate.appState.promptNewProjectInKeyWindow() }
                     .keyboardShortcut("n")
                 Button(L10n.t(.newWindow)) {
@@ -24,9 +26,19 @@ struct PlanchetteApp: App {
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             }
+            // Replaces the system "Close" (⌘W closed the whole window): ⌘W closes the terminal
+            // you are in, ⇧⌘W the window.
+            CommandGroup(replacing: .saveItem) {
+                Button(L10n.t(.closeTabMenu)) { delegate.appState.closeInKeyWindow() }
+                    .keyboardShortcut("w")
+                Button(L10n.t(.closeWindowMenu)) { NSApp.keyWindow?.performClose(nil) }
+                    .keyboardShortcut("w", modifiers: [.command, .shift])
+            }
             CommandMenu(L10n.t(.sessionMenu)) {
                 Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
                     .keyboardShortcut("t")
+                Button(L10n.t(.reopenClosedTab)) { delegate.appState.reopenClosedTerminal() }
+                    .keyboardShortcut("t", modifiers: [.command, .control])
                 Button(L10n.t(.splitRight)) { delegate.appState.splitInKeyWindow(edge: .right) }
                     .keyboardShortcut("d")
                 Button(L10n.t(.splitDown)) { delegate.appState.splitInKeyWindow(edge: .bottom) }
@@ -42,6 +54,40 @@ struct PlanchetteApp: App {
                     .keyboardShortcut("k")
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
+                Divider()
+                // ⌃Tab as a menu shortcut: without one, AppKit's key-view loop moved the
+                // keyboard out of the terminal into the sidebar.
+                Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
+                Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
+                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                // Arrows, not [ and ]: on a German keyboard [ is ⌥5.
+                Menu(L10n.t(.goToTab)) {
+                    Button(L10n.t(.previousTab)) { delegate.appState.stepTabInKeyWindow(by: -1) }
+                        .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                    Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
+                        .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                    Divider()
+                    ForEach(1..<9) { digit in
+                        Button(L10n.t(.tabNumber, digit)) { delegate.appState.selectTabInKeyWindow(digit: digit) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")))
+                    }
+                    Button(L10n.t(.lastTab)) { delegate.appState.selectTabInKeyWindow(digit: 9) }
+                        .keyboardShortcut("9")
+                }
+                Menu(L10n.t(.goToProject)) {
+                    Button(L10n.t(.previousProject)) { delegate.appState.stepProjectInKeyWindow(by: -1) }
+                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                    Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
+                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                    Divider()
+                    ForEach(1..<9) { digit in
+                        Button(L10n.t(.projectNumber, digit)) { delegate.appState.selectProjectInKeyWindow(digit: digit) }
+                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")), modifiers: [.command, .option])
+                    }
+                    Button(L10n.t(.lastProject)) { delegate.appState.selectProjectInKeyWindow(digit: 9) }
+                        .keyboardShortcut("9", modifiers: [.command, .option])
+                }
             }
             // Find in the terminal in front: Edit menu, after the text editing group.
             CommandGroup(after: .textEditing) {
