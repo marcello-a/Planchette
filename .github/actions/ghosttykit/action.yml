@@ -35,14 +35,16 @@ runs:
     # Zig 0.15.2 does not link on macOS 27 (undefined _abort, _bzero, … in its own build
     # runner), so a contributor there cannot build GhosttyKit. This is the one they download:
     # unzip it into macos/Planchette/ (CONTRIBUTING.md, "First-time setup"). Zipped with
-    # ditto, because an artifact upload drops the framework's symlinks.
+    # ditto, because an artifact upload drops the framework's symlinks. Into RUNNER_TEMP, not
+    # the checkout: an untracked zip there made scripts/release.sh stop on "working tree not
+    # clean" (v0.2.49).
     - name: Zip GhosttyKit
       shell: bash
-      run: ditto -c -k --sequesterRsrc --keepParent macos/Planchette/GhosttyKit.xcframework GhosttyKit.xcframework.zip
+      run: ditto -c -k --sequesterRsrc --keepParent macos/Planchette/GhosttyKit.xcframework "$RUNNER_TEMP/GhosttyKit.xcframework.zip"
 
     - name: Upload GhosttyKit
       uses: actions/upload-artifact@v4
       with:
         name: GhosttyKit
-        path: GhosttyKit.xcframework.zip
+        path: ${{ runner.temp }}/GhosttyKit.xcframework.zip
         retention-days: 90
