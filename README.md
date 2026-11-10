@@ -60,6 +60,20 @@ workspace. Write the next prompts while the agent works; send each one with a cl
   pad. The text stays as typed, so what reaches the terminal is what you wrote.
 - **A prompt is a block** that ends at a blank line (one to three Returns, a setting), and a code
   fence is one prompt. A prompt that was sent leaves the pad, or is struck through (Settings → Tabs).
+- **Lists go on by themselves.** Return after `1. step` writes `2. `, and the items below count on;
+  Return on an empty item ends the list. Bullets, `- [ ]` tasks (a click on the box ticks it) and
+  `> ` quotes work the same; Tab and ⇧Tab move an item in and out.
+- **Code looks like code.** A fenced block is set in small monospaced type with colours and a box,
+  and folds after two lines — click "more lines" to open it, or put the insertion point in it.
+  ```` ``` ```` and Return writes the closing fence. Lines that look like code, pasted or typed, get a
+  bar that puts them in a block with the language named.
+- **Markdown keys.** ⌘B, ⌘I and ⌘E put `**bold**`, `*italic*` and `` `code` `` around the
+  selection (again takes them off); a backtick typed over a selection does the same. A web address
+  pasted over selected words makes `[words](address)`, and ⌘-click opens it. In a code block, the
+  context menu formats only that block with AI.
+- **The ⋯ menu** formats the whole pad with AI (Claude Haiku: the same words as clean Markdown;
+  ⌘Z undoes it), shows the **history** — the last 100 prompts sent and lines deleted, to put back or
+  copy — and closes the pad.
 
 ## Reviews
 
@@ -244,7 +258,7 @@ Also worth a second:
 - *Look at code* (right-click a tab): jumps to the window an IDE already has the project open in — otherwise opens it
   in the IDE the checkout belongs to (`.idea` → JetBrains, `.vscode` → VS Code), else the one you
   last worked in; *Open in* picks another and *Default IDE* sets one.
-- A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, Markdown is shown as you type, and two buttons load a prompt into the terminal — as a draft, or with Return pressed. A loaded prompt leaves the pad (or is struck through; Settings → Tabs).
+- A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, Markdown is shown as you type (lists go on with Return, code blocks fold after two lines and have colours), and two buttons load a prompt into the terminal — as a draft, or with Return pressed. A loaded prompt leaves the pad (or is struck through; Settings → Tabs). Its ⋯ menu formats the pad with AI and keeps a history of the last 100 prompts sent and lines deleted.
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path.
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder.
 - Links open with ⌘-click; a link that would run something is shown, not run. A program that asks

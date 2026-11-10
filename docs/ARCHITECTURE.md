@@ -88,6 +88,28 @@ finished (`AppState.loadPrompt(…, onLoaded:)`), through its own editing method
 finds the prompt again by its words, nearest to where it was. A struck prompt is plain text with
 the marks — a restart keeps text, not attributes — and `restyle()` draws the line through it.
 
+Return, Tab and a click go to the pad's Markdown rules first (`NotepadEditing`, pure): a list goes
+on and the numbered items below are numbered again, an empty item ends the list, Tab moves an item,
+a click on `[ ]` ticks it, ```` ``` ```` and Return writes the closing fence, code keeps its indent.
+⌘B, ⌘I, ⌘E and a backtick over a selection toggle marks (`NotepadEditing.toggleMarks`), and a web
+address pasted over words becomes a link (`NotepadEditing.link`); the text view's `paste(_:)`,
+`insertText` and `performKeyEquivalent` ask the pad first. Each answer is one change through the
+text view, so ⌘Z takes it back. Code is `NotepadCode` (pure):
+which lines look like code (the bar under the pad offers to fence them), the fenced blocks, and the
+colours of their tokens. A block longer than two lines folds while the insertion point is not in
+it. The text is never shortened for that: the text view is TextKit 1, built by hand, and the layout
+manager's delegate (`NotepadFolding`) gives the hidden characters null glyphs and their line breaks
+zero advancement, so the closing fence row follows the second line; the text view draws the box
+behind a block and the "more lines" label over the closing fence, which is made transparent by a
+temporary attribute. What left the pad — prompts sent, deletions worth keeping, the text before
+"Format with AI" — is `NotepadHistory`, kept like the text: `AppState.notepadHistory`, not
+`@Published`, written to `TerminalSession.notepadHistory` on save. Single deleted characters are
+gathered into one run and weighed when it ends; the pad's own edits, undo and redo are not recorded.
+"Format with AI" is `AIAssist.formatNotepad`: the same `claude -p` as the summaries, on their queue,
+in their empty directory with no tools, and an answer whose letters differ much from the pad's is
+turned down (`NotepadFormat.isPlausible`). The context menu's "Format code with AI" sends one block's
+code (`AIAssist.formatCode`) and puts the answer back only where that code still stands.
+
 Markdown is drawn, never stored. `NotepadMarkdown.spans(in:)` (pure) finds headlines, fenced and
 inline code, bold, italic, quotes and list items; `restyle()` turns the spans into attributes and keeps
 the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the terminal is what was

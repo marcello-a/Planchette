@@ -132,6 +132,25 @@ final class AppState: ObservableObject {
         scheduleSave()
     }
 
+    /// What left each terminal's notepad last, newest first (`NotepadHistory`). Not `@Published`
+    /// for the same reason as the text; the history list reads it when it opens.
+    private(set) var notepadHistory: [UUID: [NotepadHistoryEntry]] = [:]
+    func notepadHistory(for id: UUID) -> [NotepadHistoryEntry] { notepadHistory[id] ?? [] }
+
+    func recordNotepad(_ kind: NotepadHistoryEntry.Kind, _ text: String, for id: UUID) {
+        guard sessions[id] != nil else { return }
+        let list = NotepadHistory.adding(NotepadHistoryEntry(kind: kind, text: text), to: notepadHistory(for: id))
+        guard list != notepadHistory(for: id) else { return }
+        notepadHistory[id] = list
+        scheduleSave()
+    }
+
+    func clearNotepadHistory(for id: UUID) {
+        guard notepadHistory[id] != nil else { return }
+        notepadHistory[id] = nil
+        scheduleSave()
+    }
+
     /// The pad was just opened by hand and its text view should take the keyboard: you opened it
     /// to write. A pad that comes back with the workspace, or with another terminal, does not.
     /// Read once by the text view that appears (`NotepadEditor.makeNSView`).
@@ -170,6 +189,7 @@ final class AppState: ObservableObject {
             // (a line break inside a paste is a newline in the box, never Enter).
             let busy = submit && ClaudeInputDraft.hasDraft(in: view.readViewport() ?? "")
             await ControlAPI.deliverPrompt(busy ? "\n" + text : text, submit: submit, to: view, session: id)
+            recordNotepad(.sent, text, for: id)
             view.window?.makeFirstResponder(view)
             // Only now — the prompt is in the terminal — does the pad do what the setting says.
             onLoaded?()
@@ -1523,6 +1543,7 @@ final class AppState: ObservableObject {
         try? FileManager.default.removeItem(at: Self.pendingInputURL(for: id))
         sessions[id] = nil
         notepadText[id] = nil
+        notepadHistory[id] = nil
         finds[id] = nil
         findTasks[id]?.cancel()
         findTasks[id] = nil
@@ -3013,6 +3034,7 @@ final class AppState: ObservableObject {
             sessions: sessions.values.map { session in
                 var stored = session
                 stored.notepad = notepadText[session.id]
+                stored.notepadHistory = notepadHistory[session.id]
                 return stored
             },
             windows: windows,
@@ -3133,6 +3155,9 @@ final class AppState: ObservableObject {
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
             session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }
         })
+        notepadHistory = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
+            session.notepadHistory.map { (session.id, $0) }
+        })
         windowsToOpen = windows.dropFirst().map(\.id)
 
         // A "remind me in 2 hours" that ran out while the app was closed is due
@@ -3252,6 +3277,7 @@ final class AppState: ObservableObject {
         backgroundCountsAsRunning = previous?.backgroundCountsAsRunning ?? backgroundCountsAsRunning
         notepad = previous?.notepad ?? notepad
         notepadText = [:]
+        notepadHistory = [:]
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The reviews outlive the workspace (they come from GitHub), but the
         // terminals and projects they pointed at are gone.

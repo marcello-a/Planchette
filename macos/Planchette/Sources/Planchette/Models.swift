@@ -385,6 +385,9 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// disk — while the app runs the text lives in `AppState.notepadText`, so typing in it does
     /// not redraw the window. Never written by the app: it is yours.
     var notepad: String?
+    /// What left the notepad last: prompts sent, lines deleted (`NotepadHistory`). Like `notepad`,
+    /// only written to disk; while the app runs it lives in `AppState.notepadHistory`.
+    var notepadHistory: [NotepadHistoryEntry]?
 
     /// A main terminal: it carries a star and stays under its project even while the project is
     /// folded — the one you come back to, a click away. Yours: never set by the app.
@@ -430,6 +433,8 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         snoozedUntil = try c.decodeIfPresent(Date.self, forKey: .snoozedUntil)
         note = try c.decodeIfPresent(String.self, forKey: .note)
         notepad = try c.decodeIfPresent(String.self, forKey: .notepad)
+        notepadHistory = NotepadHistory.readable(
+            try? c.decodeIfPresent([NotepadHistory.Lenient].self, forKey: .notepadHistory))
         isMain = (try? c.decodeIfPresent(Bool.self, forKey: .isMain)) ?? false
         transcriptPath = try c.decodeIfPresent(String.self, forKey: .transcriptPath)
         aiSummary = try c.decodeIfPresent(String.self, forKey: .aiSummary)

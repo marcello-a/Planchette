@@ -462,9 +462,12 @@ class Instance:
 
     def inputs(self, *args):
         self.settle_for_input()
-        subprocess.run([tool("inputs"), *[str(a) for a in args]], capture_output=True,
-                       env={**os.environ, "KEEP_POINTER": "1"})
+        done = subprocess.run([tool("inputs"), *[str(a) for a in args]], capture_output=True,
+                              env={**os.environ, "KEEP_POINTER": "1"})
         self.last_input_end = time.time()
+        # 2 is a mistake in the script (a key the tool has no code for): stop, do not go on silently.
+        if done.returncode == 2:
+            raise ValueError(f"inputs {' '.join(map(str, args))}: {done.stderr.decode().strip() or 'unknown key or arguments'}")
 
     def click(self, x, y, count=1):
         self.inputs("click", x, y, count)

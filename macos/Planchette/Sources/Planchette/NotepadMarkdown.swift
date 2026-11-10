@@ -19,6 +19,12 @@ enum NotepadMarkdown {
         /// A list item: the whole line; `prefix` is the length of its bullet or number and the
         /// space after it — what a wrapped line is indented by.
         case listItem(prefix: Int)
+        /// The `[ ]` or `[x]` of a task item; a click on it ticks it.
+        case taskBox(checked: Bool)
+        /// The text of a ticked task.
+        case doneTask
+        /// The words of a `[words](address)` link; ⌘-click opens the address.
+        case link
     }
 
     struct Span: Equatable {
@@ -65,6 +71,18 @@ enum NotepadMarkdown {
                     result.append(Span(range: line, style: .listItem(prefix: prefix.total)))
                     result.append(Span(range: NSRange(location: line.location + prefix.indent,
                                                       length: prefix.total - prefix.indent), style: .mark))
+                    let rest = (content as NSString).substring(from: prefix.total)
+                    // Only a bullet item is a task: `1. [ ]` is a number and a bracket.
+                    let bullet = content.dropFirst(prefix.indent).first.map { "*+-".contains($0) } ?? false
+                    if bullet, let checked = NotepadEditing.taskBox(at: rest) {
+                        let box = NSRange(location: line.location + prefix.total, length: 3)
+                        result.append(Span(range: box, style: .taskBox(checked: checked)))
+                        let text = NSMaxRange(box) + 1
+                        if checked, text < NSMaxRange(line) {
+                            result.append(Span(range: NSRange(location: text, length: NSMaxRange(line) - text),
+                                               style: .doneTask))
+                        }
+                    }
                 }
                 inline(content, at: line.location, into: &result)
             }
@@ -128,6 +146,7 @@ enum NotepadMarkdown {
     }
 
     private static let code = try! NSRegularExpression(pattern: "`([^`\\n]+)`")
+    private static let linkPattern = try! NSRegularExpression(pattern: "\\[([^\\]\\n]+)\\]\\((https?://[^)\\s]+)\\)")
     private static let bold = try! NSRegularExpression(pattern: "(\\*\\*|__)(?=\\S)(.+?)(?<=\\S)\\1")
     private static let italic = try! NSRegularExpression(
         pattern: "(?<![*\\w])([*_])(?=[^\\s*_])([^*_\\n]+?)(?<=[^\\s*_])\\1(?![*\\w])")
@@ -147,6 +166,16 @@ enum NotepadMarkdown {
             result.append(Span(range: shifted(NSRange(location: match.range.location, length: 1)), style: .mark))
             result.append(Span(range: shifted(NSRange(location: NSMaxRange(match.range) - 1, length: 1)), style: .mark))
         }
+        // A link: its words stand out, the brackets and the address step back.
+        for match in linkPattern.matches(in: line, range: all) where free(match.range) {
+            taken.append(match.range)
+            let words = match.range(at: 1)
+            result.append(Span(range: shifted(words), style: .link))
+            result.append(Span(range: shifted(NSRange(location: match.range.location, length: 1)), style: .mark))
+            result.append(Span(range: shifted(NSRange(location: NSMaxRange(words),
+                                                      length: NSMaxRange(match.range) - NSMaxRange(words))),
+                               style: .mark))
+        }
         for (regex, kind, style, marks) in [(bold, InlineKind.bold, Style.bold, 2), (italic, .italic, .italic, 1)]
         where !skipped.contains(kind) {
             for match in regex.matches(in: line, range: all) where free(match.range) {
@@ -160,6 +189,18 @@ enum NotepadMarkdown {
     }
 
     private enum InlineKind { case bold, italic }
+
+    /// The address of the link at `location`, for ⌘-click. Nil where there is no link.
+    static func link(at location: Int, in text: String) -> URL? {
+        let ns = text as NSString
+        guard location >= 0, location <= ns.length else { return nil }
+        let line = ns.lineRange(for: NSRange(location: min(location, ns.length), length: 0))
+        for match in linkPattern.matches(in: text, range: line)
+        where NSLocationInRange(location, match.range) {
+            return URL(string: ns.substring(with: match.range(at: 2)))
+        }
+        return nil
+    }
 
     // MARK: Size
 

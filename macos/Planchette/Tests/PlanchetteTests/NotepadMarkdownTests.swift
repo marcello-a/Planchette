@@ -31,6 +31,13 @@ final class NotepadMarkdownTests: XCTestCase {
         XCTAssertEqual(found("```\nline one\nline two", .codeBlock), ["```", "line one", "line two"])
     }
 
+    func testTaskBoxes() {
+        let text = "- [ ] open\n- [x] done\n1. [ ] not a task"
+        XCTAssertEqual(found(text, .taskBox(checked: false)), ["[ ]"])
+        XCTAssertEqual(found(text, .taskBox(checked: true)), ["[x]"])
+        XCTAssertEqual(found(text, .doneTask), ["done"])
+    }
+
     func testInlineEmphasis() {
         let text = "use `git add -A` with **care** and *some* _doubt_"
         XCTAssertEqual(found(text, .inlineCode), ["`git add -A`"])
