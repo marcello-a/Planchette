@@ -36,8 +36,8 @@ def pad_text(inst):
 
 
 def pad_open(inst):
-    """Open: its close button or its drag handle is in the accessibility tree."""
-    return any(e["desc"] in ("Close the notepad", "Drag to change the width of the notepad")
+    """Open: its menu or its drag handle is in the accessibility tree."""
+    return any("Notepad menu" in (e["desc"], e["title"]) or e["desc"] == "Drag to change the width of the notepad"
                for e in inst.ax())
 
 
@@ -165,6 +165,120 @@ def pad_scenario(inst):
            "first button": (first["y"], first["h"])})
 
 
+def pad_menu_button(inst):
+    """The ⋯ button in the pad's header. SwiftUI can give a menu's label as its title or as its
+    description, so both count."""
+    elements = inst.ax()
+    found = next((e for e in elements if "Notepad menu" in (e["desc"], e["title"])), None)
+    if not found:
+        win = inst.window()
+        print("[notepad] no 'Notepad menu' element; in the pad's header:",
+              [(e["role"], e["title"], e["desc"]) for e in elements
+               if e["x"] > win["x"] + win["w"] // 2 and win["y"] < e["y"] < win["y"] + 110 and e["w"] < 80])
+    return found
+
+
+def pad_menu(inst, item):
+    """Open the pad's ⋯ menu and choose `item`."""
+    menu = pad_menu_button(inst)
+    if not menu:
+        return False
+    inst.click(*center(menu))
+    entry = wait_for(lambda: inst.menu_item(item), 4)
+    if entry:
+        inst.click(*center(entry))
+    return entry is not None
+
+
+def markdown_scenario(inst):
+    """Return and Tab follow Markdown, a click ticks a task, code gets its closing fence, and the
+    history keeps what was sent and what was deleted, to put back."""
+    inst.label_terminals()
+    # In front first: a window on another Space (behind a full-screen app) has no AX elements.
+    inst.front()
+    time.sleep(1.5)
+    open_pad(inst)
+    click_into_pad(inst)
+    inst.inputs("type", "1. one")
+    inst.key("return")
+    inst.inputs("type", "two")
+    check("Return after a numbered item writes the next number",
+          bool(wait_for(lambda: saved_text(inst) == "1. one\n2. two", 6)), repr(saved_text(inst)))
+    for _ in range(3):
+        inst.key("left", "shift")
+    inst.key("b", "cmd")
+    check("⌘B makes the selection bold", bool(wait_for(lambda: saved_text(inst) == "1. one\n2. **two**", 6)),
+          repr(saved_text(inst)))
+    inst.key("b", "cmd")
+    check("…and ⌘B again takes the marks off", bool(wait_for(lambda: saved_text(inst) == "1. one\n2. two", 6)),
+          repr(saved_text(inst)))
+    inst.key("down", "cmd")
+    inst.key("return")
+    inst.key("return")
+    check("Return on the empty item ends the list",
+          bool(wait_for(lambda: saved_text(inst) == "1. one\n2. two", 6)), repr(saved_text(inst)))
+    inst.inputs("type", "- [ ] task")
+    inst.key("return")
+    inst.inputs("type", "sub")
+    inst.key("tab")
+    check("a task list goes on with an open box, and Tab moves the item in",
+          bool(wait_for(lambda: saved_text(inst) == "1. one\n2. two\n- [ ] task\n  - [ ] sub", 6)),
+          repr(saved_text(inst)))
+    inst.key("tab", "shift")
+    check("⇧Tab moves it out again",
+          bool(wait_for(lambda: (saved_text(inst) or "").endswith("\n- [ ] sub"), 6)), repr(saved_text(inst)))
+
+    # the box of "- [ ] task", the third line of the first prompt
+    area, first = pad_text(inst), load_buttons(inst)[0]
+    inst.click(area["x"] + 28, first["y"] + 2 * first["h"] + first["h"] // 2)
+    check("a click on [ ] ticks the task", bool(wait_for(lambda: "- [x] task" in (saved_text(inst) or ""), 6)),
+          repr(saved_text(inst)))
+
+    # end the list and the prompt, then a code block: ``` and Return closes it
+    inst.key("down", "cmd")
+    inst.key("return")
+    inst.key("return")
+    inst.key("return")
+    inst.inputs("type", "```swift")
+    inst.key("return")
+    for n, line in enumerate(["a()", "b()", "c()", "d()"]):
+        if n:
+            inst.key("return")
+        inst.inputs("type", line)
+    check("``` and Return wrote the closing fence",
+          bool(wait_for(lambda: (saved_text(inst) or "").endswith("```swift\na()\nb()\nc()\nd()\n```"), 6)),
+          repr(saved_text(inst)))
+    inst.key("down", "cmd")
+    inst.key("return")
+    inst.key("return")
+    inst.inputs("type", "after")
+    time.sleep(1)
+    inst.shot("markdown-folded")
+    check("two prompts and the code block have three rows of buttons", len(load_buttons(inst)) == 3,
+          len(load_buttons(inst)))
+
+    # the history: a sent prompt, then the whole pad deleted and put back
+    written = saved_text(inst)
+    inst.click(*center(load_buttons(inst)[0]))
+    time.sleep(1.5)
+    click_into_pad(inst)
+    inst.key("a", "cmd")
+    inst.key("delete")
+    check("the pad is empty", bool(wait_for(lambda: not saved_text(inst), 6)), repr(saved_text(inst)))
+    check("the menu has a History item", pad_menu(inst, "History"))
+    time.sleep(1)
+    texts = [e["value"] for e in inst.ax() if e["role"] == "AXStaticText"]
+    check("the history shows the deleted text and the sent prompt",
+          any(t.startswith("Deleted ·") for t in texts) and any(t.startswith("Sent ·") for t in texts), texts[-12:])
+    inst.shot("markdown-history")
+    restore = sorted(inst.find(role="AXButton", desc="Put back in the notepad"), key=lambda e: e["y"])
+    check("every entry can be put back", bool(restore), len(restore))
+    if restore:
+        inst.click(*center(restore[0]))
+    check("Put back brings the deleted text back", bool(wait_for(lambda: saved_text(inst) == written, 6)),
+          {"now": saved_text(inst), "before": written})
+
+
 def seeded_setting(inst):
     """State that already holds notepads, and a setting of one Return: each line is a prompt."""
     def edit(state):
@@ -242,15 +356,20 @@ def close_resize(inst):
         inst.drag(cx, cy, cx + 300, cy, steps=30, hold=200)
         time.sleep(1.2)
     stored = inst.state().get("notepad")
-    check("the width is stored", bool(stored) and stored.get("isOpen") is True and stored["width"] >= 180, stored)
+    check("the width is stored", bool(stored) and SIDS[0] in stored.get("openTerminals", [])
+          and stored["width"] >= 180, stored)
 
-    # close with the X, then open with ⌘J
-    close = inst.button("Close the notepad")
-    check("the notepad has a close button", close is not None)
-    if close:
-        inst.click(*center(close))
-    check("the X closes it", bool(wait_for(lambda: not pad_open(inst), 5)))
-    check("…and the state says closed", bool(wait_for(lambda: inst.state().get("notepad", {}).get("isOpen") is False, 6)))
+    # close with its menu (⋯ → Close the notepad), then open with ⌘J
+    menu = pad_menu_button(inst)
+    check("the notepad has a menu", menu is not None)
+    if menu:
+        inst.click(*center(menu))
+        close = wait_for(lambda: inst.menu_item("Close the notepad"), 4)
+        check("…with a Close item", close is not None)
+        if close:
+            inst.click(*center(close))
+    check("Close closes it", bool(wait_for(lambda: not pad_open(inst), 5)))
+    check("…and the state says closed", bool(wait_for(lambda: SIDS[0] not in inst.state().get("notepad", {}).get("openTerminals", [SIDS[0]]), 6)))
     inst.key("j", "cmd")
     check("⌘J opens it again", bool(wait_for(lambda: pad_open(inst), 5)),
           {"state": inst.state().get("notepad"), "front": frontmost_pid() == str(inst.pid)})
@@ -578,7 +697,8 @@ def build_gif(shots, out, box, clicks):
 
 
 SCENARIOS = {"after_default": after_default, "after_strike": after_strike, "shortcut": shortcut, "quit_saves": quit_saves, "pad": pad_scenario, "one_return": setting_one_return, "default_returns": setting_default, "close_resize": close_resize, "several": several_terminals,
-             "keyboard": keyboard_stays, "restart": restart, "gif": gif_scenario}
+             "keyboard": keyboard_stays, "restart": restart, "gif": gif_scenario,
+             "markdown": markdown_scenario}
 
 
 AFTER_SCENARIOS = ("after_default", "after_strike")

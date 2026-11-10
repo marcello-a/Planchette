@@ -215,6 +215,43 @@ def demo_state(root, selected="storefront", active=0, view="tabs", appearance="d
     return state, plan
 
 
+# ---- the notepad ------------------------------------------------------------------------------
+
+NOTEPAD_TEXT = """# Release plan
+1. Merge the reviews PR
+2. Tag **v0.2.50**
+- [x] Update the CHANGELOG
+- [ ] Post in `#planchette`
+
+Fix the crash in this:
+```swift
+func load() async throws {
+    let data = try await api.fetch()
+    guard let first = data.first else { return }
+    cache[first.id] = first // keep it
+    print("loaded \\(data.count)")
+}
+```
+
+Why is this nil?
+let x = items[3]
+print(x.name)"""
+
+
+def notepad_state(root, appearance="dark", open_pad=True):
+    """The demo workspace with the notepad of the terminal in front open (or not) and written in:
+    a list, tasks, a folded block, and last — where the insertion point is when the pad opens — a
+    stretch of code without a fence, so the pad offers a block."""
+    state, plan = demo_state(root, selected="storefront", active=0, appearance=appearance)
+    group = next(g for g in state["groups"] if g["name"] == "storefront")
+    sid = group["activeSessionID"]
+    for session in state["sessions"]:
+        if session["id"] == sid:
+            session["notepad"] = NOTEPAD_TEXT
+    state["notepad"] = {"openTerminals": [sid] if open_pad else [], "width": 380}
+    return state, plan
+
+
 # ---- the Reviews panel ------------------------------------------------------------------------
 
 REVIEW_REPO = "acme/storefront"
@@ -585,6 +622,10 @@ SCENES = {
     "settings-layout": dict(state=lambda root: demo_state(root),
                             args=("-settingsTab", "projectPanel", "-projectPanelPage", "projects"),
                             menu=("Planchette", "Settings…"), pick="title:Project panel"),
+    "notepad": dict(state=lambda root: notepad_state(root), args=("-inboxShown", "NO")),
+    "notepad-light": dict(state=lambda root: notepad_state(root, appearance="light"), args=("-inboxShown", "NO")),
+    "notepad-closed-light": dict(state=lambda root: notepad_state(root, appearance="light", open_pad=False),
+                                 args=("-inboxShown", "NO")),
     "reviews": dict(state=lambda root: reviews_state(root),
                     args=("-inboxShown", "YES", "-inboxMode", "reviews",
                           "-reviewFocus", f"https://github.com/{REVIEW_REPO}/pull/5620")),

@@ -8,6 +8,27 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **The notepad continues your lists.** Return after `1. step` writes `2. ` and renumbers the
+  items below; Return on an empty item ends the list. Bullets, `- [ ]` tasks and `> ` quotes go on
+  too; Tab and ⇧Tab move an item in and out, and a click on `[ ]` ticks a task.
+- **Code in the notepad looks like code.** A fenced block is set in small monospaced type with
+  syntax colours and a box, and folds after two lines (click "more lines" to open it). ```` ``` ````
+  and Return writes the closing fence; code keeps its indent on Return.
+- **"This looks like code."** Lines that read as code, outside a block, get a bar that puts them
+  in a fenced block with the language named.
+- **Markdown keys in the notepad.** ⌘B bold, ⌘I italic, ⌘E code around the selection (pressed
+  again, the marks come off); a backtick typed over a selection makes it code. A web address pasted
+  over selected words becomes a link, and ⌘-click opens it.
+- **Format one code block with AI** from the context menu in the block: only its code changes,
+  the fences stay, ⌘Z undoes it.
+- **A ⋯ menu on the notepad** in place of the ×: **Format with AI** (Claude Haiku writes the pad
+  again as clean Markdown, with the same words; ⌘Z undoes it), **History** (the last 100 prompts
+  sent and lines deleted, to put back or copy; saved with the terminal) and **Close**.
+
+### Changed
+- **The notepad button is a darker yellow in light mode**, so it can be seen on a light tab bar.
+
 ## [0.2.49] — 2026-11-06
 
 ### Added

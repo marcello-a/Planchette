@@ -117,7 +117,7 @@ struct TerminalAreaView: View {
                 appState.toggleNotepad(for: padOwner)
             }
             // Yellow while the pad is closed, so it is easy to find; the accent color while it is open.
-            .foregroundStyle(appState.notepad.isOpen(for: padOwner) ? Color.accentColor : Color(nsColor: .systemYellow))
+            .foregroundStyle(appState.notepad.isOpen(for: padOwner) ? Color.accentColor : Color(nsColor: .notepadYellow))
             .featureHint(.notepad)
         }
     }
@@ -388,5 +388,15 @@ enum TabCloser {
             guard await ModalAlert.run(alert) == .alertFirstButtonReturn else { return }
             for id in ids { appState.closeSession(id) }
         }
+    }
+}
+
+extension NSColor {
+    /// The notepad button's yellow. The system yellow is bright enough on a dark bar and all but
+    /// gone on a light one, so light mode gets a darker amber with the same hue.
+    static let notepadYellow = NSColor(name: "notepadYellow") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? .systemYellow
+            : NSColor(srgbRed: 0.71, green: 0.50, blue: 0.0, alpha: 1)
     }
 }
