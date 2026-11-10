@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.50] — 2026-11-10
+
 ### Added
 - **The notepad continues your lists.** Return after `1. step` writes `2. ` and renumbers the
   items below; Return on an empty item ends the list. Bullets, `- [ ]` tasks and `> ` quotes go on
