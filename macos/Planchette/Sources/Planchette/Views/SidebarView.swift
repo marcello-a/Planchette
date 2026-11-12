@@ -38,6 +38,9 @@ struct SidebarView: View {
             get: {
                 if multiSelection.count > 1 { return multiSelection }
                 guard let window = appState.window(for: windowID) else { return [] }
+                // Nothing in the list is shown while the board is: a click on the project it
+                // stood over must still be a change of selection, or it would not leave the board.
+                if window.showsTodos { return [] }
                 if let folderID = window.selectedFolderID { return [folderID] }
                 if let id = window.selectedGroupID { return [id] }
                 return []
@@ -802,7 +805,7 @@ struct SidebarView: View {
     /// has no visible terminal, and neither has a window showing a folder overview.
     private func showsTerminals(of group: SessionGroup) -> Bool {
         appState.window(for: windowID).map { window in
-            window.selectedFolderID == nil && !window.showsProjectOverview
+            window.selectedFolderID == nil && !window.showsProjectOverview && !window.showsTodos
                 && window.selectedGroupID == group.id
         } ?? false
     }

@@ -8,6 +8,15 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A to-do board.** The checklist button in the toolbar shows your to-dos in place of the
+  terminal: a queue on the left, and to its right what is running, what waits on someone and what
+  is done — in the colours and sprites of the terminal states. Move a card with its buttons or drag
+  it, give it a note and a link (a Jira link shows its ticket key), and point it at a project or
+  one of its terminals: the card then shows that terminal's live state, a click takes you there,
+  and "Open a terminal for it" starts a new one in the project. Picking a project or terminal in
+  the sidebar leaves the board.
+
 ## [0.2.50] — 2026-11-10
 
 ### Added

@@ -156,6 +156,14 @@ enum Help {
             Entry(.reviewLater, nil, where: .helpWhereContextMenu),
             Entry(.reviewSkillTitle, .reviewSkillHelp),
         ]),
+        Section(titleKey: .todos, entries: [
+            Entry(.todos, .todosHelp, where: .helpWhereToolbar),
+            Entry(.todoDragTitle, .todoDragHelp),
+            Entry(.todoAddNote, .todoNoteHelp, where: .helpWhereContextMenu),
+            Entry(.todoLinkTo, .todoLinkToHelp, where: .helpWhereContextMenu),
+            Entry(.todoOpenTerminal, .todoOpenTerminalHelp, where: .helpWhereContextMenu),
+            Entry(.todoClearDone),
+        ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
             Entry(.nextTab, nil, shortcut: "⌃⇥  ⌥⌘→", where: .helpWhereMenuBar),
