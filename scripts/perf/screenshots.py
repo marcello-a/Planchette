@@ -215,6 +215,48 @@ def demo_state(root, selected="storefront", active=0, view="tabs", appearance="d
     return state, plan
 
 
+# ---- the to-do board --------------------------------------------------------------------------
+
+def todos_state(root, appearance="dark"):
+    """The demo workspace with the to-do board open over it: a card in every lane, some pointing at
+    a project or one of its terminals, one with a note and a ticket link."""
+    state, plan = demo_state(root, appearance=appearance, projects=SINGLE_PROJECTS)
+    groups = {g["name"]: g for g in state["groups"]}
+    first = next(iter(groups.values()))
+
+    def card(n, text, lane, minutes, group=None, terminal=False, note=None, link=None):
+        item = {"id": f"44444444-0000-0000-0000-{n:012d}", "text": text, "lane": lane,
+                "createdAt": ago(minutes * 60)}
+        if lane == "done":
+            item["doneAt"] = item["createdAt"] + 600
+        if group:
+            item["groupID"] = groups[group]["id"] if group in groups else first["id"]
+            if terminal:
+                item["sessionID"] = (groups.get(group) or first)["sessionIDs"][0]
+        if note:
+            item["note"] = note
+        if link:
+            item["link"] = link
+        return item
+
+    names = list(groups)
+    state["todos"] = {"items": [
+        card(1, "Write the migration for the new price table", "queued", 300, names[0]),
+        card(2, "Ask design about the empty state", "queued", 200),
+        card(3, "Bump the SDK and read its changelog", "queued", 90, names[-1]),
+        card(4, "Fix the flaky checkout test", "running", 45, names[0], terminal=True,
+             link="https://acme.atlassian.net/browse/SHOP-1432"),
+        card(5, "Review the search ranking PR", "running", 20, names[1] if len(names) > 1 else None,
+             terminal=True, link="https://github.com/acme/storefront/pull/5620"),
+        card(6, "Staging deploy of the cart fix", "waiting", 130, names[0],
+             note="QA has it, Maria answers after lunch"),
+        card(7, "Rotate the API keys", "done", 600),
+        card(8, "Update the CHANGELOG", "done", 400),
+    ]}
+    state["windows"][0]["showsTodos"] = True
+    return state, plan
+
+
 # ---- the notepad ------------------------------------------------------------------------------
 
 NOTEPAD_TEXT = """# Release plan
@@ -622,6 +664,7 @@ SCENES = {
     "settings-layout": dict(state=lambda root: demo_state(root),
                             args=("-settingsTab", "projectPanel", "-projectPanelPage", "projects"),
                             menu=("Planchette", "Settings…"), pick="title:Project panel"),
+    "todos": dict(state=lambda root: todos_state(root), args=("-inboxShown", "NO")),
     "notepad": dict(state=lambda root: notepad_state(root), args=("-inboxShown", "NO")),
     "notepad-light": dict(state=lambda root: notepad_state(root, appearance="light"), args=("-inboxShown", "NO")),
     "notepad-closed-light": dict(state=lambda root: notepad_state(root, appearance="light", open_pad=False),
