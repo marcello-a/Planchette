@@ -26,6 +26,42 @@ final class AppState: ObservableObject {
             updateReviewPolling()
         }
     }
+    /// Settings → General → Panels: the to-do board's toolbar button. Off by default; switching it
+    /// off closes an open board and keeps the cards.
+    @Published var todosEnabled = false {
+        didSet {
+            guard todosEnabled != oldValue else { return }
+            scheduleSave()
+            if !todosEnabled {
+                for window in windows where window.showsTodos {
+                    updateWindow(window.id) { $0.showsTodos = false }
+                }
+            }
+        }
+    }
+    /// Settings → General → Panels: the Jira panel beside the notepad. Off by default; while off
+    /// there is no button, no panel and no request to Jira (`updateJiraPolling`).
+    @Published var jiraEnabled = false {
+        didSet {
+            guard jiraEnabled != oldValue else { return }
+            scheduleSave()
+            updateJiraPolling()
+        }
+    }
+    /// The Jira site, account, queries and panel (`JiraLook`). Persisted; the token is in the Keychain.
+    @Published var jira = JiraLook() {
+        didSet { scheduleSave() }
+    }
+    /// What each query came back with, by query id. Derived from Jira, never persisted.
+    @Published var jiraResults: [UUID: JiraResult] = [:]
+    /// A poll of Jira is under way: the panel shows a spinner.
+    @Published var jiraRefreshing = false
+    var jiraFlight = SingleFlight()
+    var jiraTimer: Timer?
+    var jiraLastManualRefresh: Date?
+    /// A field of the Jira panel has the keyboard: the active terminal must not take it back
+    /// (`focusIfActive`), as with the notepad.
+    var jiraEditing = false
     @Published var language: AppLanguage = .system {
         didSet {
             L10n.current = language
@@ -302,6 +338,9 @@ final class AppState: ObservableObject {
             notepad = saved.notepad
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
+            todosEnabled = saved.todosEnabled
+            jiraEnabled = saved.jiraEnabled
+            jira = saved.jira
             // Early too: a sessionless state starts fresh, which keeps the current board.
             todos = saved.todos
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
@@ -3112,7 +3151,10 @@ final class AppState: ObservableObject {
             notepad: notepad,
             reviews: reviews,
             reviewsEnabled: reviewsEnabled,
-            todos: todos
+            todos: todos,
+            todosEnabled: todosEnabled,
+            jiraEnabled: jiraEnabled,
+            jira: jira
         )
         do {
             let encoder = JSONEncoder()
@@ -3207,6 +3249,9 @@ final class AppState: ObservableObject {
         }
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
+        todosEnabled = state.todosEnabled
+        jiraEnabled = state.jiraEnabled
+        jira = state.jira
         todos = state.todos
         todos.forget(groupsExcept: Set(state.groups.map(\.id)), sessionsExcept: Set(state.sessions.map(\.id)))
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
@@ -3336,6 +3381,10 @@ final class AppState: ObservableObject {
         notepadText = [:]
         notepadHistory = [:]
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
+        // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
+        todosEnabled = previous?.todosEnabled ?? todosEnabled
+        jiraEnabled = previous?.jiraEnabled ?? jiraEnabled
+        jira = previous?.jira ?? jira
         // The reviews outlive the workspace (they come from GitHub), but the
         // terminals and projects they pointed at are gone.
         reviews = reviews.mapValues { record in
