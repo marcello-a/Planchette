@@ -138,6 +138,7 @@ struct TerminalAreaView: View {
                     appState.toggleJiraPanel()
                 }
                 .foregroundStyle(appState.jira.open ? Color.accentColor : Color.primary)
+                .featureHint(.jira)
                 Divider().frame(height: 14).padding(.horizontal, 3)
             }
             // The pad of the terminal this tab bar shows, and only of that one.

@@ -307,7 +307,7 @@ enum LKey: String, CaseIterable {
     case todoMoveDone, todoEdit, todoAddNote, todoEditNote, todoAddLink, todoEditLink, todoRemoveNote, todoRemoveLink, todoNotePlaceholder, todoLinkPlaceholder, todoLinkTo, todoWholeProject
     case todoUnlink, todoOpenTerminal, todoOpenTerminalHelp, todoOpenLinkedHelp, todoDelete, todoDragTitle, todoDragHelp, todoLinkToHelp, todoNoteHelp
     // The panels switches and the Jira panel
-    case panelsSection, todosEnableTitle, jiraEnableTitle, jiraHelp, jiraTitle, jiraResize, jiraRefresh, jiraAddQuery, jiraClose, jiraNoAccount, jiraOpenSettings, jiraNoQueries, jiraEmpty, jiraEditQuery, jiraMoveUp, jiraMoveDown, jiraDeleteQuery, jiraErrorUnauthorized, jiraErrorUnreachable, jiraErrorUnreadable, jiraUnassigned, jiraCardHelp, jiraOpenInBrowser, jiraCopyKey, jiraOpenTerminalIn, jiraOpenTerminalHelp, jiraQueryName, jiraQueryPlaceholder, jiraTest, jiraTestResult, jiraQueriesHelp, jiraSite, jiraSiteHelp, jiraEmail, jiraToken, jiraTokenHelp, jiraCheckConnection, jiraConnected, jiraCreateToken, jiraDaysInStatus, jiraDaysInStatusHelp
+    case panelsSection, todosEnableTitle, jiraEnableTitle, jiraHelp, jiraTitle, jiraResize, jiraRefresh, jiraAddQuery, jiraClose, jiraNoAccount, jiraOpenSettings, jiraNoQueries, jiraEmpty, jiraEditQuery, jiraMoveUp, jiraMoveDown, jiraDeleteQuery, jiraErrorUnauthorized, jiraErrorUnreachable, jiraErrorUnreadable, jiraUnassigned, jiraCardHelp, jiraOpenInBrowser, jiraCopyKey, jiraOpenTerminalIn, jiraOpenTerminalHelp, jiraQueryName, jiraQueryPlaceholder, jiraTest, jiraTestResult, jiraQueriesHelp, jiraSite, jiraSiteHelp, jiraEmail, jiraToken, jiraTokenHelp, jiraCheckConnection, jiraConnected, jiraCreateToken, jiraDaysInStatus, jiraDaysInStatusHelp, jiraHintTitle, jiraHintBody, jiraHintTry
 }
 
 /// Central localizer. `current` is set by AppState; views observe AppState so
@@ -813,6 +813,9 @@ enum L10n {
         .jiraCreateToken: "Create an API token…",
         .jiraDaysInStatus: "%dd",
         .jiraDaysInStatusHelp: "%d days in “%@”",
+        .jiraHintTitle: "Your tickets, next to your terminal",
+        .jiraHintBody: "Write a JQL query once and see its tickets beside the terminal — with their status and how many days they have been in it.",
+        .jiraHintTry: "Open the Jira panel",
     ]
 
     // MARK: German
@@ -1297,6 +1300,9 @@ enum L10n {
         .jiraCreateToken: "API-Token erstellen…",
         .jiraDaysInStatus: "%d T.",
         .jiraDaysInStatusHelp: "Seit %d Tagen in „%@“",
+        .jiraHintTitle: "Deine Tickets neben dem Terminal",
+        .jiraHintBody: "Schreib eine JQL-Abfrage einmal und sieh ihre Tickets direkt neben dem Terminal – mit Status und wie viele Tage sie schon darin sind.",
+        .jiraHintTry: "Jira-Panel öffnen",
     ]
 
     // MARK: French
@@ -1781,6 +1787,9 @@ enum L10n {
         .jiraCreateToken: "Créer un jeton d'API…",
         .jiraDaysInStatus: "%d j",
         .jiraDaysInStatusHelp: "%d jours en « %@ »",
+        .jiraHintTitle: "Vos tickets, à côté du terminal",
+        .jiraHintBody: "Écrivez une requête JQL une fois et voyez ses tickets à côté du terminal — avec leur statut et depuis combien de jours ils y sont.",
+        .jiraHintTry: "Ouvrir le panneau Jira",
     ]
 
     // MARK: Spanish
@@ -2265,6 +2274,9 @@ enum L10n {
         .jiraCreateToken: "Crear un token de API…",
         .jiraDaysInStatus: "%d d",
         .jiraDaysInStatusHelp: "%d días en «%@»",
+        .jiraHintTitle: "Tus tickets, junto al terminal",
+        .jiraHintBody: "Escribe una consulta JQL una vez y ve sus tickets junto al terminal, con su estado y cuántos días llevan en él.",
+        .jiraHintTry: "Abrir el panel de Jira",
     ]
 
     // MARK: Italian
@@ -2749,6 +2761,9 @@ enum L10n {
         .jiraCreateToken: "Crea un token API…",
         .jiraDaysInStatus: "%d gg",
         .jiraDaysInStatusHelp: "%d giorni in «%@»",
+        .jiraHintTitle: "I tuoi ticket, accanto al terminale",
+        .jiraHintBody: "Scrivi una query JQL una volta e vedi i suoi ticket accanto al terminale, con lo stato e da quanti giorni ci sono.",
+        .jiraHintTry: "Apri il pannello Jira",
     ]
 
     // MARK: Dutch
@@ -3233,6 +3248,9 @@ enum L10n {
         .jiraCreateToken: "API-token aanmaken…",
         .jiraDaysInStatus: "%d d",
         .jiraDaysInStatusHelp: "%d dagen in ‘%@’",
+        .jiraHintTitle: "Je tickets, naast je terminal",
+        .jiraHintBody: "Schrijf één keer een JQL-query en zie de tickets naast de terminal – met hun status en hoeveel dagen ze daar al staan.",
+        .jiraHintTry: "Jira-paneel openen",
     ]
 
     // MARK: Portuguese
@@ -3717,5 +3735,8 @@ enum L10n {
         .jiraCreateToken: "Criar um token de API…",
         .jiraDaysInStatus: "%d d",
         .jiraDaysInStatusHelp: "%d dias em «%@»",
+        .jiraHintTitle: "Os teus tickets, ao lado do terminal",
+        .jiraHintBody: "Escreve uma consulta JQL uma vez e vê os seus tickets ao lado do terminal, com o estado e há quantos dias lá estão.",
+        .jiraHintTry: "Abrir o painel do Jira",
     ]
 }

@@ -378,6 +378,7 @@ struct JiraAccountSettings: View {
                 Task {
                     check = await appState.checkJiraConnection()
                     checking = false
+                    if case .success = check { appState.offerHint(.jira) }
                 }
             }
             .disabled(!appState.jira.hasAccount || token.isEmpty || checking)

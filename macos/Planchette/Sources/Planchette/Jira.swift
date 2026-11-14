@@ -27,7 +27,8 @@ extension AppState {
     /// Ask Jira now, for every query. `manual` is the panel's refresh button: it may not repeat
     /// faster than `JiraTickets.minimumManualInterval`.
     func refreshJira(manual: Bool = false) {
-        guard jiraEnabled, !SupportPaths.isIsolated,
+        if SupportPaths.isIsolated { return showJiraFixture() }
+        guard jiraEnabled,
               let site = JiraTickets.normalizedSite(jira.site), !jira.queries.isEmpty else { return }
         if manual {
             let now = Date()
@@ -57,6 +58,19 @@ extension AppState {
                 if self.jiraFlight.end() { self.refreshJira() }
             }
         }
+    }
+
+    /// An isolated instance asks Jira for nothing. Given `-jiraFixture <file>` (a search answer as
+    /// Jira sends it), every query shows that file's tickets — how `scripts/perf/jira_panel.py`
+    /// pictures the panel for its hint.
+    private func showJiraFixture() {
+        guard jiraEnabled, let path = UserDefaults.standard.string(forKey: "jiraFixture"),
+              let data = FileManager.default.contents(atPath: path),
+              let issues = JiraTickets.parse(data) else { return }
+        let results = Dictionary(uniqueKeysWithValues: jira.queries.map {
+            ($0.id, JiraResult(issues: issues, checkedAt: Date()))
+        })
+        if results != jiraResults { jiraResults = results }
     }
 
     /// One query's answer, off the main thread.
@@ -122,7 +136,10 @@ extension AppState {
     /// Open or close the panel (the tab bar's button). Opening asks Jira for what is new.
     func toggleJiraPanel() {
         updateJira { $0.open.toggle() }
-        if jira.open { refreshJira(manual: true) }
+        if jira.open {
+            completeHint(.jira)     // used: it needs no introduction any more
+            refreshJira(manual: true)
+        }
     }
 
     // MARK: Tickets
