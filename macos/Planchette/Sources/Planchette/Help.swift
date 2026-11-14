@@ -156,6 +156,23 @@ enum Help {
             Entry(.reviewLater, nil, where: .helpWhereContextMenu),
             Entry(.reviewSkillTitle, .reviewSkillHelp),
         ]),
+        Section(titleKey: .todos, entries: [
+            Entry(.todosEnableTitle, .todosHelp, where: .helpWhereSettings),
+            Entry(.todos, .todosHelp, where: .helpWhereToolbar),
+            Entry(.todoDragTitle, .todoDragHelp),
+            Entry(.todoAddNote, .todoNoteHelp, where: .helpWhereContextMenu),
+            Entry(.todoLinkTo, .todoLinkToHelp, where: .helpWhereContextMenu),
+            Entry(.todoOpenTerminal, .todoOpenTerminalHelp, where: .helpWhereContextMenu),
+            Entry(.todoClearDone),
+        ]),
+        Section(titleKey: .jiraTitle, entries: [
+            Entry(.jiraEnableTitle, .jiraHelp, where: .helpWhereSettings),
+            Entry(.jiraToken, .jiraTokenHelp, where: .helpWhereSettings),
+            Entry(.jiraTitle, .jiraHelp, where: .helpWhereTabBar),
+            Entry(.jiraAddQuery, .jiraQueriesHelp),
+            Entry(.jiraOpenInBrowser, .jiraCardHelp),
+            Entry(.jiraOpenTerminalIn, .jiraOpenTerminalHelp, where: .helpWhereContextMenu),
+        ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
             Entry(.nextTab, nil, shortcut: "⌃⇥  ⌥⌘→", where: .helpWhereMenuBar),

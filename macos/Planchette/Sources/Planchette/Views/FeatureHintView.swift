@@ -34,6 +34,10 @@ struct FeatureHintContent {
             return FeatureHintContent(title: .reviewsHintTitle, body: .reviewsHintBody, action: .reviewsHintTry) { state in
                 state.showReviews()
             }
+        case .jira:
+            return FeatureHintContent(title: .jiraHintTitle, body: .jiraHintBody, action: .jiraHintTry) { state in
+                if state.jira.open { state.completeHint(.jira) } else { state.toggleJiraPanel() }
+            }
         }
     }
 }

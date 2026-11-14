@@ -198,6 +198,21 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.t(.panelsSection)) {
+                Toggle(L10n.t(.todosEnableTitle), isOn: $appState.todosEnabled)
+                    .help(L10n.t(.todosHelp))
+                    .accessibilityLabel(L10n.t(.todosEnableTitle))
+                Toggle(L10n.t(.jiraEnableTitle), isOn: $appState.jiraEnabled)
+                    .help(L10n.t(.jiraHelp))
+                    .accessibilityLabel(L10n.t(.jiraEnableTitle))
+                    // Switched on by the user, with an account to show: the moment for the hint.
+                    .onChange(of: appState.jiraEnabled) { _, on in
+                        if on && appState.jira.hasAccount { appState.offerHint(.jira) }
+                    }
+                if appState.jiraEnabled {
+                    JiraAccountSettings()
+                }
+            }
             Section(L10n.t(.alphaSection)) {
                 Toggle(L10n.t(.reviewsEnableTitle), isOn: $appState.reviewsEnabled)
                     .help(L10n.t(.reviewsEnableHelp))
@@ -501,9 +516,11 @@ struct ContentView: View {
                     }
 
                     Group {
-                        // A selected folder shows what is inside it; otherwise
-                        // the selected project's terminals.
-                        if let folderID = window.selectedFolderID,
+                        // The to-do board over everything; a selected folder shows
+                        // what is inside it; otherwise the selected project's terminals.
+                        if appState.todosEnabled && window.showsTodos {
+                            TodoBoardView()
+                        } else if let folderID = window.selectedFolderID,
                            let folder = window.folders.first(where: { $0.id == folderID }) {
                             FolderOverviewView(folder: folder, windowID: window.id)
                         } else if let groupID = window.selectedGroupID,
@@ -569,6 +586,11 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
+        if appState.todosEnabled {
+            ToolbarItem(placement: .primaryAction) {
+                TodoToolbarButton(windowID: window.id)
+            }
+        }
         if appState.reviewsEnabled {
             ToolbarItem(placement: .primaryAction) {
                 ReviewsToolbarButton(shown: $inboxShown)
@@ -846,6 +868,27 @@ struct InboxToolbarButton: View {
         .help(L10n.t(.notificationsPanelHelp))
         // The number left the picture, not the information: a screen reader still hears it.
         .accessibilityValue(count > 0 ? "\(count)" : "")
+    }
+}
+
+/// The to-do board: shows it in the main area, or leaves it for the terminal it stood over.
+/// Pressed while it is shown, like the panel icons beside it.
+struct TodoToolbarButton: View {
+    @EnvironmentObject var appState: AppState
+    let windowID: UUID
+
+    var body: some View {
+        let open = appState.todos.items.filter { $0.lane != .done }.count
+        Toggle(isOn: Binding(
+            get: { appState.window(for: windowID)?.showsTodos ?? false },
+            set: { _ in appState.toggleTodos(inWindow: windowID) }
+        )) {
+            Image(systemName: "checklist")
+        }
+        .toggleStyle(.button)
+        .help(L10n.t(.todosHelp))
+        .accessibilityLabel(L10n.t(.todos))
+        .accessibilityValue(open > 0 ? "\(open)" : "")
     }
 }
 

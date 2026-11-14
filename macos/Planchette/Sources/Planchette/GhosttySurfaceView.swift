@@ -1228,14 +1228,14 @@ private struct TerminalSurfaceRepresentable: NSViewRepresentable {
     }
 
     private func focusIfActive(_ view: NSView) {
-        // Not while the find bar or the notepad has the keyboard: a redraw of the terminal would
-        // take it from the field you are typing in.
-        guard autoFocus, appState.finds[session.id] == nil, !appState.notepadEditing,
+        // Not while the find bar, the notepad or a field of the Jira panel has the keyboard: a
+        // redraw of the terminal would take it from the field you are typing in.
+        guard autoFocus, appState.finds[session.id] == nil, !appState.notepadEditing, !appState.jiraEditing,
               let surfaceView = view as? GhosttySurfaceNSView else { return }
         DispatchQueue.main.async {
             // Asked again here: the notepad may have taken the keyboard since this was scheduled.
             guard let window = surfaceView.window, surfaceView.isActive() else { return }
-            if appState.notepadEditing || appState.finds[session.id] != nil { return }
+            if appState.notepadEditing || appState.jiraEditing || appState.finds[session.id] != nil { return }
             // Ensure a key window exists so keystrokes are delivered at all
             // (after the launch modal + window restoration the app can end up
             // with no key window). Only while active: keyWindow is always nil

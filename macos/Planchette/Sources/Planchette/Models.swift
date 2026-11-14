@@ -758,6 +758,9 @@ struct WindowModel: Identifiable, Codable, Equatable {
     /// — and cleared by anything that picks a tab: the same pass-through rule as
     /// the folder overview.
     var showsProjectOverview: Bool = false
+    /// The to-do board fills the main area (`TodoBoardView`). The same pass-through rule:
+    /// picking a project, a terminal or a folder leaves it.
+    var showsTodos: Bool = false
 
     init(id: UUID = UUID()) {
         self.id = id
@@ -769,6 +772,7 @@ struct WindowModel: Identifiable, Codable, Equatable {
         selectedGroupID = id
         selectedFolderID = nil
         showsProjectOverview = false
+        showsTodos = false
     }
 
     /// Show a project as its overview page rather than one of its terminals.
@@ -776,6 +780,7 @@ struct WindowModel: Identifiable, Codable, Equatable {
         selectedGroupID = id
         selectedFolderID = nil
         showsProjectOverview = true
+        showsTodos = false
     }
 
     /// Does a click on a project's own row open its overview page? Not when the project holds a
@@ -793,6 +798,7 @@ struct WindowModel: Identifiable, Codable, Equatable {
         folders = try c.decodeIfPresent([ProjectFolder].self, forKey: .folders) ?? []
         selectedFolderID = try c.decodeIfPresent(UUID.self, forKey: .selectedFolderID)
         showsProjectOverview = try c.decodeIfPresent(Bool.self, forKey: .showsProjectOverview) ?? false
+        showsTodos = try c.decodeIfPresent(Bool.self, forKey: .showsTodos) ?? false
     }
 
     /// The folder holding this project, if any.
@@ -920,6 +926,14 @@ struct PersistedState: Codable {
     var reviews: [String: ReviewRecord] = [:]
     /// The Reviews mode (alpha): off by default, and for a state that never carried the key.
     var reviewsEnabled = false
+    /// The to-do board (`TodoBoard`).
+    var todos = TodoBoard()
+    /// The to-do board's button (Settings): off by default, and for a state that never carried the key.
+    var todosEnabled = false
+    /// The Jira panel (Settings): off by default.
+    var jiraEnabled = false
+    /// The Jira site, account, queries and panel (`JiraLook`); the token is in the Keychain.
+    var jira = JiraLook()
 
     init(
         groups: [SessionGroup],
@@ -945,7 +959,11 @@ struct PersistedState: Codable {
         backgroundCountsAsRunning: Bool = true,
         notepad: NotepadLook = NotepadLook(),
         reviews: [String: ReviewRecord] = [:],
-        reviewsEnabled: Bool = false
+        reviewsEnabled: Bool = false,
+        todos: TodoBoard = TodoBoard(),
+        todosEnabled: Bool = false,
+        jiraEnabled: Bool = false,
+        jira: JiraLook = JiraLook()
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -971,6 +989,10 @@ struct PersistedState: Codable {
         self.notepad = notepad
         self.reviews = reviews
         self.reviewsEnabled = reviewsEnabled
+        self.todos = todos
+        self.todosEnabled = todosEnabled
+        self.jiraEnabled = jiraEnabled
+        self.jira = jira
     }
 
     init(from decoder: Decoder) throws {
@@ -1012,5 +1034,10 @@ struct PersistedState: Codable {
         // costs the review list, never the workspace.
         reviews = (try? c.decodeIfPresent([String: ReviewRecord].self, forKey: .reviews)) ?? [:]
         reviewsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .reviewsEnabled)) ?? false
+        // The user's own list: a board a newer build wrote loses the cards it cannot read, not all.
+        todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
+        todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
+        jiraEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .jiraEnabled)) ?? false
+        jira = (try? c.decodeIfPresent(JiraLook.self, forKey: .jira)) ?? JiraLook()
     }
 }

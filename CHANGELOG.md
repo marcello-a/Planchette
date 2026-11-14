@@ -8,6 +8,22 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **A to-do board.** The checklist button in the toolbar shows your to-dos in place of the
+  terminal: a queue on the left, and to its right what is running, what waits on someone and what
+  is done — in the colours and sprites of the terminal states. Move a card with its buttons or drag
+  it, give it a note and a link (a Jira link shows its ticket key), and point it at a project or
+  one of its terminals: the card then shows that terminal's live state, a click takes you there,
+  and "Open a terminal for it" starts a new one in the project. Picking a project or terminal in
+  the sidebar leaves the board. Switch it on in Settings → General → Panels.
+- **Your Jira tickets beside the terminal.** Switch on the Jira panel in Settings → General →
+  Panels and connect your Jira Cloud site with your e-mail and an API token (it is kept in the
+  macOS Keychain). The ticket button in the tab bar opens the panel, right of the notepad when that
+  is open. Write your own JQL queries with + — each is a section of cards showing key, type,
+  priority, title, status, assignee and the days in its status — and test them before saving. A click opens a ticket in the
+  browser; right-click opens a terminal for it in a project you pick. The list refreshes every five
+  minutes.
+
 ## [0.2.50] — 2026-11-10
 
 ### Added
