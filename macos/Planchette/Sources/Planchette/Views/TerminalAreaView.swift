@@ -137,10 +137,13 @@ struct TerminalAreaView: View {
             .disabled(!strip.contains { $0.leaves.count > 1 })
             Divider().frame(height: 14).padding(.horizontal, 3)
             if appState.jiraEnabled {
-                splitButton("ticket", help: .jiraHelp, label: .jiraTitle) {
+                // No tooltip: pointing at it shows how the panel works instead (`jiraHelpOnHover`).
+                splitButton("ticket", help: nil, label: .jiraTitle) {
                     appState.toggleJiraPanel()
                 }
                 .foregroundStyle(appState.jira.open ? Color.accentColor : Color.primary)
+                .accessibilityHint(L10n.t(.jiraHelp))
+                .jiraHelpOnHover()
                 .featureHint(.jira)
                 Divider().frame(height: 14).padding(.horizontal, 3)
             }
@@ -156,7 +159,7 @@ struct TerminalAreaView: View {
     }
 
     private func splitButton(
-        _ symbol: String, help: LKey, label: LKey, action: @escaping () -> Void
+        _ symbol: String, help: LKey?, label: LKey, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -165,7 +168,7 @@ struct TerminalAreaView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(L10n.t(help))
+        .help(help.map { L10n.t($0) } ?? "")
         .accessibilityLabel(L10n.t(label))
     }
 

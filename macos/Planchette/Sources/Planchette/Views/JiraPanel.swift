@@ -59,7 +59,6 @@ struct JiraPanel: View {
             if appState.jiraRefreshing {
                 ProgressView().controlSize(.mini)
             }
-            JiraHelpButton()
             headerButton("arrow.clockwise", help: .jiraRefresh) { appState.refreshJira(manual: true) }
                 .disabled(!appState.jira.hasAccount || appState.jira.queries.isEmpty)
             headerButton("plus", help: .jiraAddQuery) {
@@ -369,7 +368,6 @@ struct JiraAccountSettings: View {
     @State private var check: Result<String, JiraError>?
 
     var body: some View {
-        JiraHelpButton(titled: true)
         TextField(L10n.t(.jiraSite), text: siteBinding, prompt: Text(verbatim: "example.atlassian.net"))
             .help(L10n.t(.jiraSiteHelp))
         TextField(L10n.t(.jiraEmail), text: emailBinding)
@@ -460,50 +458,42 @@ struct JiraOfflineLabel: View {
     }
 }
 
-/// The "?" of the Jira panel (and its row in Settings): on hover, how the panel works — the hint's
-/// looping picture and the four steps. A click keeps it open, for the keyboard and for reading.
-struct JiraHelpButton: View {
-    /// With its title beside the icon (Settings), or the icon alone (the panel's header).
-    var titled = false
+/// The tab bar's ticket button: pointing at it shows how the Jira panel works — the hint's looping
+/// picture and the four steps. Not while the first-use hint is open there, and not again after a
+/// click until the pointer has left the button.
+private struct JiraHelpOnHover: ViewModifier {
+    @EnvironmentObject var appState: AppState
     @State private var hovering = false
-    @State private var pinned = false
     @State private var shown = false
+    @State private var clicked = false
 
-    var body: some View {
-        Button {
-            pinned.toggle()
-            shown = pinned
-        } label: {
-            if titled {
-                Label(L10n.t(.jiraHowTitle), systemImage: "questionmark.circle")
-                    .font(.caption)
-            } else {
-                Image(systemName: "questionmark.circle")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 18, height: 16)
-                    .contentShape(Rectangle())
+    func body(content: Content) -> some View {
+        content
+            .onHover { inside in
+                hovering = inside
+                if !inside { clicked = false }
             }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(L10n.t(.jiraHow))
-        .onHover { hovering = $0 }
-        // A short wait both ways: passing over it opens nothing, and the popover does not blink.
-        .task(id: hovering) {
-            try? await Task.sleep(for: .seconds(hovering ? 0.35 : 0.25))
-            guard !Task.isCancelled else { return }
-            if hovering { shown = true } else if !pinned { shown = false }
-        }
-        .popover(isPresented: Binding(get: { shown }, set: { open in
-            shown = open
-            if !open { pinned = false }
-        }), arrowEdge: .bottom) {
-            JiraHelpCard()
-        }
+            // A short wait both ways: passing over it opens nothing, and the popover does not blink.
+            .task(id: hovering) {
+                try? await Task.sleep(for: .seconds(hovering ? 0.6 : 0.2))
+                guard !Task.isCancelled else { return }
+                shown = hovering && !clicked && appState.hintShowing != .jira
+            }
+            // The click opened or closed the panel: the explanation has done its part.
+            .onChange(of: appState.jira.open) { _, _ in
+                clicked = true
+                shown = false
+            }
+            .popover(isPresented: $shown, arrowEdge: .bottom) { JiraHelpCard() }
     }
 }
 
-/// What the "?" shows: the picture of the panel at work, then the way there in four steps.
+extension View {
+    /// How the Jira panel works, shown while the pointer rests on this view.
+    func jiraHelpOnHover() -> some View { modifier(JiraHelpOnHover()) }
+}
+
+/// What the ticket button shows on hover: the picture of the panel at work, then the way there in four steps.
 struct JiraHelpCard: View {
     private static let width: CGFloat = 380
     private static let steps: [LKey] = [.jiraHowStep1, .jiraHowStep2, .jiraHowStep3, .jiraHowStep4]
