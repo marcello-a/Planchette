@@ -26,6 +26,19 @@ final class AppState: ObservableObject {
             updateReviewPolling()
         }
     }
+    /// Settings → General → Panels: the to-do board's toolbar button. Off by default; switching it
+    /// off closes an open board and keeps the cards.
+    @Published var todosEnabled = false {
+        didSet {
+            guard todosEnabled != oldValue else { return }
+            scheduleSave()
+            if !todosEnabled {
+                for window in windows where window.showsTodos {
+                    updateWindow(window.id) { $0.showsTodos = false }
+                }
+            }
+        }
+    }
     @Published var language: AppLanguage = .system {
         didSet {
             L10n.current = language
@@ -302,6 +315,9 @@ final class AppState: ObservableObject {
             notepad = saved.notepad
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
+            todosEnabled = saved.todosEnabled
+            // Early too: a sessionless state starts fresh, which keeps the current board.
+            todos = saved.todos
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
             // Not "a file that does not decode" (a downgrade): that is somebody's workspace.
             onboarding = .firstLaunch
@@ -944,6 +960,8 @@ final class AppState: ObservableObject {
     /// Every PR that asked for the user's review and what its review is up to,
     /// by PR URL. Persisted: the stage and the decisions are the user's own work.
     @Published var reviews: [String: ReviewRecord] = [:]
+    /// The to-do board. Persisted: it is the user's own list (`updateTodos`).
+    @Published var todos = TodoBoard()
     /// The findings of each review, read from its `findings.json`. Derived from
     /// the files, never persisted.
     @Published var reviewFindings: [String: ReviewFindings] = [:]
@@ -1984,7 +2002,56 @@ final class AppState: ObservableObject {
         updateWindow(windowID) { window in
             guard window.folders.contains(where: { $0.id == folderID }) else { return }
             window.selectedFolderID = folderID
+            window.showsTodos = false
         }
+    }
+
+    // MARK: To-dos (the model is in Todos.swift)
+
+    /// Show the to-do board in place of a terminal, or leave it for the project it stood over.
+    func toggleTodos(inWindow windowID: UUID) {
+        updateWindow(windowID) { window in
+            window.showsTodos.toggle()
+            if window.showsTodos {
+                window.selectedFolderID = nil
+                window.showsProjectOverview = false
+            }
+        }
+    }
+
+    /// Every change to the board: published, saved — and a change that changes nothing is none.
+    func updateTodos(_ change: (inout TodoBoard) -> Void) {
+        var board = todos
+        change(&board)
+        guard board != todos else { return }
+        todos = board
+        scheduleSave()
+    }
+
+    /// Jump to what a card points at: its terminal, or else its project.
+    func open(todo: TodoItem) {
+        if let id = todo.sessionID, let session = sessions[id] {
+            select(session: session)
+        } else if let id = todo.groupID, let group = groups.first(where: { $0.id == id }) {
+            select(group: group)
+        }
+    }
+
+    /// A new terminal for a card, in the project it points at — beside the terminal it names,
+    /// in that terminal's folder. The card is linked to it and starts running.
+    func openTerminal(for todo: TodoItem) {
+        guard let groupID = todo.groupID, let group = groups.first(where: { $0.id == groupID }) else { return }
+        let near = todo.sessionID.flatMap { sessions[$0] }
+            ?? group.activeSessionID.flatMap { sessions[$0] }
+            ?? sessions(in: group).first
+        let dir = near?.currentDirectory ?? group.worktreePath
+            ?? FileManager.default.homeDirectoryForCurrentUser.path
+        let session = addSession(directory: dir, groupID: groupID)
+        updateTodos { board in
+            board.update(todo.id) { $0.sessionID = session.id }
+            if todo.lane == .queued { board.move(todo.id, to: .running) }
+        }
+        select(session: session)
     }
 
     /// Clicked desktop notification (our own banner, or PlanchetteFocus via the
@@ -2124,7 +2191,8 @@ final class AppState: ObservableObject {
             NSApp.keyWindow?.performClose(nil)
             return
         }
-        guard let window = window(for: windowID), !window.showsProjectOverview, window.selectedFolderID == nil,
+        guard let window = window(for: windowID), !window.showsProjectOverview, !window.showsTodos,
+              window.selectedFolderID == nil,
               let groupID = window.selectedGroupID,
               let group = groups.first(where: { $0.id == groupID }) else { return }
         if let id = keyTerminalID(), let session = sessions[id] {
@@ -2231,7 +2299,7 @@ final class AppState: ObservableObject {
     func findTargetID() -> UUID? {
         guard let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id,
               let window = window(for: windowID), window.selectedFolderID == nil,
-              !window.showsProjectOverview, let groupID = window.selectedGroupID,
+              !window.showsProjectOverview, !window.showsTodos, let groupID = window.selectedGroupID,
               let group = groups.first(where: { $0.id == groupID })
         else { return nil }
         if let active = group.activeSessionID, sessions[active] != nil { return active }
@@ -3057,7 +3125,9 @@ final class AppState: ObservableObject {
             backgroundCountsAsRunning: backgroundCountsAsRunning,
             notepad: notepad,
             reviews: reviews,
-            reviewsEnabled: reviewsEnabled
+            reviewsEnabled: reviewsEnabled,
+            todos: todos,
+            todosEnabled: todosEnabled
         )
         do {
             let encoder = JSONEncoder()
@@ -3152,6 +3222,9 @@ final class AppState: ObservableObject {
         }
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
+        todosEnabled = state.todosEnabled
+        todos = state.todos
+        todos.forget(groupsExcept: Set(state.groups.map(\.id)), sessionsExcept: Set(state.sessions.map(\.id)))
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
             session.notepad.flatMap { $0.isEmpty ? nil : (session.id, $0) }
         })
@@ -3279,6 +3352,8 @@ final class AppState: ObservableObject {
         notepadText = [:]
         notepadHistory = [:]
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
+        // The panels are settings: they outlive the workspace.
+        todosEnabled = previous?.todosEnabled ?? todosEnabled
         // The reviews outlive the workspace (they come from GitHub), but the
         // terminals and projects they pointed at are gone.
         reviews = reviews.mapValues { record in
@@ -3287,6 +3362,9 @@ final class AppState: ObservableObject {
             kept.groupID = nil
             return kept
         }
+        // The to-dos are the user's own list and outlive the workspace too; what they pointed at does not.
+        todos = previous?.todos ?? todos
+        todos.forget(groupsExcept: [], sessionsExcept: [])
     }
 
     // MARK: Surface notifications (title / pwd / child exit)

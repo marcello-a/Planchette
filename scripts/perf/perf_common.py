@@ -13,7 +13,9 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 # libghostty looks its resources up here when the app is not a packaged .app (AGENTS.md).
-RESOURCES = os.path.join(REPO, "vendor", "ghostty", "zig-out", "share", "ghostty")
+# A downloaded GhosttyKit (macOS 27, CONTRIBUTING.md) comes without them: point GHOSTTY_RESOURCES_DIR
+# at an installed Planchette.app's Contents/Resources/ghostty instead.
+RESOURCES = os.environ.get("GHOSTTY_RESOURCES_DIR") or os.path.join(REPO, "vendor", "ghostty", "zig-out", "share", "ghostty")
 HOME = os.path.expanduser("~")
 
 
@@ -24,7 +26,10 @@ def tool(name):
     binary = os.path.join(out_dir, name)
     if not os.path.exists(binary) or os.path.getmtime(binary) < os.path.getmtime(source):
         os.makedirs(out_dir, exist_ok=True)
-        subprocess.run(["swiftc", "-O", source, "-o", binary], check=True, capture_output=True)
+        # The /usr/bin/python3 shim exports the Command Line Tools' SDKROOT; with Xcode selected,
+        # its swiftc refuses that SDK. Let swiftc find its own.
+        env = {k: v for k, v in os.environ.items() if k != "SDKROOT"}
+        subprocess.run(["swiftc", "-O", source, "-o", binary], check=True, capture_output=True, env=env)
     return binary
 
 
