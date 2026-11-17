@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.51] — 2026-11-17
+
 ### Added
 - **A to-do board.** The checklist button in the toolbar shows your to-dos in place of the
   terminal: a queue on the left, and to its right what is running, what waits on someone and what
