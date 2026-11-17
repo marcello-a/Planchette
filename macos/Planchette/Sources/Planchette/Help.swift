@@ -172,6 +172,8 @@ enum Help {
             Entry(.jiraAddQuery, .jiraQueriesHelp),
             Entry(.jiraOpenInBrowser, .jiraCardHelp),
             Entry(.jiraOpenTerminalIn, .jiraOpenTerminalHelp, where: .helpWhereContextMenu),
+            Entry(.jiraHowTitle, .jiraHowStep1),
+            Entry(.jiraHow, .jiraHowStep4),
         ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),

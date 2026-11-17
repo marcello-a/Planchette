@@ -59,6 +59,7 @@ struct JiraPanel: View {
             if appState.jiraRefreshing {
                 ProgressView().controlSize(.mini)
             }
+            JiraHelpButton()
             headerButton("arrow.clockwise", help: .jiraRefresh) { appState.refreshJira(manual: true) }
                 .disabled(!appState.jira.hasAccount || appState.jira.queries.isEmpty)
             headerButton("plus", help: .jiraAddQuery) {
@@ -114,7 +115,7 @@ struct JiraPanel: View {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                     if let result, result.error == nil {
-                        Text("\(result.issues.count)")
+                        Text("\(result.issues.count)\(result.more ? "+" : "")")
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
@@ -137,8 +138,12 @@ struct JiraPanel: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 } else if let result {
+                    if result.offline {
+                        JiraOfflineLabel(since: result.checkedAt)
+                    }
                     ForEach(result.issues) { issue in
                         JiraCard(issue: issue)
+                            .opacity(result.offline ? 0.6 : 1)
                     }
                 } else {
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity)
@@ -173,6 +178,7 @@ enum JiraErrorText {
         case .rejected(let message): return message
         case .unreachable: return L10n.t(.jiraErrorUnreachable)
         case .unreadable: return L10n.t(.jiraErrorUnreadable)
+        case .invalidQuery: return L10n.t(.jiraErrorInvalidQuery)
         }
     }
 }
@@ -262,7 +268,7 @@ struct JiraCard: View {
         Divider()
         Menu(L10n.t(.jiraOpenTerminalIn)) {
             ForEach(appState.groups) { group in
-                Button(group.name) { appState.openTerminal(for: issue, inGroup: group.id) }
+                Button(group.name) { appState.openTerminal(inGroup: group.id) }
             }
         }
         .disabled(appState.groups.isEmpty)
@@ -363,6 +369,7 @@ struct JiraAccountSettings: View {
     @State private var check: Result<String, JiraError>?
 
     var body: some View {
+        JiraHelpButton(titled: true)
         TextField(L10n.t(.jiraSite), text: siteBinding, prompt: Text(verbatim: "example.atlassian.net"))
             .help(L10n.t(.jiraSiteHelp))
         TextField(L10n.t(.jiraEmail), text: emailBinding)
@@ -402,7 +409,11 @@ struct JiraAccountSettings: View {
                 .font(.caption)
         }
         .onAppear(perform: loadToken)
-        .onChange(of: appState.jira.email) { _, _ in loadToken() }
+        // Only a token the new address already has: a token pasted before the e-mail was typed must
+        // not be wiped by the first letter (it is saved under the address it ends up with).
+        .onChange(of: appState.jira.email) { _, _ in
+            if let saved = Keychain.read(service: Keychain.jiraService, account: account) { token = saved }
+        }
         .onDisappear(perform: saveToken)
     }
 
@@ -425,5 +436,95 @@ struct JiraAccountSettings: View {
               token != (Keychain.read(service: Keychain.jiraService, account: account) ?? "") else { return }
         Keychain.write(token, service: Keychain.jiraService, account: account)
         appState.refreshJira()
+    }
+}
+
+/// "Offline · as of 14:32" over a query's cards that Jira did not confirm: from the cache after a
+/// launch, or kept while Jira cannot be reached.
+struct JiraOfflineLabel: View {
+    let since: Date?
+
+    var body: some View {
+        Label(L10n.t(.jiraOfflineAsOf, Self.time(since)), systemImage: "wifi.slash")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .help(L10n.t(.jiraHowStep4))
+    }
+
+    /// Today a time, before that a date and a time.
+    static func time(_ date: Date?) -> String {
+        guard let date else { return "–" }
+        return Calendar.current.isDateInToday(date)
+            ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+/// The "?" of the Jira panel (and its row in Settings): on hover, how the panel works — the hint's
+/// looping picture and the four steps. A click keeps it open, for the keyboard and for reading.
+struct JiraHelpButton: View {
+    /// With its title beside the icon (Settings), or the icon alone (the panel's header).
+    var titled = false
+    @State private var hovering = false
+    @State private var pinned = false
+    @State private var shown = false
+
+    var body: some View {
+        Button {
+            pinned.toggle()
+            shown = pinned
+        } label: {
+            if titled {
+                Label(L10n.t(.jiraHowTitle), systemImage: "questionmark.circle")
+                    .font(.caption)
+            } else {
+                Image(systemName: "questionmark.circle")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 16)
+                    .contentShape(Rectangle())
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(L10n.t(.jiraHow))
+        .onHover { hovering = $0 }
+        // A short wait both ways: passing over it opens nothing, and the popover does not blink.
+        .task(id: hovering) {
+            try? await Task.sleep(for: .seconds(hovering ? 0.35 : 0.25))
+            guard !Task.isCancelled else { return }
+            if hovering { shown = true } else if !pinned { shown = false }
+        }
+        .popover(isPresented: Binding(get: { shown }, set: { open in
+            shown = open
+            if !open { pinned = false }
+        }), arrowEdge: .bottom) {
+            JiraHelpCard()
+        }
+    }
+}
+
+/// What the "?" shows: the picture of the panel at work, then the way there in four steps.
+struct JiraHelpCard: View {
+    private static let width: CGFloat = 380
+    private static let steps: [LKey] = [.jiraHowStep1, .jiraHowStep2, .jiraHowStep3, .jiraHowStep4]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let url = FeatureHintMedia.url(for: .jira), let image = NSImage(contentsOf: url), image.size.width > 0 {
+                AnimatedImage(image: image, label: L10n.t(.jiraHowTitle))
+                    .frame(width: Self.width, height: Self.width * image.size.height / image.size.width)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.12)))
+            }
+            Text(L10n.t(.jiraHowTitle)).font(.headline)
+            ForEach(Array(Self.steps.enumerated()), id: \.offset) { index, step in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(index + 1).").font(.callout.monospacedDigit()).foregroundStyle(.secondary)
+                    Text(L10n.t(step)).font(.callout).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: Self.width + 28)
     }
 }

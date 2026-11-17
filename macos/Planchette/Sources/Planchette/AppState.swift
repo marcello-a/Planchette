@@ -52,8 +52,14 @@ final class AppState: ObservableObject {
     @Published var jira = JiraLook() {
         didSet { scheduleSave() }
     }
-    /// What each query came back with, by query id. Derived from Jira, never persisted.
+    /// What each query came back with, by query id. Not in `state.json`: the last answers are
+    /// kept in `jira-cache.json` and shown as offline data until Jira answers again.
     @Published var jiraResults: [UUID: JiraResult] = [:]
+    /// When Jira last answered each query: the "as of" of offline data. Not published — a new time
+    /// with the same tickets is no change to show.
+    var jiraAnsweredAt: [UUID: Date] = [:]
+    /// The refresh after the site or e-mail was typed, cancelled by the next letter.
+    var jiraTypingTask: Task<Void, Never>?
     /// A poll of Jira is under way: the panel shows a spinner.
     @Published var jiraRefreshing = false
     var jiraFlight = SingleFlight()
@@ -355,6 +361,8 @@ final class AppState: ObservableObject {
         startDevServerPolling()
         startPullRequestPolling()
         updateReviewPolling()
+        // `jiraEnabled` was set above, where Swift runs no `didSet`.
+        updateJiraPolling()
     }
 
     // MARK: Attention housekeeping (dock badge + gentle escalation)
@@ -2062,16 +2070,22 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// A new terminal for a card, in the project it points at — beside the terminal it names,
-    /// in that terminal's folder. The card is linked to it and starts running.
-    func openTerminal(for todo: TodoItem) {
-        guard let groupID = todo.groupID, let group = groups.first(where: { $0.id == groupID }) else { return }
-        let near = todo.sessionID.flatMap { sessions[$0] }
+    /// A new terminal in a project, in the folder of the terminal it is for (`near`), else of the
+    /// project's active one, its first one, its worktree, or home. Not selected.
+    func newTerminal(in group: SessionGroup, near sessionID: UUID? = nil) -> TerminalSession {
+        let near = sessionID.flatMap { sessions[$0] }
             ?? group.activeSessionID.flatMap { sessions[$0] }
             ?? sessions(in: group).first
         let dir = near?.currentDirectory ?? group.worktreePath
             ?? FileManager.default.homeDirectoryForCurrentUser.path
-        let session = addSession(directory: dir, groupID: groupID)
+        return addSession(directory: dir, groupID: group.id)
+    }
+
+    /// A new terminal for a card, in the project it points at — beside the terminal it names,
+    /// in that terminal's folder. The card is linked to it and starts running.
+    func openTerminal(for todo: TodoItem) {
+        guard let groupID = todo.groupID, let group = groups.first(where: { $0.id == groupID }) else { return }
+        let session = newTerminal(in: group, near: todo.sessionID)
         updateTodos { board in
             board.update(todo.id) { $0.sessionID = session.id }
             if todo.lane == .queued { board.move(todo.id, to: .running) }

@@ -87,7 +87,7 @@ struct JiraLook: Codable, Equatable {
 }
 
 /// The three colours Jira gives every status, whatever its name.
-enum JiraStatusCategory: String, Equatable {
+enum JiraStatusCategory: String, Codable, Equatable {
     case todo, inProgress, done
 
     /// Jira's `statusCategory.key`: `new`, `indeterminate`, `done`. Anything else reads as to do.
@@ -101,7 +101,7 @@ enum JiraStatusCategory: String, Equatable {
 }
 
 /// One ticket as a card shows it.
-struct JiraIssue: Equatable, Identifiable {
+struct JiraIssue: Codable, Equatable, Identifiable {
     let key: String
     let summary: String
     let type: String?
@@ -125,7 +125,64 @@ struct JiraResult: Equatable {
     var issues: [JiraIssue] = []
     /// Shown in the query's section instead of cards; nil when Jira answered.
     var error: JiraError?
+    /// When Jira gave these tickets. For offline data: the last answer the cards come from.
     var checkedAt: Date?
+    /// The tickets are the last ones Jira gave — from the cache, or kept while Jira cannot be
+    /// reached. The panel marks them as offline data.
+    var offline = false
+    /// Jira has more tickets than one page (`maxResults`): the count reads "50+".
+    var more = false
+
+    /// The same tickets, the same error, the same marks: a new `checkedAt` alone is no change, so a
+    /// poll that brings the same tickets publishes nothing (AGENTS.md: equal writes stay no-ops).
+    func sameContent(as other: JiraResult?) -> Bool {
+        guard let other else { return false }
+        return issues == other.issues && error == other.error && offline == other.offline && more == other.more
+    }
+}
+
+/// The last tickets of each query, kept in `jira-cache.json` beside `state.json` so the panel has
+/// something to show without a connection and before the first answer after a launch. Only for
+/// the site, account and JQL they were asked with; anything else is not shown.
+struct JiraCache: Codable, Equatable {
+    struct Entry: Codable, Equatable {
+        var jql: String
+        var issues: [JiraIssue]
+        var answeredAt: Date
+        var more = false
+    }
+
+    var site = ""
+    var email = ""
+    var queries: [UUID: Entry] = [:]
+
+    /// What the panel keeps of its results: every query Jira answered, at the time of its last answer.
+    init(look: JiraLook, results: [UUID: JiraResult], answeredAt: [UUID: Date]) {
+        site = look.site
+        email = look.email
+        for query in look.queries {
+            guard let result = results[query.id], result.error == nil,
+                  let at = answeredAt[query.id] ?? result.checkedAt else { continue }
+            queries[query.id] = Entry(jql: query.jql, issues: result.issues, answeredAt: at, more: result.more)
+        }
+    }
+
+    init(site: String = "", email: String = "", queries: [UUID: Entry] = [:]) {
+        self.site = site
+        self.email = email
+        self.queries = queries
+    }
+
+    /// The cached tickets as offline results, for the queries that still ask the same thing.
+    func results(for look: JiraLook) -> [UUID: JiraResult] {
+        guard site == look.site, email == look.email else { return [:] }
+        var results: [UUID: JiraResult] = [:]
+        for query in look.queries {
+            guard let entry = queries[query.id], entry.jql == query.jql else { continue }
+            results[query.id] = JiraResult(issues: entry.issues, checkedAt: entry.answeredAt, offline: true, more: entry.more)
+        }
+        return results
+    }
 }
 
 /// Why a query has no answer. The panel says it in the user's language.
@@ -138,13 +195,15 @@ enum JiraError: Error, Equatable {
     case unreachable
     /// An answer that is not what the API documents.
     case unreadable
+    /// 400 without a reason in the body: Jira did not take the query.
+    case invalidQuery
 }
 
 enum JiraTickets {
     static let pollInterval: TimeInterval = 300
     static let minimumManualInterval: TimeInterval = 5
     static let maxResults = 50
-    static let fields = "summary,status,issuetype,priority,assignee,created"
+    static let fields = "summary,status,issuetype,priority,assignee,created,statuscategorychangedate"
 
     /// `myposter.atlassian.net`, `https://myposter.atlassian.net/jira/your-work` → the site's root
     /// over https. Nil for something that is not a host; plain http is refused (the token would go
@@ -224,7 +283,9 @@ enum JiraTickets {
     }
 
     /// The last change of the status in the history; a ticket that never moved has been where it
-    /// is since it was created.
+    /// is since it was created. Jira cuts the history a search embeds, so the newest status change
+    /// can be missing from it: the moment the ticket entered its status *category*
+    /// (`statuscategorychangedate`) is a floor — a status is never older than its category.
     static func statusSince(issue: [String: Any], fields: [String: Any]) -> Date? {
         let histories = (issue["changelog"] as? [String: Any])?["histories"] as? [[String: Any]] ?? []
         let changes = histories.compactMap { history -> Date? in
@@ -232,7 +293,27 @@ enum JiraTickets {
             guard items.contains(where: { ($0["field"] as? String) == "status" }) else { return nil }
             return (history["created"] as? String).flatMap(date)
         }
-        return changes.max() ?? (fields["created"] as? String).flatMap(date)
+        let category = (fields["statuscategorychangedate"] as? String).flatMap(date)
+        if let last = [changes.max(), category].compactMap({ $0 }).max() { return last }
+        return (fields["created"] as? String).flatMap(date)
+    }
+
+    /// The answer is one page of more: `isLast` is false, or there is a next page.
+    static func hasMore(_ data: Data) -> Bool {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return false }
+        if let isLast = root["isLast"] as? Bool { return !isLast }
+        return root["nextPageToken"] is String
+    }
+
+    /// A new answer over the last one. Jira out of reach keeps the last tickets, marked offline and
+    /// dated by the last answer; every other error replaces them (a wrong token or a broken query is
+    /// not "offline", and old cards would hide it).
+    static func merge(old: JiraResult?, new: JiraResult, lastAnswer: Date?) -> JiraResult {
+        guard new.error == .unreachable, let old, old.error == nil else { return new }
+        var kept = old
+        kept.offline = true
+        kept.checkedAt = lastAnswer ?? old.checkedAt
+        return kept
     }
 
     /// Jira's timestamps: `2026-11-10T09:12:33.123+0100`.
@@ -262,6 +343,6 @@ enum JiraTickets {
             }
             if !messages.isEmpty { return .rejected(messages.joined(separator: " ")) }
         }
-        return status == 400 ? .rejected("HTTP 400") : .unreachable
+        return status == 400 ? .invalidQuery : .unreachable
     }
 }

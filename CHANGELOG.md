@@ -22,7 +22,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   is open. Write your own JQL queries with + — each is a section of cards showing key, type,
   priority, title, status, assignee and the days in its status — and test them before saving. A click opens a ticket in the
   browser; right-click opens a terminal for it in a project you pick. The list refreshes every five
-  minutes.
+  minutes. Without a connection the panel keeps showing the last tickets, marked "Offline · as of"
+  the time Jira last answered. The ? in the panel shows how it all works, with a short animation,
+  when you point at it.
 
 ## [0.2.50] — 2026-11-10
 

@@ -43,7 +43,7 @@ struct FeatureHintContent {
 }
 
 /// A GIF that plays: `NSImageView` animates it by itself.
-private struct AnimatedImage: NSViewRepresentable {
+struct AnimatedImage: NSViewRepresentable {
     let image: NSImage
     let label: String
 

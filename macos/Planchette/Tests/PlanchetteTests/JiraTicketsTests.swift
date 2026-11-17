@@ -131,6 +131,117 @@ final class JiraTicketsTests: XCTestCase {
         XCTAssertEqual(JiraTickets.error(status: 503, data: Data()), .unreachable)
     }
 
+    func testABadQueryWithoutAReasonIsSaidInTheUsersLanguage() {
+        XCTAssertEqual(JiraTickets.error(status: 400, data: Data()), .invalidQuery)
+        XCTAssertEqual(JiraErrorText.of(.invalidQuery), L10n.t(.jiraErrorInvalidQuery))
+    }
+
+    // MARK: Pages and the days in a status
+
+    func testAnAnswerWithMoreThanOnePageSaysSo() {
+        XCTAssertTrue(JiraTickets.hasMore(Data(#"{"issues":[],"isLast":false,"nextPageToken":"x"}"#.utf8)))
+        XCTAssertFalse(JiraTickets.hasMore(Data(#"{"issues":[],"isLast":true}"#.utf8)))
+        XCTAssertTrue(JiraTickets.hasMore(Data(#"{"issues":[],"nextPageToken":"x"}"#.utf8)))
+        XCTAssertFalse(JiraTickets.hasMore(Data(#"{"issues":[]}"#.utf8)))
+    }
+
+    func testTheSearchAsksWhenTheStatusCategoryChanged() throws {
+        let request = JiraTickets.searchRequest(site: site, email: "e", token: "t", jql: "x")
+        let items = try XCTUnwrap(URLComponents(url: XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertTrue(items.first { $0.name == "fields" }?.value?.contains("statuscategorychangedate") == true)
+    }
+
+    func testACutHistoryFallsBackToTheCategoryChangeNotTheCreation() {
+        // The history Jira embedded ends before the last status change; the category moved later.
+        let issue: [String: Any] = ["changelog": ["histories": [
+            ["created": "2026-10-01T10:00:00.000+0000", "items": [["field": "status"]]],
+        ]]]
+        let fields: [String: Any] = ["created": "2026-09-01T10:00:00.000+0000",
+                                     "statuscategorychangedate": "2026-11-03T08:00:00.000+0000"]
+        XCTAssertEqual(JiraTickets.statusSince(issue: issue, fields: fields), JiraTickets.date("2026-11-03T08:00:00.000+0000"))
+        // A later status change inside the same category wins over the category's date.
+        let later: [String: Any] = ["changelog": ["histories": [
+            ["created": "2026-11-09T10:00:00.000+0000", "items": [["field": "status"]]],
+        ]]]
+        XCTAssertEqual(JiraTickets.statusSince(issue: later, fields: fields), JiraTickets.date("2026-11-09T10:00:00.000+0000"))
+    }
+
+    // MARK: Offline
+
+    private func ticket(_ key: String) -> JiraIssue {
+        JiraIssue(key: key, summary: "s", type: "Bug", priority: "High", status: "To Do",
+                  statusCategory: .todo, assignee: nil, statusSince: Date(timeIntervalSince1970: 1_000))
+    }
+
+    func testOutOfReachKeepsTheLastTicketsMarkedOffline() {
+        let answered = Date(timeIntervalSince1970: 5_000)
+        let old = JiraResult(issues: [ticket("A-1")], checkedAt: Date(timeIntervalSince1970: 4_000))
+        let merged = JiraTickets.merge(old: old, new: JiraResult(error: .unreachable, checkedAt: Date()), lastAnswer: answered)
+        XCTAssertEqual(merged.issues, [ticket("A-1")])
+        XCTAssertNil(merged.error)
+        XCTAssertTrue(merged.offline)
+        XCTAssertEqual(merged.checkedAt, answered)
+    }
+
+    func testOtherErrorsReplaceTheTicketsAndAnAnswerEndsOffline() {
+        let old = JiraResult(issues: [ticket("A-1")], checkedAt: Date(), offline: true)
+        for error in [JiraError.unauthorized, .rejected("bad"), .unreadable, .invalidQuery] {
+            XCTAssertEqual(JiraTickets.merge(old: old, new: JiraResult(error: error), lastAnswer: nil).error, error)
+        }
+        let fresh = JiraResult(issues: [ticket("A-2")], checkedAt: Date())
+        XCTAssertFalse(JiraTickets.merge(old: old, new: fresh, lastAnswer: nil).offline)
+        // Nothing to keep: out of reach is said as such.
+        XCTAssertEqual(JiraTickets.merge(old: nil, new: JiraResult(error: .unreachable), lastAnswer: nil).error, .unreachable)
+        XCTAssertEqual(JiraTickets.merge(old: JiraResult(error: .unauthorized), new: JiraResult(error: .unreachable),
+                                         lastAnswer: nil).error, .unreachable)
+    }
+
+    func testANewTimeWithTheSameTicketsIsNoChange() {
+        let a = JiraResult(issues: [ticket("A-1")], checkedAt: Date(timeIntervalSince1970: 1))
+        var b = a
+        b.checkedAt = Date(timeIntervalSince1970: 2)
+        XCTAssertTrue(a.sameContent(as: b))
+        b.offline = true
+        XCTAssertFalse(a.sameContent(as: b))
+        XCTAssertFalse(a.sameContent(as: nil))
+    }
+
+    func testTheCacheGivesBackOnlyWhatStillAsksTheSame() throws {
+        let kept = JiraQuery(name: "Mine", jql: "assignee = currentUser()")
+        var changed = JiraQuery(name: "Bugs", jql: "type = Bug")
+        let look = JiraLook(site: "x.atlassian.net", email: "me@x.de", queries: [kept, changed])
+        let at = Date(timeIntervalSince1970: 7_000)
+        let results = [kept.id: JiraResult(issues: [ticket("A-1")], checkedAt: at, more: true),
+                       changed.id: JiraResult(issues: [ticket("B-1")], checkedAt: at)]
+        let cache = JiraCache(look: look, results: results, answeredAt: [:])
+        let back = try JSONDecoder().decode(JiraCache.self, from: JSONEncoder().encode(cache))
+        XCTAssertEqual(back, cache)
+
+        changed.jql = "type = Bug AND priority = High"
+        var now = look
+        now.queries = [kept, changed]
+        let shown = back.results(for: now)
+        XCTAssertEqual(Set(shown.keys), [kept.id])
+        XCTAssertEqual(shown[kept.id]?.issues, [ticket("A-1")])
+        XCTAssertEqual(shown[kept.id]?.checkedAt, at)
+        XCTAssertEqual(shown[kept.id]?.offline, true)
+        XCTAssertEqual(shown[kept.id]?.more, true)
+
+        var otherSite = look
+        otherSite.site = "y.atlassian.net"
+        XCTAssertTrue(back.results(for: otherSite).isEmpty)
+        var otherAccount = look
+        otherAccount.email = "you@x.de"
+        XCTAssertTrue(back.results(for: otherAccount).isEmpty)
+    }
+
+    func testTheCacheKeepsNoErrors() {
+        let query = JiraQuery(name: "Mine", jql: "x")
+        let look = JiraLook(site: "x.atlassian.net", email: "me@x.de", queries: [query])
+        let cache = JiraCache(look: look, results: [query.id: JiraResult(error: .unauthorized, checkedAt: Date())], answeredAt: [:])
+        XCTAssertTrue(cache.queries.isEmpty)
+    }
+
     // MARK: State
 
     func testAWorkspaceFromBeforeHasBothPanelsOff() throws {

@@ -49,8 +49,11 @@ struct TerminalAreaView: View {
         let showsJira = appState.jiraEnabled && appState.jira.open
         return GeometryReader { geometry in
             let total = geometry.size.width
-            // Each panel is clamped in the room the other one leaves.
-            let jiraShown = showsJira ? (jiraWidth ?? JiraLook.clamped(width: appState.jira.width, in: total)) : 0
+            // Each panel is clamped in the room the other one leaves. Jira keeps the pad's minimum
+            // free when the pad is open, or a wide Jira would leave the pad and terminal nothing.
+            let padReserve = padSession == nil ? 0 : NotepadLook.minimumWidth
+            let jiraShown = showsJira
+                ? (jiraWidth ?? JiraLook.clamped(width: appState.jira.width, in: total - padReserve)) : 0
             let padRoom = total - jiraShown
             let padShown = padSession == nil ? 0
                 : (padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: padRoom))
