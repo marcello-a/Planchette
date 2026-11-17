@@ -303,6 +303,7 @@ enum LKey: String, CaseIterable {
     case reviewChecksPending, reviewChangedFiles, reviewDraft, reviewHelpRequested, reviewHelpReviewing
     case reviewHelpFindings, reviewHelpSent
     // The to-do board
+    case panelsSection, todosEnableTitle
     case todos, todosHelp, todoLaneQueued, todoLaneRunning, todoLaneWaiting, todoLaneDone, todoNewPlaceholder, todoDropHere, todoClearDone, todoBackToQueue, todoMoveRunning, todoMoveWaiting
     case todoMoveDone, todoEdit, todoAddNote, todoEditNote, todoAddLink, todoEditLink, todoRemoveNote, todoRemoveLink, todoNotePlaceholder, todoLinkPlaceholder, todoLinkTo, todoWholeProject
     case todoUnlink, todoOpenTerminal, todoOpenTerminalHelp, todoOpenLinkedHelp, todoDelete, todoDragTitle, todoDragHelp, todoLinkToHelp, todoNoteHelp
@@ -737,6 +738,8 @@ enum L10n {
         .mainTerminalHelp: "A main terminal carries a star and stays under its project, also while the project is folded.",
         // To-do board
         .todos: "To-dos",
+        .panelsSection: "Panels",
+        .todosEnableTitle: "To-do board",
         .todosHelp: "Your to-dos as a board: queued, running, waiting, done. A card can point at a project or a terminal.",
         .todoLaneQueued: "Queued",
         .todoLaneRunning: "Running",
@@ -1179,6 +1182,8 @@ enum L10n {
         .mainTerminalHelp: "Ein Hauptterminal trägt einen Stern und bleibt unter seinem Projekt sichtbar, auch wenn das Projekt eingeklappt ist.",
         // To-do board
         .todos: "To-dos",
+        .panelsSection: "Panels",
+        .todosEnableTitle: "To-do-Board",
         .todosHelp: "Deine To-dos als Board: offen, läuft, wartet, fertig. Eine Karte kann auf ein Projekt oder ein Terminal zeigen.",
         .todoLaneQueued: "Offen",
         .todoLaneRunning: "Läuft",
@@ -1621,6 +1626,8 @@ enum L10n {
         .mainTerminalHelp: "Un terminal principal porte une étoile et reste sous son projet, même quand le projet est replié.",
         // To-do board
         .todos: "À faire",
+        .panelsSection: "Panneaux",
+        .todosEnableTitle: "Tableau des tâches",
         .todosHelp: "Vos tâches en tableau : en file, en cours, en attente, terminées. Une carte peut pointer vers un projet ou un terminal.",
         .todoLaneQueued: "En file",
         .todoLaneRunning: "En cours",
@@ -2063,6 +2070,8 @@ enum L10n {
         .mainTerminalHelp: "Un terminal principal lleva una estrella y sigue bajo su proyecto, también cuando el proyecto está plegado.",
         // To-do board
         .todos: "Tareas",
+        .panelsSection: "Paneles",
+        .todosEnableTitle: "Tablero de tareas",
         .todosHelp: "Tus tareas como tablero: en cola, en marcha, en espera, hechas. Una tarjeta puede apuntar a un proyecto o a un terminal.",
         .todoLaneQueued: "En cola",
         .todoLaneRunning: "En marcha",
@@ -2505,6 +2514,8 @@ enum L10n {
         .mainTerminalHelp: "Un terminale principale porta una stella e resta sotto il suo progetto, anche quando il progetto è chiuso.",
         // To-do board
         .todos: "Da fare",
+        .panelsSection: "Pannelli",
+        .todosEnableTitle: "Bacheca attività",
         .todosHelp: "Le tue attività come bacheca: in coda, in corso, in attesa, fatte. Una scheda può puntare a un progetto o a un terminale.",
         .todoLaneQueued: "In coda",
         .todoLaneRunning: "In corso",
@@ -2947,6 +2958,8 @@ enum L10n {
         .mainTerminalHelp: "Een hoofdterminal draagt een ster en blijft onder zijn project staan, ook als het project is ingeklapt.",
         // To-do board
         .todos: "Taken",
+        .panelsSection: "Panelen",
+        .todosEnableTitle: "Takenbord",
         .todosHelp: "Je taken als bord: in de wachtrij, actief, wachtend, klaar. Een kaart kan naar een project of een terminal wijzen.",
         .todoLaneQueued: "Wachtrij",
         .todoLaneRunning: "Actief",
@@ -3389,6 +3402,8 @@ enum L10n {
         .mainTerminalHelp: "Um terminal principal tem uma estrela e fica sob o seu projeto, também quando o projeto está recolhido.",
         // To-do board
         .todos: "Tarefas",
+        .panelsSection: "Painéis",
+        .todosEnableTitle: "Quadro de tarefas",
         .todosHelp: "As tuas tarefas num quadro: em fila, em curso, à espera, concluídas. Um cartão pode apontar para um projeto ou um terminal.",
         .todoLaneQueued: "Em fila",
         .todoLaneRunning: "Em curso",

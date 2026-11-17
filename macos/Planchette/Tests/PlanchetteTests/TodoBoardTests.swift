@@ -141,6 +141,15 @@ final class TodoBoardTests: XCTestCase {
         XCTAssertTrue(state.todos.items.isEmpty)
     }
 
+    func testTheBoardIsOffByDefaultAndItsSwitchIsSaved() throws {
+        let old = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
+        XCTAssertFalse(old.todosEnabled)
+        var state = old
+        state.todosEnabled = true
+        let back = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state))
+        XCTAssertTrue(back.todosEnabled)
+    }
+
     func testAWindowFromBeforeTheBoardDoesNotShowIt() throws {
         let json = #"{"id": "\#(UUID().uuidString)"}"#
         let window = try JSONDecoder().decode(WindowModel.self, from: Data(json.utf8))

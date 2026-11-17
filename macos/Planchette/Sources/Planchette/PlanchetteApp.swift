@@ -198,6 +198,11 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Section(L10n.t(.panelsSection)) {
+                Toggle(L10n.t(.todosEnableTitle), isOn: $appState.todosEnabled)
+                    .help(L10n.t(.todosHelp))
+                    .accessibilityLabel(L10n.t(.todosEnableTitle))
+            }
             Section(L10n.t(.alphaSection)) {
                 Toggle(L10n.t(.reviewsEnableTitle), isOn: $appState.reviewsEnabled)
                     .help(L10n.t(.reviewsEnableHelp))
@@ -503,7 +508,7 @@ struct ContentView: View {
                     Group {
                         // The to-do board over everything; a selected folder shows
                         // what is inside it; otherwise the selected project's terminals.
-                        if window.showsTodos {
+                        if appState.todosEnabled && window.showsTodos {
                             TodoBoardView()
                         } else if let folderID = window.selectedFolderID,
                            let folder = window.folders.first(where: { $0.id == folderID }) {
@@ -571,8 +576,10 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private func toolbarContent(window: WindowModel) -> some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            TodoToolbarButton(windowID: window.id)
+        if appState.todosEnabled {
+            ToolbarItem(placement: .primaryAction) {
+                TodoToolbarButton(windowID: window.id)
+            }
         }
         if appState.reviewsEnabled {
             ToolbarItem(placement: .primaryAction) {

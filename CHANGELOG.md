@@ -15,7 +15,7 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   it, give it a note and a link (a Jira link shows its ticket key), and point it at a project or
   one of its terminals: the card then shows that terminal's live state, a click takes you there,
   and "Open a terminal for it" starts a new one in the project. Picking a project or terminal in
-  the sidebar leaves the board.
+  the sidebar leaves the board. Switch it on in Settings → General → Panels; it is off by default.
 
 ## [0.2.50] — 2026-11-10
 

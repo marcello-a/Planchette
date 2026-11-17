@@ -26,6 +26,19 @@ final class AppState: ObservableObject {
             updateReviewPolling()
         }
     }
+    /// Settings → General → Panels: the to-do board's toolbar button. Off by default; switching it
+    /// off closes an open board and keeps the cards.
+    @Published var todosEnabled = false {
+        didSet {
+            guard todosEnabled != oldValue else { return }
+            scheduleSave()
+            if !todosEnabled {
+                for window in windows where window.showsTodos {
+                    updateWindow(window.id) { $0.showsTodos = false }
+                }
+            }
+        }
+    }
     @Published var language: AppLanguage = .system {
         didSet {
             L10n.current = language
@@ -302,6 +315,7 @@ final class AppState: ObservableObject {
             notepad = saved.notepad
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
+            todosEnabled = saved.todosEnabled
             // Early too: a sessionless state starts fresh, which keeps the current board.
             todos = saved.todos
         } else if !FileManager.default.fileExists(atPath: Self.stateURL.path) {
@@ -3112,7 +3126,8 @@ final class AppState: ObservableObject {
             notepad: notepad,
             reviews: reviews,
             reviewsEnabled: reviewsEnabled,
-            todos: todos
+            todos: todos,
+            todosEnabled: todosEnabled
         )
         do {
             let encoder = JSONEncoder()
@@ -3207,6 +3222,7 @@ final class AppState: ObservableObject {
         }
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
+        todosEnabled = state.todosEnabled
         todos = state.todos
         todos.forget(groupsExcept: Set(state.groups.map(\.id)), sessionsExcept: Set(state.sessions.map(\.id)))
         notepadText = Dictionary(uniqueKeysWithValues: state.sessions.compactMap { session in
@@ -3336,6 +3352,8 @@ final class AppState: ObservableObject {
         notepadText = [:]
         notepadHistory = [:]
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
+        // The panels are settings: they outlive the workspace.
+        todosEnabled = previous?.todosEnabled ?? todosEnabled
         // The reviews outlive the workspace (they come from GitHub), but the
         // terminals and projects they pointed at are gone.
         reviews = reviews.mapValues { record in

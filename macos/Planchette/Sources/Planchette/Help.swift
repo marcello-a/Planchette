@@ -157,6 +157,7 @@ enum Help {
             Entry(.reviewSkillTitle, .reviewSkillHelp),
         ]),
         Section(titleKey: .todos, entries: [
+            Entry(.todosEnableTitle, .todosHelp, where: .helpWhereSettings),
             Entry(.todos, .todosHelp, where: .helpWhereToolbar),
             Entry(.todoDragTitle, .todoDragHelp),
             Entry(.todoAddNote, .todoNoteHelp, where: .helpWhereContextMenu),

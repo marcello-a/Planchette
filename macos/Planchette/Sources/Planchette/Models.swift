@@ -928,6 +928,8 @@ struct PersistedState: Codable {
     var reviewsEnabled = false
     /// The to-do board (`TodoBoard`).
     var todos = TodoBoard()
+    /// The to-do board's button (Settings): off by default, and for a state that never carried the key.
+    var todosEnabled = false
 
     init(
         groups: [SessionGroup],
@@ -954,7 +956,8 @@ struct PersistedState: Codable {
         notepad: NotepadLook = NotepadLook(),
         reviews: [String: ReviewRecord] = [:],
         reviewsEnabled: Bool = false,
-        todos: TodoBoard = TodoBoard()
+        todos: TodoBoard = TodoBoard(),
+        todosEnabled: Bool = false
     ) {
         self.durableDefaultApplied = durableDefaultApplied
         self.groups = groups
@@ -981,6 +984,7 @@ struct PersistedState: Codable {
         self.reviews = reviews
         self.reviewsEnabled = reviewsEnabled
         self.todos = todos
+        self.todosEnabled = todosEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -1024,5 +1028,6 @@ struct PersistedState: Codable {
         reviewsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .reviewsEnabled)) ?? false
         // The user's own list: a board a newer build wrote loses the cards it cannot read, not all.
         todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
+        todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
     }
 }
