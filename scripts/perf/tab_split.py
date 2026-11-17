@@ -72,6 +72,7 @@ class Instance:
         self.proc = None
         self.pid = None
         self.edit_state = None      # a function that changes the seeded state before it is written
+        self.extra_args = []        # more launch arguments (`-jiraFixture <file>`)
         self.disturbed = False      # somebody used the machine during the scenario
         self.last_input_end = 0.0   # when this script last sent an input
         self.user_pid = frontmost_pid()
@@ -146,7 +147,7 @@ class Instance:
         env = {k: v for k, v in os.environ.items() if not k.startswith("PLANCHETTE_")}
         env.update(PLANCHETTE_STATE_DIR=self.state_dir, GHOSTTY_RESOURCES_DIR=RESOURCES, ZDOTDIR=f"{self.root}/zdot")
         self.proc = subprocess.Popen(
-            [self.binary, "-ApplePersistenceIgnoreState", "YES", "-inboxShown", "NO"], env=env,
+            [self.binary, "-ApplePersistenceIgnoreState", "YES", "-inboxShown", "NO", *self.extra_args], env=env,
             stdout=open(f"{self.root}/app.log", "w"), stderr=subprocess.STDOUT, cwd="/")
         self.pid = self.proc.pid
         time.sleep(wait)

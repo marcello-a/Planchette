@@ -202,6 +202,16 @@ struct SettingsView: View {
                 Toggle(L10n.t(.todosEnableTitle), isOn: $appState.todosEnabled)
                     .help(L10n.t(.todosHelp))
                     .accessibilityLabel(L10n.t(.todosEnableTitle))
+                Toggle(L10n.t(.jiraEnableTitle), isOn: $appState.jiraEnabled)
+                    .help(L10n.t(.jiraHelp))
+                    .accessibilityLabel(L10n.t(.jiraEnableTitle))
+                    // Switched on by the user, with an account to show: the moment for the hint.
+                    .onChange(of: appState.jiraEnabled) { _, on in
+                        if on && appState.jira.hasAccount { appState.offerHint(.jira) }
+                    }
+                if appState.jiraEnabled {
+                    JiraAccountSettings()
+                }
             }
             Section(L10n.t(.alphaSection)) {
                 Toggle(L10n.t(.reviewsEnableTitle), isOn: $appState.reviewsEnabled)

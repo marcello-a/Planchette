@@ -14,6 +14,8 @@ struct TerminalAreaView: View {
     @State private var dropAtEnd = false
     /// The width of the notepad while its handle is being dragged (nil when it is not).
     @State private var padWidth: Double?
+    /// The width of the Jira panel while its handle is being dragged (nil when it is not).
+    @State private var jiraWidth: Double?
 
     var body: some View {
         let strip = appState.tabs(of: group)
@@ -43,16 +45,39 @@ struct TerminalAreaView: View {
         let padSession: TerminalSession? = appState.notepad.isOpen(for: focused)
             ? focused.flatMap { appState.sessions[$0] }
             : nil
+        // The Jira panel is the same for every terminal, and sits right of the pad.
+        let showsJira = appState.jiraEnabled && appState.jira.open
         return GeometryReader { geometry in
+            let total = geometry.size.width
+            // Each panel is clamped in the room the other one leaves. Jira keeps the pad's minimum
+            // free when the pad is open, or a wide Jira would leave the pad and terminal nothing.
+            let padReserve = padSession == nil ? 0 : NotepadLook.minimumWidth
+            let jiraShown = showsJira
+                ? (jiraWidth ?? JiraLook.clamped(width: appState.jira.width, in: total - padReserve)) : 0
+            let padRoom = total - jiraShown
+            let padShown = padSession == nil ? 0
+                : (padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: padRoom))
             HStack(spacing: 0) {
                 SplitTabView(tab: tab, group: group)
                 if let session = padSession {
-                    let width = padWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: geometry.size.width)
-                    NotepadResizeHandle(live: $padWidth, available: geometry.size.width)
+                    NotepadResizeHandle(
+                        live: $padWidth, stored: appState.notepad.width,
+                        clamp: { NotepadLook.clamped(width: $0, in: padRoom) },
+                        commit: { appState.notepad.width = $0 },
+                        label: .notepadResize)
                     NotepadPanel(session: session, text: appState.notepadText(for: session.id))
                         // One pad per terminal: another terminal is a new panel, with its own state.
                         .id(session.id)
-                        .frame(width: width)
+                        .frame(width: padShown)
+                }
+                if showsJira {
+                    NotepadResizeHandle(
+                        live: $jiraWidth, stored: appState.jira.width,
+                        clamp: { JiraLook.clamped(width: $0, in: total - padShown) },
+                        commit: { width in appState.updateJira { $0.width = width } },
+                        label: .jiraResize)
+                    JiraPanel()
+                        .frame(width: jiraShown)
                 }
             }
         }
@@ -111,6 +136,17 @@ struct TerminalAreaView: View {
             }
             .disabled(!strip.contains { $0.leaves.count > 1 })
             Divider().frame(height: 14).padding(.horizontal, 3)
+            if appState.jiraEnabled {
+                // No tooltip: pointing at it shows how the panel works instead (`jiraHelpOnHover`).
+                splitButton("ticket", help: nil, label: .jiraTitle) {
+                    appState.toggleJiraPanel()
+                }
+                .foregroundStyle(appState.jira.open ? Color.accentColor : Color.primary)
+                .accessibilityHint(L10n.t(.jiraHelp))
+                .jiraHelpOnHover()
+                .featureHint(.jira)
+                Divider().frame(height: 14).padding(.horizontal, 3)
+            }
             // The pad of the terminal this tab bar shows, and only of that one.
             let padOwner = current.flatMap { appState.paneToFocus(in: $0, groupID: group.id) }
             splitButton("note.text", help: .notepadHelp, label: .notepad) {
@@ -123,7 +159,7 @@ struct TerminalAreaView: View {
     }
 
     private func splitButton(
-        _ symbol: String, help: LKey, label: LKey, action: @escaping () -> Void
+        _ symbol: String, help: LKey?, label: LKey, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -132,7 +168,7 @@ struct TerminalAreaView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(L10n.t(help))
+        .help(help.map { L10n.t($0) } ?? "")
         .accessibilityLabel(L10n.t(label))
     }
 

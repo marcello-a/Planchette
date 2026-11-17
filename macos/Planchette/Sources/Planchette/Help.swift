@@ -165,6 +165,16 @@ enum Help {
             Entry(.todoOpenTerminal, .todoOpenTerminalHelp, where: .helpWhereContextMenu),
             Entry(.todoClearDone),
         ]),
+        Section(titleKey: .jiraTitle, entries: [
+            Entry(.jiraEnableTitle, .jiraHelp, where: .helpWhereSettings),
+            Entry(.jiraToken, .jiraTokenHelp, where: .helpWhereSettings),
+            Entry(.jiraTitle, .jiraHelp, where: .helpWhereTabBar),
+            Entry(.jiraAddQuery, .jiraQueriesHelp),
+            Entry(.jiraOpenInBrowser, .jiraCardHelp),
+            Entry(.jiraOpenTerminalIn, .jiraOpenTerminalHelp, where: .helpWhereContextMenu),
+            Entry(.jiraHowTitle, .jiraHowStep1),
+            Entry(.jiraHow, .jiraHowStep4),
+        ]),
         Section(titleKey: .helpSectionWindows, entries: [
             Entry(.quickSwitcher, .quickSwitcherHelp, shortcut: "⌘K"),
             Entry(.nextTab, nil, shortcut: "⌃⇥  ⌥⌘→", where: .helpWhereMenuBar),

@@ -116,6 +116,24 @@ the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the
 typed. The body size follows the width of the pad (`bodySize(forWidth:)`, 12–14 pt), and headline
 scale is damped when the pad is narrow.
 
+**The Jira panel** (`JiraTickets.swift`, `Jira.swift`, `Keychain.swift`, `Views/JiraPanel.swift`). One
+panel for the whole app, right of the tab and of the notepad, switched on in Settings (off by default,
+like the to-do board's button: `todosEnabled`, `jiraEnabled`). `JiraLook` (site, e-mail, the saved JQL
+queries, open, width) is persisted as `PersistedState.jira`; the API token is in the login Keychain
+(`Keychain`, service `app.planchette.jira`), never in `state.json`, and an isolated instance touches
+neither the Keychain nor Jira. `JiraTickets` is the pure part: the site normalised to https, the
+`/rest/api/3/search/jql` request (a `+` in the JQL is escaped, or Jira reads a space), the parse and the
+errors. `Jira.swift` polls every five minutes and when the panel opens, single-flight, on its own
+`URLSession` that follows a redirect only on the same host (the token is in the header). The answers
+(`jiraResults`) are not in `state.json`: the last answer of each query is kept in `jira-cache.json`
+beside it (`JiraCache`, only for the site, e-mail and JQL it was asked with) and shown as offline data
+after a launch and while Jira cannot be reached (`JiraTickets.merge`: out of reach keeps the last
+tickets, every other error replaces them). Switching the panel off or changing the site or e-mail
+drops the cache. A poll that brings the same tickets publishes nothing (`JiraResult.sameContent`).
+`AppState.init` calls `updateJiraPolling()` itself, since Swift runs no `didSet` there. The query editor's fields set `jiraEditing`, which keeps
+`focusIfActive` from taking the keyboard back, and carry no Return/Esc shortcuts: a window-wide one
+would take those keys from the terminal.
+
 **The name of a tab** is the name of one terminal of it, kept in `SessionGroup.tabAnchors` (one per
 tab) — not of the terminal that has the keyboard, which would rename the tab every time a pane is
 clicked or a terminal is dropped into it. `TabStrip.speaker` answers the stored one, else the

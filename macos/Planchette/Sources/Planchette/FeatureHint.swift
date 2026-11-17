@@ -7,6 +7,7 @@ import Foundation
 enum FeatureHint: String, CaseIterable, Codable {
     case notepad
     case reviews
+    case jira
 
     /// The picture: `hints/<name>.gif` in the repository, `Contents/Resources/hints` in the app.
     var mediaName: String { rawValue }

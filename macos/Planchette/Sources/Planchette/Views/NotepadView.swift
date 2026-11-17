@@ -205,10 +205,15 @@ struct NotepadPanel: View {
 /// The drag handle between the terminal and the pad. The width follows the pointer while it is
 /// down and is stored when it is let go: a stored change redraws the window, a drag should not.
 struct NotepadResizeHandle: View {
-    @EnvironmentObject var appState: AppState
-    /// The width the pad has now, as drawn.
+    /// The width the panel has now, as drawn.
     @Binding var live: Double?
-    let available: Double
+    /// The width it was left at.
+    let stored: Double
+    /// The width a drag may give it.
+    let clamp: (Double) -> Double
+    /// Called once, at the end of the drag.
+    let commit: (Double) -> Void
+    let label: LKey
     @State private var startWidth: Double?
 
     var body: some View {
@@ -223,18 +228,18 @@ struct NotepadResizeHandle: View {
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { drag in
-                        let start = startWidth ?? NotepadLook.clamped(width: appState.notepad.width, in: available)
+                        let start = startWidth ?? clamp(stored)
                         startWidth = start
-                        // Dragging left makes the pad wider.
-                        live = NotepadLook.clamped(width: start - drag.translation.width, in: available)
+                        // Dragging left makes the panel wider.
+                        live = clamp(start - drag.translation.width)
                     }
                     .onEnded { _ in
-                        if let live { appState.notepad.width = live }
+                        if let live { commit(live) }
                         startWidth = nil
                         live = nil
                     }
             )
-            .accessibilityLabel(L10n.t(.notepadResize))
+            .accessibilityLabel(L10n.t(label))
     }
 }
 
