@@ -2651,6 +2651,24 @@ final class AppState: ObservableObject {
         gitMayHaveChanged()
     }
 
+    /// The tmux client of a durable terminal ended. When its session ended with it (`exit`,
+    /// the shell gone), the terminal closes now, as a plain one does — instead of waiting on
+    /// "Press any key" in its old state. A session that lives on keeps its terminal (see
+    /// `Durable.sessionEnded`). tmux is asked off the main thread: it can be slow.
+    func durableClientExited(_ id: UUID) {
+        guard sessions[id]?.durable == true else { return }
+        let screen = TerminalRegistry.shared.existingView(id)?.readViewport()
+        Task.detached {
+            let listed = Durable.listSessions()
+            await MainActor.run { [weak self] in
+                guard let self, self.sessions[id] != nil,
+                      Durable.sessionEnded(id, screen: screen, listed: listed)
+                else { return }
+                self.closeSession(id)
+            }
+        }
+    }
+
     private func setState(_ id: UUID, _ requested: AttentionState, message: String? = nil, settle: Bool = true) {
         // A turn that ended while the terminal still runs a shell or an agent in the background is
         // not done, and an idle prompt on its screen is not "free": the terminal keeps showing what
@@ -3447,6 +3465,10 @@ final class AppState: ObservableObject {
             let value = note.userInfo?["value"] as? Int
             let needle = note.userInfo?["needle"] as? String
             Task { @MainActor in self?.applySearchEvent(event, for: id, value: value, needle: needle) }
+        }
+        center.addObserver(forName: .planchetteSurfaceProcessExited, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["sessionID"] as? UUID else { return }
+            Task { @MainActor in self?.durableClientExited(id) }
         }
         center.addObserver(forName: .planchetteCommandFinished, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID,

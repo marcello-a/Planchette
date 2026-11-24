@@ -67,7 +67,7 @@ groups terminals by project. See [README.md](README.md) and
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `BackgroundTasks.swift` | The shells and agents Claude Code runs in the background, read off its hooks (pure, unit-tested) |
-| `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill) |
+| `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill), the zsh shim that reports where commands end, and when a session ended |
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `ReviewRequests.swift` | The Reviews mode, pure and unit-tested: the GitHub query and its parse, how a poll merges into the records (`ReviewRecord`, `ReviewStage`), why a checkout is busy and how the free ones rank, the preselection and the verdict, and the three files shared with the `review-pr` skill (`findings.json`, `decisions.json`, `sent.json`) |
 | `ReviewSkill.swift` | The default `review-pr` skill (`skills/review-pr`, bundled by `package.sh`): installed into `~/.claude/skills/review-pr` at a review's start when no skill is there, refreshed while its `.planchette-default` marker is there, never written without it. Pure plan, unit-tested; never touches `~/.claude` from an isolated instance |
@@ -125,10 +125,20 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   live but that was killed (no `SessionEnd` comes): `commandFinished` ends that session
   and sets the state the exit code names. An agent in the foreground keeps the shell
   from printing a prompt, so there is no overlap to protect. tmux does not forward
-  OSC 133 (`allow-passthrough` only carries wrapped sequences), so a durable terminal
-  never hears of its commands' results. A restart ends the processes a saved
+  OSC 133 (`allow-passthrough` only carries wrapped sequences), and Ghostty's own
+  integration never loads in a shell tmux started — so a durable zsh starts with
+  `ZDOTDIR` pointed at `Durable.zshenvContents`, which puts the user's `ZDOTDIR` back
+  first and adds a first-in-line precmd and a preexec that write `C` and `D;<status>`
+  wrapped for tmux. Ghostty reports a `D` only after a `C`. Other shells still never
+  hear of their commands' results. A restart ends the processes a saved
   `running`/`waiting` described: `AttentionState.afterRestart` frees them, except a
   durable agent that is still alive in tmux.
+- **A durable terminal closes when its session ends, not when its client does.**
+  libghostty turns on "wait after command" for every surface given a command, and a
+  durable one runs `tmux`: after `exit` it waited on "Press any key" in its old state.
+  `SHOW_CHILD_EXITED` now asks `Durable.sessionEnded`: tmux's last word on the screen
+  must be `[exited]` and tmux must have answered without the session. `[detached]` (a
+  restore took it over), `[lost server]` (restore replays it) and no answer keep it.
 - **Three hook events do not mean what their names suggest.** `SubagentStop`
   fires while the main agent keeps working, so it must not report a finished
   turn; `PreToolUse`/`PostToolUse` are installed only because granting a

@@ -1048,6 +1048,7 @@ final class TerminalRegistry {
             // Before the first attach: the server picks this up when it starts,
             // and an app update's settings need it on disk by then.
             Durable.writeConfigIfNeeded()
+            Durable.writeZshenvIfNeeded()
             let name = Durable.sessionName(for: session.id)
             // Answered from the batch `applyRestore` resolved off-main, never by
             // asking tmux here: this runs on the main thread, once per terminal,
@@ -1059,9 +1060,16 @@ final class TerminalRegistry {
             // tmux session can match.
             reattachingToLiveAgent =
                 appState.isRestoring && appState.restoreLiveDurableIDs.contains(session.id)
+            // The shell's own hooks tell us where a command ends: tmux keeps OSC 133 to itself
+            // (see `Durable.zshenvContents`). Applied when the session is created only.
+            let processEnvironment = ProcessInfo.processInfo.environment
             command = Durable.attachCommand(
                 tmux: tmux, session: name,
-                environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id))
+                environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id)
+                    + Durable.shellMarksEnvironment(
+                        shell: processEnvironment["SHELL"],
+                        userZDOTDIR: processEnvironment["ZDOTDIR"],
+                        zshDirectory: Durable.zshDirectory.path))
         }
 
         // A reopened terminal (⌃⌘T) brings what it types first: its startup command, `claude --resume`.
