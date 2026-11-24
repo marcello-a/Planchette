@@ -22,16 +22,23 @@ enum HookInstaller {
     /// fires no event of its own, so they are the only proof that the turn moved
     /// on. Without them a terminal you have already answered keeps showing
     /// "waiting" until the whole turn ends (see `AttentionState.forHookEvent`).
+    ///
+    /// `StopFailure` is the end of a turn that died on an API error, which `Stop` never
+    /// reports; `PostToolUseFailure` and `PermissionDenied` end a tool call the way
+    /// `PostToolUse` does, for a call that failed or was refused.
     static let events = [
         "SessionStart", "UserPromptSubmit", "Notification",
         "PermissionRequest", "PreToolUse", "PostToolUse",
-        "Stop", "SubagentStop", "SessionEnd",
+        "PostToolUseFailure", "PermissionDenied",
+        "Stop", "StopFailure", "SubagentStop", "SessionEnd",
     ]
 
     /// Events whose config entries are per tool. `*` is Claude Code's "every
     /// tool" matcher — stated rather than omitted, so the entry reads the same as
     /// the ones a user writes by hand.
-    static let toolEvents: Set<String> = ["PreToolUse", "PostToolUse"]
+    static let toolEvents: Set<String> = [
+        "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
+    ]
 
     /// Codex fires the same event names, but only `SessionStart` is worth
     /// installing — see the note above.

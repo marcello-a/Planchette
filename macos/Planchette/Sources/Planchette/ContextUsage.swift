@@ -110,6 +110,22 @@ struct TranscriptUsage: Equatable {
 struct TranscriptScan: Equatable {
     var usage: TranscriptUsage?
     var title: String?
+    /// The `/rename` name. Written once, so the 512 KB window loses it as the
+    /// session goes on: the sweep carries it over from the last reading of the
+    /// same transcript (`keepingRename(of:)`).
+    var customTitle: String?
+
+    /// What the sidebar calls the conversation: your name for it, else Claude's.
+    var displayTitle: String? { customTitle ?? title }
+
+    /// This reading, with the `/rename` name of an earlier reading of the same file
+    /// when this one no longer sees it.
+    func keepingRename(of earlier: TranscriptScan?) -> TranscriptScan {
+        guard customTitle == nil, let kept = earlier?.customTitle else { return self }
+        var scan = self
+        scan.customTitle = kept
+        return scan
+    }
 }
 
 enum ContextUsageReader {
@@ -170,7 +186,8 @@ enum ContextUsageReader {
         guard let data = try? handle.readToEnd() else { return TranscriptScan() }
         let text = String(decoding: data, as: UTF8.self)
         return TranscriptScan(usage: latest(inJSONL: text[...]),
-                              title: AgentTitle.latest(inJSONL: text[...]))
+                              title: AgentTitle.latest(inJSONL: text[...]),
+                              customTitle: AgentTitle.latestCustom(inJSONL: text[...]))
     }
 }
 

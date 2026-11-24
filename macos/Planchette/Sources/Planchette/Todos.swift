@@ -34,6 +34,15 @@ enum TodoLane: String, Codable, CaseIterable {
     }
 }
 
+/// When a card moves to `done` on its own (Settings → General → Panels). Off by default.
+enum TodoAutoDone: String, Codable, CaseIterable {
+    case never
+    /// The PR of the card's terminal, or the PR its link names, was merged.
+    case prMerged
+    /// The card's terminal was closed.
+    case terminalClosed
+}
+
 struct TodoItem: Identifiable, Codable, Equatable {
     let id: UUID
     var text: String
@@ -47,6 +56,9 @@ struct TodoItem: Identifiable, Codable, Equatable {
     var createdAt: Date
     /// When the card last entered `done`; cleared when it leaves.
     var doneAt: Date?
+    /// The merged PR (its URL) that moved the card to `done`. Once per PR: a card you take
+    /// back out of `done` stays out while that PR is all there is.
+    var autoDoneFor: String?
 
     init(id: UUID = UUID(), text: String, lane: TodoLane = .queued, createdAt: Date = Date()) {
         self.id = id
@@ -67,6 +79,7 @@ struct TodoItem: Identifiable, Codable, Equatable {
         sessionID = try c.decodeIfPresent(UUID.self, forKey: .sessionID)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         doneAt = try c.decodeIfPresent(Date.self, forKey: .doneAt)
+        autoDoneFor = try? c.decodeIfPresent(String.self, forKey: .autoDoneFor)
     }
 }
 
@@ -128,6 +141,41 @@ struct TodoBoard: Codable, Equatable {
 
     mutating func clearDone() {
         items.removeAll { $0.lane == .done }
+    }
+
+    /// `TodoAutoDone.prMerged`: every open card whose PR was merged moves to `done`. A card's PR
+    /// is the PR of its terminal's branch, else the PR its link names — among the PRs Planchette
+    /// knows, which are the PRs of the open terminals (`prs`, by terminal). Each PR moves a card
+    /// once (`autoDoneFor`).
+    mutating func finishMerged(prs: [UUID: PullRequest], now: Date = Date()) {
+        let merged = prs.filter { $0.value.status == .merged }
+        guard !merged.isEmpty else { return }
+        let mergedURLs = Set(merged.values.map { Self.normalizedPRLink($0.url.absoluteString) })
+        for item in items where item.lane != .done {
+            let url = item.sessionID.flatMap { merged[$0]?.url.absoluteString }.map(Self.normalizedPRLink)
+                ?? item.link.map(Self.normalizedPRLink).flatMap { mergedURLs.contains($0) ? $0 : nil }
+            guard let url, item.autoDoneFor != url else { continue }
+            move(item.id, to: .done, now: now)
+            update(item.id) { $0.autoDoneFor = url }
+        }
+    }
+
+    /// `TodoAutoDone.terminalClosed`: the open cards of a terminal that was closed move to `done`.
+    mutating func finishCards(ofClosedTerminal id: UUID, now: Date = Date()) {
+        for item in items where item.sessionID == id && item.lane != .done {
+            move(item.id, to: .done, now: now)
+        }
+    }
+
+    /// A PR link as one spelling: no trailing slash, no `/files` or `/commits` tab, no query.
+    static func normalizedPRLink(_ link: String) -> String {
+        var text = link.trimmingCharacters(in: .whitespaces)
+        if let cut = text.firstIndex(where: { $0 == "?" || $0 == "#" }) { text = String(text[..<cut]) }
+        while text.hasSuffix("/") { text.removeLast() }
+        if let range = text.range(of: #"/pull/\d+"#, options: .regularExpression) {
+            text = String(text[..<range.upperBound])
+        }
+        return text.lowercased()
     }
 
     /// Links to projects and terminals that are gone are dropped; a card whose terminal closed

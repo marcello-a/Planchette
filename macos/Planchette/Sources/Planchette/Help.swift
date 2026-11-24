@@ -158,6 +158,7 @@ enum Help {
         ]),
         Section(titleKey: .todos, entries: [
             Entry(.todosEnableTitle, .todosHelp, where: .helpWhereSettings),
+            Entry(.todoAutoDoneTitle, .todoAutoDoneHelp, where: .helpWhereSettings),
             Entry(.todos, .todosHelp, where: .helpWhereToolbar),
             Entry(.todoDragTitle, .todoDragHelp),
             Entry(.todoAddNote, .todoNoteHelp, where: .helpWhereContextMenu),

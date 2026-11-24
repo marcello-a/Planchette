@@ -1687,6 +1687,11 @@ final class StatusColorTests: XCTestCase {
             // permission you already granted.
             ("PreToolUse", nil, .running),
             ("PostToolUse", nil, .running),
+            // A tool call that failed or was refused moves the turn on too.
+            ("PostToolUseFailure", nil, .running),
+            ("PermissionDenied", nil, .running),
+            // A turn that died on an API error waits for you, in red.
+            ("StopFailure", nil, .error),
             ("SessionEnd", nil, .free),
             // SessionEnd frees the terminal whatever the reason.
             ("SessionEnd", "clear", .free),

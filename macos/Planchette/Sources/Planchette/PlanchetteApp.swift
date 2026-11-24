@@ -202,6 +202,15 @@ struct SettingsView: View {
                 Toggle(L10n.t(.todosEnableTitle), isOn: $appState.todosEnabled)
                     .help(L10n.t(.todosHelp))
                     .accessibilityLabel(L10n.t(.todosEnableTitle))
+                if appState.todosEnabled {
+                    Picker(L10n.t(.todoAutoDoneTitle), selection: $appState.todoAutoDone) {
+                        Text(L10n.t(.todoAutoDoneNever)).tag(TodoAutoDone.never)
+                        Text(L10n.t(.todoAutoDonePRMerged)).tag(TodoAutoDone.prMerged)
+                        Text(L10n.t(.todoAutoDoneTerminalClosed)).tag(TodoAutoDone.terminalClosed)
+                    }
+                    .help(L10n.t(.todoAutoDoneHelp))
+                    .accessibilityLabel(L10n.t(.todoAutoDoneTitle))
+                }
                 Toggle(L10n.t(.jiraEnableTitle), isOn: $appState.jiraEnabled)
                     .help(L10n.t(.jiraHelp))
                     .accessibilityLabel(L10n.t(.jiraEnableTitle))
