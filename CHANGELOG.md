@@ -36,6 +36,15 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **A durable terminal shows at once how a command ended.** Ctrl+C, a failed build or a dev
   server that stopped now changes the icon right away, as in a plain terminal. Before, tmux kept
   this signal to itself. Works in zsh, in durable terminals opened after this update.
+- **The notifications panel no longer lists free terminals.** With "Only active" off, the panel
+  listed every terminal, also the free ones with nothing to report. It now lists only terminals
+  with news: questions, errors, results and, as before, running ones. `notification list` follows.
+- **The notifications filters explain themselves.** Each checkbox, and the unread count, has a
+  tooltip: what it is for, what it includes and what it leaves out. "Show running" shows its
+  tooltip also while it is greyed out.
+- **The project panel lines up again.** A selected project of one terminal at the top level now
+  sits inside its highlight, with the same margin left and right. The tree lines meet the middle
+  of the sprite or arrow they point to.
 - **`exit` closes a durable terminal at once.** It no longer stays in the sidebar in its old state
   until a key is pressed on "Process exited".
 

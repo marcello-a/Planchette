@@ -53,6 +53,7 @@ struct AttentionPanel: View {
                             .padding(.horizontal, 5).padding(.vertical, 1)
                             .background(Color.accentColor.opacity(0.18), in: Capsule())
                             .foregroundStyle(Color.accentColor)
+                            .help(L10n.t(.unreadCountHelp))
                     }
                     Spacer()
                     Button {
@@ -102,7 +103,8 @@ struct AttentionPanel: View {
     }
 
     /// The three checkboxes. "Show running" only means something while "Only active" is ticked:
-    /// without it the list holds everything, running terminals included — it dims, but stays in reach.
+    /// without it the list holds every terminal that is not free, running ones included — it dims,
+    /// but stays in reach.
     @ViewBuilder
     private var filters: some View {
         Toggle(L10n.t(.onlyUnread), isOn: $onlyUnread)
@@ -113,11 +115,17 @@ struct AttentionPanel: View {
             .toggleStyle(.checkbox)
             .font(.caption)
             .help(L10n.t(.onlyActiveHelp))
-        Toggle(L10n.t(.includeRunning), isOn: $includeRunning)
-            .toggleStyle(.checkbox)
-            .font(.caption)
-            .help(L10n.t(.includeRunningHelp))
-            .disabled(!onlyActive)
+        // macOS shows no tooltip on a disabled control, and this one is disabled until "Only
+        // active" is ticked — the moment its tooltip is wanted most. The tooltip sits on a
+        // container that stays enabled.
+        HStack(spacing: 0) {
+            Toggle(L10n.t(.includeRunning), isOn: $includeRunning)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .disabled(!onlyActive)
+        }
+        .contentShape(Rectangle())
+        .help(L10n.t(.includeRunningHelp))
     }
 
     // MARK: Project section header
