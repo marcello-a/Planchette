@@ -95,8 +95,21 @@ PLIST
 # Ad-hoc signing must succeed: Apple Silicon SIGKILLs an unsigned arm64 binary
 # at exec, so a build that skipped signing would ship an app that cannot launch.
 # Fail the build rather than publish it.
-codesign --force --deep --sign - "$APP" || {
+#
+# The designated requirement is pinned to the bundle identifier. Left to itself,
+# an ad-hoc signature's requirement is the cdhash of this exact build, and macOS
+# keys every privacy answer (Documents, Desktop, Downloads, network volumes, ...)
+# on that requirement: each update became a new app, and every terminal asked for
+# its folders again. With the identifier, an answer survives updates. The price:
+# any ad-hoc app that claims this identifier matches too — only a Developer ID
+# signature (team-bound requirement) closes that. No --deep: the bundle has no
+# nested code, and --deep would stamp this requirement on any that is added.
+codesign --force --sign - -r="designated => identifier \"$BUNDLE_ID\"" "$APP" || {
     echo "codesign failed — refusing to package an unsigned bundle" >&2
+    exit 1
+}
+codesign -d -r- "$APP" 2>&1 | grep -qF "designated => identifier \"$BUNDLE_ID\"" || {
+    echo "codesign did not pin the designated requirement — every update would ask for permissions again" >&2
     exit 1
 }
 

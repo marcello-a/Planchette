@@ -8,6 +8,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **macOS stops asking for folder access after every update.** Each update looked like a new app
+  to macOS, so the terminals asked again for Documents, Desktop, Downloads and other protected
+  places. Planchette now keeps the same identity across updates, and your "Allow" stays. You answer
+  once more after this update, and then no more.
+
 ## [0.2.51] — 2026-11-17
 
 ### Added

@@ -175,6 +175,12 @@ The app is ad-hoc signed (runs locally). Distributing to other machines needs a
 Developer ID identity + notarization — replace the `codesign` line in
 `scripts/package.sh`.
 
+The ad-hoc signature carries a designated requirement pinned to the bundle identifier
+(`designated => identifier "build.planchette.app"`), and `package.sh` fails the build
+without it. Do not drop it: macOS stores every privacy answer (Documents, Desktop,
+Downloads, network volumes, …) against that requirement. The default ad-hoc requirement
+is the cdhash of one build, so each update made macOS ask for every folder again.
+
 ## Releasing (versioning)
 
 Releases are cut from the default branch and drive the in-app updater.

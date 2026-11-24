@@ -484,6 +484,10 @@ into a live TUI would `cat` a stale snapshot over it and start a second agent.
 
 `scripts/package.sh` builds a release binary, assembles `Planchette.app`
 (Info.plist, icon, bundled Ghostty resources, ad-hoc codesign) and a `.dmg`.
+The ad-hoc signature's designated requirement is pinned to the bundle identifier,
+not left at the default cdhash: macOS keys its privacy answers (folder access of the
+shells Planchette starts) on that requirement, and a cdhash changes with every build,
+so each update asked for every folder again.
 `scripts/release.sh X.Y.Z` tags `vX.Y.Z` on the default branch and publishes a
 GitHub Release with the DMG. `UpdateService` polls `/releases/latest`, compares
 the tag to the running `CFBundleShortVersionString` with `Semver`, and offers
