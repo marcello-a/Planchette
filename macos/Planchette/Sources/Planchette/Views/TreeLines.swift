@@ -28,6 +28,8 @@ enum TreeLines {
         /// Its parent is where you are: the selected folder or project, or the folder holding the
         /// selected project. Such a line is drawn in full, the others step back.
         var focused = false
+        /// Where the stub meets the row: the middle of its first line (`stubY`, `mergedStubY`).
+        var stubY: CGFloat = TreeLines.stubY
     }
 
     /// The folder's slice of a row that belongs to project `index` of `count` in it: the project
@@ -48,8 +50,12 @@ enum TreeLines {
     // the middle of the parent's disclosure arrow, and the stub stops short of the child.
     static func x(_ column: Column) -> CGFloat { column == .folder ? 18 : 32 }
     static func stubEnd(_ column: Column) -> CGFloat { column == .folder ? 24 : 50 }
-    /// The stub meets a child's first line, not the middle of a row that may be three lines high.
-    static let stubY: CGFloat = 13
+    /// The stub meets a child's first line, not the middle of a row that may be three lines high:
+    /// the middle of a project's arrow, of a terminal's sprite. Measured on the rendered sidebar.
+    static let stubY: CGFloat = 14.5
+    /// The same for a project of one terminal (`mergedRow`): its box pads the row 3 points and its
+    /// sprite 2 more, so its first line stands lower than a project label's.
+    static let mergedStubY: CGFloat = 16.5
 
     /// How strong a line is drawn: 1 in focus; about a third elsewhere. A grey line without a
     /// colour of its own is a little lighter still, in both states.
@@ -72,7 +78,7 @@ struct TreeLinesSlice: View {
         Canvas { context, size in
             for line in lines {
                 let x = TreeLines.x(line.column), end = TreeLines.stubEnd(line.column)
-                let y = min(TreeLines.stubY, size.height / 2)
+                let y = min(line.stubY, size.height / 2)
                 var path = Path()
                 switch line.kind {
                 case .start:

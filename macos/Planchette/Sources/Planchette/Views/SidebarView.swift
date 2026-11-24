@@ -697,9 +697,11 @@ struct SidebarView: View {
         /// The folder is selected or holds the selected project: its line is drawn in full.
         var focused = false
 
-        func line(isProjectRow: Bool) -> [TreeLines.Line] {
+        /// `merged`: the project row is a project of one terminal, whose first line stands lower.
+        func line(isProjectRow: Bool, merged: Bool = false) -> [TreeLines.Line] {
             TreeLines.folderLine(index: index, of: count, isProjectRow: isProjectRow)
-                .map { [TreeLines.Line(column: .folder, kind: $0, color: color, focused: focused)] } ?? []
+                .map { [TreeLines.Line(column: .folder, kind: $0, color: color, focused: focused,
+                                       stubY: merged ? TreeLines.mergedStubY : TreeLines.stubY)] } ?? []
         }
     }
 
@@ -766,8 +768,9 @@ struct SidebarView: View {
             // A project of one terminal is one row (Settings → Project panel → Layout): the
             // project row and the terminal row said the same thing twice.
             if appState.sidebarDetails.merges(terminalCount: sessions.count), let session = sessions.first {
-                mergedRow(group, session: session)
-                    .listRowBackground(TreeRowBackground(folder: folder, lines: folder?.line(isProjectRow: true) ?? []))
+                mergedRow(group, session: session, inFolder: folder != nil)
+                    .listRowBackground(TreeRowBackground(folder: folder,
+                                                         lines: folder?.line(isProjectRow: true, merged: true) ?? []))
             } else {
                 projectGroup(group, sessions: sessions, inFolder: folder)
             }
@@ -812,6 +815,9 @@ struct SidebarView: View {
 
     /// How far a disclosure row's label sits right of a plain row's start: the arrow's column.
     static let disclosureIndent: CGFloat = 17
+    /// How far a top-level project of one terminal is pulled left: its box then keeps 6 points to
+    /// the List's selection on the left, as it does on the right. Measured on the rendered sidebar.
+    static let topLevelMergedPull: CGFloat = 9
 
     /// The project you are in: its tree line is drawn in full.
     private func isFocused(_ group: SessionGroup) -> Bool {
@@ -821,7 +827,7 @@ struct SidebarView: View {
 
     /// A project and its one terminal as one row. A click opens the terminal, a drag moves the
     /// project, the active terminal is outlined in its state colour — what the two rows did.
-    private func mergedRow(_ group: SessionGroup, session: TerminalSession) -> some View {
+    private func mergedRow(_ group: SessionGroup, session: TerminalSession, inFolder: Bool) -> some View {
         let isActive = showsTerminals(of: group) && session.id == group.activeSessionID
         var facts = MergedRowFacts(group: group, session: session, state: appState)
         // The project's colour as the dot when the terminal has none of its own: the wash
@@ -840,7 +846,10 @@ struct SidebarView: View {
         // A plain row starts where a project's NAME starts, one step right of its disclosure
         // arrow — which read as a terminal of the project above. Pulled into the arrow's
         // column, it stands beside the other projects, the sprite where their arrow is.
-        .padding(.leading, -Self.disclosureIndent)
+        // At the top level that column lies left of the List's selection, so the box stuck out
+        // of it on the left and stopped short on the right: there it is pulled only so far that
+        // it keeps the same margin to the selection on both sides.
+        .padding(.leading, inFolder ? -Self.disclosureIndent : -Self.topLevelMergedPull)
         .contentShape(Rectangle())
         // As on a project row: the List reports only a change of selection, so a click on the
         // project you are in would do nothing without this. It opens the one terminal.
