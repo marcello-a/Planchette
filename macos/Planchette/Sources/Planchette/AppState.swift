@@ -49,6 +49,14 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
+    /// Settings → General → Durable terminals: when idle Claude sessions go to sleep
+    /// (`ClaudeSleep`). Off by default.
+    @Published var claudeSleep = ClaudeSleep.off {
+        didSet {
+            guard claudeSleep != oldValue else { return }
+            scheduleSave()
+        }
+    }
     /// Settings → General → Panels: the Jira panel beside the notepad. Off by default; while off
     /// there is no button, no panel and no request to Jira (`updateJiraPolling`).
     @Published var jiraEnabled = false {
@@ -290,6 +298,8 @@ final class AppState: ObservableObject {
     /// re-attach instead of replaying anything into them. Resolved once per
     /// restore, off-main; only meaningful while `isRestoring` is true.
     private(set) var restoreLiveDurableIDs: Set<UUID> = []
+    /// What runs in front in each surviving durable pane, asked once at restore.
+    private var restorePaneCommands: [UUID: String] = [:]
 
     private var saveTask: Task<Void, Never>?
 
@@ -356,6 +366,7 @@ final class AppState: ObservableObject {
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
             todoAutoDone = saved.todoAutoDone
+            claudeSleep = saved.claudeSleep
             jiraEnabled = saved.jiraEnabled
             jira = saved.jira
             // Early too: a sessionless state starts fresh, which keeps the current board.
@@ -411,6 +422,7 @@ final class AppState: ObservableObject {
     /// spell: favorites get a reminder notification, everything else only
     /// counts on in the badges. State changes reset the spell (see setState).
     private func attentionHousekeeping() {
+        sleepIdleClaude()
         checkSnoozeExpiry()
         expireDoneChecks()
         refreshDockBadge()
@@ -1113,6 +1125,12 @@ final class AppState: ObservableObject {
         guard contextFlight.begin() else { return }
         let stamps = transcriptStamps
         let known = transcriptScans
+        // The `/rename` names kept on the terminals, by transcript: a rename older than the
+        // 512 KB window survives a restart this way.
+        let renamed: [String: String] = sessions.values.reduce(into: [:]) { acc, session in
+            if let path = session.renamedTranscript, path == session.transcriptPath,
+               let title = session.renamedTitle { acc[path] = title }
+        }
         let extended = extendedContextSessions
         Task.detached {
             let configured = ContextWindow.configuredModel()
@@ -1125,7 +1143,7 @@ final class AppState: ObservableObject {
                 guard newStamps[path] != stamp else { continue }
                 newStamps[path] = stamp
                 scanByPath[path] = ContextUsageReader.scan(path: path)
-                    .keepingRename(of: scanByPath[path])
+                    .keepingRename(of: scanByPath[path] ?? renamed[path].map { TranscriptScan(customTitle: $0) })
             }
             // Every Claude conversation is a new transcript path. Keeping the
             // readings of conversations that are over would grow these two
@@ -1154,6 +1172,17 @@ final class AppState: ObservableObject {
                 self.transcriptScans = scansNow
                 if self.contextUsage != found { self.contextUsage = found }
                 if self.agentTitles != titles { self.agentTitles = titles }
+                // Keep each `/rename` on its terminal, for the next launch.
+                for (id, target) in targets {
+                    guard let custom = scansNow[target.path]?.customTitle,
+                          let session = self.sessions[id],
+                          session.renamedTitle != custom || session.renamedTranscript != target.path
+                    else { continue }
+                    self.update(id) {
+                        $0.renamedTitle = custom
+                        $0.renamedTranscript = target.path
+                    }
+                }
                 // A Stop hook asks for a fresh reading *because* the transcript
                 // just changed: a request that arrived mid-run gets its own run.
                 if self.contextFlight.end() { self.refreshContextUsage() }
@@ -1619,6 +1648,7 @@ final class AppState: ObservableObject {
         findTasks[id] = nil
         markAgent(id, live: false)
         openQuestions[id] = nil
+        lastOnScreenAt[id] = nil
         backgroundTasks[id] = nil
         if heldByBackground[id] != nil { heldByBackground[id] = nil }
         screenRaisedIDs.remove(id)
@@ -1760,6 +1790,12 @@ final class AppState: ObservableObject {
             }
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
+            // What closing one terminal does for its cards and its question (`closeSession`).
+            if todosEnabled, todoAutoDone == .terminalClosed {
+                updateTodos { $0.finishCards(ofClosedTerminal: sid) }
+            }
+            openQuestions[sid] = nil
+            lastOnScreenAt[sid] = nil
             sessions[sid] = nil
             markAgent(sid, live: false)
             backgroundTasks[sid] = nil
@@ -2018,6 +2054,7 @@ final class AppState: ObservableObject {
 
     func select(session: TerminalSession) {
         markSeen(session.id)
+        wakeClaude(session.id)
         if let window = windowContaining(groupID: session.groupID) {
             updateWindow(window.id) { $0.selectGroup(session.groupID) }
             WindowRegistry.shared.raise(window.id)
@@ -2085,6 +2122,142 @@ final class AppState: ObservableObject {
     func finishMergedTodos() {
         guard todosEnabled, todoAutoDone == .prMerged else { return }
         updateTodos { $0.finishMerged(prs: pullRequests) }
+    }
+
+    // MARK: Sleeping Claude (the rules are in ClaudeSleep.swift)
+
+    /// Whether a terminal's Claude sleeps (`ClaudeSleep`): drawn as zZ.
+    func isSleeping(_ session: TerminalSession) -> Bool {
+        session.sleepingClaudeID != nil && !liveAgentIDs.contains(session.id)
+    }
+
+    /// A terminal shown in its window right now — app in front or not: the terminal you left
+    /// on screen is the one you come back to, and must not be the one that fell asleep.
+    private func isOnScreen(_ id: UUID) -> Bool {
+        guard let session = sessions[id],
+              let group = groups.first(where: { $0.id == session.groupID }),
+              currentTab(of: group)?.leaves.contains(id) == true,
+              let window = windowContaining(groupID: session.groupID)
+        else { return false }
+        return window.selectedGroupID == session.groupID
+    }
+
+    /// When each terminal was last on screen or focused: its idle time counts from then too, so
+    /// the result you read for an hour does not fall asleep the minute you switch away.
+    private var lastOnScreenAt: [UUID: Date] = [:]
+    /// Terminals whose Claude is being ended right now: the signal is out, and a restore line of
+    /// an older Planchette may still start the next Claude of its `||` chain. No wake, no prompt,
+    /// and no hook makes them live until it is over (`finishSleeping`).
+    private var fallingAsleep: Set<UUID> = []
+    /// One process sweep at a time (AGENTS.md: an off-main poll is single-flight).
+    private var sleepFlight = SingleFlight()
+
+    /// Whether a terminal's Claude is due for sleep now — every rule, read on the main thread.
+    private func isDueForSleep(_ session: TerminalSession, now: Date) -> Bool {
+        let id = session.id
+        guard !fallingAsleep.contains(id), session.sleepingClaudeID == nil else { return false }
+        let since = max(session.stateSince, lastOnScreenAt[id] ?? .distantPast)
+        guard ClaudeSleep.shouldSleep(
+            setting: claudeSleep,
+            isClaude: session.agentKind == .claude,
+            agentLive: liveAgentIDs.contains(id) || agentsSurvivingRestore.contains(id),
+            state: session.state, seen: session.seen, stateSince: since,
+            hasBackgroundWork: !(backgroundTasks[id] ?? []).isEmpty,
+            onScreen: isOnScreen(id),
+            claudeSessionID: session.claudeSessionID, now: now)
+        else { return false }
+        // A half-written prompt in Claude's input box would be lost with the process.
+        if let screen = TerminalRegistry.shared.existingView(id)?.readViewport(),
+           ClaudeInputDraft.hasDraft(in: screen) { return false }
+        return true
+    }
+
+    /// The housekeeping tick: end every Claude that has been idle for the chosen time. Its
+    /// process is found off the main thread; the rules are checked again on the main thread
+    /// before the signal, since the sweep takes time and you may have come back meanwhile.
+    func sleepIdleClaude(now: Date = Date()) {
+        for id in sessions.keys where isOnScreen(id) { lastOnScreenAt[id] = now }
+        guard claudeSleep != .off else { return }
+        let due: [(id: UUID, claudeID: String)] = sessions.values.compactMap { session in
+            guard isDueForSleep(session, now: now), let claudeID = session.claudeSessionID else { return nil }
+            return (session.id, claudeID)
+        }
+        guard !due.isEmpty, sleepFlight.begin() else { return }
+        Task.detached {
+            let found = due.map { (terminal: $0, pids: ClaudeProcess.pids(forTerminal: $0.id)) }
+                .filter { !$0.pids.isEmpty }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                var signalled: [UUID] = []
+                for entry in found {
+                    let id = entry.terminal.id
+                    guard let session = self.sessions[id], self.isDueForSleep(session, now: Date()) else { continue }
+                    // Marked BEFORE the signal: the shell reports Claude's end at once (exit 143),
+                    // and `commandFinished` must read it as sleep, not as an error.
+                    self.fallingAsleep.insert(id)
+                    self.update(id) { $0.sleepingClaudeID = entry.terminal.claudeID }
+                    self.markAgent(id, live: false)
+                    for pid in entry.pids { kill(pid, SIGTERM) }
+                    signalled.append(id)
+                    NSLog("claude-sleep: ended the idle Claude of \(id)")
+                }
+                guard !signalled.isEmpty else {
+                    _ = self.sleepFlight.end()
+                    return
+                }
+                self.finishSleeping(signalled)
+            }
+        }
+    }
+
+    /// After the signal: a terminal restored by an older Planchette runs
+    /// `claude --resume <id> || claude --resume || claude`, so the shell starts the next Claude of
+    /// the chain when the first one ends. Those are ended too, for two seconds. A Claude that is
+    /// still there after that did not take the signal: the terminal is awake again.
+    private func finishSleeping(_ ids: [UUID]) {
+        Task.detached {
+            var stubborn: Set<UUID> = []
+            for round in 1...5 {
+                try? await Task.sleep(for: .milliseconds(400))
+                var any = false
+                for id in ids {
+                    let pids = ClaudeProcess.pids(forTerminal: id)
+                    guard !pids.isEmpty else { continue }
+                    any = true
+                    if round == 5 { stubborn.insert(id) } else { for pid in pids { kill(pid, SIGTERM) } }
+                }
+                if !any { break }
+            }
+            let awake = stubborn
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                for id in ids {
+                    self.fallingAsleep.remove(id)
+                    guard awake.contains(id), self.sessions[id] != nil else { continue }
+                    self.update(id) { $0.sleepingClaudeID = nil }
+                    self.markAgent(id, live: true)
+                    NSLog("claude-sleep: the Claude of \(id) did not end; left awake")
+                }
+                _ = self.sleepFlight.end()
+            }
+        }
+    }
+
+    /// You came back to a sleeping terminal: resume its conversation, with the line a restore
+    /// types (`RestoreCommand`). Only at the shell prompt — never into a program that runs.
+    func wakeClaude(_ id: UUID) {
+        lastOnScreenAt[id] = Date()
+        guard let session = sessions[id], let claudeID = session.sleepingClaudeID,
+              !fallingAsleep.contains(id),
+              !liveAgentIDs.contains(id), session.state != .running, session.state != .waiting,
+              let view = ControlAPI.liveView(for: session, state: self),
+              let line = RestoreCommand.input(
+                hasScrollback: false, scrollbackPath: "", startupCommand: nil,
+                claudeSessionID: claudeID, resumeClaude: true)
+        else { return }
+        update(id) { $0.sleepingClaudeID = nil }
+        let text = line.trimmingCharacters(in: .newlines)
+        Task { await ControlAPI.deliverPrompt(text, submit: true, to: view, session: id) }
     }
 
     /// Jump to what a card points at: its terminal, or else its project.
@@ -2675,7 +2848,9 @@ final class AppState: ObservableObject {
         }
         // The shell is at its prompt: whatever ran in front, a surviving agent included, is over.
         if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
-        setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
+        // A Claude that Planchette put to sleep ends on a signal (exit 143): that is not an error.
+        let asleep = session.sleepingClaudeID != nil
+        setState(id, asleep ? .free : AttentionState.afterCommandFinish(exitCode: exitCode))
         gitMayHaveChanged()
     }
 
@@ -2684,6 +2859,16 @@ final class AppState: ObservableObject {
     /// "Press any key" in its old state. A session that lives on keeps its terminal (see
     /// `Durable.sessionEnded`). tmux is asked off the main thread: it can be slow.
     func durableClientExited(_ id: UUID) {
+        guard sessions[id]?.durable == true else { return }
+        Task { @MainActor in
+            // Ghostty reports the exit at once, without waiting for its pty reader: tmux's last
+            // word ("[exited]") may not be on the screen yet. A moment later it is.
+            try? await Task.sleep(for: .milliseconds(150))
+            self.checkDurableSessionEnded(id)
+        }
+    }
+
+    private func checkDurableSessionEnded(_ id: UUID) {
         guard sessions[id]?.durable == true else { return }
         let screen = TerminalRegistry.shared.existingView(id)?.readViewport()
         Task.detached {
@@ -2755,7 +2940,12 @@ final class AppState: ObservableObject {
     @Published private(set) var agentsSurvivingRestore: Set<UUID> = []
 
     private func markAgent(_ id: UUID, live: Bool) {
+        // The next Claude of an old restore chain, started as the first one ends: it is being
+        // ended too (`finishSleeping`), and its hooks must not wake the terminal.
+        if live, fallingAsleep.contains(id) { return }
         if live, !liveAgentIDs.contains(id) { liveAgentIDs.insert(id) }
+        // An agent at work here again — resumed by us or started by hand — is awake.
+        if live, sessions[id]?.sleepingClaudeID != nil { update(id) { $0.sleepingClaudeID = nil } }
         if !live, liveAgentIDs.contains(id) { liveAgentIDs.remove(id) }
         if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
     }
@@ -2763,7 +2953,7 @@ final class AppState: ObservableObject {
     /// A tab whose terminal is a plain shell — free, and no agent in it — shows `>_` rather
     /// than the free dot. A free Claude keeps the dot: it is idle, not absent.
     func showsShellMark(_ session: TerminalSession) -> Bool {
-        AttentionState.showsShellMark(
+        session.sleepingClaudeID == nil && AttentionState.showsShellMark(
             state: session.state,
             agentLive: liveAgentIDs.contains(session.id) || agentsSurvivingRestore.contains(session.id))
     }
@@ -2869,15 +3059,14 @@ final class AppState: ObservableObject {
             setState(sessionID, newState,
                      message: newState == .waiting || newState == .error ? message : nil)
             if newState == .waiting {
-                // What the hooks know about the question: `PermissionRequest` names its tool,
-                // a permission `Notification` names it in its text. Kept when a later event of
-                // the same question knows less.
-                let asked = AttentionState.Question(
-                    tool: toolName ?? AttentionState.Question.tool(inMessage: message),
-                    toolUseID: toolUseID)
+                // What the hooks know about the question: `PermissionRequest` names its tool
+                // exactly (`tool_name`); a permission `Notification` names it only in its text,
+                // which for an MCP tool can be a display name. An exact name, from this event or
+                // an earlier one of the same question, always wins over a parsed one.
                 let known = openQuestions[sessionID]
                 openQuestions[sessionID] = AttentionState.Question(
-                    tool: asked.tool ?? known?.tool, toolUseID: asked.toolUseID ?? known?.toolUseID)
+                    tool: toolName ?? known?.tool ?? AttentionState.Question.tool(inMessage: message),
+                    toolUseID: toolUseID ?? known?.toolUseID)
             }
         }
         // Per-event side effects.
@@ -3274,6 +3463,7 @@ final class AppState: ObservableObject {
             todos: todos,
             todosEnabled: todosEnabled,
             todoAutoDone: todoAutoDone,
+            claudeSleep: claudeSleep,
             jiraEnabled: jiraEnabled,
             jira: jira
         )
@@ -3315,6 +3505,7 @@ final class AppState: ObservableObject {
                 self.restoreLiveDurableIDs = await Task.detached {
                     Durable.liveIDsForRestore(listed: Durable.listSessions(), durableIDs: durableIDs)
                 }.value
+                self.restorePaneCommands = await Task.detached { Durable.paneCommands() }.value ?? [:]
                 self.finishRestore(state)
             }
         } else {
@@ -3333,7 +3524,10 @@ final class AppState: ObservableObject {
         for id in Array(sessions.keys) {
             guard let saved = sessions[id]?.state else { continue }
             let agentSurvived = sessions[id]?.durable == true && restoreLiveDurableIDs.contains(id)
-            if agentSurvived, sessions[id]?.agentKind != AgentKind.none {
+            // An agent ran here, and its pane still runs a program rather than a bare shell (or
+            // tmux could not say): taken to be the agent, until its first hook or its prompt.
+            let paneShell = restorePaneCommands[id].map(Durable.isShell) ?? false
+            if agentSurvived, sessions[id]?.agentKind != AgentKind.none, !paneShell {
                 agentsSurvivingRestore.insert(id)
             }
             let restored = AttentionState.afterRestart(saved, agentSurvived: agentSurvived)
@@ -3375,6 +3569,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
         todoAutoDone = state.todoAutoDone
+        claudeSleep = state.claudeSleep
         jiraEnabled = state.jiraEnabled
         jira = state.jira
         todos = state.todos
@@ -3400,6 +3595,8 @@ final class AppState: ObservableObject {
             groups.flatMap(\.sessionIDs)
                 .compactMap { sessions[$0] }
                 .filter(\.resumeClaudeOnRestore)
+                // A sleeping conversation wakes when you open its terminal, not with the app.
+                .filter { $0.sleepingClaudeID == nil }
                 .map {
                     ClaudeResume.Terminal(
                         id: $0.id,
@@ -3420,6 +3617,7 @@ final class AppState: ObservableObject {
             self.isRestoring = false
             self.restoreResumeIDs = [:]
             self.restoreLiveDurableIDs = []
+            self.restorePaneCommands = [:]
         }
 
         reapOrphanedDurableSessions(keeping: Set(sessions.keys))
@@ -3509,6 +3707,7 @@ final class AppState: ObservableObject {
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
         todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
+        claudeSleep = previous?.claudeSleep ?? claudeSleep
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled
         jira = previous?.jira ?? jira
         // The reviews outlive the workspace (they come from GitHub), but the

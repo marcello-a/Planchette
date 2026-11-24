@@ -67,6 +67,7 @@ groups terminals by project. See [README.md](README.md) and
 | `NotificationService.swift` | `UserNotifications` wrapper |
 | `ScreenDetection.swift` | Screen-based state detection (rules as data) + hook/screen arbitration |
 | `BackgroundTasks.swift` | The shells and agents Claude Code runs in the background, read off its hooks (pure, unit-tested) |
+| `ClaudeSleep.swift` | Putting idle Claude sessions to sleep and finding a terminal's `claude` process (`ClaudeSleep`, `ClaudeProcess`). Pure rules, unit-tested; the tick and the wake are in `AppState` |
 | `Durable.swift` | tmux-backed terminals: agents that outlive the app (attach, reap, kill), the zsh shim that reports where commands end, and when a session ended |
 | `Presets.swift` | Saved arrangements (`presets.json`) — a template of folders/projects/terminals, deliberately outside `state.json` |
 | `ReviewRequests.swift` | The Reviews mode, pure and unit-tested: the GitHub query and its parse, how a poll merges into the records (`ReviewRecord`, `ReviewStage`), why a checkout is busy and how the free ones rank, the preselection and the verdict, and the three files shared with the `review-pr` skill (`findings.json`, `decisions.json`, `sent.json`) |
@@ -84,7 +85,7 @@ groups terminals by project. See [README.md](README.md) and
 | `Notepad.swift` | The notepad: `NotepadLook` (open, width, Returns per prompt — persisted) and `NotepadPrompts`, which cuts a text into prompts and finds the one under the caret. Pure, unit-tested |
 | `NotepadMarkdown.swift`, `NotepadEditing.swift`, `NotepadCode.swift`, `NotepadHistory.swift` | The pad's Markdown: what is styled how (`NotepadMarkdown`), what Return and Tab do to lists, tasks and fences (`NotepadEditing`), what looks like code, the fenced blocks, their folds and colours (`NotepadCode`), and what is kept of what left the pad (`NotepadHistory`, saved as `TerminalSession.notepadHistory`). Pure, unit-tested; "Format with AI" is `AIAssist.formatNotepad` + `NotepadFormat` |
 | `FeatureHint.swift` | Which feature hints exist (`FeatureHint`) and which are still due (`HintBook`: all hidden, or the feature was used). Pure, unit-tested |
-| `Todos.swift` | The to-do board: `TodoBoard` (lanes `queued`/`running`/`waiting`/`done` wearing the terminal states' colours, moves, links to a project or terminal), `TodoLink` (the link chip), `TodoDrag`. Persisted as `PersistedState.todos`, shown when `WindowModel.showsTodos`. Pure, unit-tested; the page is `Views/TodoBoardView.swift` |
+| `Todos.swift` | The to-do board: `TodoBoard` (auto-done by `TodoAutoDone`; lanes `queued`/`running`/`waiting`/`done` wearing the terminal states' colours, moves, links to a project or terminal), `TodoLink` (the link chip), `TodoDrag`. Persisted as `PersistedState.todos`, shown when `WindowModel.showsTodos`. Pure, unit-tested; the page is `Views/TodoBoardView.swift` |
 | `JiraTickets.swift`, `Jira.swift`, `Keychain.swift` | The Jira panel: `JiraLook` (site, e-mail, JQL queries, open, width — persisted as `PersistedState.jira`), the request, parse and errors of Jira Cloud's search (pure, unit-tested); the poll, the connection check and a terminal for a ticket as an `AppState` extension; the API token in the login Keychain, never in `state.json`; the last tickets in `jira-cache.json` (`JiraCache`), shown as offline data. The panel is `Views/JiraPanel.swift`; it and the to-do board are switched on in Settings (`jiraEnabled`, `todosEnabled`, both off by default) |
 | `TagList.swift` | The editable tag list and the rules for renaming or deleting a tag everywhere (`TagBook`) — pure, unit-tested |
 | `Localization.swift` | `LKey`, `L10n`, 7 language tables, `AppLanguage`, `AppAppearance` |
@@ -133,6 +134,13 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   hear of their commands' results. A restart ends the processes a saved
   `running`/`waiting` described: `AttentionState.afterRestart` frees them, except a
   durable agent that is still alive in tmux.
+- **A sleeping Claude is ended by a signal, never by typing.** `ClaudeSleep` ends an idle
+  Claude with SIGTERM to the process whose environment carries the terminal's
+  `PLANCHETTE_SESSION` (`ClaudeProcess`) — typing `/exit` would land in a half-written prompt. The
+  native install runs a versioned file, so the kernel names the process `2.1.323`: match the
+  executable path, not the name. Mark the terminal (`sleepingClaudeID`) BEFORE the signal: the
+  shell reports the end at once, with exit 143, and `commandFinished` must read it as sleep
+  (`free`), not as an error. A restore does not resume a sleeping terminal; focusing it does.
 - **A durable terminal closes when its session ends, not when its client does.**
   libghostty turns on "wait after command" for every surface given a command, and a
   durable one runs `tmux`: after `exit` it waited on "Press any key" in its old state.

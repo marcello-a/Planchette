@@ -9,6 +9,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Idle Claude sessions can go to sleep.** Settings → General → Durable terminals → "Put idle
+  Claude to sleep": after 2, 8 or 24 hours, Planchette ends Claude in a terminal that has nothing
+  for you and nothing running, to free memory — each session and its MCP servers take 150–500 MB.
+  The terminal shows zZ; opening it resumes the conversation. Off by default.
 - **To-do cards move to Done on their own.** Settings → General → Panels → "Move cards to Done":
   when the card's PR is merged (the PR of its terminal, or the PR its link names), or when its
   terminal is closed. Never by default. Each PR moves a card once: a card you take back stays back.

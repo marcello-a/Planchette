@@ -59,6 +59,9 @@ struct TodoItem: Identifiable, Codable, Equatable {
     /// The merged PR (its URL) that moved the card to `done`. Once per PR: a card you take
     /// back out of `done` stays out while that PR is all there is.
     var autoDoneFor: String?
+    /// The PR of the card's terminal that was open while the card pointed at it — the only one
+    /// of the terminal's PRs whose merge may finish the card (`finishMerged`).
+    var watchedPR: String?
 
     init(id: UUID = UUID(), text: String, lane: TodoLane = .queued, createdAt: Date = Date()) {
         self.id = id
@@ -80,6 +83,7 @@ struct TodoItem: Identifiable, Codable, Equatable {
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         doneAt = try c.decodeIfPresent(Date.self, forKey: .doneAt)
         autoDoneFor = try? c.decodeIfPresent(String.self, forKey: .autoDoneFor)
+        watchedPR = try? c.decodeIfPresent(String.self, forKey: .watchedPR)
     }
 }
 
@@ -143,17 +147,34 @@ struct TodoBoard: Codable, Equatable {
         items.removeAll { $0.lane == .done }
     }
 
-    /// `TodoAutoDone.prMerged`: every open card whose PR was merged moves to `done`. A card's PR
-    /// is the PR of its terminal's branch, else the PR its link names — among the PRs Planchette
-    /// knows, which are the PRs of the open terminals (`prs`, by terminal). Each PR moves a card
-    /// once (`autoDoneFor`).
+    /// `TodoAutoDone.prMerged`: every open card whose PR was merged moves to `done`, among the
+    /// PRs Planchette knows — the PRs of the open terminals' branches (`prs`, by terminal).
+    ///
+    /// A card's PR is the one its link names, when it links a PR. Otherwise it is its terminal's
+    /// PR, but only one that was seen open (or draft) while the card pointed at that terminal
+    /// (`watchedPR`): a terminal switched to an old branch whose PR was merged long ago, or a
+    /// follow-up card written after the merge, must not jump to done. Each PR moves a card once
+    /// (`autoDoneFor`).
     mutating func finishMerged(prs: [UUID: PullRequest], now: Date = Date()) {
-        let merged = prs.filter { $0.value.status == .merged }
-        guard !merged.isEmpty else { return }
-        let mergedURLs = Set(merged.values.map { Self.normalizedPRLink($0.url.absoluteString) })
+        let mergedURLs = Set(prs.values.filter { $0.status == .merged }
+            .map { Self.normalizedPRLink($0.url.absoluteString) })
         for item in items where item.lane != .done {
-            let url = item.sessionID.flatMap { merged[$0]?.url.absoluteString }.map(Self.normalizedPRLink)
-                ?? item.link.map(Self.normalizedPRLink).flatMap { mergedURLs.contains($0) ? $0 : nil }
+            let linkedPR = item.link.map(Self.normalizedPRLink).flatMap { $0.contains("/pull/") ? $0 : nil }
+            let terminalPR = item.sessionID.flatMap { prs[$0] }
+            if linkedPR == nil, let pr = terminalPR, pr.status == .open || pr.status == .draft {
+                let url = Self.normalizedPRLink(pr.url.absoluteString)
+                if item.watchedPR != url { update(item.id) { $0.watchedPR = url } }
+                continue
+            }
+            let url: String?
+            if let linkedPR {
+                url = mergedURLs.contains(linkedPR) ? linkedPR : nil
+            } else if let pr = terminalPR, pr.status == .merged {
+                let merged = Self.normalizedPRLink(pr.url.absoluteString)
+                url = merged == item.watchedPR ? merged : nil
+            } else {
+                url = nil
+            }
             guard let url, item.autoDoneFor != url else { continue }
             move(item.id, to: .done, now: now)
             update(item.id) { $0.autoDoneFor = url }

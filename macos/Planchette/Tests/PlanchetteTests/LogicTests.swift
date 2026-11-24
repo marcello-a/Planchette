@@ -1950,7 +1950,7 @@ final class RestoreCommandTests: XCTestCase {
         let cmd = RestoreCommand.input(
             hasScrollback: false, scrollbackPath: "/x",
             startupCommand: nil, claudeSessionID: "abc", resumeClaude: true) ?? ""
-        XCTAssertTrue(cmd.contains("claude --resume abc || claude"))
+        XCTAssertTrue(cmd.contains("claude --resume abc || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude"))
         // Must NOT hijack another terminal's conversation via --continue.
         XCTAssertFalse(cmd.contains("--continue"))
     }

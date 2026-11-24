@@ -26,9 +26,11 @@ hook_bin = sys.argv[2] + " claude"   # agent label, see planchette-hook
 # differently from the packaged app.
 events = [
     "SessionStart", "UserPromptSubmit", "Notification", "PermissionRequest",
-    "PreToolUse", "PostToolUse", "Stop", "SubagentStop", "SessionEnd",
+    "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied",
+    "Stop", "StopFailure", "SubagentStop", "SessionEnd",
 ]
-tool_events = {"PreToolUse", "PostToolUse"}   # per-tool entries: matcher "*"
+# per-tool entries: matcher "*" (StopFailure matches error types, with a narrower syntax: none)
+tool_events = {"PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionDenied"}
 
 settings = {}
 if settings_path.exists():

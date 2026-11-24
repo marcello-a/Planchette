@@ -101,4 +101,35 @@ final class DurableStateTests: XCTestCase {
         let screen = "[exited]\n[lost server]\n\nProcess exited. Press any key to close the terminal."
         XCTAssertFalse(Durable.sessionEnded(id, screen: screen, listed: []))
     }
+
+    // MARK: Review fixes
+
+    // After a restart the new surface never saw the command's C; Ghostty drops a D without one.
+    func testThePrecmdWritesCRightBeforeD() {
+        let shim = Durable.zshenvContents
+        let precmd = shim[shim.range(of: "_planchette_precmd() {")!.lowerBound...]
+        let c = precmd.range(of: #"$'\ePtmux;\e\e]133;C\a\e\\'"#)
+        let d = precmd.range(of: #"$'\ePtmux;\e\e]133;D;'"#)
+        XCTAssertNotNil(c)
+        XCTAssertNotNil(d)
+        XCTAssertLessThan(c!.lowerBound, d!.lowerBound)
+    }
+
+    func testPaneCommandsAreReadForOurSessionsOnly() {
+        let out = """
+            planchette-0a1b2c3d-0000-4000-8000-0000000000ab 2.1.323
+            planchette-0a1b2c3d-0000-4000-8000-0000000000cd zsh
+            mywork vim
+            planchette-not-a-uuid node
+            """
+        let commands = Durable.parsePaneCommands(out)
+        XCTAssertEqual(commands.count, 2)
+        XCTAssertEqual(commands[id], "2.1.323")
+        XCTAssertEqual(commands[other], "zsh")
+    }
+
+    func testAShellAtItsPromptIsNoAgent() {
+        for shell in ["zsh", "-zsh", "bash", "fish", "sh"] { XCTAssertTrue(Durable.isShell(shell), shell) }
+        for program in ["2.1.323", "node", "claude", "vim", "npm"] { XCTAssertFalse(Durable.isShell(program), program) }
+    }
 }

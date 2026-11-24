@@ -135,19 +135,6 @@ enum StatePixels {
     /// 13×13, not the states' 8×8: a globe is lines — a ring, a meridian, an equator, two
     /// latitudes — and at 8 pixels the lines are as thick as the gaps and it turns into a blob.
     /// At the default 13 pt every pixel is one point.
-    /// `>_`, a shell prompt, for a free terminal with no agent in it (`AppState.showsShellMark`):
-    /// the free dot says "Claude is idle here", and a plain shell is not an idle Claude.
-    static let shell = [
-        "........",
-        ".#......",
-        "..#.....",
-        "...#....",
-        "..#.....",
-        ".#......",
-        "....####",
-        "........",
-    ]
-
     static let globe = [
         "....#####....",
         "..###...###..",
@@ -162,6 +149,32 @@ enum StatePixels {
         ".##.#...#.##.",
         "..###...###..",
         "....#####....",
+    ]
+
+    /// `zZ`, a Claude that Planchette put to sleep because its terminal sat idle (`ClaudeSleep`).
+    /// Opening the terminal wakes it.
+    static let asleep = [
+        "........",
+        "....####",
+        "......#.",
+        ".####.#.",
+        "...#####",
+        "..#.....",
+        ".####...",
+        "........",
+    ]
+
+    /// `>_`, a shell prompt, for a free terminal with no agent in it (`AppState.showsShellMark`):
+    /// the free dot says "Claude is idle here", and a plain shell is not an idle Claude.
+    static let shell = [
+        "........",
+        ".#......",
+        "..#.....",
+        "...#....",
+        "..#.....",
+        ".#......",
+        "....####",
+        "........",
     ]
 
     static func sprite(_ state: AttentionState, frame: Int = 0) -> [String] {
@@ -306,6 +319,8 @@ struct StateIcon: View {
     var inBackground = false
     /// `>_` in place of the free dot: a plain shell, no agent in it. Only meaningful for `free`.
     var shell = false
+    /// `zZ`: its Claude sleeps (`ClaudeSleep`). Wins over `shell`, in the free colour.
+    var asleep = false
 
     @ObservedObject private var activity = AppActivity.shared
 
@@ -314,6 +329,10 @@ struct StateIcon: View {
             PixelIcon(sprite: StatePixels.globe, size: size, tint: tint ?? state.tint)
                 .accessibilityLabel(L10n.t(.stateBackground))
                 .help(L10n.t(.stateBackground))
+        } else if asleep {
+            PixelIcon(sprite: StatePixels.asleep, size: size, tint: tint ?? AttentionState.free.tint)
+                .accessibilityLabel(L10n.t(.stateAsleep))
+                .help(L10n.t(.stateAsleep))
         } else if shell && state == .free {
             PixelIcon(sprite: StatePixels.shell, size: size, tint: tint ?? state.tint)
                 .accessibilityLabel(L10n.t(.stateShell))
@@ -373,6 +392,7 @@ struct SessionStateIcon: View {
 
     var body: some View {
         StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session),
-                  shell: marksShell && appState.showsShellMark(session))
+                  shell: marksShell && appState.showsShellMark(session),
+                  asleep: session.state == .free && appState.isSleeping(session))
     }
 }

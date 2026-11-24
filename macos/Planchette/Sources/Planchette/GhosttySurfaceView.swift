@@ -1009,10 +1009,14 @@ enum RestoreCommand {
             // interactive picker rather than running attacker-controlled text.
             let idIsSafe = !claudeID.isEmpty
                 && claudeID.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+            // Exit 143 is SIGTERM — Planchette putting an idle Claude to sleep (`ClaudeSleep`):
+            // the chain stops there instead of opening the picker and a fresh session, each of
+            // which would hold the memory the sleep just freed.
             if idIsSafe {
-                commands.append("claude --resume \(claudeID) || claude --resume || claude")
+                commands.append(
+                    "claude --resume \(claudeID) || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude")
             } else {
-                commands.append("claude --resume || claude")
+                commands.append("claude --resume || [ $? -eq 143 ] || claude")
             }
         }
 
@@ -1048,7 +1052,7 @@ final class TerminalRegistry {
             // Before the first attach: the server picks this up when it starts,
             // and an app update's settings need it on disk by then.
             Durable.writeConfigIfNeeded()
-            Durable.writeZshenvIfNeeded()
+            let shimReady = Durable.writeZshenvIfNeeded()
             let name = Durable.sessionName(for: session.id)
             // Answered from the batch `applyRestore` resolved off-main, never by
             // asking tmux here: this runs on the main thread, once per terminal,
@@ -1067,7 +1071,7 @@ final class TerminalRegistry {
                 tmux: tmux, session: name,
                 environment: GhosttySurfaceNSView.planchetteEnvironment(sessionID: session.id)
                     + Durable.shellMarksEnvironment(
-                        shell: processEnvironment["SHELL"],
+                        shell: shimReady ? processEnvironment["SHELL"] : nil,
                         userZDOTDIR: processEnvironment["ZDOTDIR"],
                         zshDirectory: Durable.zshDirectory.path))
         }
@@ -1110,6 +1114,7 @@ final class TerminalRegistry {
         view.onFocus = { [weak appState] in
             appState?.markSeen(id)
             appState?.focusPane(id)
+            appState?.wakeClaude(id)
         }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }

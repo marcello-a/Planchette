@@ -221,6 +221,11 @@ enum AttentionState: String, Codable {
         _ question: Question, after event: String,
         isSubagent: Bool, toolName: String?, toolUseID: String?
     ) -> Bool {
+        // A question that names no tool (an elicitation, an agent asking for input) cannot be
+        // matched: the main agent's tool events end it, as before; a subagent's do not.
+        if question.tool == nil, question.toolUseID == nil {
+            return isSubagent && (toolDoneEvents.contains(event) || event == "PreToolUse")
+        }
         if toolDoneEvents.contains(event) {
             let same: Bool
             if let asked = question.toolUseID, let toolUseID {
@@ -421,6 +426,13 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// what a restored terminal runs before its first hook arrives.
     var agentKind: AgentKind = .none
     var claudeSessionID: String?
+    /// The conversation Planchette ended because the terminal sat idle (`ClaudeSleep`), to be
+    /// resumed when you come back to the terminal. Nil while nothing sleeps here.
+    var sleepingClaudeID: String?
+    /// The `/rename` name of the conversation in `renamedTranscript`, kept here because the
+    /// transcript sweep reads only its last 512 KB (`TranscriptScan.keepingRename`).
+    var renamedTitle: String?
+    var renamedTranscript: String?
     var startupCommand: String?   // re-run after restore (e.g. `npm run dev`)
     var resumeClaudeOnRestore: Bool = true
     /// This terminal runs its shell inside tmux, so the agent survives a quit,
@@ -502,6 +514,9 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         color = try c.decodeIfPresent(SessionColor.self, forKey: .color) ?? .none
         agentKind = try c.decodeIfPresent(AgentKind.self, forKey: .agentKind) ?? .none
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
+        sleepingClaudeID = try? c.decodeIfPresent(String.self, forKey: .sleepingClaudeID)
+        renamedTitle = try? c.decodeIfPresent(String.self, forKey: .renamedTitle)
+        renamedTranscript = try? c.decodeIfPresent(String.self, forKey: .renamedTranscript)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
         durable = try c.decodeIfPresent(Bool.self, forKey: .durable) ?? false
@@ -1014,6 +1029,8 @@ struct PersistedState: Codable {
     var todosEnabled = false
     /// When a card moves to `done` on its own (Settings): never by default.
     var todoAutoDone = TodoAutoDone.never
+    /// When idle Claude sessions are put to sleep (Settings): never by default.
+    var claudeSleep = ClaudeSleep.off
     /// The Jira panel (Settings): off by default.
     var jiraEnabled = false
     /// The Jira site, account, queries and panel (`JiraLook`); the token is in the Keychain.
@@ -1047,6 +1064,7 @@ struct PersistedState: Codable {
         todos: TodoBoard = TodoBoard(),
         todosEnabled: Bool = false,
         todoAutoDone: TodoAutoDone = .never,
+        claudeSleep: ClaudeSleep = .off,
         jiraEnabled: Bool = false,
         jira: JiraLook = JiraLook()
     ) {
@@ -1077,6 +1095,7 @@ struct PersistedState: Codable {
         self.todos = todos
         self.todosEnabled = todosEnabled
         self.todoAutoDone = todoAutoDone
+        self.claudeSleep = claudeSleep
         self.jiraEnabled = jiraEnabled
         self.jira = jira
     }
@@ -1124,6 +1143,7 @@ struct PersistedState: Codable {
         todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
         todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
         todoAutoDone = (try? c.decodeIfPresent(TodoAutoDone.self, forKey: .todoAutoDone)) ?? .never
+        claudeSleep = (try? c.decodeIfPresent(ClaudeSleep.self, forKey: .claudeSleep)) ?? .off
         jiraEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .jiraEnabled)) ?? false
         jira = (try? c.decodeIfPresent(JiraLook.self, forKey: .jira)) ?? JiraLook()
     }
