@@ -480,6 +480,13 @@ it points to, and the content type; document packages (`.xcodeproj`, `.rtfd`) ar
 folders for this purpose and open. What is opened is the resolved target, so the
 file that was judged is the file that is opened.
 
+**Sleeping Claude.** An idle Claude session holds 150–500 MB with its MCP servers. With
+`ClaudeSleep` on, the housekeeping tick ends the Claude of a terminal that is idle, unseen work
+done, nothing in the background and not on screen (`ClaudeSleep.shouldSleep`), by SIGTERM to the
+`claude` process found through its `PLANCHETTE_SESSION` (`ClaudeProcess`). The terminal keeps the
+conversation id (`sleepingClaudeID`, persisted) and wakes on focus or selection with the restore
+line, `claude --resume <id>`.
+
 **tmux not answering is not "nothing is running".** A durable terminal's agent outlives
 the app; a restore replays scrollback or `claude --resume` only into a session tmux
 reports as gone. `Durable.listSessions()` returns `nil` when tmux did not answer in

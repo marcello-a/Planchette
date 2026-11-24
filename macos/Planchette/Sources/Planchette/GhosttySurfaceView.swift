@@ -1110,6 +1110,7 @@ final class TerminalRegistry {
         view.onFocus = { [weak appState] in
             appState?.markSeen(id)
             appState?.focusPane(id)
+            appState?.wakeClaude(id)
         }
         view.isActive = { [weak appState] in
             guard let appState, let session = appState.sessions[id] else { return false }

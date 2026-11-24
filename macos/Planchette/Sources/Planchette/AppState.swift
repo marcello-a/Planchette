@@ -49,6 +49,14 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
+    /// Settings → General → Durable terminals: when idle Claude sessions go to sleep
+    /// (`ClaudeSleep`). Off by default.
+    @Published var claudeSleep = ClaudeSleep.off {
+        didSet {
+            guard claudeSleep != oldValue else { return }
+            scheduleSave()
+        }
+    }
     /// Settings → General → Panels: the Jira panel beside the notepad. Off by default; while off
     /// there is no button, no panel and no request to Jira (`updateJiraPolling`).
     @Published var jiraEnabled = false {
@@ -356,6 +364,7 @@ final class AppState: ObservableObject {
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
             todoAutoDone = saved.todoAutoDone
+            claudeSleep = saved.claudeSleep
             jiraEnabled = saved.jiraEnabled
             jira = saved.jira
             // Early too: a sessionless state starts fresh, which keeps the current board.
@@ -411,6 +420,7 @@ final class AppState: ObservableObject {
     /// spell: favorites get a reminder notification, everything else only
     /// counts on in the badges. State changes reset the spell (see setState).
     private func attentionHousekeeping() {
+        sleepIdleClaude()
         checkSnoozeExpiry()
         expireDoneChecks()
         refreshDockBadge()
@@ -2018,6 +2028,7 @@ final class AppState: ObservableObject {
 
     func select(session: TerminalSession) {
         markSeen(session.id)
+        wakeClaude(session.id)
         if let window = windowContaining(groupID: session.groupID) {
             updateWindow(window.id) { $0.selectGroup(session.groupID) }
             WindowRegistry.shared.raise(window.id)
@@ -2085,6 +2096,76 @@ final class AppState: ObservableObject {
     func finishMergedTodos() {
         guard todosEnabled, todoAutoDone == .prMerged else { return }
         updateTodos { $0.finishMerged(prs: pullRequests) }
+    }
+
+    // MARK: Sleeping Claude (the rules are in ClaudeSleep.swift)
+
+    /// Whether a terminal's Claude sleeps (`ClaudeSleep`): drawn as zZ.
+    func isSleeping(_ session: TerminalSession) -> Bool {
+        session.sleepingClaudeID != nil && !liveAgentIDs.contains(session.id)
+    }
+
+    /// A terminal shown in its window right now — app in front or not: the terminal you left
+    /// on screen is the one you come back to, and must not be the one that fell asleep.
+    private func isOnScreen(_ id: UUID) -> Bool {
+        guard let session = sessions[id],
+              let group = groups.first(where: { $0.id == session.groupID }),
+              currentTab(of: group)?.leaves.contains(id) == true,
+              let window = windowContaining(groupID: session.groupID)
+        else { return false }
+        return window.selectedGroupID == session.groupID
+    }
+
+    /// The housekeeping tick: end every Claude that has been idle for the chosen time. Its
+    /// process is found and signalled off the main thread; the terminal then remembers the
+    /// conversation to resume.
+    func sleepIdleClaude(now: Date = Date()) {
+        guard claudeSleep != .off else { return }
+        let due: [(id: UUID, claudeID: String)] = sessions.values.compactMap { session in
+            guard ClaudeSleep.shouldSleep(
+                setting: claudeSleep,
+                isClaude: session.agentKind == .claude,
+                agentLive: liveAgentIDs.contains(session.id),
+                state: session.state, seen: session.seen, stateSince: session.stateSince,
+                hasBackgroundWork: !(backgroundTasks[session.id] ?? []).isEmpty,
+                onScreen: isOnScreen(session.id),
+                claudeSessionID: session.claudeSessionID, now: now),
+                  let claudeID = session.claudeSessionID
+            else { return nil }
+            return (session.id, claudeID)
+        }
+        guard !due.isEmpty else { return }
+        Task.detached {
+            // The process table is read off the main thread; the signal is sent on it, AFTER the
+            // terminal is marked: the shell reports Claude's end (exit 143, a signal) at once,
+            // and `commandFinished` must already know that this was sleep, not an error.
+            let found = due.map { (terminal: $0, pids: ClaudeProcess.pids(forTerminal: $0.id)) }
+                .filter { !$0.pids.isEmpty }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                for entry in found where self.sessions[entry.terminal.id] != nil {
+                    self.update(entry.terminal.id) { $0.sleepingClaudeID = entry.terminal.claudeID }
+                    self.markAgent(entry.terminal.id, live: false)
+                    for pid in entry.pids { kill(pid, SIGTERM) }
+                    NSLog("claude-sleep: ended the idle Claude of \(entry.terminal.id)")
+                }
+            }
+        }
+    }
+
+    /// You came back to a sleeping terminal: resume its conversation, with the line a restore
+    /// types (`RestoreCommand`). Only at the shell prompt — never into a program that runs.
+    func wakeClaude(_ id: UUID) {
+        guard let session = sessions[id], let claudeID = session.sleepingClaudeID,
+              !liveAgentIDs.contains(id), session.state != .running, session.state != .waiting,
+              let view = ControlAPI.liveView(for: session, state: self),
+              let line = RestoreCommand.input(
+                hasScrollback: false, scrollbackPath: "", startupCommand: nil,
+                claudeSessionID: claudeID, resumeClaude: true)
+        else { return }
+        update(id) { $0.sleepingClaudeID = nil }
+        let text = line.trimmingCharacters(in: .newlines)
+        Task { await ControlAPI.deliverPrompt(text, submit: true, to: view, session: id) }
     }
 
     /// Jump to what a card points at: its terminal, or else its project.
@@ -2675,7 +2756,9 @@ final class AppState: ObservableObject {
         }
         // The shell is at its prompt: whatever ran in front, a surviving agent included, is over.
         if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
-        setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
+        // A Claude that Planchette put to sleep ends on a signal (exit 143): that is not an error.
+        let asleep = session.sleepingClaudeID != nil
+        setState(id, asleep ? .free : AttentionState.afterCommandFinish(exitCode: exitCode))
         gitMayHaveChanged()
     }
 
@@ -2756,6 +2839,8 @@ final class AppState: ObservableObject {
 
     private func markAgent(_ id: UUID, live: Bool) {
         if live, !liveAgentIDs.contains(id) { liveAgentIDs.insert(id) }
+        // An agent at work here again — resumed by us or started by hand — is awake.
+        if live, sessions[id]?.sleepingClaudeID != nil { update(id) { $0.sleepingClaudeID = nil } }
         if !live, liveAgentIDs.contains(id) { liveAgentIDs.remove(id) }
         if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
     }
@@ -2763,7 +2848,7 @@ final class AppState: ObservableObject {
     /// A tab whose terminal is a plain shell — free, and no agent in it — shows `>_` rather
     /// than the free dot. A free Claude keeps the dot: it is idle, not absent.
     func showsShellMark(_ session: TerminalSession) -> Bool {
-        AttentionState.showsShellMark(
+        session.sleepingClaudeID == nil && AttentionState.showsShellMark(
             state: session.state,
             agentLive: liveAgentIDs.contains(session.id) || agentsSurvivingRestore.contains(session.id))
     }
@@ -3274,6 +3359,7 @@ final class AppState: ObservableObject {
             todos: todos,
             todosEnabled: todosEnabled,
             todoAutoDone: todoAutoDone,
+            claudeSleep: claudeSleep,
             jiraEnabled: jiraEnabled,
             jira: jira
         )
@@ -3375,6 +3461,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
         todoAutoDone = state.todoAutoDone
+        claudeSleep = state.claudeSleep
         jiraEnabled = state.jiraEnabled
         jira = state.jira
         todos = state.todos
@@ -3400,6 +3487,8 @@ final class AppState: ObservableObject {
             groups.flatMap(\.sessionIDs)
                 .compactMap { sessions[$0] }
                 .filter(\.resumeClaudeOnRestore)
+                // A sleeping conversation wakes when you open its terminal, not with the app.
+                .filter { $0.sleepingClaudeID == nil }
                 .map {
                     ClaudeResume.Terminal(
                         id: $0.id,
@@ -3509,6 +3598,7 @@ final class AppState: ObservableObject {
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
         todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
+        claudeSleep = previous?.claudeSleep ?? claudeSleep
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled
         jira = previous?.jira ?? jira
         // The reviews outlive the workspace (they come from GitHub), but the

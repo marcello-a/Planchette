@@ -236,6 +236,14 @@ struct SettingsView: View {
                 Toggle(L10n.t(.durableActive), isOn: $appState.durableTerminals)
                     .disabled(!Durable.isAvailable)
                     .help(L10n.t(.durableHelp))
+                Picker(L10n.t(.claudeSleepTitle), selection: $appState.claudeSleep) {
+                    Text(L10n.t(.claudeSleepOff)).tag(ClaudeSleep.off)
+                    Text(L10n.t(.claudeSleep2h)).tag(ClaudeSleep.after2h)
+                    Text(L10n.t(.claudeSleep8h)).tag(ClaudeSleep.after8h)
+                    Text(L10n.t(.claudeSleep24h)).tag(ClaudeSleep.after24h)
+                }
+                .help(L10n.t(.claudeSleepHelp))
+                .accessibilityLabel(L10n.t(.claudeSleepTitle))
                 Text(L10n.t(Durable.isAvailable ? .durableExplanation : .durableMissingTmux))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -279,11 +287,12 @@ struct InfoTab: View {
         case state(AttentionState)
         case background
         case shell
+        case asleep
     }
 
     private let rows: [Row] = [
         .state(.ready), .state(.running), .background, .state(.waiting), .state(.error), .state(.free),
-        .shell,
+        .shell, .asleep,
     ]
 
     var body: some View {
@@ -312,6 +321,7 @@ struct InfoTab: View {
         case .state(let state): StateIcon(state: state, size: 18)
         case .background: StateIcon(state: .running, size: 18, inBackground: true)
         case .shell: StateIcon(state: .free, size: 18, shell: true)
+        case .asleep: StateIcon(state: .free, size: 18, asleep: true)
         }
     }
 
@@ -320,6 +330,7 @@ struct InfoTab: View {
         case .state(let state): state.label
         case .background: L10n.t(.stateBackground)
         case .shell: L10n.t(.stateShell)
+        case .asleep: L10n.t(.stateAsleep)
         }
     }
 
@@ -328,6 +339,7 @@ struct InfoTab: View {
         case .state(let state): description(for: state)
         case .background: L10n.t(.backgroundDesc)
         case .shell: L10n.t(.shellDesc)
+        case .asleep: L10n.t(.claudeSleepHelp)
         }
     }
 

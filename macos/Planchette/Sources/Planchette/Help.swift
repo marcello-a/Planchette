@@ -114,6 +114,7 @@ enum Help {
             Entry(.fontSmaller, nil, shortcut: "⌘-", where: .helpWhereContextMenu),
             Entry(.fontReset, nil, shortcut: "⌘0", where: .helpWhereContextMenu),
             Entry(.durableSection, .durableHelp, where: .helpWhereSettings),
+            Entry(.claudeSleepTitle, .claudeSleepHelp, where: .helpWhereSettings),
             Entry(.installTmuxOpen, .installTmuxOpenHelp, where: .helpWhereSettings),
             Entry(.importMenu, .importMenuHelp, where: .helpWhereMenuBar),
             Entry(.helpTerminalRowTitle, .helpTerminalRowDetail, where: .helpWhereSidebar),

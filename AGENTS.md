@@ -133,6 +133,13 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   hear of their commands' results. A restart ends the processes a saved
   `running`/`waiting` described: `AttentionState.afterRestart` frees them, except a
   durable agent that is still alive in tmux.
+- **A sleeping Claude is ended by a signal, never by typing.** `ClaudeSleep` ends an idle
+  Claude with SIGTERM to the process whose environment carries the terminal's
+  `PLANCHETTE_SESSION` (`ClaudeProcess`) — typing `/exit` would land in a half-written prompt. The
+  native install runs a versioned file, so the kernel names the process `2.1.323`: match the
+  executable path, not the name. Mark the terminal (`sleepingClaudeID`) BEFORE the signal: the
+  shell reports the end at once, with exit 143, and `commandFinished` must read it as sleep
+  (`free`), not as an error. A restore does not resume a sleeping terminal; focusing it does.
 - **A durable terminal closes when its session ends, not when its client does.**
   libghostty turns on "wait after command" for every surface given a command, and a
   durable one runs `tmux`: after `exit` it waited on "Press any key" in its old state.
