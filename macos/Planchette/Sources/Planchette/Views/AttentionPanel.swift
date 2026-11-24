@@ -142,7 +142,7 @@ struct AttentionPanel: View {
         } label: {
             HStack(spacing: 6) {
                 if let color = group.color.color {
-                    Circle().fill(color).frame(width: 7, height: 7)
+                    ColorTag(color: color, height: 10)
                 }
                 Text(group.name)
                     .font(.caption.weight(.semibold))
@@ -183,7 +183,8 @@ struct AttentionPanel: View {
         // agent's own message: "Claude is waiting for your input" says what the
         // badge in the corner already says, and the prompt is the thing you have
         // to remember to answer the question. The message stays on hover.
-        let detail = session.promptLine
+        // Never the name again: a terminal named after its prompt would print it twice.
+        let detail = appState.notificationDetail(for: session)
 
         let unread = isUnread(session)
         return Button {
@@ -192,6 +193,8 @@ struct AttentionPanel: View {
             PanelRow(
                 unread: unread, tint: session.state.tint,
                 title: appState.notificationHeadline(for: session),
+                // A name, not a branch: cut at its end, where a sentence can lose words.
+                truncation: .tail,
                 detail: detail.flatMap { $0.isEmpty ? nil : Text($0) }
             ) {
                 SessionStateIcon(session: session, size: 14)

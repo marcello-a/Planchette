@@ -97,4 +97,16 @@ final class OnlyActiveFilterTests: XCTestCase {
             }
         }
     }
+
+    // MARK: A second line that repeats the name
+
+    func testALineThatOnlyRepeatsTheNameIsTheSame() {
+        let prompt = "Split the cart summary into its own component"
+        XCTAssertTrue(Titles.saysTheSame("Split the cart summary into…", prompt), "one side clipped")
+        XCTAssertTrue(Titles.saysTheSame(prompt, "  split the cart  summary into its own component. "))
+        XCTAssertFalse(Titles.saysTheSame("Cart summary split", prompt))
+        XCTAssertFalse(Titles.saysTheSame(nil, prompt))
+        XCTAssertFalse(Titles.saysTheSame("", ""), "nothing is not a repeat")
+    }
 }
+

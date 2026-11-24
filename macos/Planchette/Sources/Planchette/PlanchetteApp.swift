@@ -47,7 +47,8 @@ struct PlanchetteApp: App {
                 // shortcut beats the menu of the app in front.
                 Button(L10n.t(.notepad)) { delegate.appState.toggleNotepad() }
                     .keyboardShortcut("j")
-                Button(L10n.t(.newTerminal)) { delegate.appState.promptNewTerminalInKeyWindow() }
+                // No "New terminal…": it opened the same folder picker as "New project…" (⌘N), and
+                // "Add terminal" (⌘T) is the new terminal in the project you are in.
                 Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                 Button(L10n.t(.quickSwitcher)) { delegate.appState.showQuickSwitcher() }
@@ -55,12 +56,7 @@ struct PlanchetteApp: App {
                 Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
                     .keyboardShortcut("k", modifiers: [.command, .shift])
                 Divider()
-                // ⌃Tab as a menu shortcut: without one, AppKit's key-view loop moved the
-                // keyboard out of the terminal into the sidebar.
-                Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
-                    .keyboardShortcut(.tab, modifiers: .control)
-                Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
-                    .keyboardShortcut(.tab, modifiers: [.control, .shift])
+                // One item per action: ⌃Tab and ⌃⇧Tab are keys of their own (`TabCycleKeys`).
                 // Arrows, not [ and ]: on a German keyboard [ is ⌥5.
                 Menu(L10n.t(.goToTab)) {
                     Button(L10n.t(.previousTab)) { delegate.appState.stepTabInKeyWindow(by: -1) }
@@ -106,12 +102,23 @@ struct PlanchetteApp: App {
                 AIMenu()
                     .environmentObject(delegate.appState)
             }
-            CommandMenu(L10n.t(.importMenu)) {
-                Button(L10n.t(.importFromITerm)) {
-                    delegate.appState.importFrom(.iterm2, windowID: nil)
-                }
-                Button(L10n.t(.importFromTerminal)) {
-                    delegate.appState.importFrom(.terminalApp, windowID: nil)
+            // The panels, in the View menu where a Mac app keeps them — each with a shortcut. A
+            // panel reachable only by an icon in the toolbar had no key, and no menu item a custom
+            // shortcut could name either.
+            CommandGroup(before: .toolbar) {
+                ViewMenuItems()
+                    .environmentObject(delegate.appState)
+                Divider()
+            }
+            // Importing is a way to open things: in the File menu, not a menu of its own.
+            CommandGroup(after: .newItem) {
+                Menu(L10n.t(.importMenu)) {
+                    Button(L10n.t(.importFromITerm)) {
+                        delegate.appState.importFrom(.iterm2, windowID: nil)
+                    }
+                    Button(L10n.t(.importFromTerminal)) {
+                        delegate.appState.importFrom(.terminalApp, windowID: nil)
+                    }
                 }
             }
             CommandGroup(after: .appInfo) {
@@ -138,7 +145,7 @@ struct PlanchetteApp: App {
 /// opens on the one you used last, and the gear at the foot of the project panel
 /// opens it on the Project panel.
 enum SettingsTab: String {
-    case general, projectPanel, tabs, info, help
+    case general, projectPanel, tabs, terminals, info, help
 }
 
 struct SettingsView: View {
@@ -157,6 +164,9 @@ struct SettingsView: View {
             TabSettings()
                 .tabItem { Label(L10n.t(.tabsTab), systemImage: "rectangle.topthird.inset.filled") }
                 .tag(SettingsTab.tabs)
+            TerminalSettings()
+                .tabItem { Label(L10n.t(.terminalsTab), systemImage: "terminal") }
+                .tag(SettingsTab.terminals)
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
                 .tag(SettingsTab.info)
@@ -232,31 +242,9 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Section(L10n.t(.durableSection)) {
-                Toggle(L10n.t(.durableActive), isOn: $appState.durableTerminals)
-                    .disabled(!Durable.isAvailable)
-                    .help(L10n.t(.durableHelp))
-                Picker(L10n.t(.claudeSleepTitle), selection: $appState.claudeSleep) {
-                    Text(L10n.t(.claudeSleepOff)).tag(ClaudeSleep.off)
-                    Text(L10n.t(.claudeSleep2h)).tag(ClaudeSleep.after2h)
-                    Text(L10n.t(.claudeSleep8h)).tag(ClaudeSleep.after8h)
-                    Text(L10n.t(.claudeSleep24h)).tag(ClaudeSleep.after24h)
-                }
-                .help(L10n.t(.claudeSleepHelp))
-                .accessibilityLabel(L10n.t(.claudeSleepTitle))
-                Text(L10n.t(Durable.isAvailable ? .durableExplanation : .durableMissingTmux))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !Durable.isAvailable {
-                    InstallTmuxRow()
-                }
-            }
             Section(L10n.t(.updates)) {
                 Toggle(L10n.t(.autoUpdateCheck), isOn: $appState.autoUpdateCheck)
                     .help(L10n.t(.autoUpdateHelp))
-                Toggle(L10n.t(.askBeforeRestore), isOn: $appState.askBeforeRestore)
-                    .help(L10n.t(.askBeforeRestoreHelp))
                 HStack {
                     Button(L10n.t(.checkForUpdates)) { updater.checkNow() }
                         .disabled(updater.isChecking || updater.isInstalling)
@@ -798,6 +786,37 @@ private final class ArrangementTarget: NSObject {
 }
 
 /// "Arrangements" menu: save what this window looks like, or open a saved one.
+/// View menu: show or hide each panel. All on ⌃⌘, the family ⌃⌘S (the sidebar of every Mac
+/// app) starts: ⌥⌘ letters are often taken globally by other apps (see the notepad's ⌘J). A View, not inline in `commands`, so the items that
+/// belong to a feature you turned off disappear the moment you turn it off.
+struct ViewMenuItems: View {
+    @EnvironmentObject var appState: AppState
+    @AppStorage("sidebarMinified") private var sidebarMinified = false
+    @AppStorage("inboxShown") private var inboxShown = false
+    @AppStorage(InboxMode.storageKey) private var mode: InboxMode = .notifications
+
+    var body: some View {
+        Toggle(L10n.t(.projectPanelTab), isOn: Binding(get: { !sidebarMinified }, set: { sidebarMinified = !$0 }))
+            .keyboardShortcut("s", modifiers: [.command, .control])
+        Toggle(L10n.t(.notificationsPanel), isOn: InboxMode.binding(.notifications, shown: $inboxShown, mode: $mode))
+            .keyboardShortcut("n", modifiers: [.command, .control])
+        if appState.reviewsEnabled {
+            Toggle(L10n.t(.reviewsPanel), isOn: InboxMode.binding(.reviews, shown: $inboxShown, mode: $mode))
+                .keyboardShortcut("r", modifiers: [.command, .control])
+        }
+        if appState.todosEnabled, let windowID = WindowRegistry.shared.keyWindowID() ?? appState.windows.first?.id {
+            Toggle(L10n.t(.todos), isOn: Binding(
+                get: { appState.window(for: windowID)?.showsTodos ?? false },
+                set: { _ in appState.toggleTodos(inWindow: windowID) }))
+                .keyboardShortcut("b", modifiers: [.command, .control])
+        }
+        if appState.jiraEnabled {
+            Toggle(L10n.t(.jiraTitle), isOn: Binding(get: { appState.jira.open }, set: { _ in appState.toggleJiraPanel() }))
+                .keyboardShortcut("j", modifiers: [.command, .control])
+        }
+    }
+}
+
 struct ArrangementsMenu: View {
     @EnvironmentObject var appState: AppState
 
@@ -952,10 +971,12 @@ struct MenuBarLabel: View {
     @EnvironmentObject var appState: AppState
 
     var body: some View {
-        // UNREAD only: a report you already looked at (or snoozed) is off the
-        // menu bar — it counts what still wants your eyes, nothing else.
-        let errors = appState.unseenCount(.error)
-        let waiting = appState.unseenCount(.waiting)
+        // The same list the menu under it shows (`menuBarQueue`), and the same count as the
+        // dock: a question or an error wants you until it is answered — reading it does not
+        // answer it, so it stays. A result is news only until you have seen it. Snoozed and
+        // parked terminals are left out everywhere.
+        let errors = appState.errorCount
+        let waiting = appState.waitingCount
         let ready = appState.unseenCount(.ready)
         if errors == 0 && waiting == 0 && ready == 0 {
             Image(systemName: "moon.zzz")
@@ -995,7 +1016,7 @@ struct MenuBarContent: View {
                     appState.select(session: session)
                 } label: {
                     Image(nsImage: StatePixels.nsImage(session.state, pointSize: 14))
-                    Text("\(session.displayTitle) — \(session.shortPath)")
+                    Text("\(appState.tabName(for: session)) — \(session.shortPath)")
                 }
             }
         }
@@ -1047,13 +1068,6 @@ extension AppState {
         // The PTY buffers injected input until the shell reads it, so the text
         // lands at the first prompt even while the shell is still starting.
         TerminalRegistry.shared.view(for: session, appState: self)?.sendText(command)
-    }
-
-    /// "New terminal…" from the menu: target whichever window is key.
-    func promptNewTerminalInKeyWindow() {
-        let windowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
-        guard let windowID else { return }
-        promptNewTerminal(inWindow: windowID)
     }
 
     /// ⌘T: a new tab in the project the key window shows, in its folder — the

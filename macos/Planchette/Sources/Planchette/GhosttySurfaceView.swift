@@ -970,13 +970,23 @@ extension GhosttySurfaceNSView: NSTextInputClient {
 /// Builds the shell input replayed into a terminal when a session is restored.
 /// Pure and side-effect free so it can be unit-tested.
 enum RestoreCommand {
+    /// The test in the resume chain that says "the Claude before me was put to sleep" (exit 143,
+    /// SIGTERM). fish has no `$?` — it rejects the whole line when it reads one, so nothing on it
+    /// would run — and names the status `$status`. Every other shell the line can land in is POSIX
+    /// enough for `$?`.
+    static func endedBySleep(shell: String?) -> String {
+        let name = shell.map { ($0 as NSString).lastPathComponent }
+        return name == "fish" ? "test $status -eq 143" : "[ $? -eq 143 ]"
+    }
+
     static func input(
         hasScrollback: Bool,
         scrollbackPath: String,
         startupCommand: String?,
         claudeSessionID: String?,
         resumeClaude: Bool,
-        pendingInput: String? = nil
+        pendingInput: String? = nil,
+        shell: String? = ProcessInfo.processInfo.environment["SHELL"]
     ) -> String? {
         var commands: [String] = []
         let willResumeClaude = resumeClaude && claudeSessionID != nil
@@ -1012,11 +1022,12 @@ enum RestoreCommand {
             // Exit 143 is SIGTERM — Planchette putting an idle Claude to sleep (`ClaudeSleep`):
             // the chain stops there instead of opening the picker and a fresh session, each of
             // which would hold the memory the sleep just freed.
+            let asleep = endedBySleep(shell: shell)
             if idIsSafe {
                 commands.append(
-                    "claude --resume \(claudeID) || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude")
+                    "claude --resume \(claudeID) || \(asleep) || claude --resume || \(asleep) || claude")
             } else {
-                commands.append("claude --resume || [ $? -eq 143 ] || claude")
+                commands.append("claude --resume || \(asleep) || claude")
             }
         }
 

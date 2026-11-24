@@ -8,18 +8,18 @@ struct ProjectColorSection: View {
 
     var body: some View {
         Section(L10n.t(.projectColorSection)) {
-            // Off in either choice is the end of the gradient, so what the other one says is moot:
-            // it dims, but stays in reach — two greyed-out pickers would leave no way back.
+            // One way to turn it off, in the first picker; the strength has no "off" of its own.
+            // Two pickers that could each switch the other off needed a sentence to explain.
             Picker(L10n.t(.projectColorWhere), selection: $appState.projectColor.scope) {
                 ForEach(ProjectColorScope.allCases) { Text(L10n.t($0.titleKey)).tag($0) }
             }
             .pickerStyle(.segmented)
-            .opacity(appState.projectColor.strength == .off ? 0.5 : 1)
-            Picker(L10n.t(.projectColorStrength), selection: $appState.projectColor.strength) {
-                ForEach(ProjectColorStrength.allCases) { Text(L10n.t($0.titleKey)).tag($0) }
+            if appState.projectColor.scope != .off {
+                Picker(L10n.t(.projectColorStrength), selection: $appState.projectColor.strength) {
+                    ForEach(ProjectColorStrength.allCases.filter { $0 != .off }) { Text(L10n.t($0.titleKey)).tag($0) }
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
-            .opacity(appState.projectColor.scope == .off ? 0.5 : 1)
             Text(L10n.t(.projectColorHelp))
                 .font(.caption)
                 .foregroundStyle(.secondary)

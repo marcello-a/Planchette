@@ -8,8 +8,37 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **Settings has a Terminals tab.** Durable terminals, sleep, when Done turns back to Free,
+  background work, what happens at launch and the notepad are now in one place. They were spread
+  over General, Project panel and Tabs. "Ask before restoring the last session" is now "Restore
+  the last session without asking", on by default; what it does is the same.
+- **A View menu with shortcuts:** Project panel ⌃⌘S, Notifications ⌃⌘N, Reviews ⌃⌘R, To-dos ⌃⌘B,
+  Jira ⌃⌘J. Import moved into the File menu. "New terminal…" is gone: ⌘N opens a new project,
+  ⌘T a new terminal in the project you are in. "Next tab" and "Next project" are in the menu once,
+  under Go to tab and Go to project; ⌃⇥ and ⌃⇧⇥ still work.
+- **One word for each thing.** "Park project" (was "Mark project inactive"), "Snooze…" (was
+  "Remind me…"), the "Terminal" menu (was "Session"), "Project panel" (was "Sidebar"), "Done turns
+  back to Free after", "Status icons" (was "Information"), "Experimental" (was "Alpha").
+- **Help starts with a four-line overview,** and each entry names its Settings tab.
+- **Shorter texts** for durable terminals, sleep and a few tooltips: what you get, not how it works.
+- **The project color has one Off.** It is in "Where"; the strength picker shows only while the
+  color is on.
+- **Calmer project panel.** A selected project or folder highlights only its own row, not all its
+  terminals. A project or terminal color is a small upright tag, so a green color no longer looks
+  like an OK light. A folder shows its project count only while it is closed. Each count badge
+  says what it counts on hover.
+- **Tabs show the path only when the terminals of a project are in different folders,** and the
+  tab bar fades at its ends when there are more tabs than room.
+- **The folder overview leaves out its notification list while the notifications panel is open.**
+- **A terminal has one name everywhere.** The tab, the project panel, the notifications panel, the
+  quick switcher, the menu bar and desktop notifications all use the name the tab shows. Before, the
+  project panel showed the folder, the notifications panel the branch and the tab the summary. A
+  line that only repeats the name is left out, and the path shows only when the terminals of a
+  project are in different folders.
+
 ### Added
-- **Idle Claude sessions can go to sleep.** Settings → General → Durable terminals → "Put idle
+- **Idle Claude sessions can go to sleep.** Settings → Terminals → "Put idle
   Claude to sleep": after 2, 8 or 24 hours, Planchette ends Claude in a terminal that has nothing
   for you and nothing running, to free memory — each session and its MCP servers take 150–500 MB.
   The terminal shows zZ; opening it resumes the conversation. Off by default.
@@ -23,6 +52,17 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   Information explains it.
 
 ### Fixed
+- **The menu bar counts what the dock and its own menu count.** After "Mark all read" with open
+  questions, it said "all quiet" while the dock still showed them.
+- **"Only unread" leaves out snoozed terminals,** as the count in the panel header does.
+- **Turning "Background work counts as running" off or on applies at once,** not at the next
+  event from Claude.
+- **A sleeping terminal keeps its name** while Claude is asleep.
+- **Claude resumes in fish again.** Since the sleep feature, the resume line used `$?`, which
+  fish rejects, so a restore, a wake from sleep and ⌃⌘T resumed nothing there.
+- **⌃⌘T brings back the conversation of a sleeping terminal.** It opened a plain shell before.
+- **A terminal you come back to is read.** When you switched back to Planchette, the terminal in
+  front of you stayed unread until you clicked it in the project panel.
 - **A question stays until it is answered.** While Claude waits for your permission, another
   tool that finishes in parallel, or a subagent at work, no longer hides the question.
 - **A turn that fails shows as an error.** A rate limit or an API error used to leave the terminal

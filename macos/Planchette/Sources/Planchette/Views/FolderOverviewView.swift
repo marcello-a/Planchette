@@ -11,6 +11,9 @@ struct FolderOverviewView: View {
     @EnvironmentObject var appState: AppState
     let folder: ProjectFolder
     let windowID: UUID
+    /// The notifications panel is open: it lists the same reports, so the page leaves its own
+    /// feed out rather than show them twice side by side.
+    @AppStorage("inboxShown") private var inboxShown = false
 
     private var projects: [SessionGroup] { appState.groups(inFolder: folder) }
 
@@ -31,7 +34,9 @@ struct FolderOverviewView: View {
                         ForEach(projects) { project in
                             projectCard(project)
                         }
-                        activitySection
+                        if !inboxShown {
+                            activitySection
+                        }
                     }
                     .padding(14)
                 }
@@ -116,7 +121,7 @@ struct FolderOverviewView: View {
         } label: {
             HStack(spacing: 7) {
                 if let color = project.color.color {
-                    Circle().fill(color).frame(width: 9, height: 9)
+                    ColorTag(color: color, height: 13)
                 }
                 Text(project.name).font(.headline)
                 if project.favorite {
@@ -169,10 +174,10 @@ struct FolderOverviewView: View {
         } label: {
             HStack(spacing: 7) {
                 SessionStateIcon(session: session, size: 12)
-                Text(appState.group(of: session)?.name ?? session.displayTitle)
+                Text(appState.group(of: session)?.name ?? appState.tabName(for: session))
                     .font(.caption.weight(.semibold)).lineLimit(1)
                     .layoutPriority(1)
-                Text(session.displayTitle)
+                Text(appState.tabName(for: session))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .layoutPriority(1)
                 Text(session.notificationLine ?? "")

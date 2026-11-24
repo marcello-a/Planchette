@@ -474,9 +474,13 @@ struct SidebarView: View {
                 .font(.caption)
                 .foregroundStyle(folder.color.color ?? .secondary)
             Text(folder.name).fontWeight(.semibold)
-            Text("\(projects.count)")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            // How many projects it holds — only while it is closed: open, they stand under it,
+            // and a grey number beside the coloured counts read as one of them.
+            if folder.collapsed {
+                Text("\(projects.count)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
             // On hover the folder offers the one thing you want from it while
             // pointing at it: another project *in here*. It replaces the counts
@@ -769,13 +773,16 @@ struct SidebarView: View {
             // project row and the terminal row said the same thing twice.
             if appState.sidebarDetails.merges(terminalCount: sessions.count), let session = sessions.first {
                 mergedRow(group, session: session, inFolder: folder != nil)
+                    .tag(group.id)
                     .listRowBackground(TreeRowBackground(folder: folder,
                                                          lines: folder?.line(isProjectRow: true, merged: true) ?? []))
             } else {
                 projectGroup(group, sessions: sessions, inFolder: folder)
             }
         }
-        .tag(group.id)
+        // The tag sits on the project's own row (the merged row above, the label in
+        // `projectGroup`), not here: on the whole group it reached every terminal row, and the
+        // selection painted the project and all its terminals as one grey block.
         // Drag and drop belong on the ROW, not on the label inside it: a
         // DisclosureGroup's label never sees the drag gesture. And it has to be
         // `draggable`, not `onDrag` — the latter swallows the click that selects
@@ -990,6 +997,7 @@ struct SidebarView: View {
             .onHover { hoveredGroup = $0 ? group.id : (hoveredGroup == group.id ? nil : hoveredGroup) }
             .overlay(dropHighlight(group.id))
             .contextMenu { groupMenu(group) }
+            .tag(group.id)
         }
         // The folder's stub to this project. A background on a DisclosureGroup reaches every
         // row of it, but its terminals set their own above, so this one is the label's alone.
@@ -1136,7 +1144,14 @@ struct SidebarView: View {
         // Claude Code gave the conversation — whichever Settings → Project panel
         // asks for. Its own row, so the line above can stay the fixed answer to
         // "which checkout is this?" while this one changes with the work.
-        let task = appState.rowPrompt(for: session)
+        // The terminal's name, the one its tab wears (`AppState.tabName`) — not its path,
+        // which every terminal of one checkout shares, so the row that mattered came second.
+        let name = appState.tabName(for: session)
+        // The line under it, unless it would only repeat the name.
+        let task = appState.rowPrompt(for: session).flatMap { Titles.saysTheSame($0, name) ? nil : $0 }
+        // The path tells terminals apart only when they are in different folders.
+        let showsPath = appState.shows(.path)
+            && !(appState.group(of: session).map { appState.sharesDirectory($0) } ?? false)
         // Not a Button: a button keeps the mouse for its click, so a drag never started from a
         // terminal row. A tap opens the terminal; for accessibility the row stays a button.
         return Group {
@@ -1155,23 +1170,18 @@ struct SidebarView: View {
                 }
                 .padding(.top, 1)
                 if let color = session.color.color {
-                    Circle().fill(color).frame(width: 7, height: 7)
+                    ColorTag(color: color, height: 10)
                         .padding(.top, 4)
                 }
                 VStack(alignment: .leading, spacing: 1) {
-                    // Where this terminal is: the ticket of its checkout (or the
-                    // name you gave it) and the tail of the path.
+                    // The terminal's name, and where it is when that tells it apart.
                     HStack(spacing: 5) {
-                        if let name = session.rowName {
-                            Text(name).lineLimit(1)
-                        }
+                        Text(name).lineLimit(1)
                         if session.isMain {
                             PixelIcon(sprite: PixelSprites.star, size: 10, tint: .yellow)
                                 .help(L10n.t(.mainTerminalHelp))
                         }
-                        // A terminal without a name keeps its path either way —
-                        // turning the path off must not leave a blank row.
-                        if appState.shows(.path) || session.rowName == nil {
+                        if showsPath {
                             Text(session.shortPath)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
@@ -1237,6 +1247,11 @@ struct SidebarView: View {
             .contentShape(Rectangle())
         }
         .onTapGesture { appState.select(session: session) }
+        // A tag of its own, which the selection never holds: without one the row takes the tag
+        // of what contains it, and a selected project or folder painted all its terminals grey.
+        // The tap above opens the terminal; the List does not select it.
+        .tag(session.id)
+        .selectionDisabled()
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { appState.select(session: session) }
@@ -1247,7 +1262,7 @@ struct SidebarView: View {
         // A terminal is dragged on its own — into another project, or to another place in its
         // own. It travels as a pane does, so the tab bar takes it too.
         .draggable(SidebarDragItem.terminal(session.id)) {
-            Label(session.rowName ?? session.shortPath, systemImage: "terminal")
+            Label(appState.tabName(for: session), systemImage: "terminal")
                 .padding(.horizontal, 8).padding(.vertical, 4)
         }
         .background(GeometryReader { geo in

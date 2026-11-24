@@ -25,57 +25,19 @@ struct TabSettings: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
+                Text(L10n.t(.terminalNameEverywhere))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section(L10n.t(.tabShowsSection)) {
                 switchRow(.tabShowPath, .tabShowPathHelp, $appState.tabLayout.showsPath)
                 switchRow(.tabShowBranch, .tabShowBranchHelp, $appState.tabLayout.showsBranch)
                 switchRow(.tabShowTags, .tabShowTagsHelp, $appState.tabLayout.showsTags)
             }
-            // The notepad belongs to the tab: what ends a prompt in it.
-            Section(L10n.t(.notepadSettingsSection)) {
-                Picker(L10n.t(.notepadReturnsTitle), selection: $appState.notepad.returnsPerPrompt) {
-                    ForEach(Array(NotepadLook.returnsRange), id: \.self) { count in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t(Self.returnsTitle[count] ?? .notepadReturnsTwo))
-                            Text(L10n.t(Self.returnsHelp[count] ?? .notepadReturnsTwoHelp))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .tag(count)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-                Picker(L10n.t(.notepadAfterTitle), selection: $appState.notepad.afterLoading) {
-                    ForEach(NotepadAfterLoading.allCases) { action in
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L10n.t(Self.afterTitle[action] ?? .notepadAfterRemove))
-                            Text(L10n.t(Self.afterHelp[action] ?? .notepadAfterRemoveHelp))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .tag(action)
-                    }
-                }
-                .pickerStyle(.radioGroup)
-            }
         }
         .formStyle(.grouped)
     }
-
-    private static let returnsTitle: [Int: LKey] = [
-        1: .notepadReturnsOne, 2: .notepadReturnsTwo, 3: .notepadReturnsThree,
-    ]
-    private static let afterTitle: [NotepadAfterLoading: LKey] = [
-        .remove: .notepadAfterRemove, .strike: .notepadAfterStrike, .keep: .notepadAfterKeep,
-    ]
-    private static let afterHelp: [NotepadAfterLoading: LKey] = [
-        .remove: .notepadAfterRemoveHelp, .strike: .notepadAfterStrikeHelp, .keep: .notepadAfterKeepHelp,
-    ]
-    private static let returnsHelp: [Int: LKey] = [
-        1: .notepadReturnsOneHelp, 2: .notepadReturnsTwoHelp, 3: .notepadReturnsThreeHelp,
-    ]
 
     private func switchRow(_ title: LKey, _ help: LKey, _ isOn: Binding<Bool>) -> some View {
         VStack(alignment: .leading, spacing: 2) {

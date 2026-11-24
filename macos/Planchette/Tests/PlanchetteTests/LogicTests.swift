@@ -1949,7 +1949,7 @@ final class RestoreCommandTests: XCTestCase {
     func testResumesExactSessionAndNeverContinues() {
         let cmd = RestoreCommand.input(
             hasScrollback: false, scrollbackPath: "/x",
-            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true) ?? ""
+            startupCommand: nil, claudeSessionID: "abc", resumeClaude: true, shell: "/bin/zsh") ?? ""
         XCTAssertTrue(cmd.contains("claude --resume abc || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude"))
         // Must NOT hijack another terminal's conversation via --continue.
         XCTAssertFalse(cmd.contains("--continue"))
@@ -3657,5 +3657,23 @@ final class TabClosingTests: XCTestCase {
             XCTAssertEqual(TabClosing.tabCount(scope, at: 5, in: tabs), 0)
         }
         XCTAssertEqual(TabClosing.terminals(.this, at: 0, in: []), [])
+    }
+}
+
+/// ⌃Tab and ⌃⇧Tab are keys of their own now, not a second menu item per action.
+final class TabCycleKeysTests: XCTestCase {
+    func testControlTabIsTheNextTabAndWithShiftTheNextProject() {
+        XCTAssertEqual(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control]), .nextTab)
+        XCTAssertEqual(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .shift]), .nextProject)
+        // Caps Lock and the function-key flag say nothing about the chord.
+        XCTAssertEqual(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .capsLock]), .nextTab)
+    }
+
+    func testOtherChordsAreLeftAlone() {
+        XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: []), "plain Tab is the terminal's")
+        XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.shift]))
+        XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .command]))
+        XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .option]))
+        XCTAssertNil(TabCycleKeys.action(keyCode: 36, flags: [.control]), "⌃Return is not ⌃Tab")
     }
 }

@@ -98,34 +98,6 @@ private struct TerminalPage: View {
                     }
                 }
             }
-            Section(L10n.t(.projectPanelBehavior)) {
-                // The check this is about, in front of its name: the one in the terminal's row.
-                Picker(selection: $appState.doneExpiry) {
-                    ForEach(DoneExpiry.allCases) { Text($0.label).tag($0) }
-                } label: {
-                    HStack(spacing: 6) {
-                        StateIcon(state: .ready, size: 14)
-                        Text(L10n.t(.doneExpiryTitle))
-                    }
-                }
-                .help(L10n.t(.doneExpiryHelp))
-                Text(L10n.t(.doneExpiryHelp))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                // The icon of the state it holds a terminal at.
-                Toggle(isOn: $appState.backgroundCountsAsRunning) {
-                    HStack(spacing: 6) {
-                        StateIcon(state: .running, size: 14, inBackground: true)
-                        Text(L10n.t(.backgroundRunningTitle))
-                    }
-                }
-                .help(L10n.t(.backgroundRunningHelp))
-                Text(L10n.t(.backgroundRunningHelp))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .formStyle(.grouped)
     }

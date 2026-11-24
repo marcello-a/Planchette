@@ -71,6 +71,12 @@ struct ProjectColorLook: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         scope = (try? c.decodeIfPresent(ProjectColorScope.self, forKey: .scope)) ?? .project
         strength = (try? c.decodeIfPresent(ProjectColorStrength.self, forKey: .strength)) ?? .subtle
+        // "Off" lives in one place now, the scope: a strength saved as off by an older version
+        // is the scope off, at the strength the setting falls back to.
+        if strength == .off {
+            scope = .off
+            strength = .subtle
+        }
     }
 
     /// A label, a header: the strip. Off in either choice means no gradient at all.

@@ -198,6 +198,15 @@ struct TerminalAreaView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     row.background(WheelToHorizontalScroll())
                 }
+                // More tabs than room: the ends fade, so a cut tab reads as "more this way"
+                // and not as a tab with a short name.
+                .mask(HStack(spacing: 0) {
+                    LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 14)
+                    Rectangle()
+                    LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: 24)
+                })
                 .onAppear { reveal(activeKey, with: proxy, animated: false) }
                 .onChange(of: activeKey) { _, id in
                     // A click keeps the tab where it is; a shortcut, the search or a new
@@ -317,7 +326,7 @@ struct TerminalAreaView: View {
                 shell: sessions.allSatisfy { appState.showsShellMark($0) },
                 asleep: state == .free && sessions.contains { appState.isSleeping($0) })
             if let color = session.color.color {
-                Circle().fill(color).frame(width: 7, height: 7)
+                ColorTag(color: color, height: 10)
             }
             Text(appState.tabName(for: session))
                 .lineLimit(1)
@@ -328,7 +337,9 @@ struct TerminalAreaView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            if appState.tabLayout.showsPath {
+            // The path tells tabs apart only when their terminals are in different folders.
+            if appState.tabLayout.showsPath,
+               !(appState.group(of: session).map { appState.sharesDirectory($0) } ?? false) {
                 Text(session.shortPath)
                     .font(.caption)
                     .foregroundStyle(.secondary)

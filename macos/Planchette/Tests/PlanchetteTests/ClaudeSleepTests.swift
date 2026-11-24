@@ -69,9 +69,35 @@ final class ClaudeSleepTests: XCTestCase {
     func testTheWakeLineResumesThisConversation() {
         let line = RestoreCommand.input(
             hasScrollback: false, scrollbackPath: "", startupCommand: nil,
-            claudeSessionID: id, resumeClaude: true)
+            claudeSessionID: id, resumeClaude: true, shell: "/bin/zsh")
         XCTAssertEqual(
             line, "claude --resume \(id) || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude\n")
+    }
+
+    // fish rejects a line with `$?` in it as a whole: nothing on it would run, no resume and no
+    // wake. It names the status `$status`.
+    func testFishGetsItsOwnStatusVariable() {
+        let line = RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "", startupCommand: nil,
+            claudeSessionID: id, resumeClaude: true, shell: "/opt/homebrew/bin/fish")
+        XCTAssertEqual(line, "claude --resume \(id) || test $status -eq 143 || claude --resume"
+                       + " || test $status -eq 143 || claude\n")
+        XCTAssertFalse(line?.contains("$?") ?? true)
+        XCTAssertEqual(RestoreCommand.endedBySleep(shell: "/bin/bash"), "[ $? -eq 143 ]")
+        XCTAssertEqual(RestoreCommand.endedBySleep(shell: nil), "[ $? -eq 143 ]")
+    }
+
+    // ⌃⌘T on a sleeping terminal: its Claude was ended by Planchette, so it comes back — with the
+    // conversation the terminal kept.
+    func testReopeningASleepingTerminalResumesItsConversation() {
+        var session = TerminalSession(groupID: UUID(), workingDirectory: "/tmp")
+        XCTAssertFalse(AppState.ClosedTerminal.claudeWasLive(session, agentLive: false))
+        session.sleepingClaudeID = id
+        XCTAssertTrue(AppState.ClosedTerminal.claudeWasLive(session, agentLive: false))
+        XCTAssertEqual(AppState.ClosedTerminal(session: session, claudeWasLive: true).sleepingConversation, id)
+        session.sleepingClaudeID = "x; rm -rf ~"
+        XCTAssertNil(AppState.ClosedTerminal(session: session, claudeWasLive: true).sleepingConversation,
+                     "never typed when it is not a plain id")
     }
 
     // The review's high finding: SIGTERM (exit 143) to the first Claude of the chain used to start
@@ -79,7 +105,7 @@ final class ClaudeSleepTests: XCTestCase {
     func testTheRestoreChainStopsWhenClaudeIsEndedBySleep() throws {
         let line = try XCTUnwrap(RestoreCommand.input(
             hasScrollback: false, scrollbackPath: "", startupCommand: nil,
-            claudeSessionID: id, resumeClaude: true))
+            claudeSessionID: id, resumeClaude: true, shell: "/bin/zsh"))
         func run(firstExit: Int) throws -> String {
             let script = """
                 calls=0

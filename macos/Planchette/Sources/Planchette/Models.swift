@@ -302,6 +302,8 @@ struct StateCountBadge: View {
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(state.tint.opacity(0.18), in: Capsule())
             .foregroundStyle(state.tint)
+            // A number in a colour needs the key at hand: "2 · Error".
+            .help("\(count) · \(state.label)")
     }
 }
 
