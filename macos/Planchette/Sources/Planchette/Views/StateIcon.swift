@@ -135,6 +135,19 @@ enum StatePixels {
     /// 13×13, not the states' 8×8: a globe is lines — a ring, a meridian, an equator, two
     /// latitudes — and at 8 pixels the lines are as thick as the gaps and it turns into a blob.
     /// At the default 13 pt every pixel is one point.
+    /// `>_`, a shell prompt, for a free terminal with no agent in it (`AppState.showsShellMark`):
+    /// the free dot says "Claude is idle here", and a plain shell is not an idle Claude.
+    static let shell = [
+        "........",
+        ".#......",
+        "..#.....",
+        "...#....",
+        "..#.....",
+        ".#......",
+        "....####",
+        "........",
+    ]
+
     static let globe = [
         "....#####....",
         "..###...###..",
@@ -291,6 +304,8 @@ struct StateIcon: View {
     /// The globe in place of the robot: the turn is over and only background work runs. Only
     /// meaningful for `running`; it keeps the running colour and does not move.
     var inBackground = false
+    /// `>_` in place of the free dot: a plain shell, no agent in it. Only meaningful for `free`.
+    var shell = false
 
     @ObservedObject private var activity = AppActivity.shared
 
@@ -299,6 +314,10 @@ struct StateIcon: View {
             PixelIcon(sprite: StatePixels.globe, size: size, tint: tint ?? state.tint)
                 .accessibilityLabel(L10n.t(.stateBackground))
                 .help(L10n.t(.stateBackground))
+        } else if shell && state == .free {
+            PixelIcon(sprite: StatePixels.shell, size: size, tint: tint ?? state.tint)
+                .accessibilityLabel(L10n.t(.stateShell))
+                .help(L10n.t(.stateShell))
         } else {
             animatedOrStill
         }
@@ -349,8 +368,11 @@ struct SessionStateIcon: View {
     @EnvironmentObject var appState: AppState
     let session: TerminalSession
     var size: CGFloat = 13
+    /// Draw `>_` for a plain shell (`AppState.showsShellMark`) — where a tab draws it.
+    var marksShell = false
 
     var body: some View {
-        StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session))
+        StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session),
+                  shell: marksShell && appState.showsShellMark(session))
     }
 }

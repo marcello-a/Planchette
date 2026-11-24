@@ -1617,7 +1617,7 @@ final class AppState: ObservableObject {
         finds[id] = nil
         findTasks[id]?.cancel()
         findTasks[id] = nil
-        liveAgentIDs.remove(id)
+        markAgent(id, live: false)
         openQuestions[id] = nil
         backgroundTasks[id] = nil
         if heldByBackground[id] != nil { heldByBackground[id] = nil }
@@ -1761,7 +1761,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.removeItem(at: Self.scrollbackURL(for: sid))
             try? FileManager.default.removeItem(at: Self.pendingInputURL(for: sid))
             sessions[sid] = nil
-            liveAgentIDs.remove(sid)
+            markAgent(sid, live: false)
             backgroundTasks[sid] = nil
             screenRaisedIDs.remove(sid)
             screenConfirmation.forget(sid)
@@ -2673,6 +2673,8 @@ final class AppState: ObservableObject {
                 transcriptPath: nil, message: nil, agent: session.agentKind,
                 background: .reset)
         }
+        // The shell is at its prompt: whatever ran in front, a surviving agent included, is over.
+        if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
         setState(id, AttentionState.afterCommandFinish(exitCode: exitCode))
         gitMayHaveChanged()
     }
@@ -2741,7 +2743,30 @@ final class AppState: ObservableObject {
     /// Terminals currently running an agent, from its first hook until
     /// SessionEnd. Deliberately NOT persisted: right after a restart nothing is
     /// running yet — a resumed agent re-announces itself with its first hook.
-    private var liveAgentIDs: Set<UUID> = []
+    ///
+    /// Published, because a tab draws from it (`showsShellMark`): a Claude starting in a
+    /// terminal that stays `free` changes no state, and the tab must still drop its `>_`.
+    /// Every write goes through `markAgent(_:live:)`, which publishes only a real change.
+    @Published private(set) var liveAgentIDs: Set<UUID> = []
+
+    /// Durable terminals that came back from a restart with their tmux session — and an agent
+    /// ran in them before. An idle Claude there sends no hook until you type, so until its first
+    /// hook, or its shell prompt, it is taken to be there.
+    @Published private(set) var agentsSurvivingRestore: Set<UUID> = []
+
+    private func markAgent(_ id: UUID, live: Bool) {
+        if live, !liveAgentIDs.contains(id) { liveAgentIDs.insert(id) }
+        if !live, liveAgentIDs.contains(id) { liveAgentIDs.remove(id) }
+        if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
+    }
+
+    /// A tab whose terminal is a plain shell — free, and no agent in it — shows `>_` rather
+    /// than the free dot. A free Claude keeps the dot: it is idle, not absent.
+    func showsShellMark(_ session: TerminalSession) -> Bool {
+        AttentionState.showsShellMark(
+            state: session.state,
+            agentLive: liveAgentIDs.contains(session.id) || agentsSurvivingRestore.contains(session.id))
+    }
 
     /// The question each waiting terminal waits on, as far as the hooks named it. Gone once
     /// the terminal leaves `waiting` (see `setState`).
@@ -2780,9 +2805,9 @@ final class AppState: ObservableObject {
         // A hook firing at all proves the agent is alive in this terminal;
         // SessionEnd is the only event that ends it.
         if hookEvent == "SessionEnd" {
-            liveAgentIDs.remove(sessionID)
+            markAgent(sessionID, live: false)
         } else {
-            liveAgentIDs.insert(sessionID)
+            markAgent(sessionID, live: true)
         }
         // The hook claims the terminal for its agent: from here on the app knows
         // what runs here, which decides how much a later screen reading may say.
@@ -3308,6 +3333,9 @@ final class AppState: ObservableObject {
         for id in Array(sessions.keys) {
             guard let saved = sessions[id]?.state else { continue }
             let agentSurvived = sessions[id]?.durable == true && restoreLiveDurableIDs.contains(id)
+            if agentSurvived, sessions[id]?.agentKind != AgentKind.none {
+                agentsSurvivingRestore.insert(id)
+            }
             let restored = AttentionState.afterRestart(saved, agentSurvived: agentSurvived)
             if restored != saved {
                 sessions[id]?.state = restored

@@ -164,6 +164,13 @@ enum AttentionState: String, Codable {
         }
     }
 
+    /// Pure: whether a terminal's tab shows `>_` instead of the free dot. A free terminal with no
+    /// agent in it is a plain shell; a free terminal with one is an idle agent, and keeps the dot.
+    /// Every other state has its own sprite, agent or not.
+    static func showsShellMark(state: AttentionState, agentLive: Bool) -> Bool {
+        state == .free && !agentLive
+    }
+
     /// The `notification_type`s that ask you something. Everything else Claude Code
     /// notifies about — the idle nudge, a login that worked, a quota that resumed, a
     /// subagent that finished, a plugin's own message — is news, not a question.

@@ -14,6 +14,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   terminal is closed. Never by default. Each PR moves a card once: a card you take back stays back.
 - **Your `/rename` name is the conversation's title.** A session you renamed keeps your name in the
   sidebar, before Claude's own title.
+- **`>_` marks a plain shell.** A tab whose terminal is free with no Claude in it shows `>_` in
+  place of the free dot, so an idle Claude and an empty shell no longer look the same. Settings →
+  Information explains it.
 
 ### Fixed
 - **A question stays until it is answered.** While Claude waits for your permission, another
