@@ -397,6 +397,14 @@ enum ControlAPI {
                     ok: false,
                     error: "session is running; wait for it or pass force")
             }
+            // Its Claude sleeps (`ClaudeSleep`): the text would land in the shell and run as a
+            // command. Wake it, and let the caller send again once Claude is back.
+            if state.isSleeping(session) {
+                state.wakeClaude(session.id)
+                return encode(
+                    ok: false,
+                    error: "session is asleep; waking its Claude — send again once it runs (session.wait)")
+            }
             guard let view = liveView(for: session, state: state) else {
                 return encode(ok: false, error: "session has no live terminal")
             }

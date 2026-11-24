@@ -237,12 +237,55 @@ final class TodoBoardTests: XCTestCase {
         var board = TodoBoard()
         let card = board.add("Ship it")!
         board.update(card.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .open)])
         board.finishMerged(prs: [terminal: pr(7, .merged)])
         board.move(card.id, to: .running)
         board.finishMerged(prs: [terminal: pr(7, .merged)])
         XCTAssertEqual(board.items[0].lane, .running)
-        // A new PR on the same terminal counts again.
+        // A new PR on the same terminal, seen open, counts again.
+        board.finishMerged(prs: [terminal: pr(8, .open)])
         board.finishMerged(prs: [terminal: pr(8, .merged)])
+        XCTAssertEqual(board.items[0].lane, .done)
+    }
+
+    // Review finding: the terminal switched to an old branch whose PR was merged long ago.
+    func testAPRMergedBeforeTheCardWatchedItMovesNothing() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let card = board.add("New work")!
+        board.update(card.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(3, .merged)])
+        XCTAssertEqual(board.items[0].lane, .queued, "never seen open while the card pointed here")
+        XCTAssertNil(board.items[0].watchedPR)
+    }
+
+    // Review finding: a follow-up card written after the merge stays open.
+    func testAFollowUpCardAfterTheMergeStaysOpen() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let first = board.add("Ship it")!
+        board.update(first.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .open)])
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        let followUp = board.add("Follow-up")!
+        board.update(followUp.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        XCTAssertEqual(board.items.first { $0.id == followUp.id }?.lane, .queued)
+    }
+
+    // A card that links a PR follows that PR, not its terminal's.
+    func testTheLinkedPRWinsOverTheTerminals() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let card = board.add("Review #9")!
+        board.update(card.id) {
+            $0.sessionID = terminal
+            $0.link = "https://github.com/o/r/pull/9"
+        }
+        board.finishMerged(prs: [terminal: pr(7, .open)])
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        XCTAssertEqual(board.items[0].lane, .queued, "PR 7 is not the card's PR")
+        board.finishMerged(prs: [terminal: pr(7, .merged), UUID(): pr(9, .merged)])
         XCTAssertEqual(board.items[0].lane, .done)
     }
 

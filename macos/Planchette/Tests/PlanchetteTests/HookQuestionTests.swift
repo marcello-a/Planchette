@@ -77,11 +77,15 @@ final class HookQuestionTests: XCTestCase {
         XCTAssertFalse(stands(asked, "PostToolUse", tool: "Bash", id: "toolu_1"))
     }
 
-    // Nothing named the tool: a finished tool cannot prove it was the one asking.
-    func testAnUnnamedQuestionIsNotEndedByAFinishedTool() {
+    // Nothing named the tool (an elicitation, an agent asking for input): nothing can be
+    // matched, so the main agent's tool events end it as before; a subagent's do not.
+    func testAnUnnamedQuestionEndsOnTheMainAgentsToolEvents() {
         let unknown = AttentionState.Question(tool: nil, toolUseID: nil)
-        XCTAssertTrue(stands(unknown, "PostToolUse", tool: "Bash"))
-        XCTAssertFalse(stands(unknown, "PreToolUse", tool: "Bash"), "the main agent's next tool still moves on")
+        XCTAssertFalse(stands(unknown, "PostToolUse", tool: "Bash"))
+        XCTAssertFalse(stands(unknown, "PreToolUse", tool: "Bash"))
+        XCTAssertTrue(stands(unknown, "PostToolUse", subagent: true, tool: "Read"))
+        XCTAssertTrue(stands(unknown, "PreToolUse", subagent: true, tool: "Read"))
+        XCTAssertFalse(stands(unknown, "Stop"))
     }
 
     func testASubagentStartingAToolLeavesTheQuestion() {
@@ -130,5 +134,7 @@ final class HookQuestionTests: XCTestCase {
         let renamedAgain = TranscriptScan(title: "new", customTitle: "Second name")
         XCTAssertEqual(renamedAgain.keepingRename(of: earlier).displayTitle, "Second name")
         XCTAssertEqual(now.keepingRename(of: nil).displayTitle, "new")
+        // After a restart the kept title comes from the terminal (`renamedTitle`).
+        XCTAssertEqual(now.keepingRename(of: TranscriptScan(customTitle: "Kept")).displayTitle, "Kept")
     }
 }

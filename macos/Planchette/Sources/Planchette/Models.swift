@@ -221,6 +221,11 @@ enum AttentionState: String, Codable {
         _ question: Question, after event: String,
         isSubagent: Bool, toolName: String?, toolUseID: String?
     ) -> Bool {
+        // A question that names no tool (an elicitation, an agent asking for input) cannot be
+        // matched: the main agent's tool events end it, as before; a subagent's do not.
+        if question.tool == nil, question.toolUseID == nil {
+            return isSubagent && (toolDoneEvents.contains(event) || event == "PreToolUse")
+        }
         if toolDoneEvents.contains(event) {
             let same: Bool
             if let asked = question.toolUseID, let toolUseID {
@@ -424,6 +429,10 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// The conversation Planchette ended because the terminal sat idle (`ClaudeSleep`), to be
     /// resumed when you come back to the terminal. Nil while nothing sleeps here.
     var sleepingClaudeID: String?
+    /// The `/rename` name of the conversation in `renamedTranscript`, kept here because the
+    /// transcript sweep reads only its last 512 KB (`TranscriptScan.keepingRename`).
+    var renamedTitle: String?
+    var renamedTranscript: String?
     var startupCommand: String?   // re-run after restore (e.g. `npm run dev`)
     var resumeClaudeOnRestore: Bool = true
     /// This terminal runs its shell inside tmux, so the agent survives a quit,
@@ -506,6 +515,8 @@ struct TerminalSession: Identifiable, Codable, Equatable {
         agentKind = try c.decodeIfPresent(AgentKind.self, forKey: .agentKind) ?? .none
         claudeSessionID = try c.decodeIfPresent(String.self, forKey: .claudeSessionID)
         sleepingClaudeID = try? c.decodeIfPresent(String.self, forKey: .sleepingClaudeID)
+        renamedTitle = try? c.decodeIfPresent(String.self, forKey: .renamedTitle)
+        renamedTranscript = try? c.decodeIfPresent(String.self, forKey: .renamedTranscript)
         startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand)
         resumeClaudeOnRestore = try c.decodeIfPresent(Bool.self, forKey: .resumeClaudeOnRestore) ?? true
         durable = try c.decodeIfPresent(Bool.self, forKey: .durable) ?? false

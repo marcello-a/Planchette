@@ -135,6 +135,22 @@ enum StatePixels {
     /// 13×13, not the states' 8×8: a globe is lines — a ring, a meridian, an equator, two
     /// latitudes — and at 8 pixels the lines are as thick as the gaps and it turns into a blob.
     /// At the default 13 pt every pixel is one point.
+    static let globe = [
+        "....#####....",
+        "..###...###..",
+        ".##.#...#.##.",
+        ".###########.",
+        "#..#.....#..#",
+        "#..#.....#..#",
+        "#############",
+        "#..#.....#..#",
+        "#..#.....#..#",
+        ".###########.",
+        ".##.#...#.##.",
+        "..###...###..",
+        "....#####....",
+    ]
+
     /// `zZ`, a Claude that Planchette put to sleep because its terminal sat idle (`ClaudeSleep`).
     /// Opening the terminal wakes it.
     static let asleep = [
@@ -159,22 +175,6 @@ enum StatePixels {
         ".#......",
         "....####",
         "........",
-    ]
-
-    static let globe = [
-        "....#####....",
-        "..###...###..",
-        ".##.#...#.##.",
-        ".###########.",
-        "#..#.....#..#",
-        "#..#.....#..#",
-        "#############",
-        "#..#.....#..#",
-        "#..#.....#..#",
-        ".###########.",
-        ".##.#...#.##.",
-        "..###...###..",
-        "....#####....",
     ]
 
     static func sprite(_ state: AttentionState, frame: Int = 0) -> [String] {
@@ -393,6 +393,6 @@ struct SessionStateIcon: View {
     var body: some View {
         StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session),
                   shell: marksShell && appState.showsShellMark(session),
-                  asleep: appState.isSleeping(session))
+                  asleep: session.state == .free && appState.isSleeping(session))
     }
 }

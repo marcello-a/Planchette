@@ -70,7 +70,34 @@ final class ClaudeSleepTests: XCTestCase {
         let line = RestoreCommand.input(
             hasScrollback: false, scrollbackPath: "", startupCommand: nil,
             claudeSessionID: id, resumeClaude: true)
-        XCTAssertEqual(line, "claude --resume \(id) || claude --resume || claude\n")
+        XCTAssertEqual(
+            line, "claude --resume \(id) || [ $? -eq 143 ] || claude --resume || [ $? -eq 143 ] || claude\n")
+    }
+
+    // The review's high finding: SIGTERM (exit 143) to the first Claude of the chain used to start
+    // the picker and then a fresh Claude. Run the real line in zsh, with a stand-in `claude`.
+    func testTheRestoreChainStopsWhenClaudeIsEndedBySleep() throws {
+        let line = try XCTUnwrap(RestoreCommand.input(
+            hasScrollback: false, scrollbackPath: "", startupCommand: nil,
+            claudeSessionID: id, resumeClaude: true))
+        func run(firstExit: Int) throws -> String {
+            let script = """
+                calls=0
+                claude() { calls=$((calls+1)); print -r -- "claude $*"; [[ $calls -eq 1 ]] && return \(firstExit); return 0; }
+                \(line)
+                """
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            process.arguments = ["-f", "-c", script]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            try process.run()
+            process.waitUntilExit()
+            return String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        }
+        XCTAssertEqual(try run(firstExit: 143), "claude --resume \(id)\n", "asleep: nothing more starts")
+        XCTAssertEqual(try run(firstExit: 1), "claude --resume \(id)\nclaude --resume\n",
+                       "a resume that failed still falls back to the picker")
     }
 
     // MARK: Finding the process
