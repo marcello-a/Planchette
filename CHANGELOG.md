@@ -13,6 +13,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   to macOS, so the terminals asked again for Documents, Desktop, Downloads and other protected
   places. Planchette now keeps the same identity across updates, and your "Allow" stays. You answer
   once more after this update, and then no more.
+- **A durable terminal shows at once how a command ended.** Ctrl+C, a failed build or a dev
+  server that stopped now changes the icon right away, as in a plain terminal. Before, tmux kept
+  this signal to itself. Works in zsh, in durable terminals opened after this update.
+- **`exit` closes a durable terminal at once.** It no longer stays in the sidebar in its old state
+  until a key is pressed on "Process exited".
 
 ## [0.2.51] — 2026-11-17
 

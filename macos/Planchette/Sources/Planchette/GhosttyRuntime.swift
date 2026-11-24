@@ -7,6 +7,7 @@ extension Notification.Name {
     static let planchetteSurfacePwd = Notification.Name("planchette.surface.pwd")
     static let planchetteSurfaceChildExited = Notification.Name("planchette.surface.childExited")
     static let planchetteCommandFinished = Notification.Name("planchette.surface.commandFinished")
+    static let planchetteSurfaceProcessExited = Notification.Name("planchette.surface.processExited")
     static let planchetteSurfaceSearch = Notification.Name("planchette.surface.search")
 }
 
@@ -217,6 +218,20 @@ final class GhosttyRuntime {
                     userInfo: ["sessionID": sessionID, "exitCode": exitCode])
             }
             return true
+
+        case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
+            // The program of a surface ended. A plain terminal closes by itself right after
+            // (close_surface_cb); a durable one runs `tmux` as a command, which makes libghostty
+            // wait for a key — AppState decides whether its session is over
+            // (`Durable.sessionEnded`). `false` keeps Ghostty's own "Process exited" line.
+            guard let view = view(for: target) else { return false }
+            let sessionID = view.sessionID
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .planchetteSurfaceProcessExited, object: nil,
+                    userInfo: ["sessionID": sessionID])
+            }
+            return false
 
         case GHOSTTY_ACTION_START_SEARCH, GHOSTTY_ACTION_END_SEARCH,
              GHOSTTY_ACTION_SEARCH_TOTAL, GHOSTTY_ACTION_SEARCH_SELECTED:

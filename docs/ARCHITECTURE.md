@@ -227,6 +227,11 @@ shell, with OSC 133 `D` right before its prompt (the foreground job is over — 
 that asked a question and ended, an abort with Ctrl+C, an agent that was killed), and
 the screen (`claude_interrupted` and an idle prompt over a turn no hook closed — an
 abort leaves no hook — each read on its own terms, the second only after two polls).
+In a durable terminal the shell's marks come from Planchette's own zsh hooks, wrapped
+for tmux's passthrough (`Durable.zshenvContents`): tmux keeps a raw OSC 133 to itself,
+and Ghostty's integration loads only in a shell Ghostty starts. Its `exit` is seen through
+`SHOW_CHILD_EXITED` and closes the terminal once tmux says the session is gone
+(`Durable.sessionEnded`).
 A restart ends whatever a saved state described. Everything else a screen pattern could
 decide it must not: it only applies where a Claude can be.
 
