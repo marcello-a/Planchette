@@ -192,4 +192,86 @@ final class TodoBoardTests: XCTestCase {
         XCTAssertEqual(TodoLink.label("https://github.com/o/repo/pull/12"), "repo#12")
         XCTAssertEqual(TodoLink.label("https://www.example.com/a"), "example.com")
     }
+
+    // MARK: Auto-done
+
+    private func pr(_ n: Int, _ status: PullRequest.Status) -> PullRequest {
+        PullRequest(number: n, status: status, review: nil,
+                    url: URL(string: "https://github.com/o/r/pull/\(n)")!, title: "PR \(n)")
+    }
+
+    func testAutoDoneIsOffByDefaultAndSaved() throws {
+        let old = try JSONDecoder().decode(PersistedState.self, from: Data("{}".utf8))
+        XCTAssertEqual(old.todoAutoDone, .never)
+        var state = old
+        state.todoAutoDone = .prMerged
+        let back = try JSONDecoder().decode(PersistedState.self, from: JSONEncoder().encode(state))
+        XCTAssertEqual(back.todoAutoDone, .prMerged)
+    }
+
+    func testACardOfAMergedTerminalPRMovesToDone() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let card = board.add("Ship it")!
+        board.update(card.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .open)])
+        XCTAssertEqual(board.items[0].lane, .queued, "an open PR moves nothing")
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        XCTAssertEqual(board.items[0].lane, .done)
+        XCTAssertNotNil(board.items[0].doneAt)
+        XCTAssertEqual(board.items[0].autoDoneFor, "https://github.com/o/r/pull/7")
+    }
+
+    // The link may be any spelling of the PR's page: a tab, a slash, a query.
+    func testACardLinkingAMergedPRMovesToDone() {
+        var board = TodoBoard()
+        let card = board.add("Review")!
+        board.update(card.id) { $0.link = "https://GitHub.com/o/r/pull/9/files?w=1" }
+        board.finishMerged(prs: [UUID(): pr(9, .merged)])
+        XCTAssertEqual(board.items[0].lane, .done)
+    }
+
+    // Once per PR: a card you take back out of Done stays out.
+    func testACardTakenBackStaysBack() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let card = board.add("Ship it")!
+        board.update(card.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        board.move(card.id, to: .running)
+        board.finishMerged(prs: [terminal: pr(7, .merged)])
+        XCTAssertEqual(board.items[0].lane, .running)
+        // A new PR on the same terminal counts again.
+        board.finishMerged(prs: [terminal: pr(8, .merged)])
+        XCTAssertEqual(board.items[0].lane, .done)
+    }
+
+    func testAClosedPRMovesNothing() {
+        let terminal = UUID()
+        var board = TodoBoard()
+        let card = board.add("Ship it")!
+        board.update(card.id) { $0.sessionID = terminal }
+        board.finishMerged(prs: [terminal: pr(7, .closed)])
+        XCTAssertEqual(board.items[0].lane, .queued)
+    }
+
+    func testTheCardsOfAClosedTerminalMoveToDone() {
+        let closed = UUID(), other = UUID()
+        var board = TodoBoard()
+        let a = board.add("A")!, b = board.add("B")!, c = board.add("C")!
+        board.update(a.id) { $0.sessionID = closed }
+        board.update(b.id) { $0.sessionID = other }
+        board.update(c.id) { $0.sessionID = closed }
+        board.move(c.id, to: .waiting)
+        board.finishCards(ofClosedTerminal: closed)
+        XCTAssertEqual(board.items.first { $0.id == a.id }?.lane, .done)
+        XCTAssertEqual(board.items.first { $0.id == b.id }?.lane, .queued)
+        XCTAssertEqual(board.items.first { $0.id == c.id }?.lane, .done)
+    }
+
+    func testACardFromBeforeAutoDoneDecodes() throws {
+        let json = #"{"id": "\#(UUID().uuidString)", "text": "x"}"#
+        let item = try JSONDecoder().decode(TodoItem.self, from: Data(json.utf8))
+        XCTAssertNil(item.autoDoneFor)
+    }
 }

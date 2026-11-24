@@ -136,14 +136,27 @@ enum AttentionState: String, Codable {
     ///   after 60 s of idling at the prompt ("waiting for your input"), which is
     ///   not news: the terminal already reported whatever it reported, and
     ///   turning that blue invented a question nobody asked.
+    ///
+    /// Three more came from watching what Claude Code actually sends:
+    ///
+    /// - **A turn can die.** `StopFailure` replaces `Stop` when the turn ends on an API
+    ///   error (a rate limit, an overload, a lost login). Without it the terminal stayed
+    ///   `running` with nobody working; it is an `error` now, which waits for you.
+    /// - **A tool that failed or was refused is still a step of the turn.**
+    ///   `PostToolUseFailure` and `PermissionDenied` move it on like `PostToolUse`.
+    /// - **A subagent's `Stop` is not the turn's.** An in-process teammate reports its own
+    ///   `Stop` with an `agent_id`; the main agent works on.
     static func forHookEvent(
-        _ event: String, source: String? = nil, message: String? = nil
+        _ event: String, source: String? = nil, message: String? = nil,
+        notificationType: String? = nil, isSubagent: Bool = false
     ) -> AttentionState? {
         switch event {
-        case "UserPromptSubmit", "PreToolUse", "PostToolUse": .running
-        case "Notification": isIdleNudge(message) ? nil : .waiting
+        case "UserPromptSubmit", "PreToolUse", "PostToolUse",
+             "PostToolUseFailure", "PermissionDenied": .running
+        case "Notification": isQuestion(notificationType: notificationType, message: message) ? .waiting : nil
         case "PermissionRequest": .waiting
-        case "Stop": .ready
+        case "Stop": isSubagent ? nil : .ready
+        case "StopFailure": isSubagent ? nil : .error
         case "SubagentStop": nil
         case "SessionEnd": .free
         case "SessionStart": (source == "compact" || source == "fork") ? nil : .free
@@ -156,6 +169,68 @@ enum AttentionState: String, Codable {
     /// Every other state has its own sprite, agent or not.
     static func showsShellMark(state: AttentionState, agentLive: Bool) -> Bool {
         state == .free && !agentLive
+    }
+
+    /// The `notification_type`s that ask you something. Everything else Claude Code
+    /// notifies about — the idle nudge, a login that worked, a quota that resumed, a
+    /// subagent that finished, a plugin's own message — is news, not a question.
+    static let askingNotificationTypes: Set<String> = [
+        "permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input",
+    ]
+
+    /// Whether a `Notification` asks you something. Its `notification_type` says so; an
+    /// older Claude Code sends none, and then only the idle nudge is known by its words.
+    static func isQuestion(notificationType: String?, message: String?) -> Bool {
+        if let notificationType { return askingNotificationTypes.contains(notificationType) }
+        return !isIdleNudge(message)
+    }
+
+    /// The question a terminal is waiting on, as far as the hooks named it: which tool
+    /// asked for permission, and that call's id when the event carried one.
+    struct Question: Equatable {
+        var tool: String?
+        var toolUseID: String?
+
+        /// The tool a permission `Notification` names: "Claude needs your permission to use
+        /// Bash". Nil when the text says no tool.
+        static func tool(inMessage message: String?) -> String? {
+            guard let message,
+                  let range = message.range(of: "permission to use ")
+            else { return nil }
+            let rest = message[range.upperBound...]
+            let tool = rest.prefix { !$0.isWhitespace }
+            return tool.isEmpty ? nil : String(tool)
+        }
+    }
+
+    /// The events that report a tool call as done, one way or another.
+    static let toolDoneEvents: Set<String> = ["PostToolUse", "PostToolUseFailure", "PermissionDenied"]
+
+    /// Pure: whether a hook event leaves the question a terminal waits on standing.
+    ///
+    /// Tool events used to end every question, and two of them do not answer it:
+    /// - **another tool finishing.** Claude runs tools in parallel, so one can finish while
+    ///   another waits on your permission. Only the tool that asked ends the question: by its
+    ///   call id when both events carry one, else by its name (a `PermissionRequest` has no id);
+    /// - **a subagent at work.** A background subagent starting a tool says nothing about the
+    ///   question the main agent asked.
+    ///
+    /// Anything else moves the terminal on as before: the main agent's next tool, your prompt,
+    /// the end of the turn.
+    static func questionStands(
+        _ question: Question, after event: String,
+        isSubagent: Bool, toolName: String?, toolUseID: String?
+    ) -> Bool {
+        if toolDoneEvents.contains(event) {
+            let same: Bool
+            if let asked = question.toolUseID, let toolUseID {
+                same = asked == toolUseID
+            } else {
+                same = question.tool != nil && question.tool == toolName
+            }
+            return !same
+        }
+        return isSubagent && (event == "PreToolUse" || event == "UserPromptSubmit")
     }
 
     /// Is this `Notification` merely "you left me hanging"? Claude Code sends one
@@ -937,6 +1012,8 @@ struct PersistedState: Codable {
     var todos = TodoBoard()
     /// The to-do board's button (Settings): off by default, and for a state that never carried the key.
     var todosEnabled = false
+    /// When a card moves to `done` on its own (Settings): never by default.
+    var todoAutoDone = TodoAutoDone.never
     /// The Jira panel (Settings): off by default.
     var jiraEnabled = false
     /// The Jira site, account, queries and panel (`JiraLook`); the token is in the Keychain.
@@ -969,6 +1046,7 @@ struct PersistedState: Codable {
         reviewsEnabled: Bool = false,
         todos: TodoBoard = TodoBoard(),
         todosEnabled: Bool = false,
+        todoAutoDone: TodoAutoDone = .never,
         jiraEnabled: Bool = false,
         jira: JiraLook = JiraLook()
     ) {
@@ -998,6 +1076,7 @@ struct PersistedState: Codable {
         self.reviewsEnabled = reviewsEnabled
         self.todos = todos
         self.todosEnabled = todosEnabled
+        self.todoAutoDone = todoAutoDone
         self.jiraEnabled = jiraEnabled
         self.jira = jira
     }
@@ -1044,6 +1123,7 @@ struct PersistedState: Codable {
         // The user's own list: a board a newer build wrote loses the cards it cannot read, not all.
         todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
         todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
+        todoAutoDone = (try? c.decodeIfPresent(TodoAutoDone.self, forKey: .todoAutoDone)) ?? .never
         jiraEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .jiraEnabled)) ?? false
         jira = (try? c.decodeIfPresent(JiraLook.self, forKey: .jira)) ?? JiraLook()
     }

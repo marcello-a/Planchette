@@ -307,7 +307,7 @@ enum LKey: String, CaseIterable {
     case todoMoveDone, todoEdit, todoAddNote, todoEditNote, todoAddLink, todoEditLink, todoRemoveNote, todoRemoveLink, todoNotePlaceholder, todoLinkPlaceholder, todoLinkTo, todoWholeProject
     case todoUnlink, todoOpenTerminal, todoOpenTerminalHelp, todoOpenLinkedHelp, todoDelete, todoDragTitle, todoDragHelp, todoLinkToHelp, todoNoteHelp
     // The panels switches and the Jira panel
-    case panelsSection, todosEnableTitle, jiraEnableTitle, jiraHelp, jiraTitle, jiraResize, jiraRefresh, jiraAddQuery, jiraClose, jiraNoAccount, jiraOpenSettings, jiraNoQueries, jiraEmpty, jiraEditQuery, jiraMoveUp, jiraMoveDown, jiraDeleteQuery, jiraErrorUnauthorized, jiraErrorUnreachable, jiraErrorUnreadable, jiraUnassigned, jiraCardHelp, jiraOpenInBrowser, jiraCopyKey, jiraOpenTerminalIn, jiraOpenTerminalHelp, jiraQueryName, jiraQueryPlaceholder, jiraTest, jiraTestResult, jiraQueriesHelp, jiraSite, jiraSiteHelp, jiraEmail, jiraToken, jiraTokenHelp, jiraCheckConnection, jiraConnected, jiraCreateToken, jiraDaysInStatus, jiraDaysInStatusHelp, jiraHintTitle, jiraHintBody, jiraHintTry
+    case panelsSection, todosEnableTitle, todoAutoDoneTitle, todoAutoDoneHelp, todoAutoDoneNever, todoAutoDonePRMerged, todoAutoDoneTerminalClosed, jiraEnableTitle, jiraHelp, jiraTitle, jiraResize, jiraRefresh, jiraAddQuery, jiraClose, jiraNoAccount, jiraOpenSettings, jiraNoQueries, jiraEmpty, jiraEditQuery, jiraMoveUp, jiraMoveDown, jiraDeleteQuery, jiraErrorUnauthorized, jiraErrorUnreachable, jiraErrorUnreadable, jiraUnassigned, jiraCardHelp, jiraOpenInBrowser, jiraCopyKey, jiraOpenTerminalIn, jiraOpenTerminalHelp, jiraQueryName, jiraQueryPlaceholder, jiraTest, jiraTestResult, jiraQueriesHelp, jiraSite, jiraSiteHelp, jiraEmail, jiraToken, jiraTokenHelp, jiraCheckConnection, jiraConnected, jiraCreateToken, jiraDaysInStatus, jiraDaysInStatusHelp, jiraHintTitle, jiraHintBody, jiraHintTry
     case jiraHow, jiraHowTitle, jiraHowStep1, jiraHowStep2, jiraHowStep3, jiraHowStep4, jiraOfflineAsOf, jiraErrorInvalidQuery
 }
 
@@ -777,6 +777,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Panels",
         .todosEnableTitle: "To-do board",
+        .todoAutoDoneTitle: "Move cards to Done",
+        .todoAutoDoneHelp: "A card moves to Done on its own when its PR is merged, or when its terminal is closed. Each PR moves a card once: a card you take back stays back.",
+        .todoAutoDoneNever: "Never",
+        .todoAutoDonePRMerged: "When its PR is merged",
+        .todoAutoDoneTerminalClosed: "When its terminal is closed",
         .jiraEnableTitle: "Jira panel",
         .jiraHelp: "Your Jira tickets beside the terminal, sorted into your own JQL queries",
         .jiraTitle: "Jira",
@@ -1274,6 +1279,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Panels",
         .todosEnableTitle: "To-do-Board",
+        .todoAutoDoneTitle: "Karten nach Fertig schieben",
+        .todoAutoDoneHelp: "Eine Karte geht von selbst nach Fertig, wenn ihr PR gemergt oder ihr Terminal geschlossen wird. Jeder PR schiebt eine Karte nur einmal: Holst du sie zurück, bleibt sie dort.",
+        .todoAutoDoneNever: "Nie",
+        .todoAutoDonePRMerged: "Wenn ihr PR gemergt ist",
+        .todoAutoDoneTerminalClosed: "Wenn ihr Terminal geschlossen wird",
         .jiraEnableTitle: "Jira-Panel",
         .jiraHelp: "Deine Jira-Tickets neben dem Terminal, sortiert nach deinen eigenen JQL-Abfragen",
         .jiraTitle: "Jira",
@@ -1771,6 +1781,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Panneaux",
         .todosEnableTitle: "Tableau des tâches",
+        .todoAutoDoneTitle: "Passer les cartes à Terminé",
+        .todoAutoDoneHelp: "Une carte passe seule à Terminé quand sa PR est fusionnée ou quand son terminal est fermé. Chaque PR ne déplace une carte qu'une fois : une carte que vous ramenez y reste.",
+        .todoAutoDoneNever: "Jamais",
+        .todoAutoDonePRMerged: "Quand sa PR est fusionnée",
+        .todoAutoDoneTerminalClosed: "Quand son terminal est fermé",
         .jiraEnableTitle: "Panneau Jira",
         .jiraHelp: "Vos tickets Jira à côté du terminal, rangés selon vos propres requêtes JQL",
         .jiraTitle: "Jira",
@@ -2268,6 +2283,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Paneles",
         .todosEnableTitle: "Tablero de tareas",
+        .todoAutoDoneTitle: "Pasar tarjetas a Hecho",
+        .todoAutoDoneHelp: "Una tarjeta pasa sola a Hecho cuando su PR se fusiona o cuando se cierra su terminal. Cada PR mueve una tarjeta una sola vez: si la devuelves, se queda donde la pusiste.",
+        .todoAutoDoneNever: "Nunca",
+        .todoAutoDonePRMerged: "Cuando su PR se fusiona",
+        .todoAutoDoneTerminalClosed: "Cuando se cierra su terminal",
         .jiraEnableTitle: "Panel de Jira",
         .jiraHelp: "Tus tickets de Jira junto al terminal, ordenados por tus propias consultas JQL",
         .jiraTitle: "Jira",
@@ -2765,6 +2785,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Pannelli",
         .todosEnableTitle: "Bacheca attività",
+        .todoAutoDoneTitle: "Sposta le schede in Fatto",
+        .todoAutoDoneHelp: "Una scheda passa da sola a Fatto quando la sua PR viene unita o quando il suo terminale viene chiuso. Ogni PR sposta una scheda una sola volta: se la riporti indietro, resta lì.",
+        .todoAutoDoneNever: "Mai",
+        .todoAutoDonePRMerged: "Quando la sua PR viene unita",
+        .todoAutoDoneTerminalClosed: "Quando il suo terminale viene chiuso",
         .jiraEnableTitle: "Pannello Jira",
         .jiraHelp: "I tuoi ticket Jira accanto al terminale, ordinati secondo le tue query JQL",
         .jiraTitle: "Jira",
@@ -3262,6 +3287,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Panelen",
         .todosEnableTitle: "Takenbord",
+        .todoAutoDoneTitle: "Kaarten naar Klaar verplaatsen",
+        .todoAutoDoneHelp: "Een kaart gaat vanzelf naar Klaar als haar PR is gemerged of als haar terminal wordt gesloten. Elke PR verplaatst een kaart maar één keer: zet je haar terug, dan blijft ze daar.",
+        .todoAutoDoneNever: "Nooit",
+        .todoAutoDonePRMerged: "Als haar PR is gemerged",
+        .todoAutoDoneTerminalClosed: "Als haar terminal wordt gesloten",
         .jiraEnableTitle: "Jira-paneel",
         .jiraHelp: "Je Jira-tickets naast de terminal, gesorteerd volgens je eigen JQL-query's",
         .jiraTitle: "Jira",
@@ -3759,6 +3789,11 @@ enum L10n {
         // The panels switches and the Jira panel
         .panelsSection: "Painéis",
         .todosEnableTitle: "Quadro de tarefas",
+        .todoAutoDoneTitle: "Mover cartões para Concluído",
+        .todoAutoDoneHelp: "Um cartão vai sozinho para Concluído quando o seu PR é integrado ou quando o seu terminal é fechado. Cada PR move um cartão só uma vez: se o trouxer de volta, ele fica lá.",
+        .todoAutoDoneNever: "Nunca",
+        .todoAutoDonePRMerged: "Quando o seu PR é integrado",
+        .todoAutoDoneTerminalClosed: "Quando o seu terminal é fechado",
         .jiraEnableTitle: "Painel do Jira",
         .jiraHelp: "Os teus tickets do Jira ao lado do terminal, ordenados pelas tuas próprias consultas JQL",
         .jiraTitle: "Jira",

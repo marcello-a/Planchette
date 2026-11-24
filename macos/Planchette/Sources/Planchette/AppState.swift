@@ -37,6 +37,16 @@ final class AppState: ObservableObject {
                     updateWindow(window.id) { $0.showsTodos = false }
                 }
             }
+            finishMergedTodos()
+        }
+    }
+    /// Settings → General → Panels: when a card moves to `done` on its own (`TodoAutoDone`).
+    /// Never by default. Switched to "PR merged", the PRs known now count at once.
+    @Published var todoAutoDone = TodoAutoDone.never {
+        didSet {
+            guard todoAutoDone != oldValue else { return }
+            scheduleSave()
+            finishMergedTodos()
         }
     }
     /// Settings → General → Panels: the Jira panel beside the notepad. Off by default; while off
@@ -345,6 +355,7 @@ final class AppState: ObservableObject {
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
+            todoAutoDone = saved.todoAutoDone
             jiraEnabled = saved.jiraEnabled
             jira = saved.jira
             // Early too: a sessionless state starts fresh, which keeps the current board.
@@ -978,7 +989,10 @@ final class AppState: ObservableObject {
                 let result = PullRequests.merge(
                     answers: answers, asked: asked, branches: self.branches,
                     previous: self.pullRequests)
-                if self.pullRequests != result { self.pullRequests = result }
+                if self.pullRequests != result {
+                    self.pullRequests = result
+                    self.finishMergedTodos()
+                }
                 if self.pullRequestFlight.end() { self.refreshPullRequests() }
             }
         }
@@ -1111,6 +1125,7 @@ final class AppState: ObservableObject {
                 guard newStamps[path] != stamp else { continue }
                 newStamps[path] = stamp
                 scanByPath[path] = ContextUsageReader.scan(path: path)
+                    .keepingRename(of: scanByPath[path])
             }
             // Every Claude conversation is a new transcript path. Keeping the
             // readings of conversations that are over would grow these two
@@ -1119,7 +1134,7 @@ final class AppState: ObservableObject {
             newStamps = newStamps.filter { livePaths.contains($0.key) }
             scanByPath = scanByPath.filter { livePaths.contains($0.key) }
             let titles: [UUID: String] = targets.reduce(into: [:]) { acc, entry in
-                acc[entry.key] = scanByPath[entry.value.path]?.title
+                acc[entry.key] = scanByPath[entry.value.path]?.displayTitle
             }
             let found: [UUID: ContextUsage] = targets.reduce(into: [:]) { acc, entry in
                 guard let usage = scanByPath[entry.value.path]?.usage else { return }
@@ -1579,6 +1594,10 @@ final class AppState: ObservableObject {
         // Remembered for ⌃⌘T. Whether Claude was running is decided now: after the close, its
         // hooks are gone. ponytail: in memory only, the list is lost on quit; persist it if
         // reopening after a restart is asked for.
+        // Before the terminal is gone: its cards still point at it.
+        if todosEnabled, todoAutoDone == .terminalClosed {
+            updateTodos { $0.finishCards(ofClosedTerminal: id) }
+        }
         recentlyClosed.append(ClosedTerminal(
             session: session, claudeWasLive: session.agentKind == .claude && liveAgentIDs.contains(id)))
         if recentlyClosed.count > 20 { recentlyClosed.removeFirst() }
@@ -1599,6 +1618,7 @@ final class AppState: ObservableObject {
         findTasks[id]?.cancel()
         findTasks[id] = nil
         markAgent(id, live: false)
+        openQuestions[id] = nil
         backgroundTasks[id] = nil
         if heldByBackground[id] != nil { heldByBackground[id] = nil }
         screenRaisedIDs.remove(id)
@@ -2059,6 +2079,12 @@ final class AppState: ObservableObject {
         guard board != todos else { return }
         todos = board
         scheduleSave()
+    }
+
+    /// `TodoAutoDone.prMerged`: the cards whose PR was merged move to `done` (`finishMerged`).
+    func finishMergedTodos() {
+        guard todosEnabled, todoAutoDone == .prMerged else { return }
+        updateTodos { $0.finishMerged(prs: pullRequests) }
     }
 
     /// Jump to what a card points at: its terminal, or else its project.
@@ -2683,7 +2709,10 @@ final class AppState: ObservableObject {
         // Only a real change is written: the icon follows this, and it is published.
         let held: AttentionState? = state == requested ? nil : requested
         if heldByBackground[id] != held { heldByBackground[id] = held }
-        if state != .waiting { screenRaisedIDs.remove(id) }
+        if state != .waiting {
+            screenRaisedIDs.remove(id)
+            if openQuestions[id] != nil { openQuestions[id] = nil }
+        }
         // Anything that happened while you were looking elsewhere is unread: a
         // turn that finished, a question, an error. What happened in front of you
         // has been read by definition — and `running` is not a report at all, it
@@ -2739,6 +2768,10 @@ final class AppState: ObservableObject {
             agentLive: liveAgentIDs.contains(session.id) || agentsSurvivingRestore.contains(session.id))
     }
 
+    /// The question each waiting terminal waits on, as far as the hooks named it. Gone once
+    /// the terminal leaves `waiting` (see `setState`).
+    private var openQuestions: [UUID: AttentionState.Question] = [:]
+
     /// An agent (Claude Code, Codex) is alive in this terminal, idle or not.
     func isAgentLive(_ id: UUID) -> Bool { liveAgentIDs.contains(id) }
 
@@ -2761,7 +2794,11 @@ final class AppState: ObservableObject {
         prompt: String? = nil,
         source: String? = nil,
         agent: AgentKind = .claude,
-        background: BackgroundTaskSignal? = nil
+        background: BackgroundTaskSignal? = nil,
+        notificationType: String? = nil,
+        isSubagent: Bool = false,
+        toolName: String? = nil,
+        toolUseID: String? = nil
     ) {
         guard sessions[sessionID] != nil else { return }
         if let background { applyBackground(background, to: sessionID) }
@@ -2815,19 +2852,45 @@ final class AppState: ObservableObject {
                 $0.firstTask = nil
             }
         }
-        // State transition (pure, tested). Message only carried for `waiting`.
-        if let newState = AttentionState.forHookEvent(
-            hookEvent, source: source, message: message) {
-            setState(sessionID, newState, message: newState == .waiting ? message : nil)
+        // State transition (pure, tested). Message only carried for `waiting` and for a
+        // turn that failed (`StopFailure` says why).
+        let newState = AttentionState.forHookEvent(
+            hookEvent, source: source, message: message,
+            notificationType: notificationType, isSubagent: isSubagent)
+        // A question stands until the tool that asked moves on (see `questionStands`).
+        let questionStands = sessions[sessionID]?.state == .waiting
+            && newState != .waiting
+            && openQuestions[sessionID].map {
+                AttentionState.questionStands(
+                    $0, after: hookEvent, isSubagent: isSubagent,
+                    toolName: toolName, toolUseID: toolUseID)
+            } == true
+        if let newState, !questionStands {
+            setState(sessionID, newState,
+                     message: newState == .waiting || newState == .error ? message : nil)
+            if newState == .waiting {
+                // What the hooks know about the question: `PermissionRequest` names its tool,
+                // a permission `Notification` names it in its text. Kept when a later event of
+                // the same question knows less.
+                let asked = AttentionState.Question(
+                    tool: toolName ?? AttentionState.Question.tool(inMessage: message),
+                    toolUseID: toolUseID)
+                let known = openQuestions[sessionID]
+                openQuestions[sessionID] = AttentionState.Question(
+                    tool: asked.tool ?? known?.tool, toolUseID: asked.toolUseID ?? known?.toolUseID)
+            }
         }
         // Per-event side effects.
         switch hookEvent {
         case "Notification", "PermissionRequest":
-            // The idle nudge is not a question (see `isIdleNudge`), so it must not
-            // arrive as "X asks" either — the banner would be the same lie as the
-            // blue dot, just louder.
-            guard !AttentionState.isIdleNudge(message) else { break }
+            // Only a question arrives as "X asks": the idle nudge, a login or quota notice
+            // would make the banner the same lie as the blue dot, just louder.
+            guard hookEvent == "PermissionRequest"
+                || AttentionState.isQuestion(notificationType: notificationType, message: message)
+            else { break }
             postUserNotification(sessionID: sessionID, message: message)
+            aiAssist.sessionUpdated(sessionID)
+        case "StopFailure":
             aiAssist.sessionUpdated(sessionID)
         case "Stop", "SubagentStop":
             aiAssist.sessionUpdated(sessionID)
@@ -3210,6 +3273,7 @@ final class AppState: ObservableObject {
             reviewsEnabled: reviewsEnabled,
             todos: todos,
             todosEnabled: todosEnabled,
+            todoAutoDone: todoAutoDone,
             jiraEnabled: jiraEnabled,
             jira: jira
         )
@@ -3310,6 +3374,7 @@ final class AppState: ObservableObject {
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
+        todoAutoDone = state.todoAutoDone
         jiraEnabled = state.jiraEnabled
         jira = state.jira
         todos = state.todos
@@ -3443,6 +3508,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
+        todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled
         jira = previous?.jira ?? jira
         // The reviews outlive the workspace (they come from GitHub), but the

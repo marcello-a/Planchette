@@ -147,6 +147,17 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   Code's "you left me hanging" nudge after a minute of idling, which is not a
   question and must not turn a terminal blue. All three decisions live in
   `AttentionState.forHookEvent`, with a table test in `LogicTests`.
+- **A question stands until the tool that asked moves on.** Claude runs tools in parallel and
+  in background subagents, so a tool event during a question is often someone else's: another
+  tool's `PostToolUse`, a subagent's (`agent_id`) `PreToolUse`. `AttentionState.questionStands`
+  lets only the asking call end it — by `tool_use_id` when both events carry one, else by
+  `tool_name` (`PermissionRequest` has no id; a permission `Notification` names the tool in its
+  text). The main agent's next step, your prompt and the end of the turn end it as before.
+  `notification_type` decides which `Notification` asks (`askingNotificationTypes`); the
+  idle-nudge text is the fallback for a Claude Code that sends no type. `StopFailure` (a turn
+  that died on an API error) is `error`; `PostToolUseFailure` and `PermissionDenied` end a tool
+  call like `PostToolUse`. A subagent's `Stop` is not the turn's. Ported from
+  session-controller's hook script; `HookQuestionTests`.
 - **A permission that was granted fires no hook, so the screen ends the question.** After the
   dialog that `PermissionRequest` raised, Claude Code runs the tool and sends nothing until it is
   done — for an MCP call that can be minutes — so a terminal stayed blue ("waiting") through the
