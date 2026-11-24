@@ -312,7 +312,9 @@ struct TerminalAreaView: View {
         return HStack(spacing: 5) {
             StateIcon(
                 state: state, size: 13,
-                inBackground: sessions.contains { appState.runsInBackground($0) })
+                inBackground: sessions.contains { appState.runsInBackground($0) },
+                // Every pane a plain shell: no agent in this tab to be idle.
+                shell: sessions.allSatisfy { appState.showsShellMark($0) })
             if let color = session.color.color {
                 Circle().fill(color).frame(width: 7, height: 7)
             }

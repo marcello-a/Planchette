@@ -151,6 +151,13 @@ enum AttentionState: String, Codable {
         }
     }
 
+    /// Pure: whether a terminal's tab shows `>_` instead of the free dot. A free terminal with no
+    /// agent in it is a plain shell; a free terminal with one is an idle agent, and keeps the dot.
+    /// Every other state has its own sprite, agent or not.
+    static func showsShellMark(state: AttentionState, agentLive: Bool) -> Bool {
+        state == .free && !agentLive
+    }
+
     /// Is this `Notification` merely "you left me hanging"? Claude Code sends one
     /// when the prompt has been idle for a minute, with the same event name it
     /// uses for a permission request. Matched on the message because that is the

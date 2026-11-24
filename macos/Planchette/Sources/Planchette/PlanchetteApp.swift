@@ -263,15 +263,18 @@ struct SettingsView: View {
 
 /// Settings → Information: explains the status-color system.
 struct InfoTab: View {
-    /// What the legend explains: the five states, and the globe — `running` for a terminal whose
-    /// turn is over while its Claude still runs something in the background.
+    /// What the legend explains: the five states, the globe — `running` for a terminal whose
+    /// turn is over while its Claude still runs something in the background — and `>_`, a tab
+    /// whose terminal is a plain shell.
     private enum Row: Hashable {
         case state(AttentionState)
         case background
+        case shell
     }
 
     private let rows: [Row] = [
         .state(.ready), .state(.running), .background, .state(.waiting), .state(.error), .state(.free),
+        .shell,
     ]
 
     var body: some View {
@@ -299,6 +302,7 @@ struct InfoTab: View {
         switch row {
         case .state(let state): StateIcon(state: state, size: 18)
         case .background: StateIcon(state: .running, size: 18, inBackground: true)
+        case .shell: StateIcon(state: .free, size: 18, shell: true)
         }
     }
 
@@ -306,6 +310,7 @@ struct InfoTab: View {
         switch row {
         case .state(let state): state.label
         case .background: L10n.t(.stateBackground)
+        case .shell: L10n.t(.stateShell)
         }
     }
 
@@ -313,6 +318,7 @@ struct InfoTab: View {
         switch row {
         case .state(let state): description(for: state)
         case .background: L10n.t(.backgroundDesc)
+        case .shell: L10n.t(.shellDesc)
         }
     }
 

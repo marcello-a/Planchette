@@ -8,6 +8,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **`>_` marks a plain shell.** A tab whose terminal is free with no Claude in it shows `>_` in
+  place of the free dot, so an idle Claude and an empty shell no longer look the same. Settings →
+  Information explains it.
+
 ### Fixed
 - **macOS stops asking for folder access after every update.** Each update looked like a new app
   to macOS, so the terminals asked again for Documents, Desktop, Downloads and other protected
