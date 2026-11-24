@@ -8,7 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **To-do cards move to Done on their own.** Settings → General → Panels → "Move cards to Done":
+  when the card's PR is merged (the PR of its terminal, or the PR its link names), or when its
+  terminal is closed. Never by default. Each PR moves a card once: a card you take back stays back.
+- **Your `/rename` name is the conversation's title.** A session you renamed keeps your name in the
+  sidebar, before Claude's own title.
+
 ### Fixed
+- **A question stays until it is answered.** While Claude waits for your permission, another
+  tool that finishes in parallel, or a subagent at work, no longer hides the question.
+- **A turn that fails shows as an error.** A rate limit or an API error used to leave the terminal
+  "running" with nobody working. It is red now and waits for you.
+- **Only real questions turn a terminal blue.** Login, quota and other notices from Claude Code no
+  longer count as a question.
 - **macOS stops asking for folder access after every update.** Each update looked like a new app
   to macOS, so the terminals asked again for Documents, Desktop, Downloads and other protected
   places. Planchette now keeps the same identity across updates, and your "Allow" stays. You answer

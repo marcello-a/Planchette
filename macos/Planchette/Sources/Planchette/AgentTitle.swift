@@ -19,16 +19,30 @@ import Foundation
 /// So every step here is a `guard` that falls back to nil. A transcript without
 /// the line (a very short session, an older Claude Code, another agent) simply
 /// has no title, and the row keeps saying what it said before.
+///
+/// A name you gave with `/rename` sits in the same file, and wins over Claude's own:
+///
+///     {"type":"custom-title","customTitle":"…","sessionId":"…"}
 enum AgentTitle {
-    /// The newest title in `text` (JSONL), or nil when it names none. Pure, so
-    /// it is unit-tested.
+    /// The newest title Claude Code gave in `text` (JSONL), or nil when it names
+    /// none. Pure, so it is unit-tested.
     static func latest(inJSONL text: Substring) -> String? {
+        latest(type: "ai-title", key: "aiTitle", inJSONL: text)
+    }
+
+    /// The newest `/rename` name in `text` (JSONL), or nil when there is none.
+    static func latestCustom(inJSONL text: Substring) -> String? {
+        latest(type: "custom-title", key: "customTitle", inJSONL: text)
+    }
+
+    private static func latest(type: String, key: String, inJSONL text: Substring) -> String? {
+        let marker = "\"\(type)\""
         for line in text.split(separator: "\n").reversed() {
             // Cheap filter before parsing: most lines are tool results.
-            guard line.contains("\"ai-title\"") else { continue }
+            guard line.contains(marker) else { continue }
             guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                  obj["type"] as? String == "ai-title",
-                  let title = obj["aiTitle"] as? String
+                  obj["type"] as? String == type,
+                  let title = obj[key] as? String
             else { continue }
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             // Claude Code writes an empty title before it has one to give.

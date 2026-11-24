@@ -429,7 +429,18 @@ final class HookServer {
 
         let claudeSessionID = event["session_id"] as? String
         let transcriptPath = event["transcript_path"] as? String
+        // A failed turn says what went wrong in `last_assistant_message` ("API Error: Rate
+        // limit reached"), or at least its kind in `error`.
         let message = event["message"] as? String
+            ?? (hookEvent == "StopFailure"
+                ? (event["last_assistant_message"] as? String ?? event["error"] as? String) : nil)
+        // Which kind of notification (a question, or only news), which tool and which call
+        // an event is about, and whether a subagent sent it — what decides whether a
+        // question still stands (`AttentionState.questionStands`).
+        let notificationType = event["notification_type"] as? String
+        let toolName = event["tool_name"] as? String
+        let toolUseID = event["tool_use_id"] as? String
+        let isSubagent = (event["agent_id"] as? String).map { !$0.isEmpty } ?? false
         // UserPromptSubmit carries the submitted prompt itself — the direct
         // answer to "what is this agent working on?".
         let prompt = event["prompt"] as? String
@@ -450,7 +461,11 @@ final class HookServer {
                 prompt: prompt,
                 source: source,
                 agent: agent,
-                background: background
+                background: background,
+                notificationType: notificationType,
+                isSubagent: isSubagent,
+                toolName: toolName,
+                toolUseID: toolUseID
             )
         }
         return false

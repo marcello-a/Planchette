@@ -222,7 +222,8 @@ over these states (favorites first, `asking` before `done`, longest-waiting
 first). Focusing an `asking`/`done` terminal clears it.
 
 **What ends `running` and `waiting`.** Claude's own hooks, first (`Stop`,
-`SessionEnd`, the tool events). Two things they cannot say are said by others: the
+`StopFailure`, `SessionEnd`, the tool events — a question only by the tool that asked it,
+`AttentionState.questionStands`). Two things they cannot say are said by others: the
 shell, with OSC 133 `D` right before its prompt (the foreground job is over — a command
 that asked a question and ended, an abort with Ctrl+C, an agent that was killed), and
 the screen (`claude_interrupted` and an idle prompt over a turn no hook closed — an
