@@ -49,7 +49,7 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
-    /// Settings → General → Durable terminals: when idle Claude sessions go to sleep
+    /// Settings → Terminals → Durable terminals: when idle Claude sessions go to sleep
     /// (`ClaudeSleep`). Off by default.
     @Published var claudeSleep = ClaudeSleep.off {
         didSet {
@@ -168,10 +168,21 @@ final class AppState: ObservableObject {
         didSet { scheduleSave() }
     }
     /// A terminal whose Claude still runs a shell or an agent in the background shows as running
-    /// once its turn has ended: the turn is over, the work is not (Settings → Project panel →
-    /// Behavior; `AttentionState.settled`). On by default.
+    /// once its turn has ended: the turn is over, the work is not (Settings → Terminals → Status;
+    /// `AttentionState.settled`). On by default.
     @Published var backgroundCountsAsRunning = true {
-        didSet { scheduleSave() }
+        didSet {
+            guard backgroundCountsAsRunning != oldValue else { return }
+            scheduleSave()
+            // Applied now, not at the next hook — an idle Claude may send none for hours: the
+            // terminals held as running drop to their turn's state, or the idle ones with
+            // background work are held.
+            for id in Array(sessions.keys) {
+                guard let turn = turnState(of: id),
+                      heldByBackground[id] != nil || !(backgroundTasks[id] ?? []).isEmpty else { continue }
+                setState(id, turn)
+            }
+        }
     }
     /// The notepad strip at the right of the tab: open or not, and how wide. Persisted.
     @Published var notepad = NotepadLook() {
@@ -377,6 +388,7 @@ final class AppState: ObservableObject {
         }
         observeSurfaceNotifications()
         _ = searchShortcutMonitor   // listening from the first moment
+        _ = tabCycleKeys
         startAttentionHousekeeping()
         startScreenDetection()
         startBranchPolling()
@@ -434,7 +446,7 @@ final class AppState: ObservableObject {
             guard group(of: session)?.favorite == true else { continue }
             let minutes = Int(Date().timeIntervalSince(session.stateSince) / 60)
             NotificationService.post(
-                title: "\(session.displayTitle) — \(L10n.t(.waitingSince, minutes))",
+                title: "\(tabName(for: session)) — \(L10n.t(.waitingSince, minutes))",
                 body: session.lastMessage ?? session.state.label,
                 sessionID: session.id
             )
@@ -962,7 +974,10 @@ final class AppState: ObservableObject {
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.gitMayHaveChanged() }
+            Task { @MainActor in
+                self?.gitMayHaveChanged()
+                self?.markFrontTerminalSeen()
+            }
         }
     }
 
@@ -1536,29 +1551,39 @@ final class AppState: ObservableObject {
                         since: $0.stateSince, expiry: doneExpiry, now: now,
                         activeOnly: activeOnly, includeRunning: includeRunning)
                 }
-                if unreadOnly { tabs = tabs.filter(\.isUnread) }
+                // Unread means news that wants you, as the header counts it: a snoozed terminal
+                // is silent, so it is not news yet (`isMuted`).
+                if unreadOnly { tabs = tabs.filter { $0.isUnread && !isMuted($0, now: now) } }
                 if !tabs.isEmpty { out.append((group, tabs)) }
             }
         }
         return out
     }
 
-    /// The name a notification row prints: the branch of this terminal's checkout
-    /// from its ticket on (`marcello/feat/NIE-1902-format-switch` →
-    /// `NIE-1902-format-switch`) — ticket and branch in one string, which is what
-    /// tells two worktrees of one repo apart. A name you typed still wins, and a
-    /// terminal outside a repo keeps the title it gives itself.
+    /// The name a notification row prints: the terminal's name, the one its tab shows
+    /// (`tabName`). One terminal, one name — the panel used to print the branch, the tab
+    /// the summary and the project panel the path, three names for one thing.
     ///
     /// Here rather than in the panel so the control API can hand out the same
     /// string (`ControlAPI.describeNotification`): a caller drawing its own
     /// notification list must not have to re-derive it and drift.
     func notificationHeadline(for session: TerminalSession) -> String {
-        if let custom = session.customTitle, !custom.isEmpty { return custom }
-        if let branch = branches[session.id] {
-            let cut = Titles.branchFromTicket(branch)
-            if !cut.isEmpty { return cut }
-        }
-        return session.displayTitle
+        tabName(for: session)
+    }
+
+    /// The line under a notification's name: what the terminal works on, else what it said
+    /// last — whichever does not repeat the name. Nil when both would.
+    func notificationDetail(for session: TerminalSession) -> String? {
+        let headline = notificationHeadline(for: session)
+        return [session.currentTask, session.lastMessage, session.aiSummary]
+            .compactMap { $0.flatMap { $0.isEmpty ? nil : $0 } }
+            .first { !Titles.saysTheSame($0, headline) }
+    }
+
+    /// Whether every terminal of a project sits in one folder. Then the path tells none of
+    /// them apart, and a terminal row leaves it out.
+    func sharesDirectory(_ group: SessionGroup) -> Bool {
+        Set(sessions(in: group).map(\.currentDirectory)).count <= 1
     }
 
     var waitingCount: Int {
@@ -1626,7 +1651,8 @@ final class AppState: ObservableObject {
             updateTodos { $0.finishCards(ofClosedTerminal: id) }
         }
         recentlyClosed.append(ClosedTerminal(
-            session: session, claudeWasLive: session.agentKind == .claude && liveAgentIDs.contains(id)))
+            session: session,
+            claudeWasLive: ClosedTerminal.claudeWasLive(session, agentLive: liveAgentIDs.contains(id))))
         if recentlyClosed.count > 20 { recentlyClosed.removeFirst() }
         TerminalRegistry.shared.close(id)
         // Closing a terminal on purpose ends its agent — durability is about
@@ -2009,6 +2035,19 @@ final class AppState: ObservableObject {
         return NSApp?.isActive ?? false
     }
 
+    /// Coming back to the app: the terminal in front of you, the one with the keyboard, is read.
+    /// A report that arrived while you were away stayed unread (`isVisible` needs the app active),
+    /// and clicking into a terminal that already has the focus does not focus it again — so
+    /// without this only a click in the project panel cleared it.
+    func markFrontTerminalSeen() {
+        guard let (window, group) = keyGroup(), let group,
+              window.selectedFolderID == nil, !window.showsProjectOverview,
+              !(todosEnabled && window.showsTodos),
+              let id = group.activeSessionID, isVisible(id)
+        else { return }
+        markSeen(id)
+    }
+
     /// Terminals that finished something nobody has looked at yet.
     var unseenReadyCount: Int { unseenCount(.ready) }
 
@@ -2381,6 +2420,18 @@ final class AppState: ObservableObject {
     struct ClosedTerminal {
         let session: TerminalSession
         let claudeWasLive: Bool
+
+        /// Whether ⌃⌘T should bring Claude back: it ran when the terminal was closed, or it was
+        /// asleep — ended by Planchette to free memory, not by you, so its conversation is still
+        /// this terminal's.
+        static func claudeWasLive(_ session: TerminalSession, agentLive: Bool) -> Bool {
+            (session.agentKind == .claude && agentLive) || session.sleepingClaudeID != nil
+        }
+
+        /// The conversation a sleeping terminal keeps, when it is safe to type.
+        var sleepingConversation: String? {
+            session.sleepingClaudeID.flatMap { ClaudeSleep.isResumable($0) ? $0 : nil }
+        }
     }
 
     /// Terminals closed in this run, the newest last.
@@ -2404,8 +2455,9 @@ final class AppState: ObservableObject {
         guard let groupID else { return }
         let fresh = addSession(directory: closed.session.currentDirectory, groupID: groupID)
         var session = closed.session.reopened(into: fresh)
+        // A sleeping terminal knows its conversation exactly; the others resolve it.
         let resumeID = closed.claudeWasLive
-            ? ClaudeResume.resolveSessionID(
+            ? closed.sleepingConversation ?? ClaudeResume.resolveSessionID(
                 claudeSessionID: closed.session.claudeSessionID,
                 transcriptPath: closed.session.transcriptPath,
                 currentDirectory: closed.session.currentDirectory)
@@ -2460,7 +2512,9 @@ final class AppState: ObservableObject {
             let pullRequest = pullRequests[session.id]
             return SearchEntry(
                 id: session.id,
-                title: session.displayTitle,
+                // The name the terminal wears everywhere else (`tabName`), so what you search
+                // for is what you see on its tab.
+                title: tabName(for: session),
                 project: group(of: session)?.name ?? "",
                 // The cached branch — never a filesystem walk per terminal per keystroke.
                 branch: branches[session.id] ?? "",
@@ -2496,6 +2550,14 @@ final class AppState: ObservableObject {
     var searchShortcutLabels: String {
         let menu = SearchShortcut.chord(key: "k", modifiers: [.command])
         return searchShortcut == menu ? menu.label : "\(searchShortcut.label) · \(menu.label)"
+    }
+
+    /// ⌃Tab and ⌃⇧Tab over a Planchette window; see `TabCycleKeys`.
+    private(set) lazy var tabCycleKeys = TabCycleKeys { [weak self] action in
+        switch action {
+        case .nextTab: self?.stepTabInKeyWindow(by: 1)
+        case .nextProject: self?.stepProjectInKeyWindow(by: 1)
+        }
     }
 
     /// Watches for the search shortcut (Settings → General); see `SearchShortcutMonitor`.
@@ -2819,7 +2881,7 @@ final class AppState: ObservableObject {
             guard let until = session.snoozedUntil, until <= now else { continue }
             update(session.id) { $0.snoozedUntil = nil }
             NotificationService.post(
-                title: "\(session.displayTitle) — \(L10n.t(.reminder))",
+                title: "\(tabName(for: session)) — \(L10n.t(.reminder))",
                 body: session.lastMessage ?? session.currentTask ?? L10n.t(.reminderBody),
                 sessionID: session.id)
         }
@@ -3023,10 +3085,13 @@ final class AppState: ObservableObject {
         }
         // Context usage follows the agent: gone when it ends, back (and read
         // at once) on anything else — a finished turn is when it changed.
+        // Put to sleep by Planchette (`sleepIdleClaude`): the conversation is resumed on the
+        // wake, so it keeps its title and its task — the terminal keeps its name meanwhile.
+        let asleep = fallingAsleep.contains(sessionID) || sessions[sessionID]?.sleepingClaudeID != nil
         if hookEvent == "SessionEnd" {
             endedAgentIDs.insert(sessionID)
             contextUsage[sessionID] = nil
-            agentTitles[sessionID] = nil
+            if !asleep { agentTitles[sessionID] = nil }
         } else {
             endedAgentIDs.remove(sessionID)
             if hookEvent == "Stop" || hookEvent == "SessionStart" { refreshContextUsage() }
@@ -3034,7 +3099,7 @@ final class AppState: ObservableObject {
         // Claude is gone — its task is too. So is a `/clear`: the conversation
         // that carried the task no longer exists. A resumed or compacted
         // session keeps working on the same thing, so its task survives.
-        if hookEvent == "SessionEnd" || (hookEvent == "SessionStart" && source == "clear") {
+        if (hookEvent == "SessionEnd" && !asleep) || (hookEvent == "SessionStart" && source == "clear") {
             update(sessionID) {
                 $0.currentTask = nil
                 $0.firstTask = nil
@@ -3098,7 +3163,7 @@ final class AppState: ObservableObject {
         // Only interrupt for favorites; side projects just queue in the inbox.
         guard group(of: session)?.favorite == true else { return }
         NotificationService.post(
-            title: "\(session.displayTitle) \(L10n.t(.asks))",
+            title: "\(tabName(for: session)) \(L10n.t(.asks))",
             body: message ?? "",
             sessionID: session.id
         )

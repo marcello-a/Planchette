@@ -176,7 +176,19 @@ extension MergedRowFacts {
     }
 }
 
-/// The right end of a project's first line: its colour as a dot, and — while the pointer is over
+/// A colour you gave a project or a terminal: a short upright bar, like the tab of a folder.
+/// Never a dot — a round light in green, red or orange reads as a state, and a project whose
+/// colour is green looked fine while it failed.
+struct ColorTag: View {
+    let color: Color
+    var height: CGFloat = 11
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 1.5).fill(color).frame(width: 4, height: height)
+    }
+}
+
+/// The right end of a project's first line: its colour as a tag (`ColorTag`), and — while the pointer is over
 /// the row — the close button in the same place. One fixed slot, so nothing moves on hover, and
 /// the name keeps the left edge to itself.
 struct ColorDotOrClose: View {
@@ -195,7 +207,7 @@ struct ColorDotOrClose: View {
                 .foregroundStyle(.secondary)
                 .help(L10n.t(.closeProject))
             } else if let tint = color.color {
-                Circle().fill(tint).frame(width: 8, height: 8)
+                ColorTag(color: tint)
             }
         }
         .frame(width: 14, height: 14)

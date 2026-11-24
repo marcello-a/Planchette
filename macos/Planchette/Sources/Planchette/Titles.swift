@@ -179,6 +179,18 @@ enum Titles {
     }
 
     /// A prompt condensed to something that fits a sidebar row.
+    /// Whether two lines say the same thing, one of them perhaps clipped ("Split the cart…"
+    /// against the full prompt): a second line that only repeats the first is left out.
+    static func saysTheSame(_ a: String?, _ b: String?) -> Bool {
+        func normal(_ text: String?) -> String {
+            (text ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "…. ")).lowercased()
+        }
+        let x = normal(a), y = normal(b)
+        guard !x.isEmpty, !y.isEmpty else { return false }
+        return x.hasPrefix(y) || y.hasPrefix(x)
+    }
+
     static func taskLabel(_ task: String, max: Int = 32) -> String? {
         let collapsed = task
             .split(whereSeparator: \.isWhitespace)

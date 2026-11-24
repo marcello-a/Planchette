@@ -100,7 +100,7 @@ struct QuickSwitcherView: View {
             SessionStateIcon(session: session)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
-                    Text(Highlight.attributed(session.displayTitle, hit.matches[.title] ?? [])).bold()
+                    Text(Highlight.attributed(entry?.title ?? appState.tabName(for: session), hit.matches[.title] ?? [])).bold()
                     if appState.group(of: session)?.favorite == true {
                         PixelIcon(sprite: PixelSprites.star, size: 11, tint: .yellow)
                     }

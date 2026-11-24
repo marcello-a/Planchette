@@ -252,7 +252,7 @@ or `free` into `running` while the list is not empty (`AttentionState.settled`),
 turn is still known: `heldByBackground` keeps the state that was overridden, and the control
 API goes by it (`turn_state`; the guard of `session.prompt`, `session.wait`). The icon is a
 globe (`StatePixels.globe`, 13×13, still) instead of the robot while the turn is over
-(`SessionStateIcon`). Settings → Project panel → Behavior turns the mark off.
+(`SessionStateIcon`). Settings → Terminals → Status turns the mark off.
 
 **A granted permission.** Granting a permission fires no hook: Claude Code runs the tool and
 says nothing until it is done, and an MCP call can take minutes. The screen is the only witness

@@ -23,6 +23,9 @@ struct HelpView: View {
             } else {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
+                        // The whole app in four lines, before the list of every feature in it.
+                        // Gone while you search: then the matches are what you came for.
+                        if query.isEmpty { overview }
                         ForEach(sections) { section in
                             Text(L10n.t(section.titleKey).uppercased())
                                 .font(.caption2.weight(.bold))
@@ -39,6 +42,19 @@ struct HelpView: View {
                 }
             }
         }
+    }
+
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(L10n.t(.helpOverviewTitle)).font(.headline)
+            Text(L10n.t(.helpOverviewBody))
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 14).padding(.top, 12)
     }
 
     private var searchField: some View {

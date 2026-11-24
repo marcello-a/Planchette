@@ -260,7 +260,7 @@ the rows print. Answered from the same list the panel renders
 
 | Argument | Type | Meaning |
 |---|---|---|
-| `unread_only` | bool | only terminals whose last report is unread |
+| `unread_only` | bool | only terminals whose last report is unread — not snoozed ones, which the counts leave out too |
 | `only_active` | bool | only what wants you: waiting / error, and done terminals whose done check has not cleared yet. Running terminals are left out unless `include_running` |
 | `include_running` | bool | with `only_active`, the running terminals too. Without `only_active` it changes nothing: that list holds every terminal that is not free |
 | `project_id` | UUID string | one project |
@@ -352,7 +352,7 @@ Returned by every `session.*` command.
 | `id` | string | terminal id |
 | `title` | string | the name the app derives: a name you typed, else the ticket of the branch and the last prompt (`NIE-1902 · Add the switch`). The tab bar shows what Settings → Tabs says (the conversation's summary, by default), so the two can differ |
 | `path` | string | live working directory |
-| `state` | string | `running` · `waiting` · `ready` · `error` · `free`. A terminal whose turn ended while Claude still runs a shell or an agent in the background is `running` (Settings → Project panel → Behavior turns that off) |
+| `state` | string | `running` · `waiting` · `ready` · `error` · `free`. A terminal whose turn ended while Claude still runs a shell or an agent in the background is `running` (Settings → Terminals → Status turns that off) |
 | `turn_state` | string | `ready` or `free`, present only when `state` is `running` for that reason: the state the turn itself is in. `session.prompt` and `session.wait` go by it |
 | `agent` | string | `claude` · `codex` · `none` |
 | `seen` | bool | has its last report been looked at |
@@ -369,7 +369,7 @@ Everything in `session`, plus:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `headline` | string | the row's first line as the panel prints it: the branch from its ticket on, a name you typed, else `title` |
+| `headline` | string | the row's first line as the panel prints it: the terminal's name, the one its tab shows (a name you typed, else what the session is about) |
 | `state_label` | string | the badge text, in the app's language |
 | `needs_attention` | bool | `waiting` or `error` |
 | `unread` | bool | last report not looked at yet |

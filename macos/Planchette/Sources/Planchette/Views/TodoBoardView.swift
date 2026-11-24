@@ -295,7 +295,7 @@ struct TodoCardView: View {
                             if let session {
                                 SessionStateIcon(session: session, size: 10)
                             } else if let color = group.color.color {
-                                Circle().fill(color).frame(width: 7, height: 7)
+                                ColorTag(color: color, height: 10)
                             } else {
                                 Image(systemName: "folder").font(.caption2)
                             }

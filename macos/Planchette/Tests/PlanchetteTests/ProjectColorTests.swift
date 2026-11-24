@@ -74,10 +74,13 @@ final class ProjectColorLookTests: XCTestCase {
         XCTAssertTrue(look.showsBody)
     }
 
-    func testTheFourthStrengthSurvivesASaveAndALoad() throws {
+    // "Off" has one place now, the scope. A strength saved as off by an older version loads as
+    // the scope off — still no gradient — and the strength falls back for when it is turned on.
+    func testAStrengthSavedAsOffLoadsAsTheScopeOff() throws {
         let look = try decode(#"{"scope":"label","strength":"off"}"#)
-        XCTAssertEqual(look.strength, .off)
-        XCTAssertEqual(look.scope, .label)
+        XCTAssertEqual(look.scope, .off)
+        XCTAssertEqual(look.strength, .subtle)
+        XCTAssertFalse(look.showsLabel)
         XCTAssertEqual(try decode(String(decoding: JSONEncoder().encode(look), as: UTF8.self)), look)
     }
 

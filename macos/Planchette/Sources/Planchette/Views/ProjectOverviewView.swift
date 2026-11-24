@@ -102,7 +102,7 @@ struct OverviewTabRow: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 5) {
                         if let color = session.color.color {
-                            Circle().fill(color).frame(width: 7, height: 7)
+                            ColorTag(color: color, height: 10)
                         }
                         Text(appState.tabName(for: session))
                             .fontWeight(isActive ? .semibold : .regular)
