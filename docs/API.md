@@ -261,8 +261,8 @@ the rows print. Answered from the same list the panel renders
 | Argument | Type | Meaning |
 |---|---|---|
 | `unread_only` | bool | only terminals whose last report is unread |
-| `only_active` | bool | only what wants you: waiting / error, and done terminals whose done check has not cleared yet. Running terminals are left out unless `include_running`; a terminal that is free again is left out |
-| `include_running` | bool | with `only_active`, the running terminals too. Without `only_active` it changes nothing: that list holds every terminal |
+| `only_active` | bool | only what wants you: waiting / error, and done terminals whose done check has not cleared yet. Running terminals are left out unless `include_running` |
+| `include_running` | bool | with `only_active`, the running terminals too. Without `only_active` it changes nothing: that list holds every terminal that is not free |
 | `project_id` | UUID string | one project |
 | `limit` | int | stop after this many rows |
 
@@ -283,6 +283,8 @@ Order is the panel's: the projects of the front window first (favorites before
 the rest), then every other window's, and terminals in tab order.
 
 - **Parked projects are absent.** A project marked inactive is silent on purpose.
+- **Free terminals are absent**, with or without a filter: a terminal with nothing
+  to report is not a notification. `session.list` lists every terminal.
 - **Snoozed terminals are listed**, exactly as the panel lists them: `muted` is
   `true` and `snoozed_until` says when they come back. Skip them if your surface
   is meant to nag, keep them if it is meant to mirror.

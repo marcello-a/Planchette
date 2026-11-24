@@ -82,6 +82,16 @@ enum AttentionState: String, Codable {
         }
     }
 
+    /// Whether the notifications panel lists a terminal in this state. A free one never: free is
+    /// the absence of news, and a terminal with nothing to report is not a notification — with
+    /// two dozen idle terminals the panel was a second sidebar instead of a list of what happened.
+    /// "Only active" then narrows the rest to what wants you (`isCurrent`).
+    func isListed(since: Date, expiry: DoneExpiry, now: Date,
+                  activeOnly: Bool, includeRunning: Bool = false) -> Bool {
+        guard self != .free else { return false }
+        return !activeOnly || isCurrent(since: since, expiry: expiry, now: now, includeRunning: includeRunning)
+    }
+
     /// What a terminal shows when its turn has ended but its Claude still runs a shell or an agent
     /// in the background (`BackgroundTasks`): the turn is over, the work is not, and "done" or "free"
     /// would be a lie. Only the idle states give way. A question or an error still wants you,

@@ -102,7 +102,8 @@ struct AttentionPanel: View {
     }
 
     /// The three checkboxes. "Show running" only means something while "Only active" is ticked:
-    /// without it the list holds everything, running terminals included — it dims, but stays in reach.
+    /// without it the list holds every terminal that is not free, running ones included — it dims,
+    /// but stays in reach.
     @ViewBuilder
     private var filters: some View {
         Toggle(L10n.t(.onlyUnread), isOn: $onlyUnread)

@@ -1519,9 +1519,9 @@ final class AppState: ObservableObject {
     /// and "what the panel shows" have to be the same list, or the API starts
     /// answering a question about a UI that has moved on.
     ///
-    /// `activeOnly` keeps what is waiting or failed, and the finished terminals whose done
-    /// check has not cleared yet; running ones too with `includeRunning`
-    /// (`AttentionState.isCurrent`).
+    /// A free terminal is never listed: it has nothing to report. `activeOnly` keeps what is
+    /// waiting or failed, and the finished terminals whose done check has not cleared yet;
+    /// running ones too with `includeRunning` (`AttentionState.isListed`).
     func notificationSections(
         windowID: UUID? = nil, unreadOnly: Bool = false, activeOnly: Bool = false,
         includeRunning: Bool = false, now: Date = Date()
@@ -1531,12 +1531,10 @@ final class AppState: ObservableObject {
         for window in ordered {
             let inWindow = groups(inWindow: window).filter(\.active)
             for group in inWindow.filter(\.favorite) + inWindow.filter({ !$0.favorite }) {
-                var tabs = sessions(in: group)
-                if activeOnly {
-                    tabs = tabs.filter {
-                        $0.state.isCurrent(
-                            since: $0.stateSince, expiry: doneExpiry, now: now, includeRunning: includeRunning)
-                    }
+                var tabs = sessions(in: group).filter {
+                    $0.state.isListed(
+                        since: $0.stateSince, expiry: doneExpiry, now: now,
+                        activeOnly: activeOnly, includeRunning: includeRunning)
                 }
                 if unreadOnly { tabs = tabs.filter(\.isUnread) }
                 if !tabs.isEmpty { out.append((group, tabs)) }

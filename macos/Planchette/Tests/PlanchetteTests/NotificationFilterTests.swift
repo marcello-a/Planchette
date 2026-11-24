@@ -60,4 +60,41 @@ final class OnlyActiveFilterTests: XCTestCase {
         XCTAssertFalse(current(.free, after: 60))
         XCTAssertFalse(current(.free, after: 60, .never))
     }
+
+    // MARK: What the panel lists at all
+
+    private func listed(_ state: AttentionState, after seconds: TimeInterval = 60,
+                        activeOnly: Bool, includeRunning: Bool = false) -> Bool {
+        state.isListed(since: since, expiry: .oneDay, now: since.addingTimeInterval(seconds),
+                       activeOnly: activeOnly, includeRunning: includeRunning)
+    }
+
+    // A free terminal has nothing to report: not listed, whatever the checkboxes say.
+    func testAFreeTerminalIsNeverListed() {
+        for activeOnly in [false, true] {
+            for includeRunning in [false, true] {
+                XCTAssertFalse(listed(.free, activeOnly: activeOnly, includeRunning: includeRunning))
+            }
+        }
+    }
+
+    // Without "Only active" every other state is listed, an old result and a running terminal too.
+    func testWithoutOnlyActiveEveryStateButFreeIsListed() {
+        for state in [AttentionState.waiting, .error, .running, .ready] {
+            XCTAssertTrue(listed(state, after: 3 * 86_400, activeOnly: false), "\(state)")
+        }
+    }
+
+    // With "Only active" the list is exactly `isCurrent`.
+    func testOnlyActiveListsWhatIsCurrent() {
+        for state in [AttentionState.waiting, .error, .running, .ready, .free] {
+            for seconds: TimeInterval in [60, 3 * 86_400] {
+                for includeRunning in [false, true] {
+                    XCTAssertEqual(listed(state, after: seconds, activeOnly: true, includeRunning: includeRunning),
+                                   current(state, after: seconds, includeRunning: includeRunning),
+                                   "\(state) after \(seconds)s")
+                }
+            }
+        }
+    }
 }
