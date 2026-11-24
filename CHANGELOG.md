@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.52] — 2026-11-24
+
 ### Changed
 - **Settings has a Terminals tab.** Durable terminals, sleep, when Done turns back to Free,
   background work, what happens at launch and the notepad are now in one place. They were spread
