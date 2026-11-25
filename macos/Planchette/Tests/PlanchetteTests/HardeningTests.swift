@@ -2457,22 +2457,43 @@ final class SwapScriptTests: XCTestCase {
         XCTAssertEqual(result(of: l), "ok")
     }
 
-    // The update to 0.2.52 that never installed: the app belonged to root, an earlier
-    // swap could not delete it and left `Planchette.app.old`, and every later swap
+    // The update to 0.2.52 that never installed: an earlier swap could not delete the
+    // old app (it belonged to root) and left `Planchette.app.old`, and every later swap
     // moved the app *into* that folder — refused. Each run now uses its own names.
-    func testAnAppThatCannotBeMovedOrDeletedIsStillReplaced() throws {
+    func testALeftoverThatCannotBeDeletedDoesNotBlockTheSwap() throws {
         let l = try layout()
         let leftover = URL(fileURLWithPath: l.installed.path + ".old")
         try makeApp(at: leftover, marker: "older")
         try lockDown(leftover)
-        try lockDown(l.installed)
         let log = try run(l, cleanup: l.workDir.path)
         XCTAssertEqual(marker(of: l.installed), "new", log)
         XCTAssertEqual(result(of: l), "ok")
-        XCTAssertTrue(log.contains("swap ok"), log)
-        // What could not be deleted is out of sight: no `Planchette.app.old` in Finder.
-        XCTAssertTrue(besideTheApp(l).allSatisfy { $0.hasPrefix(".Planchette.app.") }, "\(besideTheApp(l))")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: leftover.path))
+        // What could not be deleted is hidden where macOS allows the rename (later than
+        // 15); either way, nothing new is left in sight.
+        XCTAssertTrue(
+            besideTheApp(l).allSatisfy { $0.hasPrefix(".Planchette.app.") || $0 == "Planchette.app.old" },
+            "\(besideTheApp(l))")
+    }
+
+    // An app the helper may not write to. Whether it can be renamed in place depends on
+    // the macOS version (15 refuses, later ones allow it), so either outcome is fine —
+    // but the app is never lost, and the result file tells the truth.
+    func testAnAppThatIsNotOursIsReplacedOrLeftIntact() throws {
+        let l = try layout()
+        try lockDown(l.installed)
+        let log = try run(l, cleanup: l.workDir.path)
+        let installed = marker(of: l.installed)
+        XCTAssertTrue(installed == "new" || installed == "old", log)
+        XCTAssertEqual(result(of: l), installed == "new" ? "ok" : "failed", log)
+    }
+
+    // So the updater does not try: such an app takes the manual path.
+    func testAnAppThatIsNotOursIsNotSwappedInApp() throws {
+        let l = try layout()
+        XCTAssertTrue(UpdateService.canReplace(bundleAt: l.installed.path))
+        try lockDown(l.installed)
+        XCTAssertFalse(UpdateService.canReplace(bundleAt: l.installed.path))
+        XCTAssertFalse(UpdateService.canReplace(bundleAt: l.workDir.path), "not an .app")
     }
 
     // And the next swap clears what the last one had to leave, once it can.

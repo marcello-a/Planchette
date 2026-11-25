@@ -328,7 +328,9 @@ final class UpdateService: ObservableObject {
             let target = dmg ?? URL(string: release.htmlURL)
             let alert = NSAlert()
             alert.messageText = L10n.t(.updateAvailable, version)
-            alert.informativeText = L10n.t(.updateAvailableBody)
+            alert.informativeText = bundleBelongsToSomeoneElse
+                ? L10n.t(.updateAvailableBody) + "\n\n" + L10n.t(.updateNotYours, Bundle.main.bundlePath)
+                : L10n.t(.updateAvailableBody)
             alert.accessoryView = whatsNew(release)
             alert.addButton(withTitle: L10n.t(.updateDownload))
             alert.addButton(withTitle: L10n.t(.cancel))
@@ -345,10 +347,27 @@ final class UpdateService: ObservableObject {
 
     /// The app bundle we're running from, if it's a real `.app` in a writable
     /// location (so we can swap it in place and relaunch).
-    private var canReplaceBundle: Bool {
-        let path = Bundle.main.bundlePath
+    private var canReplaceBundle: Bool { Self.canReplace(bundleAt: Bundle.main.bundlePath) }
+
+    /// A bundle the swap helper can replace: a real `.app`, in a folder we may write
+    /// to, and itself ours to write. The last part is what an app installed as root
+    /// (a Finder copy that asked for a password) fails. Whether such a folder can
+    /// still be renamed in place depends on the macOS version — macOS 15 refuses,
+    /// later versions allow it — and it can never be deleted, so the swap is not
+    /// tried at all: the manual path is offered, with the one command that makes the
+    /// app the user's again.
+    nonisolated static func canReplace(bundleAt path: String) -> Bool {
         guard path.hasSuffix(".app") else { return false }
-        return FileManager.default.isWritableFile(atPath: (path as NSString).deletingLastPathComponent)
+        let fm = FileManager.default
+        return fm.isWritableFile(atPath: (path as NSString).deletingLastPathComponent)
+            && fm.isWritableFile(atPath: path)
+            && fm.isWritableFile(atPath: (path as NSString).appendingPathComponent("Contents"))
+    }
+
+    /// The bundle is a real `.app`, but another user owns it: say how to fix that.
+    private var bundleBelongsToSomeoneElse: Bool {
+        let path = Bundle.main.bundlePath
+        return path.hasSuffix(".app") && !FileManager.default.isWritableFile(atPath: path)
     }
 
     private func install(
