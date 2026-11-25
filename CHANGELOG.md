@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.54] — 2026-11-25
+
 ### Changed
 - **Closing a terminal asks only when an agent is in the middle of a turn.** The question comes
   when a Claude in it works or waits for your answer, because closing ends that turn. A free
