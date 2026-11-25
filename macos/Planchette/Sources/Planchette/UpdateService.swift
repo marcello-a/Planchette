@@ -456,6 +456,39 @@ final class UpdateService: ObservableObject {
         }
     }
 
+    /// Where the swap helper writes how the swap went ("ok" or "failed"), read at the
+    /// next launch. The helper runs after the app has quit, so this file is the only way
+    /// a failure reaches the user: the relaunch that follows a failed swap starts the
+    /// old version, and an update that quietly did not happen looks like a broken button.
+    static var swapResultURL: URL {
+        AppState.stateURL.deletingLastPathComponent()
+            .appendingPathComponent("update-result")
+    }
+
+    static var swapLogURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("planchette-update.log")
+    }
+
+    /// Say so when the last swap failed. Called once at launch; the result is removed
+    /// after it is read, so it is said once.
+    func reportFailedSwapIfAny() {
+        guard let data = try? Data(contentsOf: Self.swapResultURL) else { return }
+        try? FileManager.default.removeItem(at: Self.swapResultURL)
+        let result = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard result == "failed" else { return }
+        let alert = NSAlert()
+        alert.messageText = L10n.t(.updateSwapFailedTitle)
+        alert.informativeText = L10n.t(.updateSwapFailedBody, currentVersion, Bundle.main.bundlePath)
+        alert.addButton(withTitle: L10n.t(.ok))
+        alert.addButton(withTitle: L10n.t(.updateShowLog))
+        Task {
+            if await ModalAlert.run(alert) == .alertSecondButtonReturn {
+                NSWorkspace.shared.activateFileViewerSelecting([Self.swapLogURL])
+            }
+        }
+    }
+
     /// Re-adopt a staged update recorded by a previous run — the app may have
     /// been killed rather than quit. The extracted bundle lives in a temp
     /// directory, so it may be gone; then the record is simply dropped.
@@ -697,21 +730,41 @@ final class UpdateService: ObservableObject {
     /// tested — against a sandbox. Args: $1 = new .app (extracted), $2 = installed
     /// .app, $3 = log file, $4 = "1" to relaunch afterwards, $5 = the directory $1
     /// was extracted into (removed on the way out, with the script itself, in every
-    /// outcome; empty = remove nothing).
+    /// outcome; empty = remove nothing), $6 = a file the outcome is written to,
+    /// "ok" or "failed" (empty = none), so the next launch can say that a swap failed.
+    ///
+    /// An app installed as root (a Finder copy that asked for a password) can be
+    /// renamed in its own folder, but not moved into another one and not deleted:
+    /// moving a directory to a new parent needs write access to the directory
+    /// itself. The previous app used to be set aside as `<app>.old` and deleted at
+    /// the end; when the delete failed, that `.old` stayed, and every later swap
+    /// moved the app *into* it instead of renaming it — refused, so no update
+    /// installed again, without a word. Now each run sets the old app aside under a
+    /// name of its own, hidden, in the same folder, and a leftover never blocks.
     nonisolated static func swapScript(waitingForPID pid: Int32) -> String {
         #"""
         #!/bin/sh
         exec >> "$3" 2>&1
+        RESULT=failed
         # Whatever the outcome — including the early exits below — the extracted
         # copy and this script are not needed any more. Only a directory the
         # updater itself created is ever removed.
-        trap '[ -n "$5" ] && case "$5" in */\#(Self.workDirPrefix)*) rm -rf "$5" ;; esac; rm -f "$0"' EXIT
+        trap '[ -n "$6" ] && echo "$RESULT" > "$6"; [ -n "$5" ] && case "$5" in */\#(Self.workDirPrefix)*) rm -rf "$5" ;; esac; rm -f "$0"' EXIT
         echo "--- swap $(date) : pid \#(pid) ---"
         while kill -0 \#(pid) 2>/dev/null; do sleep 0.2; done
         sleep 0.7   # let the OS release the old bundle after the process exits
-        STAGING="$2.new"
-        OLD="$2.old"
-        rm -rf "$STAGING" "$OLD"
+        DIR=$(dirname "$2")
+        NAME=$(basename "$2")
+        STAGING="$DIR/.$NAME.new-$$"
+        OLD="$DIR/.$NAME.old-$$"
+        # What earlier swaps could not delete. Removed when possible; a leftover
+        # that cannot be removed is hidden, and the names above are new anyway.
+        for LEFT in "$2.new" "$2.old"; do
+            [ -e "$LEFT" ] && ! rm -rf "$LEFT" 2>/dev/null && mv "$LEFT" "$DIR/.$NAME.left-$$-${LEFT##*.}" 2>/dev/null
+        done
+        for LEFT in "$DIR/.$NAME".new-* "$DIR/.$NAME".old-* "$DIR/.$NAME".left-*; do
+            [ -e "$LEFT" ] && rm -rf "$LEFT" 2>/dev/null
+        done
         if /usr/bin/ditto "$1" "$STAGING"; then
             # Move the installed app aside rather than deleting it: if the swap
             # fails after an `rm -rf "$2"`, the machine is left with no app at
@@ -724,7 +777,10 @@ final class UpdateService: ObservableObject {
             fi
             if mv "$STAGING" "$2"; then
                 /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null
-                rm -rf "$OLD"
+                # An app installed as root cannot be deleted; it stays, hidden,
+                # and the next swap tries again.
+                rm -rf "$OLD" 2>/dev/null || echo "note: could not delete the previous app ($OLD)"
+                RESULT=ok
                 echo "swap ok -> $2"
             else
                 echo "ERROR: mv staging into place failed; restoring previous version"
@@ -752,8 +808,7 @@ final class UpdateService: ObservableObject {
     /// (removed on the way out, with the script itself, in every outcome).
     private func swap(newApp: String, dest: String, relaunch: Bool) throws {
         let pid = ProcessInfo.processInfo.processIdentifier
-        let logURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("planchette-update.log")
+        let logURL = Self.swapLogURL
         // One run of history is plenty; the log is appended to on every update.
         if let size = (try? FileManager.default.attributesOfItem(atPath: logURL.path))?[.size] as? Int,
            size > 100_000 {
@@ -777,7 +832,11 @@ final class UpdateService: ObservableObject {
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/bin/sh")
-        task.arguments = [scriptURL.path, resolvedApp, dest, logURL.path, relaunch ? "1" : "0", workDir]
+        try? FileManager.default.removeItem(at: Self.swapResultURL)
+        task.arguments = [
+            scriptURL.path, resolvedApp, dest, logURL.path, relaunch ? "1" : "0", workDir,
+            Self.swapResultURL.path,
+        ]
         try task.run()   // detached; keeps running after we terminate
     }
 

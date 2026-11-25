@@ -178,6 +178,7 @@ enum LKey: String, CaseIterable {
     case askBeforeRestore, askBeforeRestoreHelp
     case updateAvailable, updateAvailableBody, updateDownload
     case updateUpToDate, updateCurrentVersion, updateFailed
+    case updateSwapFailedTitle, updateSwapFailedBody, updateShowLog
     case updateInstallRelaunch, updateInstallBody, updateInstalling, updateLater, updateNoReleases, updateDownloading
     case whatsNew, expandAll, collapseAll
 
@@ -483,7 +484,7 @@ enum L10n {
         .updates: "Updates", .checkForUpdates: "Check for updates…", .autoUpdateCheck: "Automatically check for updates", .autoUpdateHelp: "Check GitHub for a newer stable release on launch",
         .askBeforeRestore: "Ask before restoring the last session", .askBeforeRestoreHelp: "Off (default): the last session comes back at every launch, with no question. On: you choose Restore or Start fresh.",
         .updateAvailable: "Version %@ is available", .updateAvailableBody: "Download the new version and drag it into Applications.", .updateDownload: "Download",
-        .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed",
+        .updateUpToDate: "You're up to date", .updateCurrentVersion: "Current version: %@", .updateFailed: "Update check failed", .updateSwapFailedTitle: "The update was not installed", .updateSwapFailedBody: "Planchette could not replace itself, so version %@ is still running. The usual cause is an app that belongs to another user, for example after a copy that asked for your password. Run this in a terminal, then check for updates again:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Show Log",
         .updateInstallRelaunch: "Install & Relaunch", .updateInstallBody: "Planchette will download the new version, install it, and relaunch itself.", .updateInstalling: "Installing update…", .updateLater: "Later", .updateNoReleases: "Couldn't find any releases yet.", .updateDownloading: "Downloading update… %d%%",
         .whatsNew: "What's new", .expandAll: "Expand all", .collapseAll: "Collapse all",
         .stateReady: "Done", .stateFree: "Free", .stateRunning: "Running", .stateWaiting: "Waiting for input", .stateError: "Error", .free: "free",
@@ -991,7 +992,7 @@ enum L10n {
         .updates: "Updates", .checkForUpdates: "Nach Updates suchen…", .autoUpdateCheck: "Automatisch nach Updates suchen", .autoUpdateHelp: "Beim Start auf GitHub nach einer neueren stabilen Version prüfen",
         .askBeforeRestore: "Vor dem Wiederherstellen der letzten Sitzung fragen", .askBeforeRestoreHelp: "Aus (Standard): Die letzte Sitzung kommt bei jedem Start ohne Rückfrage zurück. An: Du wählst Wiederherstellen oder Neu starten.",
         .updateAvailable: "Version %@ ist verfügbar", .updateAvailableBody: "Lade die neue Version herunter und ziehe sie in „Programme“.", .updateDownload: "Herunterladen",
-        .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen",
+        .updateUpToDate: "Alles aktuell", .updateCurrentVersion: "Aktuelle Version: %@", .updateFailed: "Update-Suche fehlgeschlagen", .updateSwapFailedTitle: "Das Update wurde nicht installiert", .updateSwapFailedBody: "Planchette konnte sich nicht ersetzen, darum läuft noch Version %@. Meist gehört die App einem anderen Benutzer, etwa nach einer Kopie, die nach deinem Passwort gefragt hat. Führe das in einem Terminal aus und suche dann erneut nach Updates:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Log zeigen",
         .updateInstallRelaunch: "Installieren & Neustart", .updateInstallBody: "Planchette lädt die neue Version herunter, installiert sie und startet sich neu.", .updateInstalling: "Update wird installiert…", .updateLater: "Später", .updateNoReleases: "Noch keine Releases gefunden.", .updateDownloading: "Update wird geladen… %d%%",
         .whatsNew: "Das ist neu", .expandAll: "Alle aufklappen", .collapseAll: "Alle zuklappen",
         .stateReady: "Fertig", .stateFree: "Frei", .stateRunning: "Läuft", .stateWaiting: "Wartet auf Eingabe", .stateError: "Fehler", .free: "frei",
@@ -1499,7 +1500,7 @@ enum L10n {
         .updates: "Mises à jour", .checkForUpdates: "Rechercher des mises à jour…", .autoUpdateCheck: "Rechercher automatiquement les mises à jour", .autoUpdateHelp: "Vérifier sur GitHub une nouvelle version stable au lancement",
         .askBeforeRestore: "Demander avant de restaurer la dernière session", .askBeforeRestoreHelp: "Désactivé (par défaut) : la dernière session revient à chaque lancement, sans question. Activé : vous choisissez Restaurer ou Repartir de zéro.",
         .updateAvailable: "La version %@ est disponible", .updateAvailableBody: "Téléchargez la nouvelle version et glissez-la dans Applications.", .updateDownload: "Télécharger",
-        .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour",
+        .updateUpToDate: "Vous êtes à jour", .updateCurrentVersion: "Version actuelle : %@", .updateFailed: "Échec de la recherche de mises à jour", .updateSwapFailedTitle: "La mise à jour n'a pas été installée", .updateSwapFailedBody: "Planchette n'a pas pu se remplacer, la version %@ tourne donc encore. La cause habituelle : l'app appartient à un autre utilisateur, par exemple après une copie qui a demandé votre mot de passe. Exécutez ceci dans un terminal, puis recherchez à nouveau les mises à jour :\n\nsudo chown -R $USER '%@'", .updateShowLog: "Afficher le journal",
         .updateInstallRelaunch: "Installer et relancer", .updateInstallBody: "Planchette va télécharger la nouvelle version, l'installer et se relancer.", .updateInstalling: "Installation de la mise à jour…", .updateLater: "Plus tard", .updateNoReleases: "Aucune version trouvée pour l'instant.", .updateDownloading: "Téléchargement… %d%%",
         .whatsNew: "Nouveautés", .expandAll: "Tout développer", .collapseAll: "Tout réduire",
         .stateReady: "Terminé", .stateFree: "Libre", .stateRunning: "En cours", .stateWaiting: "En attente d'entrée", .stateError: "Erreur", .free: "libre",
@@ -2007,7 +2008,7 @@ enum L10n {
         .updates: "Actualizaciones", .checkForUpdates: "Buscar actualizaciones…", .autoUpdateCheck: "Buscar actualizaciones automáticamente", .autoUpdateHelp: "Comprobar en GitHub una nueva versión estable al iniciar",
         .askBeforeRestore: "Preguntar antes de restaurar la última sesión", .askBeforeRestoreHelp: "Desactivado (predeterminado): la última sesión vuelve en cada inicio, sin preguntar. Activado: eliges Restaurar o Empezar de cero.",
         .updateAvailable: "La versión %@ está disponible", .updateAvailableBody: "Descarga la nueva versión y arrástrala a Aplicaciones.", .updateDownload: "Descargar",
-        .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones",
+        .updateUpToDate: "Estás al día", .updateCurrentVersion: "Versión actual: %@", .updateFailed: "Error al buscar actualizaciones", .updateSwapFailedTitle: "La actualización no se instaló", .updateSwapFailedBody: "Planchette no pudo reemplazarse, así que sigue en ejecución la versión %@. La causa habitual es que la app pertenece a otro usuario, por ejemplo tras una copia que pidió tu contraseña. Ejecuta esto en un terminal y vuelve a buscar actualizaciones:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Mostrar registro",
         .updateInstallRelaunch: "Instalar y reiniciar", .updateInstallBody: "Planchette descargará la nueva versión, la instalará y se reiniciará.", .updateInstalling: "Instalando actualización…", .updateLater: "Más tarde", .updateNoReleases: "Aún no se encontraron versiones.", .updateDownloading: "Descargando… %d%%",
         .whatsNew: "Novedades", .expandAll: "Expandir todo", .collapseAll: "Contraer todo",
         .stateReady: "Hecho", .stateFree: "Libre", .stateRunning: "En ejecución", .stateWaiting: "Esperando entrada", .stateError: "Error", .free: "libre",
@@ -2515,7 +2516,7 @@ enum L10n {
         .updates: "Aggiornamenti", .checkForUpdates: "Cerca aggiornamenti…", .autoUpdateCheck: "Cerca aggiornamenti automaticamente", .autoUpdateHelp: "Controlla su GitHub una nuova versione stabile all'avvio",
         .askBeforeRestore: "Chiedi prima di ripristinare l'ultima sessione", .askBeforeRestoreHelp: "Disattivato (predefinito): l'ultima sessione torna a ogni avvio, senza domande. Attivato: scegli Ripristina o Ricomincia.",
         .updateAvailable: "La versione %@ è disponibile", .updateAvailableBody: "Scarica la nuova versione e trascinala in Applicazioni.", .updateDownload: "Scarica",
-        .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita",
+        .updateUpToDate: "Sei aggiornato", .updateCurrentVersion: "Versione attuale: %@", .updateFailed: "Ricerca aggiornamenti non riuscita", .updateSwapFailedTitle: "L'aggiornamento non è stato installato", .updateSwapFailedBody: "Planchette non è riuscita a sostituirsi, quindi è ancora in esecuzione la versione %@. Di solito l'app appartiene a un altro utente, per esempio dopo una copia che ha chiesto la password. Esegui questo in un terminale, poi cerca di nuovo gli aggiornamenti:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Mostra registro",
         .updateInstallRelaunch: "Installa e riavvia", .updateInstallBody: "Planchette scaricherà la nuova versione, la installerà e si riavvierà.", .updateInstalling: "Installazione dell'aggiornamento…", .updateLater: "Più tardi", .updateNoReleases: "Nessuna versione trovata per ora.", .updateDownloading: "Download… %d%%",
         .whatsNew: "Novità", .expandAll: "Espandi tutto", .collapseAll: "Comprimi tutto",
         .stateReady: "Fatto", .stateFree: "Libero", .stateRunning: "In esecuzione", .stateWaiting: "In attesa di input", .stateError: "Errore", .free: "libero",
@@ -3023,7 +3024,7 @@ enum L10n {
         .updates: "Updates", .checkForUpdates: "Zoeken naar updates…", .autoUpdateCheck: "Automatisch naar updates zoeken", .autoUpdateHelp: "Bij het starten op GitHub naar een nieuwere stabiele versie zoeken",
         .askBeforeRestore: "Vragen voor het herstellen van de laatste sessie", .askBeforeRestoreHelp: "Uit (standaard): de laatste sessie komt bij elke start terug, zonder vraag. Aan: je kiest Herstellen of Opnieuw beginnen.",
         .updateAvailable: "Versie %@ is beschikbaar", .updateAvailableBody: "Download de nieuwe versie en sleep die naar Programma's.", .updateDownload: "Downloaden",
-        .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt",
+        .updateUpToDate: "Je bent up-to-date", .updateCurrentVersion: "Huidige versie: %@", .updateFailed: "Zoeken naar updates mislukt", .updateSwapFailedTitle: "De update is niet geïnstalleerd", .updateSwapFailedBody: "Planchette kon zichzelf niet vervangen, dus versie %@ draait nog. Meestal is de app van een andere gebruiker, bijvoorbeeld na een kopie die om je wachtwoord vroeg. Voer dit uit in een terminal en zoek daarna opnieuw naar updates:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Log tonen",
         .updateInstallRelaunch: "Installeren en herstarten", .updateInstallBody: "Planchette downloadt de nieuwe versie, installeert die en start opnieuw op.", .updateInstalling: "Update installeren…", .updateLater: "Later", .updateNoReleases: "Nog geen releases gevonden.", .updateDownloading: "Update downloaden… %d%%",
         .whatsNew: "Wat is er nieuw", .expandAll: "Alles uitklappen", .collapseAll: "Alles inklappen",
         .stateReady: "Klaar", .stateFree: "Vrij", .stateRunning: "Actief", .stateWaiting: "Wacht op invoer", .stateError: "Fout", .free: "vrij",
@@ -3531,7 +3532,7 @@ enum L10n {
         .updates: "Atualizações", .checkForUpdates: "Procurar atualizações…", .autoUpdateCheck: "Procurar atualizações automaticamente", .autoUpdateHelp: "Verificar no GitHub uma nova versão estável ao iniciar",
         .askBeforeRestore: "Perguntar antes de restaurar a última sessão", .askBeforeRestoreHelp: "Desativado (predefinição): a última sessão volta em cada arranque, sem perguntar. Ativado: escolhes Restaurar ou Começar de novo.",
         .updateAvailable: "A versão %@ está disponível", .updateAvailableBody: "Descarrega a nova versão e arrasta-a para Aplicações.", .updateDownload: "Descarregar",
-        .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações",
+        .updateUpToDate: "Estás atualizado", .updateCurrentVersion: "Versão atual: %@", .updateFailed: "Falha ao procurar atualizações", .updateSwapFailedTitle: "A atualização não foi instalada", .updateSwapFailedBody: "O Planchette não conseguiu se substituir, por isso a versão %@ ainda está em execução. A causa habitual é um app que pertence a outro usuário, por exemplo após uma cópia que pediu sua senha. Execute isto em um terminal e procure atualizações novamente:\n\nsudo chown -R $USER '%@'", .updateShowLog: "Mostrar registro",
         .updateInstallRelaunch: "Instalar e reiniciar", .updateInstallBody: "O Planchette vai descarregar a nova versão, instalá-la e reiniciar.", .updateInstalling: "A instalar atualização…", .updateLater: "Mais tarde", .updateNoReleases: "Ainda não foram encontradas versões.", .updateDownloading: "A descarregar… %d%%",
         .whatsNew: "Novidades", .expandAll: "Expandir tudo", .collapseAll: "Recolher tudo",
         .stateReady: "Concluído", .stateFree: "Livre", .stateRunning: "Em execução", .stateWaiting: "À espera de entrada", .stateError: "Erro", .free: "livre",

@@ -8,6 +8,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **An update that never installed.** When the app belonged to another user — for example after
+  a copy that asked for your password — the updater could not delete the previous version. The
+  copy it left behind blocked every later update: Planchette quit, came back on the old version,
+  and said nothing. Now a leftover no longer blocks an update, and when the swap fails, the next
+  launch says so and shows the log.
+
 ## [0.2.52] — 2026-11-24
 
 ### Changed
