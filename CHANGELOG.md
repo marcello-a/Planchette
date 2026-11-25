@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.53] — 2026-11-25
+
 ### Fixed
 - **An update that never installed.** When the app belonged to another user — for example after
   a copy that asked for your password — the updater could not delete the previous version. The
