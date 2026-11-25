@@ -418,6 +418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A run that was killed rather than quit may have left a verified
             // bundle behind; apply it at the *next* quit instead of losing it.
             updater.adoptStagedUpdateIfAny()
+            updater.reportFailedSwapIfAny()
             updater.startAutoChecks()
         }
     }

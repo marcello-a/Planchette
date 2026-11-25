@@ -2366,6 +2366,13 @@ final class SwapScriptTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        // Locked-down directories first get their write access back, or they stay.
+        if let walker = FileManager.default.enumerator(atPath: sandbox.path) {
+            for case let path as String in walker {
+                try? FileManager.default.setAttributes(
+                    [.posixPermissions: 0o755], ofItemAtPath: sandbox.appendingPathComponent(path).path)
+            }
+        }
         try? FileManager.default.removeItem(at: sandbox)
     }
 
@@ -2380,7 +2387,28 @@ final class SwapScriptTests: XCTestCase {
     }
 
     private struct Layout {
-        let installed: URL, newApp: URL, workDir: URL, log: URL, script: URL
+        let installed: URL, newApp: URL, workDir: URL, log: URL, script: URL, result: URL
+    }
+
+    private func result(of l: Layout) -> String? {
+        (try? String(contentsOf: l.result, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Everything in the folder of the installed app but the app itself.
+    private func besideTheApp(_ l: Layout) -> [String] {
+        let dir = l.installed.deletingLastPathComponent()
+        return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+            .filter { $0 != l.installed.lastPathComponent }.sorted()
+    }
+
+    /// A directory this user can rename in its folder but not move into another one,
+    /// and not empty — what an app installed as root is to the updater. Moving a
+    /// directory to a new parent needs write access to the directory itself.
+    private func lockDown(_ dir: URL) throws {
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: dir.path)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o555], ofItemAtPath: dir.appendingPathComponent("Contents").path)
     }
 
     private func layout(newAppExists: Bool = true) throws -> Layout {
@@ -2394,7 +2422,8 @@ final class SwapScriptTests: XCTestCase {
         return Layout(
             installed: installed, newApp: newApp, workDir: workDir,
             log: sandbox.appendingPathComponent("swap.log"),
-            script: sandbox.appendingPathComponent("swap.sh"))
+            script: sandbox.appendingPathComponent("swap.sh"),
+            result: sandbox.appendingPathComponent("update-result"))
     }
 
     /// Run the real script text with a pid that is already gone, so it does not wait.
@@ -2408,7 +2437,7 @@ final class SwapScriptTests: XCTestCase {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = [l.script.path, l.newApp.path, l.installed.path, l.log.path, "0",
-                             cleanup ?? ""]
+                             cleanup ?? "", l.result.path]
         try process.run()
         process.waitUntilExit()
         XCTAssertEqual(process.terminationStatus, 0, "the helper always exits 0")
@@ -2424,6 +2453,64 @@ final class SwapScriptTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: l.workDir.path), "the extracted copy is removed")
         XCTAssertFalse(FileManager.default.fileExists(atPath: l.script.path), "the script removes itself")
         XCTAssertTrue(log.contains("swap ok"), log)
+        XCTAssertEqual(besideTheApp(l), [], "nothing beside the app, hidden or not")
+        XCTAssertEqual(result(of: l), "ok")
+    }
+
+    // The update to 0.2.52 that never installed: an earlier swap could not delete the
+    // old app (it belonged to root) and left `Planchette.app.old`, and every later swap
+    // moved the app *into* that folder — refused. Each run now uses its own names.
+    func testALeftoverThatCannotBeDeletedDoesNotBlockTheSwap() throws {
+        let l = try layout()
+        let leftover = URL(fileURLWithPath: l.installed.path + ".old")
+        try makeApp(at: leftover, marker: "older")
+        try lockDown(leftover)
+        let log = try run(l, cleanup: l.workDir.path)
+        XCTAssertEqual(marker(of: l.installed), "new", log)
+        XCTAssertEqual(result(of: l), "ok")
+        // What could not be deleted is hidden where macOS allows the rename (later than
+        // 15); either way, nothing new is left in sight.
+        XCTAssertTrue(
+            besideTheApp(l).allSatisfy { $0.hasPrefix(".Planchette.app.") || $0 == "Planchette.app.old" },
+            "\(besideTheApp(l))")
+    }
+
+    // An app the helper may not write to. Whether it can be renamed in place depends on
+    // the macOS version (15 refuses, later ones allow it), so either outcome is fine —
+    // but the app is never lost, and the result file tells the truth.
+    func testAnAppThatIsNotOursIsReplacedOrLeftIntact() throws {
+        let l = try layout()
+        try lockDown(l.installed)
+        let log = try run(l, cleanup: l.workDir.path)
+        let installed = marker(of: l.installed)
+        XCTAssertTrue(installed == "new" || installed == "old", log)
+        XCTAssertEqual(result(of: l), installed == "new" ? "ok" : "failed", log)
+    }
+
+    // So the updater does not try: such an app takes the manual path.
+    func testAnAppThatIsNotOursIsNotSwappedInApp() throws {
+        let l = try layout()
+        XCTAssertTrue(UpdateService.canReplace(bundleAt: l.installed.path))
+        try lockDown(l.installed)
+        XCTAssertFalse(UpdateService.canReplace(bundleAt: l.installed.path))
+        XCTAssertFalse(UpdateService.canReplace(bundleAt: l.workDir.path), "not an .app")
+    }
+
+    // And the next swap clears what the last one had to leave, once it can.
+    func testTheNextSwapRemovesWhatAnEarlierOneLeft() throws {
+        let l = try layout()
+        let dir = l.installed.deletingLastPathComponent()
+        try makeApp(at: dir.appendingPathComponent(".Planchette.app.old-123"), marker: "older")
+        try makeApp(at: URL(fileURLWithPath: l.installed.path + ".new"), marker: "half")
+        try run(l, cleanup: l.workDir.path)
+        XCTAssertEqual(marker(of: l.installed), "new")
+        XCTAssertEqual(besideTheApp(l), [])
+    }
+
+    func testAFailedSwapSaysSo() throws {
+        let l = try layout(newAppExists: false)
+        try run(l, cleanup: l.workDir.path)
+        XCTAssertEqual(result(of: l), "failed")
     }
 
     // The property the whole script is built around: a failed copy must not cost the
