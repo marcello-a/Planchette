@@ -420,13 +420,21 @@ struct TerminalAreaView: View {
     }
 }
 
-/// Closing from a tab: always asked first, because it ends the terminals' sessions.
+/// Closing from a tab: asked first only while an agent in it is mid-turn (`TabClosing.asksFirst`),
+/// because closing ends that turn. Anything else closes at once.
 @MainActor
 enum TabCloser {
-    /// Ask, then close the terminals. `ids` is every terminal the tabs hold; the body
+    /// Ask if needed, then close the terminals. `ids` is every terminal the tabs hold; the body
     /// names how many that is.
     static func confirmAndClose(_ ids: [UUID], title: String, appState: AppState) {
         guard !ids.isEmpty else { return }
+        let terminals = ids.compactMap { id in
+            appState.sessions[id].map { (state: $0.state, liveAgent: appState.hasLiveAgent(id)) }
+        }
+        guard TabClosing.asksFirst(terminals) else {
+            for id in ids { appState.closeSession(id) }
+            return
+        }
         let alert = NSAlert()
         alert.alertStyle = .warning
         alert.messageText = title

@@ -141,4 +141,12 @@ enum TabClosing {
         case .right: return tabs.count - index - 1
         }
     }
+
+    /// Whether closing these terminals is asked first: only when it would cut an agent off in
+    /// the middle of a turn — one that works (`running`, background work included, see
+    /// `AttentionState.settled`) or waits for an answer (`waiting`). A finished turn, a free
+    /// prompt or a plain shell closes at once: there is nothing to lose that a question saves.
+    static func asksFirst(_ terminals: [(state: AttentionState, liveAgent: Bool)]) -> Bool {
+        terminals.contains { $0.liveAgent && ($0.state == .running || $0.state == .waiting) }
+    }
 }

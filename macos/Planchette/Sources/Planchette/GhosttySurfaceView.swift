@@ -652,7 +652,19 @@ final class GhosttySurfaceNSView: NSView {
         }
     }
 
+    /// The key whose press `DurableKeys` turned into other keys: its release must not reach the
+    /// surface either, or the program sees a Return come up that never went down.
+    private var translatedKeyCode: UInt16?
+
     override func keyDown(with event: NSEvent) {
+        // ⇧↩ and ⌃↩ arrive through tmux as a plain ↩; Claude Code has control keys for both.
+        if isDurableTerminal, let action = DurableKeys.action(keyCode: event.keyCode, flags: event.modifierFlags),
+           hasLiveClaude() {
+            translatedKeyCode = event.keyCode
+            guard !event.isARepeat || action.repeats else { return }
+            for press in action.presses { pressControl(press.letter, keyCode: press.keyCode) }
+            return
+        }
         keyTextAccumulator = []
         interpretKeyEvents([event])
         let produced = keyTextAccumulator ?? []
@@ -662,6 +674,10 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     override func keyUp(with event: NSEvent) {
+        if event.keyCode == translatedKeyCode {
+            translatedKeyCode = nil
+            return
+        }
         sendKey(event: event, action: GHOSTTY_ACTION_RELEASE, texts: [])
     }
 
@@ -873,14 +889,20 @@ final class GhosttySurfaceNSView: NSView {
     /// is built by hand the way `sendKey` would (keycode + unshifted codepoint
     /// are what ghostty needs to encode a control shortcut).
     private func sendControlV() {
-        guard let surface else { return }
+        pressControl("v", keyCode: 9)   // kVK_ANSI_V
+    }
+
+    /// Press and release Control and a letter, through libghostty's key encoder — never as
+    /// text: `sendText` is a paste, and a control byte inside a paste is a character, not a key.
+    private func pressControl(_ letter: Character, keyCode: UInt32) {
+        guard let surface, let scalar = letter.unicodeScalars.first else { return }
         pendingValid = false   // injected input isn't tracked prompt typing
         var key = ghostty_input_key_s()
         key.mods = GHOSTTY_MODS_CTRL
         key.consumed_mods = GHOSTTY_MODS_NONE
-        key.keycode = 9        // kVK_ANSI_V
+        key.keycode = keyCode
         key.text = nil
-        key.unshifted_codepoint = UnicodeScalar("v").value
+        key.unshifted_codepoint = scalar.value
         key.composing = false
         key.action = GHOSTTY_ACTION_PRESS
         _ = ghostty_surface_key(surface, key)

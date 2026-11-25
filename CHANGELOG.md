@@ -8,6 +8,20 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **Closing a terminal asks only when an agent is in the middle of a turn.** The question comes
+  when a Claude in it works or waits for your answer, because closing ends that turn. A free
+  terminal, a finished turn or a plain shell closes at once.
+
+### Fixed
+- **⇧↩ and ⌃↩ for Claude Code in durable terminals.** tmux passes no modified Return, so ⇧↩ sent
+  the prompt instead of adding a line, and ⌃↩ ("send now") sent it the normal way. Planchette now
+  presses the keys Claude Code has for both, which work through tmux: ⌃J for a new line, ⌃X ⌃S
+  for "send now". Other programs in the terminal still get a plain Return.
+- **A tree line that ran into the state icon.** In the project panel, the short line from a project
+  to its terminal ended right at the terminal's icon, so the check of a finished turn looked as if
+  the line went into it. The line now stops a little before the icon.
+
 ## [0.2.53] — 2026-11-25
 
 ### Fixed
