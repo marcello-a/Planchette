@@ -173,3 +173,21 @@ final class WheelScrollTests: XCTestCase {
         XCTAssertNil(WheelScroll.offset(current: 0, overflow: 0.5, deltaX: 0, deltaY: -3, precise: false))
     }
 }
+
+final class TabCloseQuestionTests: XCTestCase {
+    func testAnAgentMidTurnIsAskedFor() {
+        XCTAssertTrue(TabClosing.asksFirst([(state: .running, liveAgent: true)]), "it works")
+        XCTAssertTrue(TabClosing.asksFirst([(state: .waiting, liveAgent: true)]), "it waits for an answer")
+        XCTAssertTrue(TabClosing.asksFirst([(state: .free, liveAgent: false), (state: .running, liveAgent: true)]),
+                      "one such terminal among several is enough")
+    }
+
+    func testEverythingElseClosesAtOnce() {
+        XCTAssertFalse(TabClosing.asksFirst([(state: .free, liveAgent: false)]), "a free shell")
+        XCTAssertFalse(TabClosing.asksFirst([(state: .free, liveAgent: true)]), "an idle Claude")
+        XCTAssertFalse(TabClosing.asksFirst([(state: .ready, liveAgent: true)]), "a finished turn")
+        XCTAssertFalse(TabClosing.asksFirst([(state: .error, liveAgent: true)]), "a failed turn")
+        XCTAssertFalse(TabClosing.asksFirst([(state: .running, liveAgent: false)]), "a shell command, no agent")
+        XCTAssertFalse(TabClosing.asksFirst([]))
+    }
+}

@@ -49,7 +49,11 @@ enum TreeLines {
     // edge, not at the row's indented content). Measured on the sidebar: the line runs down
     // the middle of the parent's disclosure arrow, and the stub stops short of the child.
     static func x(_ column: Column) -> CGFloat { column == .folder ? 18 : 32 }
-    static func stubEnd(_ column: Column) -> CGFloat { column == .folder ? 24 : 50 }
+    /// A gap of about 3 points before the child, as the folder's stub keeps to a project's arrow.
+    /// The project's stub reaches a terminal's sprite, and some sprites are lit in their first
+    /// column at just that height (the check of a finished turn, the robot's arm): a stub that
+    /// ended at the sprite's edge ran into it and read as part of the picture.
+    static func stubEnd(_ column: Column) -> CGFloat { column == .folder ? 24 : 46.5 }
     /// The stub meets a child's first line, not the middle of a row that may be three lines high:
     /// the middle of a project's arrow, of a terminal's sprite. Measured on the rendered sidebar.
     static let stubY: CGFloat = 14.5
