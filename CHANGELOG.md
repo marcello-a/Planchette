@@ -8,6 +8,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
+  away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
+
 ## [0.2.54] — 2026-11-25
 
 ### Changed
