@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.55] — 2026-11-26
+
 ### Added
 - **Usage data and error reports, only if you say yes.** Planchette asks once. With your yes it
   sends at most one report a day, only on a day you use it, to PostHog in the EU under a random
