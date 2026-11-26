@@ -3,19 +3,50 @@ import SwiftUI
 /// Small tag chips ("to test", "review", …).
 struct TagChips: View {
     let tags: [String]
+    /// Given, a chip shows an × while the pointer is on it, and a click on the × takes the tag
+    /// off: the project panel, where a tag is done with as soon as its work is.
+    var onRemove: ((String) -> Void)?
+
+    @State private var hovered: String?
 
     var body: some View {
         if !tags.isEmpty {
             HStack(spacing: 3) {
                 ForEach(tags, id: \.self) { tag in
-                    Text(tag)
-                        .font(.system(size: 9, weight: .medium))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(Color.accentColor.opacity(0.18), in: Capsule())
-                        .foregroundStyle(Color.accentColor)
+                    chip(tag)
                 }
             }
+        }
+    }
+
+    private func chip(_ tag: String) -> some View {
+        let removable = onRemove != nil && hovered == tag
+        return HStack(spacing: 2) {
+            Text(tag)
+            if removable {
+                Button {
+                    hovered = nil
+                    onRemove?(tag)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7, weight: .bold))
+                        .frame(width: 9, height: 9)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L10n.t(.removeTagHelp, tag))
+            }
+        }
+        .font(.system(size: 9, weight: .medium))
+        // The × takes the room of the padding on its side, so the chip barely grows under it.
+        .padding(.leading, 5)
+        .padding(.trailing, removable ? 3 : 5)
+        .padding(.vertical, 1.5)
+        .background(Color.accentColor.opacity(removable ? 0.28 : 0.18), in: Capsule())
+        .foregroundStyle(Color.accentColor)
+        .onHover { inside in
+            guard onRemove != nil else { return }
+            if inside { hovered = tag } else if hovered == tag { hovered = nil }
         }
     }
 }

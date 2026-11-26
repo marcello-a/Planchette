@@ -18,81 +18,29 @@ struct PlanchetteApp: App {
         .commands {
             // Replacing, not after: the WindowGroup's own "New Planchette Window" also took ⌘N,
             // and it opens a window without a WindowModel. "New window" (⇧⌘N) is the real one.
+            // Every key is the one Settings → Shortcuts holds (`ShortcutBook`): the items are views
+            // that watch `AppState`, so a changed key works the moment it is set.
+            //
+            // Replacing, not after: the WindowGroup's own "New Planchette Window" also took ⌘N,
+            // and it opens a window without a WindowModel. "New window" (⇧⌘N) is the real one.
             CommandGroup(replacing: .newItem) {
-                Button(L10n.t(.newProject)) { delegate.appState.promptNewProjectInKeyWindow() }
-                    .keyboardShortcut("n")
-                Button(L10n.t(.newWindow)) {
-                    openWindow(value: delegate.appState.newWindow())
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
+                NewItemMenuItems(openWindow: { openWindow(value: $0) })
+                    .environmentObject(delegate.appState)
             }
             // Replaces the system "Close" (⌘W closed the whole window): ⌘W closes the terminal
             // you are in, ⇧⌘W the window.
             CommandGroup(replacing: .saveItem) {
-                Button(L10n.t(.closeTabMenu)) { delegate.appState.closeInKeyWindow() }
-                    .keyboardShortcut("w")
-                Button(L10n.t(.closeWindowMenu)) { NSApp.keyWindow?.performClose(nil) }
-                    .keyboardShortcut("w", modifiers: [.command, .shift])
+                CloseMenuItems()
+                    .environmentObject(delegate.appState)
             }
             CommandMenu(L10n.t(.sessionMenu)) {
-                Button(L10n.t(.addTerminal)) { delegate.appState.addTerminalInKeyWindow() }
-                    .keyboardShortcut("t")
-                Button(L10n.t(.reopenClosedTab)) { delegate.appState.reopenClosedTerminal() }
-                    .keyboardShortcut("t", modifiers: [.command, .control])
-                Button(L10n.t(.splitRight)) { delegate.appState.splitInKeyWindow(edge: .right) }
-                    .keyboardShortcut("d")
-                Button(L10n.t(.splitDown)) { delegate.appState.splitInKeyWindow(edge: .bottom) }
-                    .keyboardShortcut("d", modifiers: [.command, .shift])
-                // ⌘J, not ⌥⌘N: another app can own a global shortcut (Arc has ⌥⌘N), and a global
-                // shortcut beats the menu of the app in front.
-                Button(L10n.t(.notepad)) { delegate.appState.toggleNotepad() }
-                    .keyboardShortcut("j")
-                // No "New terminal…": it opened the same folder picker as "New project…" (⌘N), and
-                // "Add terminal" (⌘T) is the new terminal in the project you are in.
-                Button(L10n.t(.newWorktree)) { delegate.appState.promptNewWorktree() }
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
-                Button(L10n.t(.quickSwitcher)) { delegate.appState.showQuickSwitcher() }
-                    .keyboardShortcut("k")
-                Button(L10n.t(.jumpToWaiting)) { delegate.appState.jumpToNextWaiting() }
-                    .keyboardShortcut("k", modifiers: [.command, .shift])
-                Divider()
-                // One item per action: ⌃Tab and ⌃⇧Tab are keys of their own (`TabCycleKeys`).
-                // Arrows, not [ and ]: on a German keyboard [ is ⌥5.
-                Menu(L10n.t(.goToTab)) {
-                    Button(L10n.t(.previousTab)) { delegate.appState.stepTabInKeyWindow(by: -1) }
-                        .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
-                    Button(L10n.t(.nextTab)) { delegate.appState.stepTabInKeyWindow(by: 1) }
-                        .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
-                    Divider()
-                    ForEach(1..<9) { digit in
-                        Button(L10n.t(.tabNumber, digit)) { delegate.appState.selectTabInKeyWindow(digit: digit) }
-                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")))
-                    }
-                    Button(L10n.t(.lastTab)) { delegate.appState.selectTabInKeyWindow(digit: 9) }
-                        .keyboardShortcut("9")
-                }
-                Menu(L10n.t(.goToProject)) {
-                    Button(L10n.t(.previousProject)) { delegate.appState.stepProjectInKeyWindow(by: -1) }
-                        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-                    Button(L10n.t(.nextProject)) { delegate.appState.stepProjectInKeyWindow(by: 1) }
-                        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-                    Divider()
-                    ForEach(1..<9) { digit in
-                        Button(L10n.t(.projectNumber, digit)) { delegate.appState.selectProjectInKeyWindow(digit: digit) }
-                            .keyboardShortcut(KeyEquivalent(Character("\(digit)")), modifiers: [.command, .option])
-                    }
-                    Button(L10n.t(.lastProject)) { delegate.appState.selectProjectInKeyWindow(digit: 9) }
-                        .keyboardShortcut("9", modifiers: [.command, .option])
-                }
+                TerminalMenuItems()
+                    .environmentObject(delegate.appState)
             }
             // Find in the terminal in front: Edit menu, after the text editing group.
             CommandGroup(after: .textEditing) {
-                Button(L10n.t(.findMenu)) { delegate.appState.findInKeyWindow() }
-                    .keyboardShortcut("f")
-                Button(L10n.t(.findNextMenu)) { delegate.appState.findNextInKeyWindow(forward: true) }
-                    .keyboardShortcut("g")
-                Button(L10n.t(.findPreviousMenu)) { delegate.appState.findNextInKeyWindow(forward: false) }
-                    .keyboardShortcut("g", modifiers: [.command, .shift])
+                FindMenuItems()
+                    .environmentObject(delegate.appState)
             }
             CommandMenu(L10n.t(.arrangements)) {
                 ArrangementsMenu()
@@ -145,7 +93,7 @@ struct PlanchetteApp: App {
 /// opens on the one you used last, and the gear at the foot of the project panel
 /// opens it on the Project panel.
 enum SettingsTab: String {
-    case general, projectPanel, tabs, terminals, info, help
+    case general, projectPanel, tabs, terminals, shortcuts, info, help
 }
 
 struct SettingsView: View {
@@ -167,6 +115,9 @@ struct SettingsView: View {
             TerminalSettings()
                 .tabItem { Label(L10n.t(.terminalsTab), systemImage: "terminal") }
                 .tag(SettingsTab.terminals)
+            ShortcutSettings()
+                .tabItem { Label(L10n.t(.shortcutsTab), systemImage: "keyboard") }
+                .tag(SettingsTab.shortcuts)
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
                 .tag(SettingsTab.info)
@@ -197,9 +148,7 @@ struct SettingsView: View {
                 .help(L10n.t(.appearanceHelp))
             }
             ProjectColorSection()
-            Section(L10n.t(.searchSection)) {
-                SearchShortcutSetting()
-            }
+            // The keys that open the search are in Settings → Shortcuts, with every other key.
             Section(L10n.t(.aiSection)) {
                 Toggle(L10n.t(.aiActive), isOn: $appState.aiEnabled)
                     .help(appState.aiEnabled ? L10n.t(.aiAssistOnHelp) : L10n.t(.aiAssistOffHelp))
@@ -786,6 +735,104 @@ private final class ArrangementTarget: NSObject {
     }
 }
 
+/// File menu: a new project, a new window.
+struct NewItemMenuItems: View {
+    @EnvironmentObject var appState: AppState
+    let openWindow: (UUID) -> Void
+
+    var body: some View {
+        Button(L10n.t(.newProject)) { appState.promptNewProjectInKeyWindow() }
+            .shortcut(.newProject, appState.shortcuts)
+        Button(L10n.t(.newWindow)) { openWindow(appState.newWindow()) }
+            .shortcut(.newWindow, appState.shortcuts)
+    }
+}
+
+/// File menu: close the terminal you are in, or the window.
+struct CloseMenuItems: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Button(L10n.t(.closeTabMenu)) { appState.closeInKeyWindow() }
+            .shortcut(.closeTerminal, appState.shortcuts)
+        Button(L10n.t(.closeWindowMenu)) { NSApp.keyWindow?.performClose(nil) }
+            .shortcut(.closeWindow, appState.shortcuts)
+    }
+}
+
+/// The Terminal menu.
+struct TerminalMenuItems: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        let keys = appState.shortcuts
+        Button(L10n.t(.addTerminal)) { appState.addTerminalInKeyWindow() }
+            .shortcut(.addTerminal, keys)
+        Button(L10n.t(.reopenClosedTab)) { appState.reopenClosedTerminal() }
+            .shortcut(.reopenClosedTerminal, keys)
+        Button(L10n.t(.splitRight)) { appState.splitInKeyWindow(edge: .right) }
+            .shortcut(.splitRight, keys)
+        Button(L10n.t(.splitDown)) { appState.splitInKeyWindow(edge: .bottom) }
+            .shortcut(.splitDown, keys)
+        // ⌘J, not ⌥⌘N: another app can own a global shortcut (Arc has ⌥⌘N), and a global
+        // shortcut beats the menu of the app in front.
+        Button(L10n.t(.notepad)) { appState.toggleNotepad() }
+            .shortcut(.notepad, keys)
+        // No "New terminal…": it opened the same folder picker as "New project…" (⌘N), and
+        // "Add terminal" (⌘T) is the new terminal in the project you are in.
+        Button(L10n.t(.newWorktree)) { appState.promptNewWorktree() }
+            .shortcut(.newWorktree, keys)
+        Button(L10n.t(.quickSwitcher)) { appState.showQuickSwitcher() }
+            .shortcut(.quickSwitcher, keys)
+        Button(L10n.t(.jumpToWaiting)) { appState.jumpToNextWaiting() }
+            .shortcut(.jumpToWaiting, keys)
+        Divider()
+        // One item per action: ⌃Tab and ⌃⇧Tab are keys of their own (`TabCycleKeys`).
+        // Arrows, not [ and ]: on a German keyboard [ is ⌥5.
+        Menu(L10n.t(.goToTab)) {
+            Button(L10n.t(.previousTab)) { appState.stepTabInKeyWindow(by: -1) }
+                .shortcut(.previousTab, keys)
+            Button(L10n.t(.nextTab)) { appState.stepTabInKeyWindow(by: 1) }
+                .shortcut(.nextTab, keys)
+            Divider()
+            // The numbers are fixed (`FixedShortcut.goToTab`): one key per place in the strip.
+            ForEach(1..<9) { digit in
+                Button(L10n.t(.tabNumber, digit)) { appState.selectTabInKeyWindow(digit: digit) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(digit)")))
+            }
+            Button(L10n.t(.lastTab)) { appState.selectTabInKeyWindow(digit: 9) }
+                .keyboardShortcut("9")
+        }
+        Menu(L10n.t(.goToProject)) {
+            Button(L10n.t(.previousProject)) { appState.stepProjectInKeyWindow(by: -1) }
+                .shortcut(.previousProject, keys)
+            Button(L10n.t(.nextProject)) { appState.stepProjectInKeyWindow(by: 1) }
+                .shortcut(.nextProject, keys)
+            Divider()
+            ForEach(1..<9) { digit in
+                Button(L10n.t(.projectNumber, digit)) { appState.selectProjectInKeyWindow(digit: digit) }
+                    .keyboardShortcut(KeyEquivalent(Character("\(digit)")), modifiers: [.command, .option])
+            }
+            Button(L10n.t(.lastProject)) { appState.selectProjectInKeyWindow(digit: 9) }
+                .keyboardShortcut("9", modifiers: [.command, .option])
+        }
+    }
+}
+
+/// Edit menu: find in the terminal in front.
+struct FindMenuItems: View {
+    @EnvironmentObject var appState: AppState
+
+    var body: some View {
+        Button(L10n.t(.findMenu)) { appState.findInKeyWindow() }
+            .shortcut(.find, appState.shortcuts)
+        Button(L10n.t(.findNextMenu)) { appState.findNextInKeyWindow(forward: true) }
+            .shortcut(.findNext, appState.shortcuts)
+        Button(L10n.t(.findPreviousMenu)) { appState.findNextInKeyWindow(forward: false) }
+            .shortcut(.findPrevious, appState.shortcuts)
+    }
+}
+
 /// "Arrangements" menu: save what this window looks like, or open a saved one.
 /// View menu: show or hide each panel. All on ⌃⌘, the family ⌃⌘S (the sidebar of every Mac
 /// app) starts: ⌥⌘ letters are often taken globally by other apps (see the notepad's ⌘J). A View, not inline in `commands`, so the items that
@@ -798,22 +845,22 @@ struct ViewMenuItems: View {
 
     var body: some View {
         Toggle(L10n.t(.projectPanelTab), isOn: Binding(get: { !sidebarMinified }, set: { sidebarMinified = !$0 }))
-            .keyboardShortcut("s", modifiers: [.command, .control])
+            .shortcut(.projectPanel, appState.shortcuts)
         Toggle(L10n.t(.notificationsPanel), isOn: InboxMode.binding(.notifications, shown: $inboxShown, mode: $mode))
-            .keyboardShortcut("n", modifiers: [.command, .control])
+            .shortcut(.notificationsPanel, appState.shortcuts)
         if appState.reviewsEnabled {
             Toggle(L10n.t(.reviewsPanel), isOn: InboxMode.binding(.reviews, shown: $inboxShown, mode: $mode))
-                .keyboardShortcut("r", modifiers: [.command, .control])
+                .shortcut(.reviewsPanel, appState.shortcuts)
         }
         if appState.todosEnabled, let windowID = WindowRegistry.shared.keyWindowID() ?? appState.windows.first?.id {
             Toggle(L10n.t(.todos), isOn: Binding(
                 get: { appState.window(for: windowID)?.showsTodos ?? false },
                 set: { _ in appState.toggleTodos(inWindow: windowID) }))
-                .keyboardShortcut("b", modifiers: [.command, .control])
+                .shortcut(.todos, appState.shortcuts)
         }
         if appState.jiraEnabled {
             Toggle(L10n.t(.jiraTitle), isOn: Binding(get: { appState.jira.open }, set: { _ in appState.toggleJiraPanel() }))
-                .keyboardShortcut("j", modifiers: [.command, .control])
+                .shortcut(.jira, appState.shortcuts)
         }
     }
 }

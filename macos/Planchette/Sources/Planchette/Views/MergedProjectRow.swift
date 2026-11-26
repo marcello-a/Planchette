@@ -35,6 +35,8 @@ struct MergedRowFacts {
 struct MergedProjectRow<Trailing: View>: View {
     let facts: MergedRowFacts
     let details: SidebarDetails
+    /// Takes a tag off the terminal (the × on a chip). Nil in the Settings demo.
+    var onRemoveTag: ((String) -> Void)? = nil
     /// What sits at the right end of the first line: the colour dot, which turns into the close
     /// button on hover in the sidebar (`ColorDotOrClose`).
     @ViewBuilder var trailing: () -> Trailing
@@ -132,7 +134,7 @@ struct MergedProjectRow<Trailing: View>: View {
                     }
                 }
                 if details.shows(.tags) {
-                    TagChips(tags: facts.tags)
+                    TagChips(tags: facts.tags, onRemove: onRemoveTag)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

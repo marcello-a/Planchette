@@ -1,6 +1,6 @@
 import Foundation
 
-/// The keys that open the search from anywhere in the app (Settings → General →
+/// The keys that open the search from anywhere in the app (Settings → Shortcuts →
 /// Search shortcut). Either one modifier tapped twice, quickly — Shift twice is the
 /// default, as in the IDEs — or a key with a modifier held.
 enum SearchShortcut: Equatable {
