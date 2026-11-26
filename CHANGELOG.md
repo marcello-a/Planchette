@@ -8,6 +8,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Fixed
+- **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
+  every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
+  for the login password every five minutes. It now reads the token once and keeps it in memory.
+  Choose "Always Allow", and the question comes only once after each update.
+
 ## [0.2.55] — 2026-11-26
 
 ### Added
