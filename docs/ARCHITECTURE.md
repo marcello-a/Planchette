@@ -296,7 +296,7 @@ project, PR number, branch and tags come next, then the note and the path, and t
 task, summary and last message least. A `#number` matches a ticket or PR number. The best match in a field the row does
 not already show becomes the hint line.
 
-The keys that open it are `AppState.searchShortcut` (persisted; Settings → General →
+The keys that open it are `AppState.searchShortcut` (persisted; Settings → Shortcuts →
 Search): a modifier tapped twice, or a chord. `SearchShortcutMonitor` is a *local*
 `NSEvent` monitor, because a global one needs the Accessibility permission, and the
 shortcut is for the app in front. Chords are consumed; a double tap never costs the

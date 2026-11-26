@@ -6,6 +6,8 @@ import SwiftUI
 /// from the same localized strings the controls use — so this page cannot drift
 /// from the app without the app itself changing.
 struct HelpView: View {
+    /// Watched so a key changed in Settings → Shortcuts shows here at once.
+    @EnvironmentObject var appState: AppState
     @State private var query = ""
     let version: String
 
@@ -87,7 +89,8 @@ struct HelpView: View {
             }
             Spacer(minLength: 8)
             if let shortcut = entry.shortcut {
-                Text(shortcut)
+                // As Settings → Shortcuts has it now, like every text from `L10n`.
+                Text(ShortcutBook.rewrite(shortcut, replacements: L10n.shortcutReplacements))
                     .font(.system(.caption, design: .monospaced))
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 4))

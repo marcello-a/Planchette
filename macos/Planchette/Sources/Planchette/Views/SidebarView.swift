@@ -840,7 +840,8 @@ struct SidebarView: View {
         // The project's colour as the dot when the terminal has none of its own: the wash
         // behind the row can be switched off (Settings → General → Project color).
         if facts.color == .none { facts.color = group.color }
-        return MergedProjectRow(facts: facts, details: appState.sidebarDetails) {
+        return MergedProjectRow(facts: facts, details: appState.sidebarDetails,
+                                onRemoveTag: { appState.removeTag($0, from: session.id) }) {
             ColorDotOrClose(color: facts.color, hovered: hoveredGroup == group.id) { confirmClose(group) }
         }
         .padding(.horizontal, 4).padding(.vertical, 3)
@@ -1232,7 +1233,7 @@ struct SidebarView: View {
                         }
                     }
                     if appState.shows(.tags) {
-                        TagChips(tags: session.tags)
+                        TagChips(tags: session.tags) { appState.removeTag($0, from: session.id) }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
