@@ -14,12 +14,16 @@ final class ShortcutRecorder: ObservableObject {
     private var token: Any?
     private var detectors: [SearchShortcut.Modifier: DoubleTapDetector] = [:]
     private var onRecorded: ((SearchShortcut) -> Void)?
+    /// Who else has the keys (a menu item, Settings → Shortcuts), or nil when they are free.
+    private var takenBy: ((SearchShortcut) -> String?)?
     private weak var searchMonitor: SearchShortcutMonitor?
 
-    func start(suspending monitor: SearchShortcutMonitor, onRecorded: @escaping (SearchShortcut) -> Void) {
+    func start(suspending monitor: SearchShortcutMonitor, takenBy: ((SearchShortcut) -> String?)? = nil,
+               onRecorded: @escaping (SearchShortcut) -> Void) {
         stop()
         note = nil
         self.onRecorded = onRecorded
+        self.takenBy = takenBy
         searchMonitor = monitor
         monitor.isSuspended = true
         detectors = Dictionary(uniqueKeysWithValues: SearchShortcut.Modifier.allCases.map { ($0, DoubleTapDetector(modifier: $0)) })
@@ -53,6 +57,10 @@ final class ShortcutRecorder: ObservableObject {
                 note = L10n.t(.searchShortcutTaken, shortcut.label)
                 return nil
             }
+            if let owner = takenBy?(shortcut) {
+                note = L10n.t(.shortcutsTaken, shortcut.label, owner)
+                return nil
+            }
             finish(with: shortcut)
             return nil
 
@@ -81,7 +89,7 @@ final class ShortcutRecorder: ObservableObject {
     }
 }
 
-/// Settings → General → Search: the keys that open the search, and a way to change them.
+/// Settings → Shortcuts → Search: the keys that open the search, and a way to change them.
 struct SearchShortcutSetting: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var recorder = ShortcutRecorder()
@@ -100,7 +108,12 @@ struct SearchShortcutSetting: View {
                     Button(L10n.t(.searchShortcutCancel)) { recorder.stop() }
                 } else {
                     Button(L10n.t(.searchShortcutChange)) {
-                        recorder.start(suspending: appState.searchShortcutMonitor) { appState.searchShortcut = $0 }
+                        recorder.start(suspending: appState.searchShortcutMonitor, takenBy: { shortcut in
+                            guard case .chord(let key, let modifiers) = shortcut,
+                                  let owner = appState.shortcuts.owner(of: KeyCombo(key, Set(modifiers)))
+                            else { return nil }
+                            return L10n.t(owner.titleKey)
+                        }) { appState.searchShortcut = $0 }
                     }
                     if appState.searchShortcut != .default {
                         Button(L10n.t(.searchShortcutReset, SearchShortcut.default.label)) {

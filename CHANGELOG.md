@@ -8,6 +8,17 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Settings → Shortcuts shows every key of the app, and you can change the menu keys.** Click a
+  shortcut and press the new keys; Esc cancels, Delete removes the shortcut, and an arrow resets
+  it. A key that macOS, the terminal or another menu item already has is refused with the reason.
+  Every menu key needs ⌘, so the terminal keeps all other keys. Tooltips and the Help tab name
+  the new keys. The keys that are not menu items (⌃Tab, ⌘1–⌘9, copy and paste, the notepad's)
+  are listed but stay fixed. The search shortcut moved there from General, so every key is in
+  one place.
+- **A tag in the project panel has an × when you point at it.** Click it to take the tag off
+  the terminal.
+
 ### Changed
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.

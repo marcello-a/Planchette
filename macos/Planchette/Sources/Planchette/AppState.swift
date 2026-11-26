@@ -148,11 +148,20 @@ final class AppState: ObservableObject {
     @Published var tagList: [String] = TagList.defaults {
         didSet { scheduleSave() }
     }
-    /// The keys that open the search from anywhere in the app (Settings → General).
+    /// The keys that open the search from anywhere in the app (Settings → Shortcuts).
     @Published var searchShortcut: SearchShortcut = .default {
         didSet {
             scheduleSave()
             searchShortcutMonitor.shortcut = searchShortcut
+        }
+    }
+    /// The menu keys the user changed (Settings → Shortcuts). The menus read them, and every
+    /// text that names a key names the new one (`L10n.shortcutReplacements`).
+    @Published var shortcuts = ShortcutBook() {
+        didSet {
+            guard shortcuts != oldValue else { return }
+            L10n.shortcutReplacements = shortcuts.replacements
+            scheduleSave()
         }
     }
     /// What names a tab and what else it carries (Settings → Tabs).
@@ -361,6 +370,9 @@ final class AppState: ObservableObject {
             sidebarDetails = saved.sidebarDetails
             tagList = saved.tagList
             searchShortcut = saved.searchShortcut
+            shortcuts = saved.shortcuts
+            // An observer does not run in `init`: the texts learn the keys here.
+            L10n.shortcutReplacements = saved.shortcuts.replacements
             // Load the opt-in AI flag early too: a launch with a saved-but-
             // sessionless state runs startFresh(archiving: nil), which keeps the
             // *current* value — so without this a user's aiEnabled=false silently
@@ -2545,11 +2557,11 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// The keys that open the search, for a tooltip: the one Settings holds, and ⌘K, which
-    /// the menu keeps whatever Settings says.
+    /// The keys that open the search, for a tooltip: the one Settings holds, and the quick
+    /// switcher's menu key (⌘K unless Settings → Shortcuts changed it).
     var searchShortcutLabels: String {
-        let menu = SearchShortcut.chord(key: "k", modifiers: [.command])
-        return searchShortcut == menu ? menu.label : "\(searchShortcut.label) · \(menu.label)"
+        guard let menu = shortcuts.combo(for: .quickSwitcher) else { return searchShortcut.label }
+        return searchShortcut == menu.asSearchChord ? menu.label : "\(searchShortcut.label) · \(menu.label)"
     }
 
     /// ⌃Tab and ⌃⇧Tab over a Planchette window; see `TabCycleKeys`.
@@ -2560,7 +2572,7 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Watches for the search shortcut (Settings → General); see `SearchShortcutMonitor`.
+    /// Watches for the search shortcut (Settings → Shortcuts); see `SearchShortcutMonitor`.
     private(set) lazy var searchShortcutMonitor = SearchShortcutMonitor(shortcut: searchShortcut) { [weak self] in
         self?.searchShortcutPressed()
     }
@@ -3231,6 +3243,13 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Take a tag off a session; nothing when it does not carry it. The × on a chip in the
+    /// project panel uses this, not toggleTag: a second click must never put it back.
+    func removeTag(_ tag: String, from sessionID: UUID) {
+        guard sessions[sessionID]?.tags.contains(tag) == true else { return }
+        update(sessionID) { $0.tags.removeAll { $0 == tag } }
+    }
+
     /// Add a tag if the session does not already carry it. The "New tag…" prompt
     /// uses this, not toggleTag: typing the name of an existing tag must add (or
     /// keep) it, never silently remove it.
@@ -3514,6 +3533,7 @@ final class AppState: ObservableObject {
             sidebarDetails: sidebarDetails,
             tagList: tagList,
             searchShortcut: searchShortcut,
+            shortcuts: shortcuts,
             defaultIDEBundleID: defaultIDEBundleID,
             askedAboutSpaceSwitching: askedAboutSpaceSwitching,
             onboarding: onboarding,
@@ -3616,6 +3636,7 @@ final class AppState: ObservableObject {
         sidebarDetails = state.sidebarDetails
         tagList = state.tagList
         searchShortcut = state.searchShortcut
+        shortcuts = state.shortcuts
         defaultIDEBundleID = state.defaultIDEBundleID
         askedAboutSpaceSwitching = state.askedAboutSpaceSwitching
         onboarding = state.onboarding
@@ -3756,6 +3777,7 @@ final class AppState: ObservableObject {
         sidebarDetails = previous?.sidebarDetails ?? sidebarDetails
         tagList = previous?.tagList ?? tagList
         searchShortcut = previous?.searchShortcut ?? searchShortcut
+        shortcuts = previous?.shortcuts ?? shortcuts
         defaultIDEBundleID = previous?.defaultIDEBundleID ?? defaultIDEBundleID
         askedAboutSpaceSwitching =
             previous?.askedAboutSpaceSwitching ?? askedAboutSpaceSwitching

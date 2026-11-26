@@ -1012,9 +1012,11 @@ struct PersistedState: Codable {
     /// Project panel → Tags). A state that never carried the key gets the four
     /// suggestions; an empty list is a choice and stays empty.
     var tagList: [String] = TagList.defaults
-    /// The keys that open the search from anywhere (Settings → General). Shift
+    /// The keys that open the search from anywhere (Settings → Shortcuts). Shift
     /// twice until the user picks something else.
     var searchShortcut: SearchShortcut = .default
+    /// The menu keys the user changed (Settings → Shortcuts). Empty: every key is the default.
+    var shortcuts = ShortcutBook()
     /// The IDE the "look at code" button always opens, once chosen in its
     /// menu. Nil = never chosen — the button follows whatever IDE is running.
     var defaultIDEBundleID: String?
@@ -1064,6 +1066,7 @@ struct PersistedState: Codable {
         sidebarDetails: SidebarDetails = SidebarDetails(),
         tagList: [String] = TagList.defaults,
         searchShortcut: SearchShortcut = .default,
+        shortcuts: ShortcutBook = ShortcutBook(),
         defaultIDEBundleID: String? = nil,
         askedAboutSpaceSwitching: Bool = false,
         onboarding: OnboardingState = OnboardingState(),
@@ -1095,6 +1098,7 @@ struct PersistedState: Codable {
         self.sidebarDetails = sidebarDetails
         self.tagList = tagList
         self.searchShortcut = searchShortcut
+        self.shortcuts = shortcuts
         self.defaultIDEBundleID = defaultIDEBundleID
         self.askedAboutSpaceSwitching = askedAboutSpaceSwitching
         self.onboarding = onboarding
@@ -1136,6 +1140,7 @@ struct PersistedState: Codable {
             ?? TagList.defaults
         // A word a newer build wrote must not cost the whole workspace.
         searchShortcut = (try? c.decodeIfPresent(SearchShortcut.self, forKey: .searchShortcut)) ?? .default
+        shortcuts = (try? c.decodeIfPresent(ShortcutBook.self, forKey: .shortcuts)) ?? ShortcutBook()
         defaultIDEBundleID = try c.decodeIfPresent(String.self, forKey: .defaultIDEBundleID)
         askedAboutSpaceSwitching =
             try c.decodeIfPresent(Bool.self, forKey: .askedAboutSpaceSwitching) ?? false
