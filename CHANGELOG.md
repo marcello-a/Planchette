@@ -20,6 +20,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   the terminal.
 
 ### Changed
+- **"Look at code" no longer picks an IDE that is closed.** An IDE that quit with the project open
+  still counted as showing it, and among several the first in the list won — a closed Cursor
+  took the click from a running PhpStorm. Only a running IDE counts as open now, and among
+  several the checkout's marker and the IDE you last used decide.
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
 

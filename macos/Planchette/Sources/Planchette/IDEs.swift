@@ -224,18 +224,32 @@ enum IDEs {
         guard !candidates.isEmpty else { return nil }
         // An open window beats a preference: the default says which IDE to
         // *start*, and there is nothing to start when the project is on screen
-        // already. Only a default that also has it open would win here anyway.
-        if let open = candidates.first(where: { alreadyOpenIn.contains($0.bundleID) }) {
-            // Among several, a chosen default still decides.
-            if let chosen = ide(bundleID: defaultBundleID),
-               alreadyOpenIn.contains(chosen.bundleID), candidates.contains(chosen) {
+        // already. Only a running IDE shows a window: a closed one's state file
+        // still lists what it had open when it quit (Cursor, closed for days,
+        // took every click from a running PhpStorm).
+        let open = candidates.filter { alreadyOpenIn.contains($0.bundleID) && running.contains($0.bundleID) }
+        if !open.isEmpty {
+            // Among several, a chosen default still decides, then the same
+            // evidence as below — never the order of the list.
+            if let chosen = ide(bundleID: defaultBundleID), open.contains(chosen) {
                 return chosen
             }
-            return open
+            return best(of: open, markers: markers, running: running, lastActivated: lastActivated)
         }
         if let chosen = ide(bundleID: defaultBundleID), candidates.contains(chosen) {
             return chosen
         }
+        return best(of: candidates, markers: markers, running: running, lastActivated: lastActivated,
+                    requireEvidence: true)
+    }
+
+    /// The candidate with the most evidence: the checkout's marker, then the
+    /// IDE last in front, then a running one; ties keep the order of `known`.
+    /// With `requireEvidence`, nil when nothing speaks for any of them.
+    private static func best(
+        of candidates: [IDE], markers: [String], running: Set<String>, lastActivated: String?,
+        requireEvidence: Bool = false
+    ) -> IDE? {
         let scored = candidates.map { ide -> (ide: IDE, score: Int) in
             var score = 0
             if markers.contains(ide.marker) { score += 4 }
@@ -250,7 +264,7 @@ enum IDEs {
                 ? a.score < b.score
                 // Same score: keep the declared order (index in `known`).
                 : (known.firstIndex(of: a.ide) ?? 0) > (known.firstIndex(of: b.ide) ?? 0)
-        }), best.score > 0
+        }), best.score > 0 || !requireEvidence
         else { return nil }
         return best.ide
     }
