@@ -104,7 +104,7 @@ enum ReviewSkill {
             }
             try Data(markerText.utf8).write(to: marker, options: .atomic)
         } catch {
-            NSLog("review-pr skill install failed: \(error)")
+            Log.error("review-skill.install_failed", "review-pr skill install failed: \(error)")
             return .unavailable
         }
         return plan

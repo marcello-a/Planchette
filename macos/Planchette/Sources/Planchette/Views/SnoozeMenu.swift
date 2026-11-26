@@ -12,7 +12,7 @@ struct SessionAttentionMenu: View {
 
     var body: some View {
         if includesDone {
-            Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+            Button(L10n.t(.markReady)) { Telemetry.count(.markedFree); appState.markReady(session.id) }
         }
         Menu(L10n.t(.remindMe)) {
             ForEach(SnoozeOption.allCases) { option in

@@ -107,7 +107,7 @@ final class GhosttySurfaceNSView: NSView {
         guard Self.hasActiveDisplay() else {
             if !darkLogged {
                 darkLogged = true
-                NSLog("terminal has no surface yet: no display is active; it starts when one is")
+                Log.info("terminal has no surface yet: no display is active; it starts when one is")
             }
             scheduleRetry(after: SurfaceRetry.darkDelay)
             return false
@@ -148,7 +148,7 @@ final class GhosttySurfaceNSView: NSView {
         guard let surface else {
             let delay = retry.failed()
             if retry.shouldLog {
-                NSLog("ghostty_surface_new failed (attempt \(retry.failures)); trying again")
+                Log.error("ghostty.surface_new_failed", "ghostty_surface_new failed (attempt \(retry.failures)); trying again")
             }
             scheduleRetry(after: delay)
             return false

@@ -243,7 +243,7 @@ final class UpdateService: ObservableObject {
         guard let checksumURL = release.asset(named: "SHA256SUMS")
             .flatMap({ trusted($0.browserDownloadURL) })
         else {
-            NSLog("screen rules: release has no SHA256SUMS, ignored")
+            Log.error("screen-rules.no_checksums", "screen rules: release has no SHA256SUMS, ignored")
             return
         }
         do {
@@ -252,19 +252,19 @@ final class UpdateService: ObservableObject {
                   data.count <= Self.maxRulesBytes
             else { return }
             guard let expected = try? await expectedSHA(checksumURL, for: "screen-rules.json") else {
-                NSLog("screen rules: checksum unavailable, ignored")
+                Log.error("screen-rules.checksum_unavailable", "screen rules: checksum unavailable, ignored")
                 return
             }
             let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
             guard actual == expected else {
-                NSLog("screen rules: checksum mismatch, ignored")
+                Log.error("screen-rules.checksum_mismatch", "screen rules: checksum mismatch, ignored")
                 return
             }
             if appState?.applyFetchedScreenRules(data) == true {
-                NSLog("screen rules: updated from release \(release.tagName)")
+                Log.info("screen rules: updated from release \(release.tagName)")
             }
         } catch {
-            NSLog("screen rules: fetch failed: \(error.localizedDescription)")
+            Log.error("screen-rules.fetch_failed", "screen rules: fetch failed: \(error.localizedDescription)")
         }
     }
 
@@ -448,7 +448,7 @@ final class UpdateService: ObservableObject {
             if let workDir { try? FileManager.default.removeItem(at: workDir) }
             panel.close()
             isInstalling = false
-            NSLog("update: install of \(version) refused: \(error)")
+            Log.error("update.install_refused", "update: install of \(version) refused: \(error)")
             showError(error.localizedDescription)
         }
     }
@@ -575,9 +575,10 @@ final class UpdateService: ObservableObject {
         defer { discardStagedUpdate() }
         do {
             try swap(newApp: staged.bundlePath, dest: Bundle.main.bundlePath, relaunch: pendingRelaunch)
-            NSLog("update: swapping to \(staged.version) on quit (relaunch: \(pendingRelaunch))")
+            Telemetry.count(.updateInstalled)
+            Log.info("update: swapping to \(staged.version) on quit (relaunch: \(pendingRelaunch))")
         } catch {
-            NSLog("update: staged swap could not start: \(error)")
+            Log.error("update.swap_failed", "update: staged swap could not start: \(error)")
         }
     }
 
@@ -654,7 +655,7 @@ final class UpdateService: ObservableObject {
             timeout: 300, stderr: .capture),
               ditto.succeeded
         else {
-            NSLog("update: could not unpack the archive")
+            Log.error("update.unpack_failed", "update: could not unpack the archive")
             throw UpdateError.bundleRejected
         }
         guard let app = firstAppBundle(in: workDir) else { throw UpdateError.noAppInArchive }
@@ -682,24 +683,24 @@ final class UpdateService: ObservableObject {
         _ app: URL, bundleIdentifier: String?, version: String, currentVersion: String
     ) throws {
         guard let info = Bundle(url: app)?.infoDictionary else {
-            NSLog("update: the downloaded bundle has no readable Info.plist")
+            Log.error("update.bundle_no_info_plist", "update: the downloaded bundle has no readable Info.plist")
             throw UpdateError.bundleRejected
         }
         if let bundleIdentifier, (info["CFBundleIdentifier"] as? String) != bundleIdentifier {
-            NSLog("update: the downloaded bundle is not \(bundleIdentifier)")
+            Log.error("update.bundle_wrong_id", "update: the downloaded bundle is not \(bundleIdentifier)")
             throw UpdateError.bundleRejected
         }
         guard let found = info["CFBundleShortVersionString"] as? String,
               found == version, Semver.isNewer(found, than: currentVersion)
         else {
-            NSLog("update: the downloaded bundle's version does not match release \(version)")
+            Log.error("update.bundle_version_mismatch", "update: the downloaded bundle's version does not match release \(version)")
             throw UpdateError.bundleRejected
         }
         guard let executable = info["CFBundleExecutable"] as? String,
               FileManager.default.isExecutableFile(
                 atPath: app.appendingPathComponent("Contents/MacOS/\(executable)").path)
         else {
-            NSLog("update: the downloaded bundle has no executable")
+            Log.error("update.bundle_no_executable", "update: the downloaded bundle has no executable")
             throw UpdateError.bundleRejected
         }
         guard let signature = Subprocess.run(
@@ -707,7 +708,7 @@ final class UpdateService: ObservableObject {
             timeout: 120, stderr: .capture),
               signature.succeeded
         else {
-            NSLog("update: the downloaded bundle failed codesign verification")
+            Log.error("update.codesign_failed", "update: the downloaded bundle failed codesign verification")
             throw UpdateError.bundleRejected
         }
     }
@@ -840,7 +841,7 @@ final class UpdateService: ObservableObject {
         // folder by a damaged or edited record. A bundle that is not one of ours is
         // not swapped in at all.
         guard let workDir = Self.cleanupDirectory(forStagedBundle: newApp) else {
-            NSLog("update: refusing to swap in a bundle that is not a staged extraction")
+            Log.error("update.swap_refused", "update: refusing to swap in a bundle that is not a staged extraction")
             throw UpdateError.bundleRejected
         }
         let resolvedApp = URL(fileURLWithPath: newApp).resolvingSymlinksInPath().path
@@ -921,7 +922,7 @@ class TrustedRedirects: NSObject, URLSessionTaskDelegate {
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
         guard let url = request.url, UpdateService.isTrustedDownload(url) else {
-            NSLog("update: refused a redirect to \(request.url?.host ?? "an unknown host")")
+            Log.error("update.redirect_refused", "update: refused a redirect to \(request.url?.host ?? "an unknown host")")
             completionHandler(nil)
             return
         }
@@ -975,7 +976,7 @@ final class Downloader: TrustedRedirects, URLSessionDownloadDelegate {
                     totalBytesExpectedToWrite: Int64) {
         let limit = maxBytes
         if totalBytesWritten > limit || totalBytesExpectedToWrite > limit {
-            NSLog("update: download exceeds \(limit) bytes, cancelled")
+            Log.error("update.download_too_large", "update: download exceeds \(limit) bytes, cancelled")
             failure = UpdateService.UpdateError.downloadFailed
             downloadTask.cancel()
             return
@@ -988,7 +989,7 @@ final class Downloader: TrustedRedirects, URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                     didFinishDownloadingTo location: URL) {
         guard (downloadTask.response as? HTTPURLResponse)?.statusCode == 200 else {
-            NSLog("update: download answered HTTP "
+            Log.error("update.download_http_error", "update: download answered HTTP "
                 + "\((downloadTask.response as? HTTPURLResponse)?.statusCode ?? 0)")
             failure = UpdateService.UpdateError.downloadFailed
             return

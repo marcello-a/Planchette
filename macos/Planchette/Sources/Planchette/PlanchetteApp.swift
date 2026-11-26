@@ -145,7 +145,7 @@ struct PlanchetteApp: App {
 /// opens on the one you used last, and the gear at the foot of the project panel
 /// opens it on the Project panel.
 enum SettingsTab: String {
-    case general, projectPanel, tabs, terminals, info, help
+    case general, projectPanel, tabs, terminals, privacy, info, help
 }
 
 struct SettingsView: View {
@@ -167,6 +167,9 @@ struct SettingsView: View {
             TerminalSettings()
                 .tabItem { Label(L10n.t(.terminalsTab), systemImage: "terminal") }
                 .tag(SettingsTab.terminals)
+            PrivacySettings()
+                .tabItem { Label(L10n.t(.privacyTab), systemImage: "hand.raised") }
+                .tag(SettingsTab.privacy)
             InfoTab()
                 .tabItem { Label(L10n.t(.infoTab), systemImage: "info.circle") }
                 .tag(SettingsTab.info)
@@ -420,6 +423,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             updater.adoptStagedUpdateIfAny()
             updater.reportFailedSwapIfAny()
             updater.startAutoChecks()
+            // Usage data under a random ID — sent only after the user said yes (`TelemetryService`).
+            let state = appState
+            TelemetryService.shared.start(snapshot: { state.telemetrySnapshot() },
+                                          live: { state.telemetryLive() })
         }
     }
 
@@ -482,13 +489,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MainActor.assumeIsolated { appState.saveNow() }
+        MainActor.assumeIsolated {
+            appState.saveNow()
+            TelemetryService.shared.stop()
+        }
         hookServer?.stop()
     }
 }
 
 struct ContentView: View {
     @EnvironmentObject var appState: AppState
+    @ObservedObject private var telemetry = TelemetryService.shared
     @Environment(\.openWindow) private var openWindow
     @AppStorage("sidebarMinified") private var sidebarMinified = false
     @AppStorage("inboxShown") private var inboxShown = false
@@ -588,11 +599,18 @@ struct ContentView: View {
         .sheet(isPresented: durablePromptBinding) {
             DurablePromptSheet()
         }
+        .sheet(isPresented: telemetryPromptBinding) {
+            TelemetryPromptSheet()
+        }
         .task {
             // After the window had a moment to come up and a restore to start.
             guard isMainWindow else { return }
             try? await Task.sleep(for: .seconds(1.5))
             appState.evaluateOnboarding()
+            // Never over the durable terminals prompt or the welcome of a first launch: one
+            // question per launch is plenty, and that one asks again after the next update.
+            telemetry.evaluatePrompt(welcomeSeen: appState.onboarding.welcomeSeen,
+                                     otherSheetShown: appState.durablePromptShown)
         }
         // The first project ends the welcome: from then on an empty window is the small one.
         .onChange(of: appState.groups.isEmpty) { _, empty in
@@ -627,6 +645,13 @@ struct ContentView: View {
                 .help(L10n.t(.mergeIntoMainHelp))
             }
         }
+    }
+
+    private var telemetryPromptBinding: Binding<Bool> {
+        Binding(
+            get: { isMainWindow && telemetry.promptShown },
+            set: { shown in if !shown { telemetry.promptClosed() } }
+        )
     }
 
     private var durablePromptBinding: Binding<Bool> {
@@ -1104,6 +1129,7 @@ extension AppState {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let dir = url.path
         let group = addGroup(name: (dir as NSString).lastPathComponent, inWindow: windowID)
+        Telemetry.count(.projectCreated)
         if let folderID { moveGroup(group.id, toFolder: folderID, inWindow: windowID) }
         let session = addSession(directory: dir, groupID: group.id)
         select(session: session)
@@ -1152,6 +1178,7 @@ extension AppState {
     /// sidebar, notifications panel, and quick switcher all pick it up.
     func promptRename(session: TerminalSession) {
         promptText(title: L10n.t(.renameTerminal), value: session.customTitle ?? "") { name in
+            if name != (session.customTitle ?? "") { Telemetry.count(.renamed) }
             self.update(session.id) { $0.customTitle = name.isEmpty ? nil : name }
         }
     }
@@ -1178,6 +1205,7 @@ extension AppState {
     func promptNewFolder(inWindow windowID: UUID, containing groupID: UUID? = nil) {
         promptText(title: L10n.t(.newFolderTitle), value: "") { [weak self] name in
             guard !name.isEmpty else { return }
+            Telemetry.count(.folderCreated)
             self?.addFolder(name: name, inWindow: windowID, containing: groupID)
         }
     }

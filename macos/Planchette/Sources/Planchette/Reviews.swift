@@ -374,6 +374,7 @@ extension AppState {
     /// and a click on the row goes there.
     func startReview(_ url: String, in checkout: ReviewRequests.Checkout?, repoRoot: String?, run: ReviewRun) {
         guard let record = reviews[url], record.stage == .requested else { return }
+        Telemetry.count(.reviewStarted)
         let directory = reviewDirectory(for: record)
         // A new round starts clean: the files of an earlier one would read as its answers.
         try? FileManager.default.createDirectory(
@@ -485,6 +486,7 @@ extension AppState {
     func sendReview(_ url: String) {
         guard let record = reviews[url], record.stage == .findings, !record.sending,
               let findings = reviewFindings[url] else { return }
+        Telemetry.count(.reviewSent)
         let directory = reviewDirectory(for: record)
         let file = ReviewDecisionsFile(
             verdict: reviewVerdict(of: url),
@@ -617,6 +619,7 @@ extension InboxMode {
             get: { shown.wrappedValue && mode.wrappedValue == mine },
             set: { on in
                 if on {
+                    Telemetry.count(mine == .notifications ? .notificationsOpened : .reviewsOpened)
                     mode.wrappedValue = mine
                     shown.wrappedValue = true
                 } else {
