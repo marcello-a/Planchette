@@ -99,6 +99,7 @@ struct TodoBoardView: View {
             TextField(L10n.t(.todoNewPlaceholder), text: $newText)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit {
+                    if !newText.trimmingCharacters(in: .whitespaces).isEmpty { Telemetry.count(.todoAdded) }
                     withAnimation(Self.motion) { appState.updateTodos { $0.add(newText) } }
                     newText = ""
                 }

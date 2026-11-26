@@ -195,15 +195,15 @@ enum ScreenDetector {
     /// "keep the rules we have", never to "stop detecting".
     static func validated(_ data: Data) -> ScreenRuleSet? {
         guard let set = try? JSONDecoder().decode(ScreenRuleSet.self, from: data) else {
-            NSLog("screen rules: unparseable, keeping current rules")
+            Log.error("screen-rules.unparseable", "screen rules: unparseable, keeping current rules")
             return nil
         }
         guard set.engine == ScreenRuleSet.engineVersion else {
-            NSLog("screen rules: target engine \(set.engine), we are \(ScreenRuleSet.engineVersion) — ignored")
+            Log.info("screen rules: target engine \(set.engine), we are \(ScreenRuleSet.engineVersion) — ignored")
             return nil
         }
         guard set.agents.values.contains(where: { !$0.isEmpty }) else {
-            NSLog("screen rules: no rules in file, ignored")
+            Log.error("screen-rules.empty", "screen rules: no rules in file, ignored")
             return nil
         }
         return set

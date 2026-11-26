@@ -9,6 +9,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Usage data and error reports, only if you say yes.** Planchette asks once. With your yes it
+  sends at most one report a day, only on a day you use it, to PostHog in the EU under a random
+  ID: how often each feature was used, how many windows, folders, projects, tabs and terminals
+  you have, which errors happened and where the app crashed. Never paths, names, titles, prompts
+  or terminal text. Settings → Privacy changes the answer and shows the last report word for
+  word. [What is sent](docs/TELEMETRY.md).
 - **Settings → Shortcuts shows every key of the app, and you can change the menu keys.** Click a
   shortcut and press the new keys; Esc cancels, Delete removes the shortcut, and an arrow resets
   it. A key that macOS, the terminal or another menu item already has is refused with the reason.
