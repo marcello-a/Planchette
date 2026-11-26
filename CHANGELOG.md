@@ -18,6 +18,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   one place.
 - **A tag in the project panel has an × when you point at it.** Click it to take the tag off
   the terminal.
+- **⌘-click opens links in durable terminals.** tmux keeps mouse reporting on, and then only
+  ⌘⇧-click reached a link; ⌘ alone does now, for web links as well as paths.
 
 ### Changed
 - **"Look at code" no longer picks an IDE that is closed.** An IDE that quit with the project open
