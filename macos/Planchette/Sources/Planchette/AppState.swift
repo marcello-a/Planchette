@@ -1410,6 +1410,7 @@ final class AppState: ObservableObject {
                     let withURLs = self.resolvingServerURLs(found)
                     // Publish only a real change (see refreshBranches).
                     if self.devServers != withURLs { self.devServers = withURLs }
+                    self.lookUpServerURLs(in: found)
                 }
                 if self.devServerFlight.end() { self.refreshDevServers() }
             }
@@ -1420,47 +1421,66 @@ final class AppState: ObservableObject {
     /// cost grows with the machine's open sockets.
     private var devServerFlight = SingleFlight()
 
-    /// Addresses already learned, keyed by port. Kept because a banner scrolls
-    /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
-    /// that stays true until the port itself goes away.
-    private var serverURLs: [Int: URL] = [:]
+    /// The URLs servers announced, and which ports still get a search (see `ServerURLLookups`).
+    private var serverURLs = ServerURLLookups()
 
-    /// Fill in each server's announced URL, reading a terminal's scrollback only
-    /// for ports we have never resolved. The read locks the renderer and copies
-    /// the whole buffer, so it happens once per port, not once per tick.
+    /// Fill in each server's announced URL from what is already known, else the
+    /// probed scheme on localhost. Never reads a terminal: see `lookUpServerURLs`.
     private func resolvingServerURLs(_ found: [UUID: [DevServer]]) -> [UUID: [DevServer]] {
         let livePorts = Set(found.values.flatMap { $0.map(\.port) })
-        serverURLs = serverURLs.filter { livePorts.contains($0.key) }
-        var result = found
-        for (groupID, servers) in found {
-            guard let group = groups.first(where: { $0.id == groupID }) else { continue }
-            let unresolved = servers.filter { serverURLs[$0.port] == nil }
-            if !unresolved.isEmpty {
-                // The banner is in the terminal that started the server; which
-                // one that is we don't know, so read the project's terminals.
-                let texts = sessions(in: group).compactMap {
-                    TerminalRegistry.shared.existingView($0.id)?.readScrollback()
-                }
-                for server in unresolved {
-                    for text in texts {
-                        if let url = DevServerScanner.bestURL(forPort: server.port, in: text) {
-                            serverURLs[server.port] = url
-                            break
-                        }
-                    }
-                }
-            }
-            result[groupID] = servers.map {
+        serverURLs.keep(livePorts: livePorts)
+        return found.mapValues { servers in
+            servers.map {
                 var server = $0
                 // What the server announced, else at least the right scheme:
                 // the port was probed, and `https://localhost:8082` is a page,
                 // while `http://localhost:8082` on a TLS server is not.
-                server.resolvedURL = serverURLs[$0.port]
+                server.resolvedURL = serverURLs.urls[$0.port]
                     ?? URL(string: "\(serverSchemes[$0.port] ?? "http")://localhost:\($0.port)")
                 return server
             }
         }
-        return result
+    }
+
+    /// Search the project's terminals for the URL each unresolved server
+    /// announced. The banner is in the terminal that started the server; which
+    /// one that is we don't know, so read the project's terminals. Only the copy
+    /// of the buffers happens here (the surfaces are main-thread objects); the
+    /// search runs off-main, and a port gets `ServerURLLookups.maxTries` tries.
+    private func lookUpServerURLs(in found: [UUID: [DevServer]]) {
+        var work: [(port: Int, texts: [String])] = []
+        for (groupID, servers) in found {
+            let due = servers.map(\.port).filter(serverURLs.isDue)
+            guard !due.isEmpty, let group = groups.first(where: { $0.id == groupID }) else { continue }
+            let texts = sessions(in: group).compactMap {
+                TerminalRegistry.shared.existingView($0.id)?.readScrollback()
+            }
+            for port in due {
+                serverURLs.recordTry(port)
+                work.append((port, texts))
+            }
+        }
+        guard !work.isEmpty else { return }
+        Task.detached {
+            var learned: [Int: URL] = [:]
+            for item in work {
+                for text in item.texts {
+                    if let url = DevServerScanner.bestURL(forPort: item.port, in: text) {
+                        learned[item.port] = url
+                        break
+                    }
+                }
+            }
+            guard !learned.isEmpty else { return }
+            let urls = learned
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                let live = Set(self.devServers.values.flatMap { $0.map(\.port) })
+                self.serverURLs.learn(urls, livePorts: live)
+                let withURLs = self.resolvingServerURLs(self.devServers)
+                if self.devServers != withURLs { self.devServers = withURLs }
+            }
+        }
     }
 
     /// The IDE a click on this project's button opens — nil when there is no

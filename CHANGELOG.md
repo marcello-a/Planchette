@@ -23,6 +23,13 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
 
+### Fixed
+- **Typing no longer lags in projects with listeners that are not web servers.** Every five
+  seconds, Planchette searched the whole scrollback of every terminal for the URL of each open
+  port, on the thread that handles your keys — and ports that never print one (port-forwards,
+  databases, Claude Code's own sockets) were searched again on every tick. A port is now
+  searched at most three times, and the search runs in the background.
+
 ## [0.2.54] — 2026-11-25
 
 ### Changed
