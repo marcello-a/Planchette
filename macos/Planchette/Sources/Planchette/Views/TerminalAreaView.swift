@@ -12,6 +12,8 @@ struct TerminalAreaView: View {
     @State private var dropBefore: UUID?
     /// A drag is over the free space after the last tab.
     @State private var dropAtEnd = false
+    /// A drag is over the + after the last tab: it lands at the end too.
+    @State private var dropOnPlus = false
     /// The width of the notepad while its handle is being dragged (nil when it is not).
     @State private var padWidth: Double?
     /// The width of the Jira panel while its handle is being dragged (nil when it is not).
@@ -89,10 +91,11 @@ struct TerminalAreaView: View {
     private func header(strip: [SplitLayout], current: SplitLayout?) -> some View {
         HStack(spacing: 4) {
             // The tabs and the +, which take whatever the controls on the right leave.
-            HStack(spacing: 4) {
+            HStack(spacing: 0) {
                 tabStrip(strip, current: current)
                 // Add a terminal in this project's folder. Outside the scrolling
-                // strip, so it is in reach however many tabs there are.
+                // strip, so it is in reach however many tabs there are; right after the
+                // last tab, as in iTerm, while they all fit.
                 Button {
                     appState.addTerminalToGroup(group.id)
                 } label: {
@@ -102,6 +105,11 @@ struct TerminalAreaView: View {
                 }
                 .buttonStyle(.plain)
                 .help(L10n.t(.addTerminalHelp))
+                // The free space after the last tab is narrow now, so the + takes a drag
+                // to the end as well.
+                .onDrop(of: [TabDragType.utType], isTargeted: $dropOnPlus) { providers in
+                    drop(providers, before: nil)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             // Dev servers running in this checkout — the link is always here.
@@ -183,15 +191,16 @@ struct TerminalAreaView: View {
                 tabItem(tab, at: index, in: strip, isCurrent: tab == current)
                     .id(key(tab))
             }
-            // The free space after the last tab: a drag that lands here goes to the end.
+            // The free space after the last tab: a drag that lands here goes to the end. Only
+            // as wide as the marker needs, so the + stands right after the last tab.
             Color.clear
-                .frame(width: 28, height: 24)
-                .overlay(alignment: .leading) { insertionMarker(dropAtEnd) }
+                .frame(width: 6, height: 24)
+                .overlay(alignment: .leading) { insertionMarker(dropAtEnd || dropOnPlus) }
                 .onDrop(of: [TabDragType.utType], isTargeted: $dropAtEnd) { providers in
                     drop(providers, before: nil)
                 }
         }
-        .padding(.horizontal, 8)
+        .padding(.leading, 8)
         ViewThatFits(in: .horizontal) {
             row
             ScrollViewReader { proxy in
