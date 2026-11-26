@@ -40,6 +40,20 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
+    /// Settings → General → Panels: the dev-server port chips. Off skips the `lsof` sweep and the
+    /// scrollback search for announced URLs, which a machine full of non-HTTP listeners (port-forwards,
+    /// agents' own sockets) pays every tick for nothing.
+    @Published var devServerLinksEnabled = true {
+        didSet {
+            guard devServerLinksEnabled != oldValue else { return }
+            scheduleSave()
+            if !devServerLinksEnabled {
+                serverURLs = ServerURLLookups()
+                if !devServers.isEmpty { devServers = [:] }
+            }
+            refreshDevServers()
+        }
+    }
     /// Settings → General → Panels: when a card moves to `done` on its own (`TodoAutoDone`).
     /// Never by default. Switched to "PR merged", the PRs known now count at once.
     @Published var todoAutoDone = TodoAutoDone.never {
@@ -388,6 +402,7 @@ final class AppState: ObservableObject {
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
+            devServerLinksEnabled = saved.devServerLinksEnabled
             todoAutoDone = saved.todoAutoDone
             claudeSleep = saved.claudeSleep
             jiraEnabled = saved.jiraEnabled
@@ -1375,10 +1390,12 @@ final class AppState: ObservableObject {
         }
         guard devServerFlight.begin() else { return }
         let knownSchemes = serverSchemes
+        let scansServers = devServerLinksEnabled
         Task.detached {
             // Nil: `lsof` did not finish. Everything below that depends on its
             // answer is left as it was rather than blanked for one tick.
-            let scanned = DevServerScanner.scan(projectDirs: dirs)
+            // Switched off: no sweep, and an empty answer keeps the chips away.
+            let scanned = scansServers ? DevServerScanner.scan(projectDirs: dirs) : [:]
             let scanFinished = scanned != nil
             let found = scanned ?? [:]
             let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
@@ -1474,7 +1491,7 @@ final class AppState: ObservableObject {
             guard !learned.isEmpty else { return }
             let urls = learned
             await MainActor.run { [weak self] in
-                guard let self else { return }
+                guard let self, self.devServerLinksEnabled else { return }
                 let live = Set(self.devServers.values.flatMap { $0.map(\.port) })
                 self.serverURLs.learn(urls, livePorts: live)
                 let withURLs = self.resolvingServerURLs(self.devServers)
@@ -3565,6 +3582,7 @@ final class AppState: ObservableObject {
             reviewsEnabled: reviewsEnabled,
             todos: todos,
             todosEnabled: todosEnabled,
+            devServerLinksEnabled: devServerLinksEnabled,
             todoAutoDone: todoAutoDone,
             claudeSleep: claudeSleep,
             jiraEnabled: jiraEnabled,
@@ -3672,6 +3690,7 @@ final class AppState: ObservableObject {
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
+        devServerLinksEnabled = state.devServerLinksEnabled
         todoAutoDone = state.todoAutoDone
         claudeSleep = state.claudeSleep
         jiraEnabled = state.jiraEnabled
@@ -3811,6 +3830,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
+        devServerLinksEnabled = previous?.devServerLinksEnabled ?? devServerLinksEnabled
         todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
         claudeSleep = previous?.claudeSleep ?? claudeSleep
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled

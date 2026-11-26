@@ -158,6 +158,9 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Section(L10n.t(.panelsSection)) {
+                Toggle(L10n.t(.devServersTitle), isOn: $appState.devServerLinksEnabled)
+                    .help(L10n.t(.devServersEnableHelp))
+                    .accessibilityLabel(L10n.t(.devServersTitle))
                 Toggle(L10n.t(.todosEnableTitle), isOn: $appState.todosEnabled)
                     .help(L10n.t(.todosHelp))
                     .accessibilityLabel(L10n.t(.todosEnableTitle))

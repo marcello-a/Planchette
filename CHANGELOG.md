@@ -18,6 +18,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   one place.
 - **A tag in the project panel has an × when you point at it.** Click it to take the tag off
   the terminal.
+- **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
+  longer looks for running dev servers and shows no port chips — for projects that run none.
 
 ### Changed
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points

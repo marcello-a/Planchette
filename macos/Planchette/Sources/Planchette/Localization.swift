@@ -257,7 +257,7 @@ enum LKey: String, CaseIterable {
     // Dev servers + "look at code" (IDE hand-off)
     case devServerHelp, lookAtCode, lookAtCodeHelp, openNewIDE, openNewIDEHelp
     case defaultIDEMenu, noDefaultIDE
-    case devServersTitle, devServersDetail, lookAtCodeDetail
+    case devServersTitle, devServersDetail, devServersEnableHelp, lookAtCodeDetail
     case openInIDE, chooseIDEHelp, ideNoWindowTitle, ideNoWindowBody, lookAtCodeOpenHelp
     case ideNoWindowMinimized, spaceSwitchTitle, spaceSwitchBody, spaceSwitchEnable
 
@@ -544,6 +544,7 @@ enum L10n {
         .defaultIDEMenu: "Default IDE", .noDefaultIDE: "None — use whichever is running",
         .devServersTitle: "Dev server links",
         .devServersDetail: "A dev server running in a project's checkout shows as a clickable port chip that opens the address the server announced — found by process, so a server started in an IDE counts too",
+        .devServersEnableHelp: "Off: no search for running dev servers and no port chips. Saves CPU and keeps typing smooth when your projects run none — port-forwards and databases count as listeners too.",
         .lookAtCodeDetail: "Right-click a tab. Jumps to the window an IDE already has this project open in; otherwise opens it in the IDE the checkout belongs to (.idea → JetBrains, .vscode → VS Code), else the one you last worked in. \"Open in\" picks another; \"Default IDE\" sets the default",
         .prDraft: "Draft",
         .prOpen: "Open",
@@ -1076,6 +1077,7 @@ enum L10n {
         .defaultIDEMenu: "Standard-IDE", .noDefaultIDE: "Keine — die gerade laufende verwenden",
         .devServersTitle: "Dev-Server-Links",
         .devServersDetail: "Ein Dev-Server im Checkout eines Projekts erscheint als klickbarer Port-Chip und öffnet die Adresse, die der Server gemeldet hat — erkannt am Prozess, also zählt auch ein in einer IDE gestarteter Server",
+        .devServersEnableHelp: "Aus: keine Suche nach laufenden Dev-Servern und keine Port-Chips. Spart CPU und hält das Tippen flüssig, wenn deine Projekte keine fahren — auch Port-Forwards und Datenbanken zählen als Listener.",
         .lookAtCodeDetail: "Rechtsklick auf einen Tab. Springt in das Fenster, in dem eine IDE dieses Projekt schon offen hat; sonst öffnet es die IDE, zu der das Checkout gehört (.idea → JetBrains, .vscode → VS Code), sonst die zuletzt benutzte. „Öffnen in“ wählt eine andere; „Standard-IDE“ setzt die Standard-IDE",
         .prDraft: "Entwurf",
         .prOpen: "Offen",
@@ -1608,6 +1610,7 @@ enum L10n {
         .defaultIDEMenu: "IDE par défaut", .noDefaultIDE: "Aucun — utiliser celui qui est lancé",
         .devServersTitle: "Liens des serveurs de dev",
         .devServersDetail: "Un serveur de dev actif dans le checkout d'un projet apparaît comme une puce localhost cliquable — détecté par processus, donc un serveur lancé dans un IDE compte aussi",
+        .devServersEnableHelp: "Désactivé : aucune recherche de serveurs de dev et aucune puce de port. Économise le CPU et garde la saisie fluide si vos projets n'en font pas tourner — les redirections de port et les bases de données comptent aussi.",
         .lookAtCodeDetail: "Clic droit sur un onglet : confie le projet à votre IDE (fenêtre déjà ouverte au premier plan, sinon l'IDE du checkout ou la dernière utilisée). « Ouvrir dans » en choisit une autre ; « IDE par défaut » fixe le choix",
         .prDraft: "Brouillon",
         .prOpen: "Ouverte",
@@ -2140,6 +2143,7 @@ enum L10n {
         .defaultIDEMenu: "IDE predeterminado", .noDefaultIDE: "Ninguno — usar el que esté abierto",
         .devServersTitle: "Enlaces de servidores de desarrollo",
         .devServersDetail: "Un servidor de desarrollo activo en el checkout de un proyecto aparece como un chip localhost clicable — detectado por proceso, así que también cuenta uno iniciado en un IDE",
+        .devServersEnableHelp: "Desactivado: no se buscan servidores de desarrollo ni se muestran chips de puerto. Ahorra CPU y mantiene la escritura fluida si tus proyectos no ejecutan ninguno — los port-forwards y las bases de datos también cuentan.",
         .lookAtCodeDetail: "Clic derecho en una pestaña: entrega el proyecto a tu IDE (enfoca la ventana donde ya está abierto, o abre el IDE del checkout o el último usado). «Abrir en» elige otro; «IDE predeterminado» fija la elección",
         .prDraft: "Borrador",
         .prOpen: "Abierta",
@@ -2672,6 +2676,7 @@ enum L10n {
         .defaultIDEMenu: "IDE predefinito", .noDefaultIDE: "Nessuno — usa quello aperto",
         .devServersTitle: "Link dei server di sviluppo",
         .devServersDetail: "Un server di sviluppo attivo nel checkout di un progetto appare come chip localhost cliccabile — rilevato dal processo, quindi conta anche uno avviato in un IDE",
+        .devServersEnableHelp: "Disattivato: nessuna ricerca di server di sviluppo e nessun chip di porta. Risparmia CPU e mantiene fluida la digitazione se i tuoi progetti non ne eseguono — anche port-forward e database contano.",
         .lookAtCodeDetail: "Clic destro su una scheda: affida il progetto al tuo IDE (porta in primo piano la finestra dove è già aperto, altrimenti apre l'IDE del checkout o l'ultimo usato). «Apri in» ne sceglie un altro; «IDE predefinito» fissa la scelta",
         .prDraft: "Bozza",
         .prOpen: "Aperta",
@@ -3204,6 +3209,7 @@ enum L10n {
         .defaultIDEMenu: "Standaard-IDE", .noDefaultIDE: "Geen — gebruik de IDE die draait",
         .devServersTitle: "Dev-server-links",
         .devServersDetail: "Een dev-server in de checkout van een project verschijnt als klikbare localhost-chip — herkend aan het proces, dus een server gestart in een IDE telt ook",
+        .devServersEnableHelp: "Uit: niet zoeken naar draaiende dev-servers en geen poort-chips. Bespaart CPU en houdt typen soepel als je projecten er geen draaien — ook port-forwards en databases tellen mee.",
         .lookAtCodeDetail: "Rechtsklik op een tabblad: geeft het project aan je IDE (focust het venster waarin het al open is, anders de IDE van de checkout of de laatst gebruikte). „Openen in” kiest een andere; „Standaard-IDE” stelt de keuze in",
         .prDraft: "Concept",
         .prOpen: "Open",
@@ -3736,6 +3742,7 @@ enum L10n {
         .defaultIDEMenu: "IDE predefinido", .noDefaultIDE: "Nenhum — usar o que estiver aberto",
         .devServersTitle: "Ligações de servidores de desenvolvimento",
         .devServersDetail: "Um servidor de desenvolvimento ativo no checkout de um projeto aparece como um chip localhost clicável — detetado pelo processo, por isso um servidor iniciado num IDE também conta",
+        .devServersEnableHelp: "Desligado: não procura servidores de desenvolvimento nem mostra chips de porta. Poupa CPU e mantém a escrita fluida se os teus projetos não executam nenhum — port-forwards e bases de dados também contam.",
         .lookAtCodeDetail: "Clique direito num separador: entrega o projeto ao teu IDE (foca a janela onde já está aberto, senão o IDE do checkout ou o último usado). «Abrir em» escolhe outro; «IDE predefinido» fixa a escolha",
         .prDraft: "Rascunho",
         .prOpen: "Aberta",

@@ -1041,6 +1041,8 @@ struct PersistedState: Codable {
     var todos = TodoBoard()
     /// The to-do board's button (Settings): off by default, and for a state that never carried the key.
     var todosEnabled = false
+    /// The dev-server port chips (Settings): on by default, and for a state that never carried the key.
+    var devServerLinksEnabled = true
     /// When a card moves to `done` on its own (Settings): never by default.
     var todoAutoDone = TodoAutoDone.never
     /// When idle Claude sessions are put to sleep (Settings): never by default.
@@ -1078,6 +1080,7 @@ struct PersistedState: Codable {
         reviewsEnabled: Bool = false,
         todos: TodoBoard = TodoBoard(),
         todosEnabled: Bool = false,
+        devServerLinksEnabled: Bool = true,
         todoAutoDone: TodoAutoDone = .never,
         claudeSleep: ClaudeSleep = .off,
         jiraEnabled: Bool = false,
@@ -1110,6 +1113,7 @@ struct PersistedState: Codable {
         self.reviewsEnabled = reviewsEnabled
         self.todos = todos
         self.todosEnabled = todosEnabled
+        self.devServerLinksEnabled = devServerLinksEnabled
         self.todoAutoDone = todoAutoDone
         self.claudeSleep = claudeSleep
         self.jiraEnabled = jiraEnabled
@@ -1159,6 +1163,7 @@ struct PersistedState: Codable {
         // The user's own list: a board a newer build wrote loses the cards it cannot read, not all.
         todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
         todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
+        devServerLinksEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .devServerLinksEnabled)) ?? true
         todoAutoDone = (try? c.decodeIfPresent(TodoAutoDone.self, forKey: .todoAutoDone)) ?? .never
         claudeSleep = (try? c.decodeIfPresent(ClaudeSleep.self, forKey: .claudeSleep)) ?? .off
         jiraEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .jiraEnabled)) ?? false
