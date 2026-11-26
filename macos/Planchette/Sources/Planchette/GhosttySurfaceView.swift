@@ -574,6 +574,7 @@ final class GhosttySurfaceNSView: NSView {
 
     /// Open the link the pointer is on — same scheme policy as a ⌘-click.
     @objc private func openLink(_ sender: Any?) {
+        if let raw = hoveredLinkURL, GhosttyRuntime.postFileLink(raw, from: sessionID) { return }
         guard let raw = hoveredLinkURL,
               let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return }

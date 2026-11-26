@@ -18,6 +18,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   one place.
 - **A tag in the project panel has an × when you point at it.** Click it to take the tag off
   the terminal.
+- **⌘-click a path a program printed to open it at its line in your IDE.** `src/Foo.php:42` or
+  `web/app.ts:3:7` opens in the IDE "Look at code" uses for that project (PhpStorm and the other
+  JetBrains IDEs, VS Code, Cursor, Windsurf, Zed, Sublime Text, Xcode). A path printed inside a
+  container or a VM, such as `/var/www/html/src/Foo.php` from tests run in a pod, finds its file
+  in the project. Before, a click on a path did nothing.
 - **⌘-click opens links in durable terminals.** tmux keeps mouse reporting on, and then only
   ⌘⇧-click reached a link; ⌘ alone does now, for web links as well as paths.
 

@@ -339,6 +339,57 @@ enum IDEs {
         }
     }
 
+    /// Open one file at a line in an IDE and bring the IDE forward — a ⌘-click
+    /// on `src/Foo.php:42` in the terminal (see `FileLink`). The launcher runs
+    /// off the main thread: a JetBrains launcher that hands the file to a running
+    /// IDE takes a moment to exit.
+    static func open(file: String, line: Int?, column: Int?, in ide: IDE) {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: ide.bundleID) else {
+            NSLog("ide: \(ide.name) not installed")
+            return
+        }
+        let request = FileOpenRequest.make(
+            file: file, line: line, column: column, ide: ide, appPath: appURL.path,
+            executable: Bundle(url: appURL)?.executableURL?.path)
+        switch request {
+        case .launcher(let executable, let arguments)
+            where FileManager.default.isExecutableFile(atPath: executable):
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: executable)
+                process.arguments = arguments
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                do {
+                    try process.run()
+                } catch {
+                    NSLog("ide: \(ide.name) launcher failed: \(error)")
+                }
+            }
+            activate(appURL: appURL)
+        case .url(let url):
+            NSWorkspace.shared.open(url)
+        case .launcher, .plain:
+            // No launcher to name the line with: the file at least opens there.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open(
+                [URL(fileURLWithPath: file)], withApplicationAt: appURL, configuration: configuration
+            ) { _, error in
+                if let error { NSLog("ide: opening \(file) in \(ide.name) failed: \(error)") }
+            }
+        }
+    }
+
+    /// Bring a running IDE forward once its launcher has handed over the file.
+    private static func activate(appURL: URL) {
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in }
+        }
+    }
+
     /// Does macOS follow an app to the Space its windows are on? The Dock's
     /// "When switching to an application, switch to a Space with open windows"
     /// — off unless the user turned it on, and the reason activating an IDE can

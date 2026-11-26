@@ -102,6 +102,7 @@ enum Help {
             Entry(.tabNameTitle, .tabNameSummaryHelp, where: .helpWhereSettingsTabs),
             Entry(.tabShowsSection, .tabShowPathHelp, where: .helpWhereSettingsTabs),
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
+            Entry(.fileLinksTitle, .fileLinksDetail),
             Entry(.clipboardHelpTitle, .clipboardHelpDetail),
             Entry(.tags, .tagsHelp, where: .helpWhereContextMenu),
             Entry(.tagEditorTitle, .tagEditorHelp, where: .helpWhereSettingsProjectPanel),

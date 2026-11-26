@@ -9,6 +9,8 @@ extension Notification.Name {
     static let planchetteCommandFinished = Notification.Name("planchette.surface.commandFinished")
     static let planchetteSurfaceProcessExited = Notification.Name("planchette.surface.processExited")
     static let planchetteSurfaceSearch = Notification.Name("planchette.surface.search")
+    /// A path a program printed was ⌘-clicked (or opened from the menu): `sessionID`, `link`.
+    static let planchetteOpenFileLink = Notification.Name("planchette.surface.openFileLink")
 }
 
 /// libghostty runtime: one app instance, ticked on the main thread on wakeup.
@@ -281,6 +283,11 @@ final class GhosttyRuntime {
             guard let ptr = u.url, u.len > 0,
                   let str = String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), encoding: .utf8)
             else { return false }
+            // A path (`src/Foo.php:42`) opens in the project's IDE at its line;
+            // only the terminal's own project knows which IDE and which folder.
+            if let view = view(for: target), postFileLink(str, from: view.sessionID) {
+                return true
+            }
             // Handled either way. Returning false makes libghostty run `open` on the
             // raw string itself, with none of the policy in `openExternalURL` — and
             // a string `URL` cannot parse (`http://[`, a space in the host) is
@@ -295,6 +302,19 @@ final class GhosttyRuntime {
         default:
             return false
         }
+    }
+
+    /// Hand a printed path to `AppState.openFileLink`; false when `raw` is not a path.
+    @discardableResult
+    static func postFileLink(_ raw: String, from sessionID: UUID) -> Bool {
+        let link = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard FileLink.parse(link) != nil else { return false }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .planchetteOpenFileLink, object: nil,
+                userInfo: ["sessionID": sessionID, "link": link])
+        }
+        return true
     }
 
     /// What to do with a URL that came out of terminal text.
