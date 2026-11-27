@@ -84,7 +84,8 @@ enum HookInstaller {
             try deployScript()
             try deployCLI()
         } catch {
-            NSLog("hook install failed: \(error)")
+            Log.error("hook-install.failed", "hook install failed: \(error)")
+            HookInstallStatus.shared.set(claude: .failed, codex: .failed)
             return
         }
         // One bad config must not stop the other agents from being wired up.
@@ -94,14 +95,19 @@ enum HookInstaller {
                 let settings = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent(".claude/settings.json")
                 try mergeSettings(at: settings, hookCmd: hookCommand(for: .claude))
+                HookInstallStatus.shared.set(claude: .ok)
+            } else {
+                HookInstallStatus.shared.set(claude: .failed)
             }
         } catch {
-            NSLog("%@", describeWriteFailure(
+            HookInstallStatus.shared.set(claude: .failed)
+            Log.error("hook-install.claude_write_failed", describeWriteFailure(
                 error, path: FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent(".claude/settings.json").path))
         }
-        do { try installCodex() } catch {
-            NSLog("%@", describeWriteFailure(
+        do { HookInstallStatus.shared.set(codex: try installCodex() ? .ok : .absent) } catch {
+            HookInstallStatus.shared.set(codex: .failed)
+            Log.error("hook-install.codex_write_failed", describeWriteFailure(
                 error, path: FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent(".codex").path))
         }
@@ -209,7 +215,7 @@ enum HookInstaller {
             guard let data = try? Data(contentsOf: settingsURL),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else {
-                NSLog("hook install: ~/.claude/settings.json unparseable — skipping")
+                Log.error("hook-install.claude_settings_unparseable", "hook install: ~/.claude/settings.json unparseable — skipping")
                 return
             }
             settings = obj
@@ -257,20 +263,22 @@ enum HookInstaller {
         // Code also owns, and a crash or power loss mid-write would truncate the
         // user's whole settings.json.
         try out.write(to: realLocation(of: settingsURL), options: .atomic)
-        NSLog("hook install: wired Planchette hooks into \(settingsURL.path)")
+        Log.info("hook install: wired Planchette hooks into \(settingsURL.path)")
     }
 
     // MARK: Codex — ~/.codex/hooks.json + config.toml
 
-    private static func installCodex() throws {
+    /// False when there is nothing to wire up: no hook script, or no Codex.
+    private static func installCodex() throws -> Bool {
         let fm = FileManager.default
-        guard fm.fileExists(atPath: hookScriptURL.path) else { return }
+        guard fm.fileExists(atPath: hookScriptURL.path) else { return false }
         let dir = fm.homeDirectoryForCurrentUser.appendingPathComponent(".codex", isDirectory: true)
         // No ~/.codex → Codex isn't installed. Creating it would be presumptuous.
-        guard fm.fileExists(atPath: dir.path) else { return }
+        guard fm.fileExists(atPath: dir.path) else { return false }
 
         try mergeCodexHooks(dir: dir, hookCmd: hookCommand(for: .codex))
         try enableCodexHooksFeature(dir: dir)
+        return true
     }
 
     static func mergeCodexHooks(dir: URL, hookCmd: String) throws {
@@ -283,7 +291,7 @@ enum HookInstaller {
             guard let data = try? Data(contentsOf: hooksURL),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else {
-                NSLog("hook install: ~/.codex/hooks.json unparseable — skipping")
+                Log.error("hook-install.codex_hooks_unparseable", "hook install: ~/.codex/hooks.json unparseable — skipping")
                 return
             }
             root = obj
@@ -322,7 +330,7 @@ enum HookInstaller {
         // Atomic for the same reason as settings.json: never leave a half-written
         // config behind if the write is interrupted.
         try out.write(to: realLocation(of: hooksURL), options: .atomic)
-        NSLog("hook install: wired Planchette hooks into \(hooksURL.path)")
+        Log.info("hook install: wired Planchette hooks into \(hooksURL.path)")
     }
 
     /// Codex only runs hooks when the feature is switched on in config.toml.
@@ -333,7 +341,7 @@ enum HookInstaller {
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         guard let updated = codexConfigEnablingHooks(existing) else { return }
         try updated.write(to: realLocation(of: url), atomically: true, encoding: .utf8)
-        NSLog("hook install: enabled codex hooks in \(url.path)")
+        Log.info("hook install: enabled codex hooks in \(url.path)")
     }
 
     /// Pure: returns the config text with `hooks = true` under `[features]`, or

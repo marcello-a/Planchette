@@ -203,6 +203,7 @@ extension AppState {
     func toggleJiraPanel() {
         updateJira { $0.open.toggle() }
         if jira.open {
+            Telemetry.count(.jiraOpened)
             completeHint(.jira)     // used: it needs no introduction any more
             refreshJira(manual: true)
         }
@@ -218,6 +219,7 @@ extension AppState {
     /// A new terminal for a ticket in a project the user picked, in that project's folder.
     func openTerminal(inGroup groupID: UUID) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        Telemetry.count(.jiraTerminal)
         select(session: newTerminal(in: group))
     }
 }

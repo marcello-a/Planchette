@@ -67,7 +67,7 @@ final class HookServer {
         Self.removeSocketsOfDeadInstances()
 
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        guard fd >= 0 else { NSLog("hook-server: socket() failed"); return }
+        guard fd >= 0 else { Log.error("hook-server.socket_failed", "hook-server: socket() failed"); return }
         // Not inherited by the shells and agents this process starts: a copy of the
         // listening descriptor in a surviving child would keep answering `connect`
         // after the app is gone, which is exactly the "dead socket that looks
@@ -90,7 +90,7 @@ final class HookServer {
         // reporting at once after a restart — must reach the app's own limits, which
         // refuse deliberately and are counted, not be cut off by chance at 32.
         guard bindResult == 0, listen(fd, 128) == 0 else {
-            NSLog("hook-server: bind/listen failed: \(String(cString: strerror(errno)))")
+            Log.error("hook-server.bind_failed", "hook-server: bind/listen failed: \(String(cString: strerror(errno)))")
             close(fd)
             // Reset the field so stop() does not close this descriptor a second
             // time — by then the kernel may have handed the number to an unrelated
@@ -118,7 +118,7 @@ final class HookServer {
         source.setCancelHandler { close(listening) }
         source.resume()
         acceptSource = source
-        NSLog("hook-server: listening on \(Self.socketPath)")
+        Log.info("hook-server: listening on \(Self.socketPath)")
     }
 
     func stop() {
@@ -177,7 +177,7 @@ final class HookServer {
             try FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
-            NSLog("hook-server: could not publish socket pointer: \(error)")
+            Log.error("hook-server.pointer_failed", "hook-server: could not publish socket pointer: \(error)")
         }
     }
 
@@ -196,7 +196,7 @@ final class HookServer {
             case EMFILE, ENFILE, ENOBUFS, ENOMEM:
                 // Out of descriptors: the connection stays queued, so the source
                 // would fire again at once and spin. Let the process recover.
-                NSLog("hook-server: accept failed (\(String(cString: strerror(errno))))")
+                Log.error("hook-server.accept_failed", "hook-server: accept failed (\(String(cString: strerror(errno))))")
                 usleep(100_000)
                 return
             default:
@@ -226,7 +226,7 @@ final class HookServer {
         let now = DispatchTime.now().uptimeNanoseconds
         guard now - lastRefusalLog > 1_000_000_000 else { return }
         lastRefusalLog = now
-        NSLog("hook-server: refused a connection (\(reason)); \(refusals) so far")
+        Log.error("hook-server.connection_refused", "hook-server: refused a connection (\(reason)); \(refusals) so far")
     }
 
     private func admit(_ client: Int32) {
@@ -301,7 +301,7 @@ final class HookServer {
             guard count > 0 else { break }   // EOF, or the connection broke
             data.append(buffer, count: count)
             if data.count > maxBytes {
-                NSLog("hook-server: payload over \(maxBytes) bytes, dropped")
+                Log.error("hook-server.payload_too_large", "hook-server: payload over \(maxBytes) bytes, dropped")
                 return nil
             }
         }
@@ -374,7 +374,7 @@ final class HookServer {
     /// Returns true when the connection has been answered (and closed) here.
     private func handle(data: Data, client: Int32) -> Bool {
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            NSLog("hook-server: unparseable payload, ignored")
+            Log.error("hook-server.payload_unparseable", "hook-server: unparseable payload, ignored")
             return false
         }
 
@@ -410,7 +410,7 @@ final class HookServer {
             let sessionString = obj["planchette_session"] as? String,
             let sessionID = UUID(uuidString: sessionString)
         else {
-            NSLog("hook-server: payload without valid planchette_session, ignored")
+            Log.error("hook-server.payload_no_session", "hook-server: payload without valid planchette_session, ignored")
             return false
         }
         let event = obj["event"] as? [String: Any] ?? [:]
