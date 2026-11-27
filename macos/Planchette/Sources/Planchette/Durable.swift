@@ -120,7 +120,37 @@ enum Durable {
         unbind -n MouseDown3StatusLeft
         unbind -n M-MouseDown3StatusLeft
 
+        # Mouse selections behave like an ordinary terminal's. tmux's defaults
+        # copy on release and then drop the selection, so it vanished under
+        # the pointer and ⌘C found nothing to copy. Copy mode is only ever
+        # entered by the mouse here (there is no prefix), so its keyboard
+        # bindings go: the selection stays until the next click, and any key
+        # leaves copy mode and still reaches the program (`Any` runs for every
+        # key without its own binding; a bare send-keys resends that key).
+        # The other mouse events are bound to a no-op so `Any` cannot see
+        # them: a click into scrolled-back history must not jump to the end.
+        set -g mode-keys emacs
+        unbind -T copy-mode -a
+        bind -T copy-mode WheelUpPane select-pane \\; send -X -N 5 scroll-up
+        bind -T copy-mode WheelDownPane select-pane \\; send -X -N 5 scroll-down
+        bind -T copy-mode MouseDown1Pane select-pane \\; send -X clear-selection
+        bind -T copy-mode MouseDrag1Pane select-pane \\; send -X begin-selection
+        bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear
+        bind -T copy-mode DoubleClick1Pane select-pane \\; send -X select-word \\; send -X copy-pipe-no-clear
+        bind -T copy-mode TripleClick1Pane select-pane \\; send -X select-line \\; send -X copy-pipe-no-clear
+        \(mouseNoOps.map { "bind -T copy-mode \($0) select-pane" }.joined(separator: "\n"))
+        bind -T copy-mode Any send -X cancel \\; send-keys
+        bind -n DoubleClick1Pane select-pane -t = \\; if -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send -M } { copy-mode -H ; send -X select-word ; send -X copy-pipe-no-clear }
+        bind -n TripleClick1Pane select-pane -t = \\; if -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send -M } { copy-mode -H ; send -X select-line ; send -X copy-pipe-no-clear }
+
         """
+
+    /// Mouse events copy mode ignores, so its `Any` binding never treats them as typing.
+    static let mouseNoOps: [String] = ["1", "2", "3"].flatMap { button in
+        ["MouseUp", "SecondClick"].map { "\($0)\(button)Pane" }
+    } + ["2", "3"].flatMap { button in
+        ["MouseDown", "MouseDrag", "MouseDragEnd", "DoubleClick", "TripleClick"].map { "\($0)\(button)Pane" }
+    }
 
     /// Write the config if it is missing or out of date, so an app update's
     /// settings apply the next time the server starts.
