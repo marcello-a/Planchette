@@ -51,6 +51,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   port, on the thread that handles your keys — and ports that never print one (port-forwards,
   databases, Claude Code's own sockets) were searched again on every tick. A port is now
   searched at most three times, and the search runs in the background.
+- **Text selected with the mouse in a durable terminal stays selected.** tmux copied it on release
+  and dropped the selection at once, so it vanished under the pointer. The selection now stays
+  until the next click; it is still on the clipboard as soon as you let go. Typing clears it and
+  reaches the program as usual (before, keys typed while scrolled back were taken by tmux).
 
 ## [0.2.55] — 2026-11-26
 
@@ -74,12 +78,6 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ### Changed
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
-
-### Fixed
-- **Text selected with the mouse in a durable terminal stays selected.** tmux copied it on release
-  and dropped the selection at once, so it vanished under the pointer. The selection now stays
-  until the next click; it is still on the clipboard as soon as you let go. Typing clears it and
-  reaches the program as usual (before, keys typed while scrolled back were taken by tmux).
 
 ## [0.2.54] — 2026-11-25
 
