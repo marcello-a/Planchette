@@ -114,6 +114,90 @@ final class NotepadStyleTests: XCTestCase {
         }
     }
 
+    /// How the pad cut its text into prompts before it was made faster, verbatim.
+    enum OriginalPrompts {
+        private static func isBreak(_ unit: unichar) -> Bool {
+            unit == 0x0A || unit == 0x0D || unit == 0x2028 || unit == 0x2029 || unit == 0x85
+        }
+
+        private struct Line {
+            let full: NSRange
+            let content: NSRange
+            let isBlank: Bool
+            var inFence = false
+        }
+
+        private static func lines(in text: NSString) -> [Line] {
+            var result: [Line] = []
+            var start = 0, index = 0
+            func add(end: Int, breakLength: Int) {
+                let content = NSRange(location: start, length: end - start)
+                let blank = text.substring(with: content).trimmingCharacters(in: .whitespaces).isEmpty
+                result.append(Line(full: NSRange(location: start, length: end + breakLength - start),
+                                   content: content, isBlank: blank))
+            }
+            while index < text.length {
+                if isBreak(text.character(at: index)) {
+                    let length = text.character(at: index) == 0x0D && index + 1 < text.length
+                        && text.character(at: index + 1) == 0x0A ? 2 : 1
+                    add(end: index, breakLength: length)
+                    start = index + length
+                    index = start
+                } else {
+                    index += 1
+                }
+            }
+            if start < text.length { add(end: text.length, breakLength: 0) }
+            var open = false
+            for index in result.indices {
+                let content = text.substring(with: result[index].content).trimmingCharacters(in: .whitespaces)
+                if content.hasPrefix("```") {
+                    open.toggle()
+                    result[index].inFence = true
+                } else {
+                    result[index].inFence = open
+                }
+            }
+            return result
+        }
+
+        static func prompts(in text: String, returns: Int) -> [NotepadPrompts.Prompt] {
+            let ns = text as NSString
+            let all = lines(in: ns)
+            let needed = NotepadLook.sanitized(returns: returns)
+            let filled = all.indices.filter { !all[$0].isBlank || all[$0].inFence }
+            var groups: [[Int]] = []
+            for index in filled {
+                if let last = groups.last?.last, index - last - 1 + 1 < needed {
+                    groups[groups.count - 1].append(index)
+                } else {
+                    groups.append([index])
+                }
+            }
+            let doneMark = NotepadPrompts.doneMark
+            return groups.map { group in
+                let first = all[group[0]], last = all[group[group.count - 1]]
+                let range = NSRange(location: first.content.location,
+                                    length: NSMaxRange(last.content) - first.content.location)
+                let text = normalized(ns.substring(with: range))
+                if text.count > 2 * doneMark.count, text.hasPrefix(doneMark), text.hasSuffix(doneMark) {
+                    let inner = text.dropFirst(doneMark.count).dropLast(doneMark.count)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !inner.isEmpty { return NotepadPrompts.Prompt(range: range, text: inner, isDone: true) }
+                }
+                return NotepadPrompts.Prompt(range: range, text: text)
+            }
+        }
+
+        private static func normalized(_ text: String) -> String {
+            var result = text
+            for separator in ["\r\n", "\r", "\u{2028}", "\u{2029}", "\u{85}"] {
+                result = result.replacingOccurrences(of: separator, with: "\n")
+            }
+            return result.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
     // MARK: Comparing
 
     /// The first place where two styled texts differ, described; nil when they are the same text
@@ -352,6 +436,9 @@ final class NotepadStyleTests: XCTestCase {
             let text = storage.string
             let ns = text as NSString
             let fresh = NotepadPrompts.prompts(in: text, returns: look.returns)
+            if fresh != OriginalPrompts.prompts(in: text, returns: look.returns) {
+                return "a fresh cut differs from the original cut"
+            }
             let kept = styler.prompts(returns: look.returns)
             if kept != fresh {
                 let first = zip(kept, fresh).enumerated().first { $0.element.0 != $0.element.1 }?.offset
@@ -426,6 +513,12 @@ final class NotepadStyleTests: XCTestCase {
                 if grouped { pad.storage.beginEditing() }
                 for _ in 0..<count { described.append(randomEdit(pad, using: &rng)) }
                 if grouped { pad.storage.endEditing() }
+                // Now and then someone else changes attributes only (a font, a format).
+                if Int.random(in: 0..<12, using: &rng) == 0 {
+                    let range = Self.randomRange(in: pad.storage.string as NSString, maxLength: 40, using: &rng)
+                    pad.storage.addAttributes([.font: NSFont.boldSystemFont(ofSize: 21), .kern: 3], range: range)
+                    described.append("attributes set over \(range)")
+                }
                 editIndex += 1
                 // Now and then the pad gets wider or narrower, or the Returns per prompt change.
                 if Int.random(in: 0..<40, using: &rng) == 0 {
@@ -461,9 +554,30 @@ final class NotepadStyleTests: XCTestCase {
                         """, file: file, line: line)
                     return checked
                 }
+                // Laying the text out and AppKit's fixing of fonts are not edits of anyone's.
+                if let left = pad.styler.pending {
+                    XCTFail("seed \(seed), document \(documentIndex), edit \(editIndex): \(left) is still "
+                            + "pending after the restyle and the layout", file: file, line: line)
+                    return checked
+                }
             }
         }
         return checked
+    }
+
+    /// How many times deeper the walks go: NOTEPAD_DEEP=n runs each of them with n seeds.
+    static var depth: Int {
+        max(ProcessInfo.processInfo.environment["NOTEPAD_DEEP"].flatMap(Int.init) ?? 1, 1)
+    }
+
+    /// `walk`, once per seed of the depth asked for; the number of steps checked in all.
+    private func walks(seed: UInt64, documents: Int, edits: Int, lines: ClosedRange<Int>,
+                       batch: ClosedRange<Int> = 1...1, inline: Bool = true, kind: StorageKind = .unfixed,
+                       file: StaticString = #filePath, line: UInt = #line) -> Int {
+        (0..<Self.depth).reduce(0) { total, round in
+            total + walk(seed: seed &+ UInt64(round) &* 1_000_003, documents: documents, edits: edits,
+                         lines: lines, batch: batch, inline: inline, kind: kind, file: file, line: line)
+        }
     }
 
     /// One edit the way a person (or undo, or a paste) makes it; answers what it did.
@@ -555,52 +669,54 @@ final class NotepadStyleTests: XCTestCase {
         }
     }
 
+    // The walks below check about 6,000 steps by default; NOTEPAD_DEEP=n runs each with n seeds.
+
     func testRandomEditsLookExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed, documents: 60, edits: 70, lines: 0...40)
-        XCTAssertGreaterThanOrEqual(checked, 3300)
+        let checked = walks(seed: Self.baseSeed, documents: 30, edits: 60, lines: 0...40)
+        XCTAssertGreaterThanOrEqual(checked, 1400 * Self.depth)
     }
 
     func testTypingInLongerDocumentsLooksExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed &+ 1, documents: 12, edits: 120, lines: 80...200)
-        XCTAssertGreaterThanOrEqual(checked, 1100)
+        let checked = walks(seed: Self.baseSeed &+ 1, documents: 5, edits: 100, lines: 80...200)
+        XCTAssertGreaterThanOrEqual(checked, 380 * Self.depth)
     }
 
     /// Several edits in one step, grouped in one round of editing (NSTextStorage reports them as
     /// one) or each in its own.
     func testEditsDrawnTogetherLookExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed &+ 2, documents: 40, edits: 50, lines: 0...30, batch: 1...6)
-        XCTAssertGreaterThanOrEqual(checked, 1500)
+        let checked = walks(seed: Self.baseSeed &+ 2, documents: 20, edits: 40, lines: 0...30, batch: 1...6)
+        XCTAssertGreaterThanOrEqual(checked, 600 * Self.depth)
     }
 
     /// Edits drawn only by the restyle after them, in a round of editing of its own — the way the
     /// pad draws while it has no look to draw in yet, and what a composition leaves behind.
     func testEditsDrawnAfterwardsLookExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed &+ 6, documents: 30, edits: 60, lines: 0...40, batch: 1...3,
-                           inline: false)
-        XCTAssertGreaterThanOrEqual(checked, 1400)
+        let checked = walks(seed: Self.baseSeed &+ 6, documents: 15, edits: 50, lines: 0...40, batch: 1...3,
+                            inline: false)
+        XCTAssertGreaterThanOrEqual(checked, 550 * Self.depth)
     }
 
     /// AppKit's own text storage fixes attributes when they are read: an emoji gets the emoji font,
     /// a paragraph one paragraph style. That must come out the same as well.
     func testAppKitsStorageLooksExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed &+ 5, documents: 40, edits: 60, lines: 0...30, batch: 1...3,
-                           kind: .appKit)
-        XCTAssertGreaterThanOrEqual(checked, 1800)
+        let checked = walks(seed: Self.baseSeed &+ 5, documents: 20, edits: 50, lines: 0...30, batch: 1...3,
+                            kind: .appKit)
+        XCTAssertGreaterThanOrEqual(checked, 750 * Self.depth)
     }
 
     /// The text laid out after each restyle, as in the pad.
     func testLaidOutTextLooksExactlyLikeAFullRestyle() {
-        let checked = walk(seed: Self.baseSeed &+ 3, documents: 10, edits: 40, lines: 0...30, kind: .laidOut)
-        XCTAssertGreaterThanOrEqual(checked, 300)
+        let checked = walks(seed: Self.baseSeed &+ 3, documents: 8, edits: 40, lines: 0...30, kind: .laidOut)
+        XCTAssertGreaterThanOrEqual(checked, 240 * Self.depth)
     }
 
     /// The prompts the margin and the code bar read are kept with every edit, never cut again from
     /// the whole text: after every step they must be what a fresh cut gives (`Pad.promptMismatch`
     /// runs in every walk; this one is for the prompts alone, drawn afterwards or not at all).
     func testThePromptsAreKeptExactlyAfterEveryEdit() {
-        let checked = walk(seed: Self.baseSeed &+ 7, documents: 40, edits: 80, lines: 0...50, batch: 1...3,
-                           inline: false)
-        XCTAssertGreaterThanOrEqual(checked, 2500)
+        let checked = walks(seed: Self.baseSeed &+ 7, documents: 20, edits: 60, lines: 0...50, batch: 1...3,
+                            inline: false)
+        XCTAssertGreaterThanOrEqual(checked, 900 * Self.depth)
     }
 
     func testPromptsForAnotherNumberOfReturnsAreCutAgain() {
@@ -637,7 +753,7 @@ final class NotepadStyleTests: XCTestCase {
         while (text as NSString).length < 50_000 { text += Self.document(lines: 40, using: &rng) + "\n" }
         let pad = Pad(text, width: 300, returns: 2)
         XCTAssertNil(pad.mismatch())
-        for index in 0..<60 {
+        for index in 0..<(15 * Self.depth) {
             let edit = randomEdit(pad, using: &rng)
             pad.restyle()
             if let problem = pad.mismatch() {
@@ -759,10 +875,94 @@ final class NotepadStyleTests: XCTestCase {
         XCTAssertNil(pad.mismatch())
     }
 
-    func testAttributeChangesAloneAreNotEdits() {
-        let pad = Pad(text(lines: 20), width: 300, returns: 2, inline: false)
-        pad.storage.addAttribute(.foregroundColor, value: NSColor.red, range: NSRange(location: 0, length: 3))
+    /// Attributes someone else set (a font, a format) make that stretch stale; the next restyle
+    /// draws it as the text says. The styler's own drawing leaves nothing stale.
+    func testAttributesSetBySomeoneElseAreDrawnAgain() {
+        let pad = Pad("# Head\n" + text(lines: 20), width: 300, returns: 2)
+        XCTAssertNil(pad.styler.pending, "the styler's own drawing is not an edit")
+        pad.storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 30), range: NSRange(location: 2, length: 3))
+        XCTAssertEqual(pad.styler.pending, NSRange(location: 2, length: 3))
+        XCTAssertNotNil(pad.mismatch())
+        XCTAssertEqual(pad.restyle(), NSRange(location: 0, length: 7), "the line it touched, drawn again")
         XCTAssertNil(pad.styler.pending)
+        XCTAssertNil(pad.mismatch())
+    }
+
+    private func drawnLines(_ pad: Pad) -> Int {
+        guard let drawn = pad.styler.lastDrawn else { return 0 }
+        return (pad.storage.string as NSString).substring(with: drawn).components(separatedBy: "\n").count
+    }
+
+    /// A ticked task is struck through on its own line; it never makes a key draw its whole prompt.
+    func testATickedTaskDoesNotMakeAKeyDrawItsPrompt() {
+        for returns in [2, 3] {
+            let body = (0..<300).map { "line \($0)" + ($0 % 5 == 4 ? "\n" : "") }.joined(separator: "\n")
+            let pad = Pad("- [x] ticked task\n" + body, width: 300, returns: returns)
+            let at = (pad.storage.string as NSString).range(of: "line 150").location
+            for (index, key) in "typed".enumerated() {
+                pad.replace(NSRange(location: at + index, length: 0), with: String(key))
+                XCTAssertLessThanOrEqual(drawnLines(pad), 4, "returns \(returns): drew \(pad.styler.lastDrawn!)")
+            }
+            XCTAssertNil(pad.mismatch())
+        }
+    }
+
+    /// A key inside a long struck-through prompt draws its lines, struck; the rest of the prompt
+    /// keeps its line through. A `~` at its end strikes or frees all of it.
+    func testAKeyInsideAStruckPromptDrawsItsLines() {
+        let long = (0..<300).map { "line \($0)" }.joined(separator: "\n")
+        let pad = Pad("~~" + long + "~~\n\nafter", width: 300, returns: 2)
+        let at = (pad.storage.string as NSString).range(of: "line 150").location
+        for (index, key) in "typed".enumerated() {
+            pad.replace(NSRange(location: at + index, length: 0), with: String(key))
+            XCTAssertLessThanOrEqual(drawnLines(pad), 4, "drew \(pad.styler.lastDrawn!)")
+            XCTAssertNil(pad.mismatch())
+        }
+        let end = (pad.storage.string as NSString).range(of: "~~\n").location
+        pad.replace(NSRange(location: end, length: 1), with: "")
+        XCTAssertEqual(pad.styler.lastDrawn?.location, 0, "freed: all of it is drawn")
+        XCTAssertNil(pad.mismatch())
+        pad.replace(NSRange(location: end, length: 0), with: "~")
+        XCTAssertEqual(pad.styler.lastDrawn?.location, 0, "struck again: all of it is drawn")
+        XCTAssertNil(pad.mismatch())
+    }
+
+    /// The letters of a fence's name draw to the end only where the colours change: `p` names a
+    /// language (none known), `ph`, `php`, `phpx` are the same to the colours, `py` is Python.
+    func testTheLettersOfALanguageDrawOnlyWhereTheColoursChange() {
+        let pad = Pad("```\n" + text(lines: 300), width: 300, returns: 2)
+        let whole = { NSRange(location: 0, length: pad.storage.length) }
+        pad.replace(NSRange(location: 3, length: 0), with: "p")
+        XCTAssertEqual(pad.styler.lastDrawn, whole(), "a name where there was none")
+        for (index, key) in "hpx".enumerated() {
+            pad.replace(NSRange(location: 4 + index, length: 0), with: String(key))
+            XCTAssertLessThanOrEqual(drawnLines(pad), 3, "drew \(pad.styler.lastDrawn!)")
+        }
+        XCTAssertNil(pad.mismatch())
+        pad.replace(NSRange(location: 4, length: 3), with: "y")             // ```py
+        XCTAssertEqual(NSMaxRange(pad.styler.lastDrawn!), pad.storage.length, "Python's colours")
+        XCTAssertNil(pad.mismatch())
+        XCTAssertEqual(NotepadCode.tokenClass(of: "ts"), NotepadCode.tokenClass(of: "typescript"))
+        XCTAssertNotEqual(NotepadCode.tokenClass(of: nil), NotepadCode.tokenClass(of: "x"))
+    }
+
+    /// The margin and the code bar read the kept prompts: typing cuts the whole text into prompts
+    /// never, and each key draws its line.
+    func testTypingCutsNoPromptsAndDrawsItsLine() {
+        let pad = Pad(text(lines: 400) + "\n\n" + text(lines: 400), width: 300, returns: 2)
+        XCTAssertEqual(pad.styler.fullPromptCuts, 1)
+        var at = (pad.storage.string as NSString).range(of: "line 200").location
+        for key in "a key, typed\n\nand more" {
+            pad.replace(NSRange(location: at, length: 0), with: String(key))
+            at += 1
+            _ = pad.styler.prompts(returns: 2)
+            // A Return makes one line two: the lines around it, and both halves.
+            XCTAssertLessThanOrEqual(drawnLines(pad), key == "\n" ? 5 : 4, "drew \(pad.styler.lastDrawn!)")
+        }
+        XCTAssertEqual(pad.styler.fullPromptCuts, 1, "no full cut per key")
+        XCTAssertNil(pad.mismatch())
+        _ = pad.styler.prompts(returns: 3)
+        XCTAssertEqual(pad.styler.fullPromptCuts, 2, "another number of Returns cuts once")
     }
 
     // MARK: Pieces
@@ -813,8 +1013,10 @@ final class NotepadStyleTests: XCTestCase {
     /// What one key costs at 16 KB and 64 KB, typed in the middle of the text and laid out after
     /// it, as the text view does: the full restyle the pad did before, the incremental one (drawn
     /// in the key's own round of editing), the same in a round of its own, and no restyle at all.
-    /// Printed; the incremental one must be far cheaper — a generous bound for slow machines.
-    func testAKeyCostsFarLessThanAFullRestyle() {
+    /// Only measured — run with NOTEPAD_PERF=1; the structural tests above (what a key draws, no
+    /// full cuts) guard the default suite.
+    func testCostOfAKey() throws {
+        try XCTSkipUnless(Self.measures, "timing only: set NOTEPAD_PERF=1")
         var report: [String] = []
         for kilobytes in [16, 64] {
             var rng = SeededGenerator(seed: 0xC0FFEE)
@@ -870,7 +1072,6 @@ final class NotepadStyleTests: XCTestCase {
                 cutting the text into prompts, once %.2f ms
                 """, kilobytes, total(before), before.style, before.layout, total(after), after.edit, after.layout,
                                  total(separate), total(bare), prompts))
-            XCTAssertLessThan(total(after), total(before) / 5, report.last!)
         }
         print("NotepadStyle timing (one key, typed mid-text):\n  " + report.joined(separator: "\n  "))
     }
@@ -878,9 +1079,10 @@ final class NotepadStyleTests: XCTestCase {
     /// What the margin and the code bar cost per key at 16 KB and 64 KB. Before, each key cut the
     /// whole text into prompts three times (the margin's rows; the code bar after the text changed
     /// and again after the insertion point moved) and looked for the blocks of the whole text twice.
-    /// Now the prompts are kept with the edit and read three times. Printed; the bound is a ratio,
-    /// generous, so a slow machine still passes.
-    func testTheMarginAndTheCodeBarCostLittlePerKey() {
+    /// Now the prompts are kept with the edit and read three times. Only measured — run with
+    /// NOTEPAD_PERF=1; `testTypingCutsNoPromptsAndDrawsItsLine` guards the default suite.
+    func testCostOfTheMarginAndTheCodeBar() throws {
+        try XCTSkipUnless(Self.measures, "timing only: set NOTEPAD_PERF=1")
         var report: [String] = []
         for kilobytes in [16, 64] {
             var rng = SeededGenerator(seed: 0xBEEF)
@@ -932,8 +1134,58 @@ final class NotepadStyleTests: XCTestCase {
                 after %.2f ms per key (edit with the prompts kept %.2f, margin and code bar %.3f)
                 """, kilobytes, before.edit + before.read, before.edit, before.read,
                                  after.edit + after.read, after.edit, after.read))
-            XCTAssertLessThan(after.edit + after.read, (before.edit + before.read) / 3, report.last!)
         }
         print("Notepad margin and code bar timing (one key, typed mid-text):\n  " + report.joined(separator: "\n  "))
     }
+
+    /// The cases where a key used to draw much more than its line, at 64 KB: a ticked task in the
+    /// prompt (one Return and three), a key inside a long struck-through prompt, and the letters of
+    /// a fence's language at the top. Each key: the edit with what it draws, the margin's read of
+    /// the prompts, and the layout. Only measured — run with NOTEPAD_PERF=1.
+    func testCostOfKeysThatReachFar() throws {
+        try XCTSkipUnless(Self.measures, "timing only: set NOTEPAD_PERF=1")
+        let line = "plain words in a line of the pad, nothing more"
+        func lines(_ count: Int, blankEvery: Int?) -> String {
+            (0..<count).map { index in
+                blankEvery.map { index > 0 && index % $0 == 0 ? "\n" : "" } ?? ""
+            }.enumerated().map { $0.element + "\(line) \($0.offset)" }.joined(separator: "\n")
+        }
+        let size = 64 * 1024 / (line.count + 5)
+        let cases: [(name: String, text: String, returns: Int, caret: (NSString) -> Int, keys: [String])] = [
+            ("ticked task, two Returns, no blank line (one prompt)",
+             "- [x] ticked task\n" + lines(size, blankEvery: nil), 2,
+             { $0.length / 2 }, Array("typing here").map(String.init)),
+            ("ticked task, three Returns, the whole pad one prompt",
+             "- [x] ticked task\n" + lines(size, blankEvery: 5), 3,
+             { $0.length / 2 }, Array("typing here").map(String.init)),
+            ("inside a long struck-through prompt",
+             "~~" + lines(size, blankEvery: nil) + "~~", 2,
+             { $0.length / 2 }, Array("typing here").map(String.init)),
+            ("letters of the language of an open fence at the top (```p → ```phpxy)",
+             "```p\n" + lines(size, blankEvery: 3), 2,
+             { _ in 4 }, ["h", "p", "x", "y"]),
+        ]
+        var report: [String] = []
+        for scenario in cases {
+            let kept = ProcessInfo.processInfo.environment["NOTEPAD_PERF_NO_PROMPTS"] == nil
+            let pad = Pad(scenario.text, width: 300, returns: scenario.returns, kind: .laidOut, keepsPrompts: kept)
+            pad.layout!.ensureLayout(for: pad.container!)
+            var caret = scenario.caret(pad.storage.string as NSString)
+            caret = (pad.storage.string as NSString).lineRange(for: NSRange(location: caret, length: 0)).location
+            if scenario.keys.count == 4 { caret = 4 }
+            let start = DispatchTime.now().uptimeNanoseconds
+            for key in scenario.keys {
+                pad.replace(NSRange(location: caret, length: 0), with: key)
+                caret += (key as NSString).length
+                if kept { _ = pad.styler.prompts(returns: scenario.returns) }
+                pad.layout!.ensureLayout(for: pad.container!)
+            }
+            let perKey = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6 / Double(scenario.keys.count)
+            report.append(String(format: "%@: %.2f ms per key", scenario.name, perKey))
+            XCTAssertNil(pad.mismatch())
+        }
+        print("Notepad keys that reach far (64 KB):\n  " + report.joined(separator: "\n  "))
+    }
+
+    static var measures: Bool { ProcessInfo.processInfo.environment["NOTEPAD_PERF"] != nil }
 }

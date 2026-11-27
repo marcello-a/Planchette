@@ -2,16 +2,18 @@ import AppKit
 
 /// How the notepad's text is drawn — its Markdown (`NotepadMarkdown`), the colours of code
 /// (`NotepadCode`) and the line through a prompt that was sent (`NotepadPrompts`) — and how little
-/// of it an edit makes stale. Drawing all of it again on every key cost 10–17 ms at 16 KB, which
-/// made typing lag; most of a key's work is now one line.
+/// of it an edit makes stale. Drawing and laying out all of it again on every key cost 37–45 ms at
+/// 16 KB and 150–170 ms at 64 KB, which made typing lag; most of a key's work is now one line.
 ///
 /// What an edit can change, and so what is drawn again:
 /// - the lines it touched, with one line around them (a `\r` and a `\n` that meet or part change
-///   where a line ends);
+///   where a line ends), grown until no composed character sequence is cut;
 /// - everything after it when a fence (```` ``` ````) came or went: every line below it changes
-///   sides; and up to the closing fence when only the language of the block it is in changed;
-/// - the whole of every prompt around it when a prompt there is struck through, or was: `~~` at
-///   its start and end strikes all of it, so a key at one end changes the other.
+///   sides; and up to the closing fence when the block it is in is coloured as another language
+///   now (`NotepadCode.tokenClass` — `s`, `sw`, `swi` colour alike);
+/// - the whole of the prompts around it when one of them became struck through or stopped being
+///   so: `~~` at its start and end strikes all of it, so a key at one end changes the other. A key
+///   inside a struck prompt draws only its lines, struck; a ticked task is struck on its own line.
 ///
 /// The functions here are pure, apart from writing the attributes they work out; `NotepadStyler`
 /// keeps what they need between two edits. Unit-tested against a full restyle of the text after
@@ -436,12 +438,37 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     /// The next restyle draws everything.
     func invalidate() { attributes = nil }
 
+    /// True while the styler writes attributes itself: those edits are its own, not stale ones.
+    private var isDrawing = false
+    /// The struck-through prompts as they are drawn now, top to bottom: what a full restyle struck
+    /// at the last draw, moved along with every edit since. A ticked task's line is not in it — it
+    /// is drawn with its line, and never makes a key draw more.
+    private(set) var struck: [NSRange] = []
+    /// How often the whole text was cut into prompts: once, and again for another number of
+    /// Returns — never per key.
+    private(set) var fullPromptCuts = 0
+    /// What the last draw covered — for tests, and to measure.
+    private(set) var lastDrawn: NSRange?
+
     func textStorage(_ textStorage: NSTextStorage, willProcessEditing editedMask: NSTextStorageEditActions,
                      range editedRange: NSRange, changeInLength delta: Int) {
-        guard editedMask.contains(.editedCharacters) else { return }
-        noteEdit(in: textStorage.string as NSString, range: editedRange, delta: delta)
-        // Attributes changed here join the edit that is being processed: no editing round of our own.
-        if let look = lookNow?() { draw(look: look, grouped: false) }
+        guard !isDrawing else { return }
+        if editedMask.contains(.editedCharacters) {
+            noteEdit(in: textStorage.string as NSString, range: editedRange, delta: delta)
+            // Attributes changed here join the edit that is being processed: no editing round of our own.
+            if let look = lookNow?() { draw(look: look, grouped: false) }
+        } else if editedMask.contains(.editedAttributes) {
+            // Someone else changed attributes (a font, a format): the look there is stale. It is
+            // drawn by the next restyle — not here, inside an edit that is not about characters.
+            noteAttributes(in: editedRange, length: textStorage.length)
+        }
+    }
+
+    /// Attributes in `range` were changed by someone else: draw that stretch again.
+    func noteAttributes(in range: NSRange, length: Int) {
+        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: length))
+        let changed = NSRange(location: min(range.location, length), length: clamped.length)
+        pending = pending.map { NSUnionRange($0, changed) } ?? changed
     }
 
     /// The characters in `edited` (in the text as it is now) replaced others; the text is `delta`
@@ -451,6 +478,12 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         var dirty = edited
         if let earlier = pending {
             dirty = NSUnionRange(NotepadStyle.map(earlier, through: edited, delta: delta, length: length), edited)
+        }
+        // A struck prompt the edit reached grows over what it put in: those characters are drawn
+        // again anyway, and the rest of the prompt is still struck as it was.
+        struck = struck.compactMap {
+            let moved = NotepadStyle.map($0, through: edited, delta: delta, length: length)
+            return moved.length > 0 ? moved : nil
         }
         // The fences around the edit, before and after it; those above it stay, those below move.
         let region = NotepadStyle.lines(around: edited, in: ns)
@@ -465,8 +498,10 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
             // A block opened or closed: every line below changed sides.
             end = length
         } else if (low + new.count) % 2 == 1,
-                  (old.last ?? above.last)?.language != (new.last ?? above.last)?.language {
-            // The block that runs on below the edit names another language: its colours change.
+                  NotepadCode.tokenClass(of: (old.last ?? above.last)?.language)
+                    != NotepadCode.tokenClass(of: (new.last ?? above.last)?.language) {
+            // The block that runs on below the edit is coloured as another language now. A name
+            // typed letter by letter (`s`, `sw`, `swi`) changes that only now and then.
             end = below.first?.line.location ?? length
         }
         fences = Array(above) + new + below
@@ -506,8 +541,20 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         }
         if let cache = promptCache, cache.returns == returns { return cache.prompts }
         let fresh = NotepadPrompts.prompts(in: storage.string, returns: returns)
+        fullPromptCuts += 1
         promptCache = (returns, fresh)
         return fresh
+    }
+
+    /// The struck-through prompts in `extent` (whole prompts), from the kept prompts when they are
+    /// cut for these Returns — else cut from the text there.
+    private func done(in extent: NSRange, of ns: NSString, returns: Int) -> [NSRange] {
+        guard let cache = promptCache, cache.returns == returns else {
+            return NotepadStyle.strikes(in: ns, range: extent, fences: fences, returns: returns)
+        }
+        return cache.prompts
+            .filter { $0.isDone && $0.range.location >= extent.location && $0.range.location < NSMaxRange(extent) }
+            .map(\.range)
     }
 
     /// `NotepadCode.suggestion(within:of:)`, with the fenced lines read off the fence lines.
@@ -532,6 +579,8 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     @discardableResult
     private func draw(look: NotepadStyle.Look, grouped: Bool) -> NSRange? {
         guard let storage else { return nil }
+        isDrawing = true
+        defer { isDrawing = false }
         let ns = storage.string as NSString
         let whole = NSRange(location: 0, length: ns.length)
         guard let current = attributes, current.look == look else {
@@ -545,9 +594,12 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         let lines = NotepadStyle.wholeSequences(
             ns.lineRange(for: NSRange(location: min(clamped.location, ns.length), length: clamped.length)), in: ns)
         var range = lines
-        var strikes: [NSRange] = []
-        // A prompt is struck through as a whole: where one around the edit is, or was, all of it is
-        // drawn again. Where none is, the lines are enough.
+        var strikes: [NSRange]
+        // A prompt is struck through as a whole. The prompts around the edit — between edges the
+        // edit did not touch — are struck now as `done` says, and were drawn as `struck` says. Where
+        // the two agree, every line outside the edit keeps its line through, and only the edited
+        // lines are drawn, with the line through clipped to them. Where they differ (a `~` typed or
+        // deleted at a prompt's end, a prompt split or joined), all of those prompts are drawn.
         var extent = lines
         while true {
             let grown = NotepadStyle.wholeSequences(
@@ -555,17 +607,23 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
             if grown == extent { break }
             extent = grown
         }
-        let done = NotepadStyle.strikes(in: ns, range: extent, fences: fences, returns: look.returns)
-        let before = NSRange(location: extent.location, length: lines.location - extent.location)
-        let after = NSRange(location: NSMaxRange(lines), length: NSMaxRange(extent) - NSMaxRange(lines))
-        if !done.isEmpty || NotepadStyle.hasStrike(in: storage, range: before)
-            || NotepadStyle.hasStrike(in: storage, range: after) {
+        let done = done(in: extent, of: ns, returns: look.returns)
+        let low = struck.firstIndex { NSMaxRange($0) > extent.location } ?? struck.count
+        let high = struck[low...].firstIndex { $0.location >= NSMaxRange(extent) } ?? struck.count
+        if Array(struck[low..<high]) == done {
+            strikes = done.compactMap {
+                let clipped = NSIntersectionRange($0, lines)
+                return clipped.length > 0 ? clipped : nil
+            }
+        } else {
             range = extent
             strikes = done
         }
+        struck = Array(struck[..<low]) + done + Array(struck[high...])
         if range == whole { return restyleAll(storage, ns, current, grouped: grouped) }
         NotepadStyle.apply(to: storage, range: range, text: ns, fences: fences, attributes: current, strikes: strikes,
                            grouped: grouped)
+        lastDrawn = range
         return range
     }
 
@@ -575,6 +633,8 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         fences = NotepadStyle.fences(in: ns, lines: whole)
         pending = nil
         let strikes = NotepadStyle.strikes(in: ns, range: whole, fences: fences, returns: attributes.look.returns)
+        struck = strikes
+        lastDrawn = whole
         NotepadStyle.apply(to: storage, range: whole, text: ns, fences: fences, attributes: attributes, strikes: strikes,
                            grouped: grouped)
         return whole

@@ -30,6 +30,7 @@ final class NotepadTextViewStyleTests: XCTestCase {
             styler.attach(to: storage)
             textView.delegate = self
             styler.lookNow = { [unowned self] in self.lookNow() }
+            textView.onUnmark = { [unowned self] in self.restyle() }        // as the coordinator wires it
             undo.groupsByEvent = false
             restyle()
         }
@@ -146,6 +147,25 @@ final class NotepadTextViewStyleTests: XCTestCase {
         pad.restyle()
         XCTAssertNil(pad.mismatch())
         XCTAssertNil(pad.styler.pending)
+        XCTAssertEqual(pad.storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont, code)
+    }
+
+    /// A composition can end without a change of characters — a click elsewhere, the pad losing
+    /// the keyboard: `unmarkText` keeps the marked text as typed. It is drawn then, not at the next key.
+    func testACompositionEndedWithoutTypingIsDrawn() {
+        let pad = Harness("# Head\n\nsome `code` here\n")
+        let at = ("# Head\n\nsome `co" as NSString).length
+        let code = pad.storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont
+        pad.textView.setSelectedRange(NSRange(location: at, length: 0))
+        pad.undo.beginUndoGrouping()
+        defer { pad.undo.endUndoGrouping() }
+        pad.textView.setMarkedText("ka", selectedRange: NSRange(location: 2, length: 0), replacementRange: notFound)
+        XCTAssertNotNil(pad.styler.pending)
+        XCTAssertNotNil(pad.mismatch(), "nothing drawn under the composition")
+        pad.textView.unmarkText()
+        XCTAssertFalse(pad.textView.hasMarkedText())
+        XCTAssertNil(pad.styler.pending, "drawn when the composition ended")
+        XCTAssertNil(pad.mismatch())
         XCTAssertEqual(pad.storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont, code)
     }
 }

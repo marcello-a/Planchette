@@ -74,8 +74,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Typing in a long notepad is much faster.** Every key drew the whole pad again — headlines,
   lists, code colours — laid all of it out again, and cut all of it into prompts three times for
   the margin buttons and the code bar, which took tens of milliseconds per key in a long pad. A key
-  now draws, lays out and cuts again only the lines it changed. The pad looks and works exactly as
-  before.
+  now draws and lays out only the lines it changed, and cuts again only the prompt it is in. The
+  pad looks and works exactly as before.
 
 ## [0.2.56] — 2026-11-27
 

@@ -438,6 +438,7 @@ struct NotepadEditor: NSViewRepresentable {
         textView.onClick = { [weak coordinator] point, command in coordinator?.click(at: point, command: command) ?? false }
         textView.onMarks = { [weak coordinator] mark in coordinator?.marks(mark) ?? false }
         textView.onPaste = { [weak coordinator] pasted in coordinator?.pasteLink(pasted) ?? false }
+        textView.onUnmark = { [weak coordinator] in coordinator?.restyle() }
         textView.extraMenuItems = { [weak coordinator] index in coordinator?.menuItems(at: index) ?? [] }
         coordinator.attach(textView: textView, scroll: scroll)
         handle.didLoad = { [weak coordinator] row in coordinator?.applyAfterLoading(row) }
@@ -1019,6 +1020,16 @@ final class NotepadTextView: NSTextView {
         isSettingMarkedText = true
         defer { isSettingMarkedText = false }
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+    }
+
+    /// A composition ended without a change of characters (a click elsewhere, the pad lost the
+    /// keyboard): what it typed is kept as it is, and was never drawn.
+    var onUnmark: (() -> Void)?
+
+    override func unmarkText() {
+        let composing = hasMarkedText()
+        super.unmarkText()
+        if composing { onUnmark?() }
     }
 
     override func paste(_ sender: Any?) {

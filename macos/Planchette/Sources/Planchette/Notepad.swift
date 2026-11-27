@@ -147,9 +147,8 @@ enum NotepadPrompts {
         var start = range.location, index = range.location
         func add(end: Int, breakLength: Int) {
             let content = NSRange(location: start, length: end - start)
-            let blank = text.substring(with: content).trimmingCharacters(in: .whitespaces).isEmpty
             result.append(Line(full: NSRange(location: start, length: end + breakLength - start),
-                               content: content, isBlank: blank))
+                               content: content, isBlank: NotepadStyle.isBlank(content, in: text)))
         }
         while index < limit {
             if isBreak(text.character(at: index)) {
@@ -166,8 +165,7 @@ enum NotepadPrompts {
         if start < limit { add(end: limit, breakLength: 0) }
         var open = startsInFence
         for index in result.indices {
-            let content = text.substring(with: result[index].content).trimmingCharacters(in: .whitespaces)
-            if content.hasPrefix("```") {
+            if isFence(result[index].content, in: text) {
                 open.toggle()
                 result[index].inFence = true
             } else {
@@ -175,6 +173,23 @@ enum NotepadPrompts {
             }
         }
         return result
+    }
+
+    /// The line, without the spaces around it, starts with three backticks. Only a line whose first
+    /// character can be a backtick — U+0060, or U+1FEF, which Swift counts as one — is made into a
+    /// string to ask: a prompt of thousands of lines is cut on every key it is typed in.
+    private static func isFence(_ content: NSRange, in text: NSString) -> Bool {
+        var index = content.location
+        while index < NSMaxRange(content) {
+            let unit = text.character(at: index)
+            if let scalar = Unicode.Scalar(unit), CharacterSet.whitespaces.contains(scalar) {
+                index += 1
+                continue
+            }
+            guard unit == 0x60 || unit == 0x1FEF else { return false }
+            return text.substring(with: content).trimmingCharacters(in: .whitespaces).hasPrefix("```")
+        }
+        return false
     }
 
     /// Every prompt, top to bottom. A prompt is the lines from one that holds text to the last one
@@ -206,9 +221,11 @@ enum NotepadPrompts {
         return groups.map { group in
             let first = all[group[0]], last = all[group[group.count - 1]]
             let range = NSRange(location: first.content.location, length: NSMaxRange(last.content) - first.content.location)
-            let text = normalized(ns.substring(with: range))
+            let text = normalized(range, in: ns)
             // ~~like this~~: struck through, and what goes into the terminal is what is inside.
-            if text.count > 2 * doneMark.count, text.hasPrefix(doneMark), text.hasSuffix(doneMark) {
+            // More than the two marks' characters — counted only that far, not through all of them.
+            if text.hasPrefix(doneMark), text.hasSuffix(doneMark),
+               text.index(text.startIndex, offsetBy: 2 * doneMark.count + 1, limitedBy: text.endIndex) != nil {
                 let inner = text.dropFirst(doneMark.count).dropLast(doneMark.count)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !inner.isEmpty { return Prompt(range: range, text: inner, isDone: true) }
@@ -232,6 +249,18 @@ enum NotepadPrompts {
     static func promptValue(at location: Int, among prompts: [Prompt], length: Int) -> Prompt? {
         let at = min(max(location, 0), length)
         return prompts.first { $0.range.location <= at && at <= NSMaxRange($0.range) }
+    }
+
+    private static let otherBreaks = CharacterSet(charactersIn: "\r\u{2028}\u{2029}\u{85}")
+
+    /// `normalized(_:)` of the text in `range`, without five passes over it when it holds no
+    /// break but "\n".
+    private static func normalized(_ range: NSRange, in ns: NSString) -> String {
+        let text = ns.substring(with: range)
+        guard ns.rangeOfCharacter(from: otherBreaks, options: [], range: range).location != NSNotFound else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return normalized(text)
     }
 
     /// Typed text for a terminal: one kind of line break, nothing around it.

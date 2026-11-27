@@ -295,6 +295,25 @@ enum NotepadCode {
         return ["python", "bash", "ruby", "yaml", "yml", "toml"].contains(name ?? "")
     }
 
+    /// What of a block's language its colours depend on. Two languages of one class colour every
+    /// line alike — `s`, `sw`, `swi` are all "no language known" — so a fence's name typed letter by
+    /// letter changes the colours below it only when the class changes (`NotepadStyler`).
+    struct TokenClass: Equatable {
+        /// The language whose keywords count; nil for those of the common ones together.
+        let keywords: String?
+        let hashComments: Bool
+        let sql: Bool
+        /// The fence names a language at all: without one, `#` at the start of a line is a comment.
+        let named: Bool
+    }
+
+    /// Everything `tokens(in:language:)` reads of `language`.
+    static func tokenClass(of language: String?) -> TokenClass {
+        let name = language.map { aliases[$0] ?? $0 }
+        return TokenClass(keywords: name.flatMap { keywords[$0] == nil ? nil : $0 },
+                          hashComments: usesHashComments(language), sql: name == "sql", named: language != nil)
+    }
+
     private static let word = try! NSRegularExpression(pattern: "[A-Za-z_][A-Za-z0-9_]*")
     private static let numberPattern = try! NSRegularExpression(pattern: "\\b(0x[0-9a-fA-F]+|\\d+(\\.\\d+)?)\\b")
 
