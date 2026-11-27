@@ -48,12 +48,12 @@ final class GhosttyRuntime {
         }
 
         guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
-            NSLog("ghostty_init failed")
+            Log.error("ghostty.init_failed", "ghostty_init failed")
             return
         }
 
         guard let config = GhosttyRuntime.makeConfig(dark: GhosttyRuntime.isDarkAppearance()) else {
-            NSLog("ghostty_config_new failed")
+            Log.error("ghostty.config_failed", "ghostty_config_new failed")
             return
         }
         self.config = config
@@ -104,7 +104,7 @@ final class GhosttyRuntime {
         )
 
         guard let app = ghostty_app_new(&runtime, config) else {
-            NSLog("ghostty_app_new failed")
+            Log.error("ghostty.app_failed", "ghostty_app_new failed")
             return
         }
         self.app = app
@@ -288,7 +288,7 @@ final class GhosttyRuntime {
             if let url = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 DispatchQueue.main.async { openExternalURL(url) }
             } else {
-                NSLog("blocked a link that is not a valid URL")
+                Log.info("blocked a link that is not a valid URL")
             }
             return true
 
@@ -381,10 +381,10 @@ final class GhosttyRuntime {
         case .open:
             NSWorkspace.shared.open(target)
         case .reveal:
-            NSLog("link points at something that would run: revealing it instead")
+            Log.info("link points at something that would run: revealing it instead")
             NSWorkspace.shared.activateFileViewerSelecting([target])
         case .block:
-            NSLog("blocked opening url with scheme: \(url.scheme ?? "none")")
+            Log.info("blocked opening url with scheme: \(url.scheme ?? "none")")
         }
     }
 

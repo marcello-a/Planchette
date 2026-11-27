@@ -209,6 +209,11 @@ enum Help {
             Entry(.restoreAtLaunch, .restoreAtLaunchHelp, where: .helpWhereSettingsTerminals),
             Entry(.updateInstallOnQuit, .helpInstallOnQuitDetail),
         ]),
+        Section(titleKey: .privacyTab, entries: [
+            Entry(.telemetryToggle, .telemetryToggleHelp, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryShowReport, .telemetryWhatNever, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryResetID, .telemetryResetIDHelp, where: .helpWhereSettingsPrivacy),
+        ]),
     ]
 
     /// Sections with only the entries matching `query` (empty query = all).

@@ -167,7 +167,7 @@ enum PresetStore {
             try? FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: url.path)
         } catch {
-            NSLog("preset save failed: \(error)")
+            Log.error("preset.save_failed", "preset save failed: \(error)")
         }
     }
 }

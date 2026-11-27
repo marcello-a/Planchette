@@ -136,7 +136,7 @@ final class AIAssist {
                   with: Data(output[start...end].utf8)) as? [String: Any],
               let summary = obj["summary"] as? String
         else {
-            NSLog("ai-assist: unparseable output: \(output.prefix(200))")
+            Log.error("ai-assist.unparseable_output", "ai-assist: unparseable output: \(output.prefix(200))")
             return nil
         }
         return Condensed(
@@ -150,6 +150,7 @@ final class AIAssist {
     /// text (`NotepadFormat.isPlausible`). It runs on the queue of the summaries, one at a time,
     /// in the same empty directory and with no tools: the pad is text in, text out.
     static func formatNotepad(_ text: String, returns: Int) async -> String? {
+        Telemetry.count(.notepadFormatAI)
         let prompt = NotepadFormat.prompt(for: text, returns: returns)
         return await withCheckedContinuation { continuation in
             workQueue.async {
@@ -225,7 +226,7 @@ final class AIAssist {
         // Only the CLI's own "unknown option" latches the fallback. Any other
         // failure just means no summary this time.
         if restrict, first.failed, rejectsToolsFlag(stderr: first.stderr) {
-            NSLog("ai-assist: this claude does not know --tools; running without it")
+            Log.info("ai-assist: this claude does not know --tools; running without it")
             toolsFlagUnsupported = true
             return runClaudeOnce(prompt: prompt, restrictTools: false).output
         }
@@ -248,7 +249,7 @@ final class AIAssist {
         do {
             try process.run()
         } catch {
-            NSLog("ai-assist: failed to launch claude: \(error)")
+            Log.error("ai-assist.launch_failed", "ai-assist: failed to launch claude: \(error)")
             return (nil, false, "")
         }
         // Use the throwing API: if `claude` is missing and the login shell exits
@@ -280,7 +281,7 @@ final class AIAssist {
         let killer = DispatchWorkItem { [weak process] in
             guard let process, process.isRunning else { return }
             process.terminate()
-            NSLog("ai-assist: claude -p timed out")
+            Log.error("ai-assist.timeout", "ai-assist: claude -p timed out")
         }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 120, execute: killer)
         process.waitUntilExit()

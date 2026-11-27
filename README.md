@@ -295,6 +295,13 @@ Also worth a second:
   ([skill](skills/planchette/SKILL.md)).
 - Optional AI assist: one-line summaries per session via headless `claude -p`.
 
+## Privacy
+
+Planchette asks once whether it may send a report under a random ID, at most one a day and only on a day you use it: which features are used, how
+big the workspace is, which errors and crashes happened. Nothing is sent before you say yes, and
+never a path, a name, a prompt or terminal text. Settings → Privacy changes the answer and shows
+the last report word for word. [What exactly is sent](docs/TELEMETRY.md).
+
 ## Develop
 
 ```sh
@@ -347,7 +354,7 @@ scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
 ## Docs
 
 [CONCEPT](docs/CONCEPT.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
-[API](docs/API.md) · [CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) ·
+[API](docs/API.md) · [TELEMETRY](docs/TELEMETRY.md) · [CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) ·
 [CHANGELOG](CHANGELOG.md)
 
 ## Status
