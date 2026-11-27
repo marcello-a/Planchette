@@ -30,10 +30,6 @@ struct DevServer: Identifiable, Equatable {
     var label: String { "\(port)" }
 }
 
-/// Finds dev servers by asking the OS who is listening: one `lsof` for the
-/// listening sockets, one for those processes' working directories, then a
-/// pure match of directory → project. Everything that parses or matches is
-/// pure and unit-tested; only `scan` touches the system.
 /// Which servers' announced URLs are known, and which ports still get a search
 /// of the scrollback. Most listeners never print a URL (port-forwards,
 /// databases, agents' own sockets); searching them on every tick copied and
@@ -77,6 +73,10 @@ struct ServerURLLookups: Equatable {
     }
 }
 
+/// Finds dev servers by asking the OS who is listening: one `lsof` for the
+/// listening sockets, one for those processes' working directories, then a
+/// pure match of directory → project. Everything that parses or matches is
+/// pure and unit-tested; only `scan` touches the system.
 enum DevServerScanner {
     /// One listening TCP socket: who, what, where.
     struct Listener: Equatable {
