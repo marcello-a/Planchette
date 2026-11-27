@@ -1509,6 +1509,46 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Open a path a terminal printed (`src/Foo.php:42`) at its line, in the IDE
+    /// "Look at code" would use for that terminal's project. Without one, the
+    /// file opens like any other link (see `GhosttyRuntime.openExternalURL`).
+    func openFileLink(_ raw: String, from id: UUID) {
+        guard let link = FileLink.parse(raw), let session = sessions[id] else { return }
+        let group = group(of: session)
+        let cwd = session.currentDirectory.isEmpty ? session.workingDirectory : session.currentDirectory
+        let isFile: (String) -> Bool = { path in
+            var isDirectory: ObjCBool = false
+            return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+                && !isDirectory.boolValue
+        }
+        guard let file = FileLink.resolve(
+            link.path, cwd: cwd, project: group.flatMap(projectDirectory(of:)),
+            home: NSHomeDirectory(), isFile: isFile)
+        else {
+            Log.info("file link: no file for \(link.path)")
+            return
+        }
+        if let group, let ide = fileLinkIDE(for: group) {
+            IDEs.open(file: file, line: link.line, column: link.column, in: ide)
+        } else {
+            GhosttyRuntime.openExternalURL(URL(fileURLWithPath: file))
+        }
+    }
+
+    /// `ideTarget`, also for a click before the first sweep has filled its
+    /// tables: then the installed and running IDEs and the checkout's markers are
+    /// asked now (LaunchServices and a few stats). Which IDE already shows the
+    /// project waits for the sweep — its state files are the slow part.
+    private func fileLinkIDE(for group: SessionGroup) -> IDE? {
+        if !installedIDEs.isEmpty, ideMarkers[group.id] != nil { return ideTarget(for: group) }
+        return IDEs.resolve(
+            markers: projectDirectory(of: group).map(IDEs.markers(in:)) ?? [],
+            defaultBundleID: defaultIDEBundleID,
+            running: IDEs.runningBundleIDs(),
+            installed: IDEs.installed(),
+            lastActivated: lastActivatedIDE)
+    }
+
     /// The IDE a click on this project's button opens — nil when there is no
     /// honest target and the button has to ask instead.
     func ideTarget(for group: SessionGroup) -> IDE? {
@@ -3923,6 +3963,11 @@ final class AppState: ObservableObject {
             let value = note.userInfo?["value"] as? Int
             let needle = note.userInfo?["needle"] as? String
             Task { @MainActor in self?.applySearchEvent(event, for: id, value: value, needle: needle) }
+        }
+        center.addObserver(forName: .planchetteOpenFileLink, object: nil, queue: .main) { [weak self] note in
+            guard let id = note.userInfo?["sessionID"] as? UUID,
+                  let link = note.userInfo?["link"] as? String else { return }
+            Task { @MainActor in self?.openFileLink(link, from: id) }
         }
         center.addObserver(forName: .planchetteSurfaceProcessExited, object: nil, queue: .main) { [weak self] note in
             guard let id = note.userInfo?["sessionID"] as? UUID else { return }

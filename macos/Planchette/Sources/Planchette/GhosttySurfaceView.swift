@@ -439,7 +439,21 @@ final class GhosttySurfaceNSView: NSView {
     private func sendMousePos(_ event: NSEvent) {
         guard let surface else { return }
         let pos = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
+        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, mouseMods(event))
+    }
+
+    /// The modifiers a left-button or move event reports. In a durable terminal
+    /// ⌘ also counts as Shift: tmux keeps mouse reporting on (`mouse on`), and
+    /// while it is on libghostty only looks for links with Shift held — so ⌘-click
+    /// on a URL or a printed path did nothing there, only ⌘⇧-click did. libghostty
+    /// drops that Shift again before matching the link's ⌘. Not in a plain
+    /// terminal, where nothing reports the mouse and the Shift would spoil the match.
+    private func mouseMods(_ event: NSEvent) -> ghostty_input_mods_e {
+        var flags = event.modifierFlags
+        if isDurableTerminal, flags.contains(.command), !flags.contains(.control), !flags.contains(.option) {
+            flags.insert(.shift)
+        }
+        return flags.ghosttyMods
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -447,14 +461,14 @@ final class GhosttySurfaceNSView: NSView {
         sendMousePos(event)   // position first → click lands where clicked
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
-            surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
+            surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, mouseMods(event))
     }
 
     override func mouseUp(with event: NSEvent) {
         sendMousePos(event)
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
-            surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, event.modifierFlags.ghosttyMods)
+            surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, mouseMods(event))
     }
 
     override func mouseMoved(with event: NSEvent) { sendMousePos(event) }
@@ -560,6 +574,7 @@ final class GhosttySurfaceNSView: NSView {
 
     /// Open the link the pointer is on — same scheme policy as a ⌘-click.
     @objc private func openLink(_ sender: Any?) {
+        if let raw = hoveredLinkURL, GhosttyRuntime.postFileLink(raw, from: sessionID) { return }
         guard let raw = hoveredLinkURL,
               let url = URL(string: raw.trimmingCharacters(in: .whitespacesAndNewlines))
         else { return }
