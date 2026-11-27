@@ -467,6 +467,19 @@ final class DurableTests: XCTestCase {
         }
     }
 
+    // The regression that made this necessary: tmux's copy-pipe-and-cancel
+    // dropped a mouse selection on release, so ⌘C found nothing selected.
+    func testConfigKeepsMouseSelectionsAndPassesTypingThrough() {
+        let c = Durable.configContents
+        XCTAssertTrue(c.contains("bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear"))
+        XCTAssertFalse(c.contains("copy-pipe-and-cancel"))
+        XCTAssertTrue(c.contains("bind -T copy-mode Any send -X cancel \\; send-keys"))
+        for event in ["MouseUp1Pane", "SecondClick1Pane", "MouseDown2Pane", "MouseDragEnd3Pane"] {
+            XCTAssertTrue(c.contains("bind -T copy-mode \(event) select-pane"),
+                          "\(event) must not reach the Any binding")
+        }
+    }
+
     // The click command carries quotes, $ and | — it must survive the shell
     // that runs the tmux line, or the terminal fails to start at all.
     func testQuotesValuesContainingShellMetacharacters() {
