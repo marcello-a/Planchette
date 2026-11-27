@@ -33,7 +33,7 @@ echo "→ building Planchette $VERSION (build $BUILD)"
 
 [ -d "$GHOSTTY_SHARE" ] || {
     echo "error: $GHOSTTY_SHARE missing — build GhosttyKit first:" >&2
-    echo "  cd vendor/ghostty && ../../.tooling/zig/zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast" >&2
+    echo "  sh scripts/apply-ghostty-patches.sh && cd vendor/ghostty && ../../.tooling/zig/zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast" >&2
     exit 1
 }
 

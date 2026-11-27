@@ -1,0 +1,129 @@
+diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
+index 508721379..9ff10a87b 100644
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -107,6 +107,11 @@ flags: packed struct {
+     /// This is true when the view is focused. This defaults to true
+     /// and it is up to the apprt to set the correct value.
+     focused: bool = true,
++
++    /// Planchette: true when a render was skipped while the view was
++    /// not visible, so the frame data must be updated before the next
++    /// draw. See renderCallback.
++    frame_stale: bool = false,
+ } = .{},
+ 
+ pub const DerivedConfig = struct {
+@@ -361,9 +366,19 @@ fn drainMailbox(self: *Thread) !void {
+                 self.setQosClass();
+ 
+                 // If we became visible then we immediately trigger a draw.
+-                // We don't need to update frame data because that should
+-                // still be happening.
+-                if (v) self.drawFrame(false);
++                // Planchette: the frame data is not updated while hidden
++                // (renderCallback), so bring it up to date first.
++                if (v) {
++                    if (self.flags.frame_stale) {
++                        self.flags.frame_stale = false;
++                        self.renderer.updateFrame(
++                            self.state,
++                            self.flags.cursor_blink_visible,
++                        ) catch |err|
++                            log.warn("error rendering err={}", .{err});
++                    }
++                    self.drawFrame(false);
++                }
+ 
+                 // Notify the renderer so it can update any state.
+                 self.renderer.setVisible(v);
+@@ -606,6 +621,16 @@ fn renderCallback(
+         return .disarm;
+     };
+ 
++    // Planchette: a view that is not visible is not drawn (drawFrame), so
++    // building its frame data on every wakeup is wasted work — with many
++    // hidden terminals whose programs keep printing, most of the app's CPU.
++    // The terminal keeps its dirty state; the frame is updated once when
++    // the view becomes visible again (the .visible message).
++    if (!t.flags.visible) {
++        t.flags.frame_stale = true;
++        return .disarm;
++    }
++
+     // Update our frame data
+     t.renderer.updateFrame(
+         t.state,
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index ff632f64a..3872897c5 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -152,6 +152,10 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+         /// cells for the draw call.
+         cells_rebuilt: bool = false,
+ 
++        /// Planchette: set when releaseTargets gave back the render targets
++        /// of a hidden view; the next draw is a full one.
++        targets_released: bool = false,
++
+         /// The current GPU uniform values.
+         uniforms: shaderpkg.Uniforms,
+ 
+@@ -1062,6 +1066,41 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                     display_link.stop() catch {};
+                 }
+             }
++
++            // Planchette: a hidden view gives back its render targets (and
++            // custom shader textures), one screen-sized texture per frame of
++            // the swap chain, which a host with many hidden terminals holds
++            // for nothing. drawFrame sizes a frame's target again before it
++            // draws into it; targets_released makes the first draw after
++            // this a full one rather than a re-present of the last target.
++            if (!visible) self.releaseTargets();
++        }
++
++        /// Planchette: shrink every frame's render target to 1x1. Waits for
++        /// the frames the GPU still draws, as SwapChain.deinit does, so no
++        /// target in flight is freed.
++        fn releaseTargets(self: *Self) void {
++            // Not for an API that re-presents its last target (OpenGL keeps
++            // last_target for presentLastTarget): that one must stay alive.
++            // Metal's layer holds the presented IOSurface on its own.
++            if (comptime @hasField(GraphicsAPI, "last_target")) return;
++
++            self.draw_mutex.lock();
++            defer self.draw_mutex.unlock();
++
++            const chain = &self.swap_chain;
++            if (chain.defunct) return;
++            for (0..chain.frames.len) |_| chain.frame_sema.wait();
++            defer for (0..chain.frames.len) |_| chain.frame_sema.post();
++
++            for (&chain.frames) |*frame| {
++                if (frame.target.width <= 1 and frame.target.height <= 1) continue;
++                frame.resize(self.api, 1, 1) catch |err| {
++                    log.warn("error releasing render target err={}", .{err});
++                    continue;
++                };
++                self.targets_released = true;
++            }
+         }
+ 
+         /// Set the new font grid.
+@@ -1476,6 +1515,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             // don't need to since the previous frame should be identical.
+             const needs_redraw =
+                 size_changed or
++                self.targets_released or
+                 self.cells_rebuilt or
+                 self.hasAnimations() or
+                 sync;
+@@ -1488,6 +1528,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                 return;
+             }
+             self.cells_rebuilt = false;
++            self.targets_released = false;
+ 
+             // Wait for a frame to be available.
+             const frame = try self.swap_chain.nextFrame();

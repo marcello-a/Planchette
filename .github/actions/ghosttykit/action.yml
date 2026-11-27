@@ -1,6 +1,7 @@
 name: Build GhosttyKit
 description: >
-  Builds GhosttyKit.xcframework from the pinned vendor/ghostty submodule, puts it where the
+  Builds GhosttyKit.xcframework from the pinned vendor/ghostty submodule (with the patches
+  in vendor/patches/ghostty applied), puts it where the
   app expects it, and uploads it zipped as the workflow artifact "GhosttyKit". One recipe for
   the release workflow and the pull request checks, so the two cannot build it differently.
 
@@ -23,12 +24,14 @@ runs:
           vendor/ghostty/.zig-cache
           vendor/ghostty/zig-out
           ~/.cache/zig
-        key: ghostty-${{ runner.os }}-${{ hashFiles('.gitmodules') }}-v1.3.1
+        key: ghostty-${{ runner.os }}-${{ hashFiles('.gitmodules', 'vendor/patches/ghostty/*.patch') }}-v1.3.1
 
     - name: Build GhosttyKit
       shell: bash
       run: |
         set -eu
+        # Planchette's patches on top of the pinned tag (vendor/patches/ghostty).
+        sh scripts/apply-ghostty-patches.sh
         ( cd vendor/ghostty && zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast )
         cp -R vendor/ghostty/macos/GhosttyKit.xcframework macos/Planchette/
 

@@ -24,7 +24,9 @@ git submodule update --init
 mkdir -p .tooling && curl -sL https://ziglang.org/download/0.15.2/zig-aarch64-macos-0.15.2.tar.xz \
   | tar xJ -C .tooling && mv .tooling/zig-* .tooling/zig
 
-# Build GhosttyKit from the pinned submodule (once, ~a few minutes):
+# Build GhosttyKit from the pinned submodule (once, ~a few minutes). Our patches go on
+# top first (vendor/patches/ghostty; a second run is a no-op):
+sh scripts/apply-ghostty-patches.sh
 cd vendor/ghostty
 ../../.tooling/zig/zig build -Demit-macos-app=false -Dxcframework-target=native -Doptimize=ReleaseFast
 cp -R macos/GhosttyKit.xcframework ../../macos/Planchette/

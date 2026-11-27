@@ -184,6 +184,15 @@ moves) — the running shell is never restarted by UI churn. `GhosttyRuntime`
 holds the single `ghostty_app_t` and dispatches C-API callbacks
 (title, pwd, clipboard) back onto the main actor via `NotificationCenter`.
 
+**A hidden surface does no renderer work.** `syncOcclusion` tells libghostty whether a
+surface can be seen (in a window, and that window visible). Stock libghostty v1.3.1 then
+skips the draw but still rebuilds the frame (`updateFrame`: the cells, under the terminal
+lock) on every wakeup of the renderer thread — each time a program in a background tab
+prints — and keeps one screen-sized render target per frame of its swap chain. Our patch
+(`vendor/patches/ghostty/0001-…`) skips `updateFrame` while hidden and runs it once when
+the surface becomes visible, and on hide shrinks the targets to 1×1 (Metal only; after
+waiting for the frames the GPU still draws). The first draw after that is a full one.
+
 **A surface needs an awake display.** libghostty's renderer creates a display link
 (`CVDisplayLinkCreateWithActiveCGDisplays`), which fails with zero active displays —
 a Mac whose screens are asleep — and `ghostty_surface_new` then returns nil (the
