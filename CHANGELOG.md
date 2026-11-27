@@ -8,6 +8,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+## [0.2.56] — 2026-11-27
+
 ### Added
 - **A database icon for database terminals.** A durable terminal that runs a database client
   (`psql`, `mysql`, `redis-cli`, `mongosh`, …) or a tunnel to a database — a `kubectl
