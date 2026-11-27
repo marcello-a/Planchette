@@ -502,6 +502,10 @@ struct NotepadEditor: NSViewRepresentable {
             self.scroll = scroll
             // The text storage's delegate runs on the main thread, inside the text view's edits.
             styler.lookNow = { [weak self] in MainActor.assumeIsolated { self?.lookNow() } }
+            // Attributes someone else set (a font, a format) are drawn over once that edit is done.
+            styler.onForeignAttributes = { [weak self] in
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.restyle() } }
+            }
             // The lines move when the text scrolls and when the pad changes width.
             scroll.contentView.postsBoundsChangedNotifications = true
             scroll.postsFrameChangedNotifications = true
@@ -1018,12 +1022,15 @@ final class NotepadTextView: NSTextView {
 
     override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
         isSettingMarkedText = true
-        defer { isSettingMarkedText = false }
         super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        isSettingMarkedText = false
+        // Cancelled (Esc, the last marked letter deleted): the composition ended here, not in
+        // `unmarkText`, which then finds nothing marked. What it replaced was never drawn.
+        if !hasMarkedText() { onUnmark?() }
     }
 
     /// A composition ended without a change of characters (a click elsewhere, the pad lost the
-    /// keyboard): what it typed is kept as it is, and was never drawn.
+    /// keyboard), or was cancelled: what it typed or replaced was never drawn.
     var onUnmark: (() -> Void)?
 
     override func unmarkText() {

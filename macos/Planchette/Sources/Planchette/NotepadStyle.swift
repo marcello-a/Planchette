@@ -419,6 +419,9 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     /// The look to draw an edit in as it happens, or nil to leave it for later — the text view's
     /// input method may still be composing (marked text must not be restyled under it).
     var lookNow: (() -> NotepadStyle.Look?)?
+    /// Called when someone else changed attributes (`noteAttributes`): the owner restyles once
+    /// that edit is done, rather than leaving the stale look to the next key.
+    var onForeignAttributes: (() -> Void)?
 
     /// Starts keeping `storage`'s look; the first restyle draws all of it.
     func attach(to storage: NSTextStorage) {
@@ -429,6 +432,8 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         pending = nil
         attributes = nil
         promptCache = nil
+        struck = []
+        lastDrawn = nil
     }
 
     /// The text cut into prompts for one number of Returns, kept current with every edit; nil until
@@ -447,6 +452,10 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     /// How often the whole text was cut into prompts: once, and again for another number of
     /// Returns — never per key.
     private(set) var fullPromptCuts = 0
+    /// How often the struck prompts or the code bar's fenced lines were found by scanning the
+    /// text rather than read off the kept prompts and fence lines — 0 while typing.
+    private(set) var strikeScans = 0
+    private(set) var suggestionScans = 0
     /// What the last draw covered — for tests, and to measure.
     private(set) var lastDrawn: NSRange?
 
@@ -461,6 +470,7 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
             // Someone else changed attributes (a font, a format): the look there is stale. It is
             // drawn by the next restyle — not here, inside an edit that is not about characters.
             noteAttributes(in: editedRange, length: textStorage.length)
+            onForeignAttributes?()
         }
     }
 
@@ -550,6 +560,7 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     /// cut for these Returns — else cut from the text there.
     private func done(in extent: NSRange, of ns: NSString, returns: Int) -> [NSRange] {
         guard let cache = promptCache, cache.returns == returns else {
+            strikeScans += 1
             return NotepadStyle.strikes(in: ns, range: extent, fences: fences, returns: returns)
         }
         return cache.prompts
@@ -560,6 +571,7 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
     /// `NotepadCode.suggestion(within:of:)`, with the fenced lines read off the fence lines.
     func suggestion(within range: NSRange, of text: String) -> NotepadCode.Suggestion? {
         guard let storage, !storage.editedMask.contains(.editedCharacters) else {
+            suggestionScans += 1
             return NotepadCode.suggestion(within: range, of: text)
         }
         let fences = fences

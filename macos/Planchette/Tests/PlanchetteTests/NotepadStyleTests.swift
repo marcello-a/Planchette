@@ -883,6 +883,11 @@ final class NotepadStyleTests: XCTestCase {
         pad.storage.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: 30), range: NSRange(location: 2, length: 3))
         XCTAssertEqual(pad.styler.pending, NSRange(location: 2, length: 3))
         XCTAssertNotNil(pad.mismatch())
+        // The owner is told, so it can restyle once that edit is done.
+        var told = 0
+        pad.styler.onForeignAttributes = { told += 1 }
+        pad.storage.addAttribute(.foregroundColor, value: NSColor.red, range: NSRange(location: 3, length: 1))
+        XCTAssertEqual(told, 1)
         XCTAssertEqual(pad.restyle(), NSRange(location: 0, length: 7), "the line it touched, drawn again")
         XCTAssertNil(pad.styler.pending)
         XCTAssertNil(pad.mismatch())
@@ -951,15 +956,22 @@ final class NotepadStyleTests: XCTestCase {
     func testTypingCutsNoPromptsAndDrawsItsLine() {
         let pad = Pad(text(lines: 400) + "\n\n" + text(lines: 400), width: 300, returns: 2)
         XCTAssertEqual(pad.styler.fullPromptCuts, 1)
+        let scansBefore = pad.styler.strikeScans
         var at = (pad.storage.string as NSString).range(of: "line 200").location
         for key in "a key, typed\n\nand more" {
             pad.replace(NSRange(location: at, length: 0), with: String(key))
             at += 1
-            _ = pad.styler.prompts(returns: 2)
+            let prompts = pad.styler.prompts(returns: 2)
+            // The code bar reads the prompt under the key with the kept fence lines.
+            if let prompt = prompts.first(where: { NSLocationInRange(at - 1, $0.range) || NSMaxRange($0.range) == at - 1 }) {
+                _ = pad.styler.suggestion(within: prompt.range, of: pad.storage.string)
+            }
             // A Return makes one line two: the lines around it, and both halves.
             XCTAssertLessThanOrEqual(drawnLines(pad), key == "\n" ? 5 : 4, "drew \(pad.styler.lastDrawn!)")
         }
         XCTAssertEqual(pad.styler.fullPromptCuts, 1, "no full cut per key")
+        XCTAssertEqual(pad.styler.strikeScans, scansBefore, "struck prompts read off the kept prompts")
+        XCTAssertEqual(pad.styler.suggestionScans, 0, "fenced lines read off the kept fence lines")
         XCTAssertNil(pad.mismatch())
         _ = pad.styler.prompts(returns: 3)
         XCTAssertEqual(pad.styler.fullPromptCuts, 2, "another number of Returns cuts once")

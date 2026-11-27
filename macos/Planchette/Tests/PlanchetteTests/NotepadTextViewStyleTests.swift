@@ -168,4 +168,23 @@ final class NotepadTextViewStyleTests: XCTestCase {
         XCTAssertNil(pad.mismatch())
         XCTAssertEqual(pad.storage.attribute(.font, at: at, effectiveRange: nil) as? NSFont, code)
     }
+
+    /// A composition typed over a selection and then cancelled (Esc, its last letter deleted)
+    /// ends inside `setMarkedText`; `unmarkText` then finds nothing marked. What it replaced —
+    /// here the fence of a code block — is drawn when it ends, not at the next key.
+    func testACancelledCompositionOverASelectionIsDrawn() {
+        let pad = Harness("intro\n\n```swift\nlet x = 1\n```\n\nafter\n")
+        let fence = (pad.storage.string as NSString).range(of: "```swift")
+        pad.textView.setSelectedRange(NSRange(location: fence.location, length: 3))
+        pad.undo.beginUndoGrouping()
+        defer { pad.undo.endUndoGrouping() }
+        pad.textView.setMarkedText("k", selectedRange: NSRange(location: 1, length: 0), replacementRange: notFound)
+        XCTAssertNotNil(pad.mismatch(), "nothing drawn under the composition")
+        pad.textView.setMarkedText("", selectedRange: NSRange(location: 0, length: 0), replacementRange: notFound)
+        XCTAssertFalse(pad.textView.hasMarkedText())
+        XCTAssertNil(pad.styler.pending, "drawn when the composition was cancelled")
+        XCTAssertNil(pad.mismatch())
+        pad.textView.unmarkText()
+        XCTAssertNil(pad.mismatch())
+    }
 }
