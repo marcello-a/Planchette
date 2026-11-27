@@ -400,7 +400,7 @@ empty string.
 
 | State | Colour | Means |
 |---|---|---|
-| `running` | purple | a turn is in flight, or its turn ended and Claude still runs a shell or an agent in the background |
+| `running` | purple | a turn is in flight, or its turn ended and Claude still runs a shell or an agent in the background, or a durable terminal runs a program in front of its shell (`k9s`, a port-forward) |
 | `waiting` | blue | it needs a human answer |
 | `ready` | green | a turn finished, the result is unreviewed |
 | `error` | red | the last command or agent failed |

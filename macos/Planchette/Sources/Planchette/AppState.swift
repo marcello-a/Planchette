@@ -1275,7 +1275,7 @@ final class AppState: ObservableObject {
                 aiSummary: session.aiSummary,
                 firstPrompt: session.firstTask,
                 lastPrompt: session.currentTask,
-                reportedTitle: session.reportedTitle,
+                reportedTitle: session.reportedTitle ?? foregroundPrograms[session.id],
                 // A filesystem probe: only for the one name that uses it.
                 ticket: tabLayout.name == .ticketAndPrompt ? session.ticket : nil,
                 fallback: session.fallbackTitle),
@@ -1349,6 +1349,72 @@ final class AppState: ObservableObject {
         refreshDevServers()
         // Same cadence: a stat per transcript, a read only when one grew.
         refreshContextUsage()
+        refreshForegroundPrograms()
+    }
+
+    // MARK: Programs in front of a durable shell
+
+    /// What each durable terminal runs in front of its shell (`k9s`, `kubectl`), read off
+    /// tmux on the dev-server tick. Not persisted: it is a reading, and the next tick after a
+    /// restart has it again. It names a terminal that has nothing better to say (`tabName`).
+    @Published private(set) var foregroundPrograms: [UUID: String] = [:]
+    /// The terminals among them whose program is a database or a tunnel to one (`Durable.isDatabase`).
+    @Published private(set) var databasePrograms: Set<UUID> = []
+    /// The terminals that are `running` because a program runs in front, not because a hook
+    /// or the screen said so — the only ones the pane may give back when the program is gone
+    /// (`AttentionState.forForegroundProgram`).
+    private var runningByProgram: Set<UUID> = []
+    private var foregroundFlight = SingleFlight()
+
+    private func refreshForegroundPrograms() {
+        guard Durable.isAvailable, sessions.values.contains(where: \.durable) else {
+            if !foregroundPrograms.isEmpty { foregroundPrograms = [:] }
+            if !databasePrograms.isEmpty { databasePrograms = [] }
+            runningByProgram = []
+            return
+        }
+        guard foregroundFlight.begin() else { return }
+        Task { @MainActor in
+            let reading = await Task.detached { () -> (panes: [UUID: Durable.Pane], arguments: [Int32: String])? in
+                guard let panes = Durable.panes() else { return nil }
+                // Only a shell with a program in front has children worth a `ps`.
+                let busy = Set(panes.values.filter { !Durable.isShell($0.command) }.map(\.pid))
+                return (panes, Durable.childArguments(of: busy) ?? [:])
+            }.value
+            // No answer from tmux is no news: what we know stays (see `Durable.listSessions`).
+            if let reading { self.applyForegroundPrograms(reading.panes, arguments: reading.arguments) }
+            if self.foregroundFlight.end() { self.refreshForegroundPrograms() }
+        }
+    }
+
+    /// Apply one reading of the panes: the names, and the state each program implies.
+    private func applyForegroundPrograms(_ panes: [UUID: Durable.Pane], arguments: [Int32: String]) {
+        var programs: [UUID: String] = [:]
+        var databases: Set<UUID> = []
+        for session in sessions.values where session.durable {
+            let id = session.id
+            let agentLive = liveAgentIDs.contains(id) || agentsSurvivingRestore.contains(id)
+            let program = Durable.foregroundProgram(paneCommand: panes[id]?.command, agentLive: agentLive)
+            if let program {
+                programs[id] = program
+                if let pane = panes[id], Durable.isDatabase(command: program, arguments: arguments[pane.pid]) {
+                    databases.insert(id)
+                }
+            }
+            // An agent speaks for its terminal: whatever this rule raised there is the agent's now.
+            if agentLive { runningByProgram.remove(id) }
+            let atPrompt = panes[id].map { Durable.isShell($0.command) } ?? false
+            let appeared = program != nil && program != foregroundPrograms[id]
+            guard let next = AttentionState.forForegroundProgram(
+                session.state, programAppeared: appeared, atPrompt: atPrompt,
+                raisedByProgram: runningByProgram.contains(id))
+            else { continue }
+            setState(id, next)
+            if next == .running { runningByProgram.insert(id) } else { runningByProgram.remove(id) }
+        }
+        runningByProgram.formIntersection(Set(sessions.keys))
+        if foregroundPrograms != programs { foregroundPrograms = programs }
+        if databasePrograms != databases { databasePrograms = databases }
     }
 
     /// Remember which IDE was last in front, so a click can prefer it.
@@ -1773,6 +1839,9 @@ final class AppState: ObservableObject {
         lastOnScreenAt[id] = nil
         backgroundTasks[id] = nil
         if heldByBackground[id] != nil { heldByBackground[id] = nil }
+        runningByProgram.remove(id)
+        if foregroundPrograms[id] != nil { foregroundPrograms[id] = nil }
+        if databasePrograms.contains(id) { databasePrograms.remove(id) }
         screenRaisedIDs.remove(id)
         screenConfirmation.forget(id)
         escalatedIDs.remove(id)
@@ -3031,6 +3100,7 @@ final class AppState: ObservableObject {
         if agentsSurvivingRestore.contains(id) { agentsSurvivingRestore.remove(id) }
         // A Claude that Planchette put to sleep ends on a signal (exit 143): that is not an error.
         let asleep = session.sleepingClaudeID != nil
+        runningByProgram.remove(id)
         setState(id, asleep ? .free : AttentionState.afterCommandFinish(exitCode: exitCode))
         gitMayHaveChanged()
     }
@@ -3137,6 +3207,20 @@ final class AppState: ObservableObject {
         session.sleepingClaudeID == nil && AttentionState.showsShellMark(
             state: session.state,
             agentLive: liveAgentIDs.contains(session.id) || agentsSurvivingRestore.contains(session.id))
+    }
+
+    /// A terminal that runs a program in front of its shell shows `>_` in the running colour,
+    /// not the robot (`AttentionState.showsProgramMark`).
+    func showsProgramMark(_ session: TerminalSession) -> Bool {
+        AttentionState.showsProgramMark(
+            state: session.state, programInFront: foregroundPrograms[session.id] != nil)
+    }
+
+    /// ... and a database icon when that program is a database client or a tunnel to one.
+    func showsDatabaseMark(_ session: TerminalSession) -> Bool {
+        AttentionState.showsDatabaseMark(
+            state: session.state, programInFront: foregroundPrograms[session.id] != nil,
+            isDatabase: databasePrograms.contains(session.id))
     }
 
     /// The question each waiting terminal waits on, as far as the hooks named it. Gone once
