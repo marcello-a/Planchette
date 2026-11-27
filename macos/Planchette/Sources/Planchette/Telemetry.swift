@@ -138,6 +138,7 @@ enum TelemetryFeature: String, CaseIterable, Codable {
     case tagAdded = "tag_added"
     case claudeWoken = "claude_woken"
     case ideOpened = "ide_opened"
+    case fileLinkOpened = "file_link_opened"
     // Navigation
     case quickSwitcher = "quick_switcher"
     case jumpToWaiting = "jump_to_waiting"

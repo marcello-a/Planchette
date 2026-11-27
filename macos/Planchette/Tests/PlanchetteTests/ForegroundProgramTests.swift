@@ -137,6 +137,9 @@ final class DatabaseProgramTests: XCTestCase {
         XCTAssertFalse(Durable.isDatabase(command: "vim", arguments: "vim redis.conf"))
         XCTAssertFalse(Durable.isDatabase(command: "ssh", arguments: "ssh db.internal"), "a login, not a tunnel")
         XCTAssertFalse(Durable.isDatabase(command: "kubectl", arguments: nil))
+        XCTAssertFalse(Durable.isDatabase(command: "ssh", arguments: "ssh -oLogLevel=quiet db-host"),
+                       "the L of an option's value is no tunnel")
+        XCTAssertTrue(Durable.isDatabase(command: "ssh", arguments: "ssh -fNL 5432:localhost:5432 bastion"))
     }
 
     func testOnlyARunningProgramShowsTheDatabase() {
@@ -154,6 +157,14 @@ final class DatabaseProgramTests: XCTestCase {
             planchette-0a1b2c3d-0000-4000-8000-0000000000cd notapid zsh
             """)
         XCTAssertEqual(panes, [id: Durable.Pane(pid: 4242, command: "kubectl")])
+    }
+
+    // tmux leaves the name empty when it cannot name the process for a moment: the pane
+    // stays, so its program does not read as gone and then as new again.
+    func testAPaneWithoutANameIsKept() {
+        let id = UUID(uuidString: "0A1B2C3D-0000-4000-8000-0000000000AB")!
+        let panes = Durable.parsePanes("planchette-0a1b2c3d-0000-4000-8000-0000000000ab 4242 ")
+        XCTAssertEqual(panes, [id: Durable.Pane(pid: 4242, command: "")])
     }
 
     func testChildArgumentsAreTheShellsChildren() {

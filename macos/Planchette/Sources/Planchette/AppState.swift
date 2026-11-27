@@ -1365,6 +1365,9 @@ final class AppState: ObservableObject {
     /// (`AttentionState.forForegroundProgram`).
     private var runningByProgram: Set<UUID> = []
     private var foregroundFlight = SingleFlight()
+    /// When each terminal's shell last reported a finished command (OSC 133 `D`). A reading
+    /// taken before that is older than the result and must not overwrite it.
+    private var lastCommandFinish: [UUID: Date] = [:]
 
     private func refreshForegroundPrograms() {
         guard Durable.isAvailable, sessions.values.contains(where: \.durable) else {
@@ -1374,25 +1377,40 @@ final class AppState: ObservableObject {
             return
         }
         guard foregroundFlight.begin() else { return }
+        let startedAt = Date()
         Task { @MainActor in
             let reading = await Task.detached { () -> (panes: [UUID: Durable.Pane], arguments: [Int32: String])? in
                 guard let panes = Durable.panes() else { return nil }
-                // Only a shell with a program in front has children worth a `ps`.
-                let busy = Set(panes.values.filter { !Durable.isShell($0.command) }.map(\.pid))
-                return (panes, Durable.childArguments(of: busy) ?? [:])
+                // Only a tunnel's command line says whether it leads to a database: a `ps` of the
+                // whole machine for those alone, not for every agent and dev server in front.
+                let tunnels = Set(panes.values.filter { Durable.tunnelCommands.contains($0.command) }.map(\.pid))
+                return (panes, Durable.childArguments(of: tunnels) ?? [:])
             }.value
             // No answer from tmux is no news: what we know stays (see `Durable.listSessions`).
-            if let reading { self.applyForegroundPrograms(reading.panes, arguments: reading.arguments) }
+            if let reading {
+                self.applyForegroundPrograms(reading.panes, arguments: reading.arguments, takenAt: startedAt)
+            }
             if self.foregroundFlight.end() { self.refreshForegroundPrograms() }
         }
     }
 
     /// Apply one reading of the panes: the names, and the state each program implies.
-    private func applyForegroundPrograms(_ panes: [UUID: Durable.Pane], arguments: [Int32: String]) {
+    private func applyForegroundPrograms(
+        _ panes: [UUID: Durable.Pane], arguments: [Int32: String], takenAt: Date
+    ) {
         var programs: [UUID: String] = [:]
         var databases: Set<UUID> = []
         for session in sessions.values where session.durable {
             let id = session.id
+            // Older than what happened since (a short command started and ended while tmux was
+            // asked: its `D` set the result), or tmux could not name the process for once: no
+            // news for this terminal. What we knew stays, so the next reading compares to it.
+            let overtaken = session.stateSince >= takenAt || (lastCommandFinish[id] ?? .distantPast) >= takenAt
+            if overtaken || panes[id]?.command.isEmpty == true {
+                if let known = foregroundPrograms[id] { programs[id] = known }
+                if databasePrograms.contains(id) { databases.insert(id) }
+                continue
+            }
             let agentLive = liveAgentIDs.contains(id) || agentsSurvivingRestore.contains(id)
             let program = Durable.foregroundProgram(paneCommand: panes[id]?.command, agentLive: agentLive)
             if let program {
@@ -1495,7 +1513,9 @@ final class AppState: ObservableObject {
                 if self.ideMarkers != markers { self.ideMarkers = markers }
                 if self.installedIDEs != installed { self.installedIDEs = installed }
                 if self.projectOpenInIDEs != openIn { self.projectOpenInIDEs = openIn }
-                if scanFinished {
+                // A sweep started before the setting changed answers for the old setting: the
+                // rerun the change asked for answers for the new one.
+                if scanFinished, scansServers == self.devServerLinksEnabled {
                     // Carry over (and complete) the announced URLs before comparing:
                     // the addresses are part of what a chip shows, so resolving one
                     // has to publish.
@@ -1542,7 +1562,7 @@ final class AppState: ObservableObject {
     private func lookUpServerURLs(in found: [UUID: [DevServer]]) {
         var work: [(port: Int, texts: [String])] = []
         for (groupID, servers) in found {
-            let due = servers.map(\.port).filter(serverURLs.isDue)
+            let due = servers.map(\.port).filter { serverURLs.isDue($0) }
             guard !due.isEmpty, let group = groups.first(where: { $0.id == groupID }) else { continue }
             let texts = sessions(in: group).compactMap {
                 TerminalRegistry.shared.existingView($0.id)?.readScrollback()
@@ -1594,6 +1614,7 @@ final class AppState: ObservableObject {
             Log.info("file link: no file for \(link.path)")
             return
         }
+        Telemetry.count(.fileLinkOpened)
         if let group, let ide = fileLinkIDE(for: group) {
             IDEs.open(file: file, line: link.line, column: link.column, in: ide)
         } else {
@@ -1840,6 +1861,7 @@ final class AppState: ObservableObject {
         backgroundTasks[id] = nil
         if heldByBackground[id] != nil { heldByBackground[id] = nil }
         runningByProgram.remove(id)
+        lastCommandFinish[id] = nil
         if foregroundPrograms[id] != nil { foregroundPrograms[id] = nil }
         if databasePrograms.contains(id) { databasePrograms.remove(id) }
         screenRaisedIDs.remove(id)
@@ -3101,6 +3123,7 @@ final class AppState: ObservableObject {
         // A Claude that Planchette put to sleep ends on a signal (exit 143): that is not an error.
         let asleep = session.sleepingClaudeID != nil
         runningByProgram.remove(id)
+        lastCommandFinish[id] = Date()
         setState(id, asleep ? .free : AttentionState.afterCommandFinish(exitCode: exitCode))
         gitMayHaveChanged()
     }
@@ -3812,7 +3835,13 @@ final class AppState: ObservableObject {
             // An agent ran here, and its pane still runs a program rather than a bare shell (or
             // tmux could not say): taken to be the agent, until its first hook or its prompt.
             let paneShell = restorePaneCommands[id].map(Durable.isShell) ?? false
-            if agentSurvived, sessions[id]?.agentKind != AgentKind.none, !paneShell {
+            // A pane that runs a named program (`k9s`, `kubectl`) is that program now, not the
+            // agent that once ran in this terminal: it gets its `>_` and its name on the next tick.
+            let paneProgram = restorePaneCommands[id].flatMap {
+                Durable.foregroundProgram(paneCommand: $0, agentLive: false)
+            }
+            let paneMayBeAgent = paneProgram.map(Durable.agentHosts.contains) ?? true
+            if agentSurvived, sessions[id]?.agentKind != AgentKind.none, !paneShell, paneMayBeAgent {
                 agentsSurvivingRestore.insert(id)
             }
             let restored = AttentionState.afterRestart(saved, agentSurvived: agentSurvived)

@@ -19,7 +19,8 @@ enum Help {
         /// Where the feature lives, for a user who cannot find it.
         let whereKey: LKey?
 
-        var id: String { "\(titleKey.rawValue)-\(shortcut ?? "")" }
+        // One title can stand in two places (a control and its setting): the place keeps them apart.
+        var id: String { "\(titleKey.rawValue)-\(shortcut ?? "")-\(whereKey?.rawValue ?? "")" }
 
         init(_ titleKey: LKey, _ detailKey: LKey? = nil,
              shortcut: String? = nil, where whereKey: LKey? = nil) {

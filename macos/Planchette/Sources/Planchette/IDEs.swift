@@ -240,21 +240,24 @@ enum IDEs {
             return chosen
         }
         return best(of: candidates, markers: markers, running: running, lastActivated: lastActivated,
-                    requireEvidence: true)
+                    listed: alreadyOpenIn, requireEvidence: true)
     }
 
     /// The candidate with the most evidence: the checkout's marker, then the
-    /// IDE last in front, then a running one; ties keep the order of `known`.
+    /// IDE last in front, then a running one, last a closed one whose state file
+    /// lists the project (`listed`: the IDE it was last worked on in, and with
+    /// nothing running the only clue there is); ties keep the order of `known`.
     /// With `requireEvidence`, nil when nothing speaks for any of them.
     private static func best(
         of candidates: [IDE], markers: [String], running: Set<String>, lastActivated: String?,
-        requireEvidence: Bool = false
+        listed: Set<String> = [], requireEvidence: Bool = false
     ) -> IDE? {
         let scored = candidates.map { ide -> (ide: IDE, score: Int) in
             var score = 0
-            if markers.contains(ide.marker) { score += 4 }
-            if ide.bundleID == lastActivated { score += 2 }
-            if running.contains(ide.bundleID) { score += 1 }
+            if markers.contains(ide.marker) { score += 8 }
+            if ide.bundleID == lastActivated { score += 4 }
+            if running.contains(ide.bundleID) { score += 2 }
+            if listed.contains(ide.bundleID) { score += 1 }
             return (ide, score)
         }
         // Nothing to go on at all (no marker, nothing running): the click has

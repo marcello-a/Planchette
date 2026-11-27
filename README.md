@@ -254,15 +254,19 @@ Also worth a second:
 - Git worktrees as projects (⌘⇧T), with cleanup on close.
 - Dev servers show as clickable port chips on their project, opening the address the server
   announced (`https://vite.myposter.de:8082`, network URL first) — found by process, so a server
-  started in an IDE terminal counts too.
+  started in an IDE terminal counts too. Settings → General → Panels switches them off.
 - *Look at code* (right-click a tab): jumps to the window an IDE already has the project open in — otherwise opens it
   in the IDE the checkout belongs to (`.idea` → JetBrains, `.vscode` → VS Code), else the one you
   last worked in; *Open in* picks another and *Default IDE* sets one.
 - A notepad at the right of every terminal (⌘J), saved with the workspace: a prompt runs to the blank line that ends it, Markdown is shown as you type (lists go on with Return, code blocks fold after two lines and have colours), and two buttons load a prompt into the terminal — as a draft, or with Return pressed. A loaded prompt leaves the pad (or is struck through; Settings → Tabs). Its ⋯ menu formats the pad with AI and keeps a history of the last 100 prompts sent and lines deleted.
 - Drop a screenshot onto a Claude terminal → pasted as an image, not a path.
 - Import open cwds from iTerm2 / Terminal.app, or drop a folder from Finder.
-- Links open with ⌘-click; a link that would run something is shown, not run. A program that asks
-  for your clipboard, or a paste that could run commands, asks you first.
+- Links open with ⌘-click; a link that would run something is shown, not run. A printed path
+  (`src/Foo.php:42`, also from a container: `/var/www/html/src/Foo.php`) opens at its line in
+  the project's IDE. A program that asks for your clipboard, or a paste that could run commands,
+  asks you first.
+- A durable terminal that runs a program (`k9s`, a port-forward) shows `>_` and the program's
+  name instead of "free" — a database icon for a database client or a tunnel to one.
 - 7 UI languages, light, dark or system.
 
 ### First launch, updates, settings

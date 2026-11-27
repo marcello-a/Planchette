@@ -1581,6 +1581,9 @@ final class HardeningStringsTests: XCTestCase {
         .clipboardReadTitle, .clipboardReadBody, .clipboardWriteTitle, .clipboardWriteBody,
         .clipboardAllow, .clipboardDeny, .clipboardHelpTitle, .clipboardHelpDetail,
         .clipboardPreviewMore,
+        // Not `stateDatabase`: "Database" is the Italian and the Dutch word as well.
+        .stateProgram, .programDesc, .databaseDesc,
+        .fileLinksTitle, .fileLinksDetail, .devServersEnableHelp,
     ]
 
     func testEveryNewKeyIsTranslatedInEveryLanguage() {

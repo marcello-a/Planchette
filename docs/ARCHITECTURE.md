@@ -235,6 +235,12 @@ for tmux's passthrough (`Durable.zshenvContents`): tmux keeps a raw OSC 133 to i
 and Ghostty's integration loads only in a shell Ghostty starts. Its `exit` is seen through
 `SHOW_CHILD_EXITED` and closes the terminal once tmux says the session is gone
 (`Durable.sessionEnded`).
+A shell reports when a command ends, never when it starts, so in a durable terminal the tmux
+pane says the rest: every dev-server tick reads what runs in front of each shell
+(`AppState.applyForegroundPrograms`). A program that appears there (`k9s`, a port-forward)
+raises `running`; back at the prompt, a `running` this rule raised becomes `free` again —
+for a shell that sends no `D` (`AttentionState.forForegroundProgram`). A live agent speaks
+through its hooks and is never taken for a program.
 A restart ends whatever a saved state described. Everything else a screen pattern could
 decide it must not: it only applies where a Claude can be.
 

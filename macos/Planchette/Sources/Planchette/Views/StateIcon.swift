@@ -366,8 +366,10 @@ struct StateIcon: View {
             // SwiftUI timeline invalidated the hosting view on every frame, and
             // each tick escalated into a layout pass of the whole window — about
             // a quarter of a core with three robots on screen.
-            if StatePixels.isAnimated(state) && activity.isActive {
-                AnimatedSprite(state: state, size: size, tint: tint ?? state.tint)
+            // Still in the background, but drawn the same way: a Canvas still would turn the
+            // robot's even layer pixels into anti-aliased ones each time the app leaves the front.
+            if StatePixels.isAnimated(state) {
+                AnimatedSprite(state: state, size: size, tint: tint ?? state.tint, animates: activity.isActive)
                     .frame(width: size, height: size)
             } else {
                 sprite(frame: 0)
@@ -421,11 +423,13 @@ struct AnimatedSprite: NSViewRepresentable {
     let state: AttentionState
     let size: CGFloat
     let tint: Color
+    /// False: the first frame, still (the app is in the background).
+    var animates = true
 
     func makeNSView(context: Context) -> SpriteLayerView { SpriteLayerView() }
 
     func updateNSView(_ view: SpriteLayerView, context: Context) {
-        view.show(state: state, tint: NSColor(tint))
+        view.show(state: state, tint: NSColor(tint), animates: animates)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView: SpriteLayerView, context: Context) -> CGSize? {
@@ -436,8 +440,9 @@ struct AnimatedSprite: NSViewRepresentable {
 final class SpriteLayerView: NSView {
     private var state: AttentionState?
     private var tint: NSColor?
+    private var animates = true
     /// What the current images were drawn for; drawn again only when it changes.
-    private var drawn: (state: AttentionState, color: CGColor)?
+    private var drawn: (state: AttentionState, color: CGColor, animates: Bool)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -454,9 +459,10 @@ final class SpriteLayerView: NSView {
     // around it, as it did through the Canvas this replaces.
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    func show(state: AttentionState, tint: NSColor) {
+    func show(state: AttentionState, tint: NSColor, animates: Bool = true) {
         self.state = state
         self.tint = tint
+        self.animates = animates
         refresh()
     }
 
@@ -478,17 +484,17 @@ final class SpriteLayerView: NSView {
         guard let layer, let state, let tint else { return }
         var color = tint.cgColor
         effectiveAppearance.performAsCurrentDrawingAppearance { color = tint.cgColor }
-        if let drawn, drawn.state == state, drawn.color == color,
-           layer.animation(forKey: "frames") != nil || StatePixels.frames(state).count < 2 {
+        if let drawn, drawn.state == state, drawn.color == color, drawn.animates == animates,
+           layer.animation(forKey: "frames") != nil || !animates || StatePixels.frames(state).count < 2 {
             return
         }
-        drawn = (state, color)
+        drawn = (state, color, animates)
         let images = StatePixels.frames(state).indices.compactMap {
             SpriteImages.image(state, frame: $0, color: color)
         }
         layer.removeAnimation(forKey: "frames")
         layer.contents = images.first
-        guard images.count > 1 else { return }
+        guard animates, images.count > 1 else { return }
         let animation = CAKeyframeAnimation(keyPath: "contents")
         animation.values = images
         animation.calculationMode = .discrete

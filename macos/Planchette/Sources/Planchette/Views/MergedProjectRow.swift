@@ -11,6 +11,10 @@ struct MergedRowFacts {
     var state: AttentionState
     /// Running only because of background work: the globe, not the robot.
     var inBackground = false
+    /// A program runs in front of the shell (`AppState.showsProgramMark`): `>_`, not the robot.
+    var programMark = false
+    /// ... and it is a database client or a tunnel to one (`AppState.showsDatabaseMark`).
+    var databaseMark = false
     var stateSince: Date
     /// A name you gave the terminal itself, when it differs from the project's.
     var terminalName: String?
@@ -54,7 +58,8 @@ struct MergedProjectRow<Trailing: View>: View {
             // The state, and under it what Claude still runs in the background — with one
             // terminal the sprite is the project's count as well.
             VStack(spacing: 3) {
-                StateIcon(state: facts.state, size: 13, inBackground: facts.inBackground)
+                StateIcon(state: facts.state, size: 13, inBackground: facts.inBackground,
+                          shell: facts.programMark, database: facts.databaseMark)
                 if details.shows(.backgroundTasks), let tasks = facts.backgroundTasks {
                     BackgroundTasksBadge(tasks: tasks)
                 }
@@ -152,6 +157,8 @@ extension MergedRowFacts {
         self.init(
             projectName: group.name, favorite: group.favorite, active: group.active,
             state: session.state, inBackground: appState.runsInBackground(session),
+            programMark: appState.showsProgramMark(session),
+            databaseMark: appState.showsDatabaseMark(session),
             stateSince: session.stateSince, terminalName: ownName,
             directory: session.currentDirectory, shortPath: session.shortPath, color: session.color,
             branch: appState.branches[session.id], pullRequest: appState.pullRequests[session.id],
