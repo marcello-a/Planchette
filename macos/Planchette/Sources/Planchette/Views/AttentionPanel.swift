@@ -57,6 +57,7 @@ struct AttentionPanel: View {
                     }
                     Spacer()
                     Button {
+                        Telemetry.count(.markedRead)
                         appState.markAllRead()
                     } label: {
                         Image(systemName: "envelope.open")
@@ -211,11 +212,11 @@ struct AttentionPanel: View {
         .buttonStyle(.plain)
         .help(hoverDetail(session))
         .contextMenu {
-            Button(L10n.t(.markReady)) { appState.markReady(session.id) }
+            Button(L10n.t(.markReady)) { Telemetry.count(.markedFree); appState.markReady(session.id) }
             // Read/unread by hand, so a row can be kept for later without
             // opening it, or dismissed without opening it either.
             if unread {
-                Button(L10n.t(.markRead)) { appState.markSeen(session.id) }
+                Button(L10n.t(.markRead)) { Telemetry.count(.markedRead); appState.markSeen(session.id) }
             } else if session.state.isReport {
                 Button(L10n.t(.markUnread)) { appState.markUnread(session.id) }
             }

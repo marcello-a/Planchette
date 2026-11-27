@@ -40,6 +40,20 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
+    /// Settings → General → Panels: the dev-server port chips. Off skips the `lsof` sweep and the
+    /// scrollback search for announced URLs, which a machine full of non-HTTP listeners (port-forwards,
+    /// agents' own sockets) pays every tick for nothing.
+    @Published var devServerLinksEnabled = true {
+        didSet {
+            guard devServerLinksEnabled != oldValue else { return }
+            scheduleSave()
+            if !devServerLinksEnabled {
+                serverURLs = ServerURLLookups()
+                if !devServers.isEmpty { devServers = [:] }
+            }
+            refreshDevServers()
+        }
+    }
     /// Settings → General → Panels: when a card moves to `done` on its own (`TodoAutoDone`).
     /// Never by default. Switched to "PR merged", the PRs known now count at once.
     @Published var todoAutoDone = TodoAutoDone.never {
@@ -243,6 +257,7 @@ final class AppState: ObservableObject {
         let opening = !notepad.isOpen(for: id)
         notepadWantsKeyboard = opening
         if opening {
+            Telemetry.count(.notepadOpened)
             completeHint(.notepad)      // used: it needs no introduction any more
         }
         notepad.setOpen(opening, for: id)
@@ -263,6 +278,7 @@ final class AppState: ObservableObject {
     /// its prompt, and the next thing you do is edit it or press Return.
     func loadPrompt(_ text: String, into id: UUID, submit: Bool, onLoaded: (() -> Void)? = nil) {
         guard !text.isEmpty, let session = sessions[id] else { return }
+        Telemetry.count(submit ? .notepadPromptSent : .notepadPromptDrafted)
         Task { @MainActor in
             guard let view = ControlAPI.liveView(for: session, state: self) else { return }
             // Run directly, and something is already typed in Claude Code's input: start a new line
@@ -388,6 +404,7 @@ final class AppState: ObservableObject {
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
+            devServerLinksEnabled = saved.devServerLinksEnabled
             todoAutoDone = saved.todoAutoDone
             claudeSleep = saved.claudeSleep
             jiraEnabled = saved.jiraEnabled
@@ -592,6 +609,7 @@ final class AppState: ObservableObject {
             // No message: the screen knows a prompt is up, not what it asks.
             // Carrying the previous one over would show a stale question.
             setState(id, newState)
+            if sessions[id]?.state != session.state { Telemetry.count(.stateByScreen) }
         }
     }
 
@@ -609,14 +627,14 @@ final class AppState: ObservableObject {
         // No file (deleted) → back to the compiled floor.
         guard let stamp else {
             screenRules = ScreenDetector.builtIn
-            NSLog("screen rules: override removed, using built-in rules")
+            Log.info("screen rules: override removed, using built-in rules")
             return
         }
         guard let data = try? Data(contentsOf: ScreenDetector.overrideURL),
               let set = ScreenDetector.validated(data)
         else { return }   // validated() logged why; keep the rules we have
         screenRules = set
-        NSLog("screen rules: reloaded version \(set.version) (mtime \(stamp))")
+        Log.info("screen rules: reloaded version \(set.version) (mtime \(stamp))")
     }
 
     /// Install a fetched ruleset: written to the override path, which the poll
@@ -630,7 +648,7 @@ final class AppState: ObservableObject {
             try data.write(to: ScreenDetector.overrideURL, options: .atomic)
             return true
         } catch {
-            NSLog("screen rules: could not write \(ScreenDetector.overrideURL.path): \(error)")
+            Log.error("screen-rules.write_failed", "screen rules: could not write \(ScreenDetector.overrideURL.path): \(error)")
             return false
         }
     }
@@ -792,10 +810,12 @@ final class AppState: ObservableObject {
     }
 
     func snooze(groups ids: [UUID], until date: Date) {
-        for id in ids { snooze(group: id, until: date) }
+        Telemetry.count(.snoozed)
+        for id in ids { snooze(group: id, until: date, counted: false) }
     }
 
     func setFavorite(_ favorite: Bool, forGroups ids: [UUID]) {
+        if favorite { Telemetry.count(.favoriteSet) }
         for id in ids { updateGroup(id) { $0.favorite = favorite } }
     }
 
@@ -803,6 +823,7 @@ final class AppState: ObservableObject {
     /// a project that goes silent must not keep a question or a finished turn
     /// standing, or marking it active again re-opens news that is hours old.
     func setActive(_ active: Bool, forGroups ids: [UUID]) {
+        if !active { Telemetry.count(.projectParked) }
         for id in ids {
             updateGroup(id) { $0.active = active }
             if !active { markGroupReady(id) }
@@ -828,6 +849,7 @@ final class AppState: ObservableObject {
 
     /// Move a group into a brand-new window; returns the window id to open.
     func moveGroupToNewWindow(_ groupID: UUID) -> UUID {
+        Telemetry.count(.moveToNewWindow)
         var newWindow = WindowModel()
         newWindow.groupIDs = [groupID]
         newWindow.selectedGroupID = groupID
@@ -844,6 +866,7 @@ final class AppState: ObservableObject {
 
     /// Create a new, empty window; returns its id to open.
     func newWindow() -> UUID {
+        Telemetry.count(.newWindow)
         let window = WindowModel()
         windows.append(window)
         scheduleSave()
@@ -856,6 +879,7 @@ final class AppState: ObservableObject {
         guard let source = windows.first(where: { $0.id == sourceID }) else { return }
         let target = targetID ?? windows.first(where: { $0.id != sourceID })?.id
         guard let target, let targetIdx = windows.firstIndex(where: { $0.id == target }) else { return }
+        Telemetry.count(.mergeWindow)
         windows[targetIdx].groupIDs.append(contentsOf: source.groupIDs)
         // Carry the source window's project folders too: the groups they name
         // now live in the target window, so dropping them would silently destroy
@@ -1375,10 +1399,12 @@ final class AppState: ObservableObject {
         }
         guard devServerFlight.begin() else { return }
         let knownSchemes = serverSchemes
+        let scansServers = devServerLinksEnabled
         Task.detached {
             // Nil: `lsof` did not finish. Everything below that depends on its
             // answer is left as it was rather than blanked for one tick.
-            let scanned = DevServerScanner.scan(projectDirs: dirs)
+            // Switched off: no sweep, and an empty answer keeps the chips away.
+            let scanned = scansServers ? DevServerScanner.scan(projectDirs: dirs) : [:]
             let scanFinished = scanned != nil
             let found = scanned ?? [:]
             let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
@@ -1410,6 +1436,7 @@ final class AppState: ObservableObject {
                     let withURLs = self.resolvingServerURLs(found)
                     // Publish only a real change (see refreshBranches).
                     if self.devServers != withURLs { self.devServers = withURLs }
+                    self.lookUpServerURLs(in: found)
                 }
                 if self.devServerFlight.end() { self.refreshDevServers() }
             }
@@ -1420,47 +1447,66 @@ final class AppState: ObservableObject {
     /// cost grows with the machine's open sockets.
     private var devServerFlight = SingleFlight()
 
-    /// Addresses already learned, keyed by port. Kept because a banner scrolls
-    /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
-    /// that stays true until the port itself goes away.
-    private var serverURLs: [Int: URL] = [:]
+    /// The URLs servers announced, and which ports still get a search (see `ServerURLLookups`).
+    private var serverURLs = ServerURLLookups()
 
-    /// Fill in each server's announced URL, reading a terminal's scrollback only
-    /// for ports we have never resolved. The read locks the renderer and copies
-    /// the whole buffer, so it happens once per port, not once per tick.
+    /// Fill in each server's announced URL from what is already known, else the
+    /// probed scheme on localhost. Never reads a terminal: see `lookUpServerURLs`.
     private func resolvingServerURLs(_ found: [UUID: [DevServer]]) -> [UUID: [DevServer]] {
         let livePorts = Set(found.values.flatMap { $0.map(\.port) })
-        serverURLs = serverURLs.filter { livePorts.contains($0.key) }
-        var result = found
-        for (groupID, servers) in found {
-            guard let group = groups.first(where: { $0.id == groupID }) else { continue }
-            let unresolved = servers.filter { serverURLs[$0.port] == nil }
-            if !unresolved.isEmpty {
-                // The banner is in the terminal that started the server; which
-                // one that is we don't know, so read the project's terminals.
-                let texts = sessions(in: group).compactMap {
-                    TerminalRegistry.shared.existingView($0.id)?.readScrollback()
-                }
-                for server in unresolved {
-                    for text in texts {
-                        if let url = DevServerScanner.bestURL(forPort: server.port, in: text) {
-                            serverURLs[server.port] = url
-                            break
-                        }
-                    }
-                }
-            }
-            result[groupID] = servers.map {
+        serverURLs.keep(livePorts: livePorts)
+        return found.mapValues { servers in
+            servers.map {
                 var server = $0
                 // What the server announced, else at least the right scheme:
                 // the port was probed, and `https://localhost:8082` is a page,
                 // while `http://localhost:8082` on a TLS server is not.
-                server.resolvedURL = serverURLs[$0.port]
+                server.resolvedURL = serverURLs.urls[$0.port]
                     ?? URL(string: "\(serverSchemes[$0.port] ?? "http")://localhost:\($0.port)")
                 return server
             }
         }
-        return result
+    }
+
+    /// Search the project's terminals for the URL each unresolved server
+    /// announced. The banner is in the terminal that started the server; which
+    /// one that is we don't know, so read the project's terminals. Only the copy
+    /// of the buffers happens here (the surfaces are main-thread objects); the
+    /// search runs off-main, and a port gets `ServerURLLookups.maxTries` tries.
+    private func lookUpServerURLs(in found: [UUID: [DevServer]]) {
+        var work: [(port: Int, texts: [String])] = []
+        for (groupID, servers) in found {
+            let due = servers.map(\.port).filter(serverURLs.isDue)
+            guard !due.isEmpty, let group = groups.first(where: { $0.id == groupID }) else { continue }
+            let texts = sessions(in: group).compactMap {
+                TerminalRegistry.shared.existingView($0.id)?.readScrollback()
+            }
+            for port in due {
+                serverURLs.recordTry(port)
+                work.append((port, texts))
+            }
+        }
+        guard !work.isEmpty else { return }
+        Task.detached {
+            var learned: [Int: URL] = [:]
+            for item in work {
+                for text in item.texts {
+                    if let url = DevServerScanner.bestURL(forPort: item.port, in: text) {
+                        learned[item.port] = url
+                        break
+                    }
+                }
+            }
+            guard !learned.isEmpty else { return }
+            let urls = learned
+            await MainActor.run { [weak self] in
+                guard let self, self.devServerLinksEnabled else { return }
+                let live = Set(self.devServers.values.flatMap { $0.map(\.port) })
+                self.serverURLs.learn(urls, livePorts: live)
+                let withURLs = self.resolvingServerURLs(self.devServers)
+                if self.devServers != withURLs { self.devServers = withURLs }
+            }
+        }
     }
 
     /// Open a path a terminal printed (`src/Foo.php:42`) at its line, in the IDE
@@ -1782,6 +1828,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             switch result {
             case .success(let created):
+                Telemetry.count(.worktreeCreated)
                 let repoName = URL(fileURLWithPath: created.repoRoot).lastPathComponent
                 let group = self.addGroup(
                     name: Worktrees.groupName(repoName: repoName, branch: branch))
@@ -1984,6 +2031,7 @@ final class AppState: ObservableObject {
     }
 
     func dropTab(_ tab: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
+        Telemetry.count(.tabDropped)
         applyTabs(dropTabResult(tab, onto: target, edge: edge, groupID: groupID), to: groupID, target: target)
     }
 
@@ -1993,6 +2041,7 @@ final class AppState: ObservableObject {
     }
 
     func dropPane(_ pane: UUID, onto target: UUID, edge: LayoutEdge, groupID: UUID) {
+        Telemetry.count(.tabDropped)
         applyTabs(dropPaneResult(pane, onto: target, edge: edge, groupID: groupID), to: groupID, target: target)
     }
 
@@ -2000,6 +2049,7 @@ final class AppState: ObservableObject {
     /// (the end of the strip when nil).
     func extractPane(_ pane: UUID, before target: UUID?, groupID: UUID) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        Telemetry.count(.paneToOwnTab)
         let strip = tabs(of: group)
         let to = target.flatMap { TabStrip.index(of: $0, in: strip) } ?? strip.count
         applyTabs(TabStrip.extractPane(pane, before: to, in: strip), to: groupID)
@@ -2009,12 +2059,14 @@ final class AppState: ObservableObject {
     /// All tabs of a project in one view, as a grid.
     func combineTabs(groupID: UUID) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        Telemetry.count(.tabsCombined)
         applyTabs(TabStrip.combined(tabs(of: group)), to: groupID)
     }
 
     /// Every pane its own tab again.
     func separateTabs(groupID: UUID) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        Telemetry.count(.tabsSeparated)
         applyTabs(TabStrip.separated(tabs(of: group)), to: groupID)
     }
 
@@ -2027,6 +2079,7 @@ final class AppState: ObservableObject {
             addTerminalToGroup(groupID)
             return
         }
+        Telemetry.count(.split)
         let directory = [anchor.currentDirectory, anchor.workingDirectory]
             .first { !$0.isEmpty } ?? FileManager.default.homeDirectoryForCurrentUser.path
         let created = addSession(directory: directory, groupID: groupID, activate: false)
@@ -2138,10 +2191,15 @@ final class AppState: ObservableObject {
     /// of its own rather than a side effect of having focused a terminal.
     func markUnread(_ id: UUID) {
         guard let session = sessions[id], session.state.isReport, session.seen else { return }
+        Telemetry.count(.markedUnread)
         update(id) { $0.seen = false }
     }
 
     func select(session: TerminalSession) {
+        // A question raised while you looked elsewhere, opened now: how long it waited for you.
+        if let current = sessions[session.id], current.state == .waiting, !current.seen {
+            Telemetry.count(Telemetry.waitAnswered(after: Date().timeIntervalSince(current.stateSince)))
+        }
         markSeen(session.id)
         wakeClaude(session.id)
         if let window = windowContaining(groupID: session.groupID) {
@@ -2178,6 +2236,7 @@ final class AppState: ObservableObject {
     /// Show a folder's overview instead of a terminal — what is in this box,
     /// what each project is doing, and what it reported last.
     func select(folder folderID: UUID, inWindow windowID: UUID) {
+        Telemetry.count(.folderOverview)
         updateWindow(windowID) { window in
             guard window.folders.contains(where: { $0.id == folderID }) else { return }
             window.selectedFolderID = folderID
@@ -2192,6 +2251,7 @@ final class AppState: ObservableObject {
         updateWindow(windowID) { window in
             window.showsTodos.toggle()
             if window.showsTodos {
+                Telemetry.count(.todosOpened)
                 window.selectedFolderID = nil
                 window.showsProjectOverview = false
             }
@@ -2288,7 +2348,7 @@ final class AppState: ObservableObject {
                     self.markAgent(id, live: false)
                     for pid in entry.pids { kill(pid, SIGTERM) }
                     signalled.append(id)
-                    NSLog("claude-sleep: ended the idle Claude of \(id)")
+                    Log.info("claude-sleep: ended the idle Claude of \(id)")
                 }
                 guard !signalled.isEmpty else {
                     _ = self.sleepFlight.end()
@@ -2325,7 +2385,7 @@ final class AppState: ObservableObject {
                     guard awake.contains(id), self.sessions[id] != nil else { continue }
                     self.update(id) { $0.sleepingClaudeID = nil }
                     self.markAgent(id, live: true)
-                    NSLog("claude-sleep: the Claude of \(id) did not end; left awake")
+                    Log.error("claude-sleep.did_not_end", "claude-sleep: the Claude of \(id) did not end; left awake")
                 }
                 _ = self.sleepFlight.end()
             }
@@ -2334,7 +2394,7 @@ final class AppState: ObservableObject {
 
     /// You came back to a sleeping terminal: resume its conversation, with the line a restore
     /// types (`RestoreCommand`). Only at the shell prompt — never into a program that runs.
-    func wakeClaude(_ id: UUID) {
+    func wakeClaude(_ id: UUID, byUser: Bool = true) {
         lastOnScreenAt[id] = Date()
         guard let session = sessions[id], let claudeID = session.sleepingClaudeID,
               !fallingAsleep.contains(id),
@@ -2344,6 +2404,7 @@ final class AppState: ObservableObject {
                 hasScrollback: false, scrollbackPath: "", startupCommand: nil,
                 claudeSessionID: claudeID, resumeClaude: true)
         else { return }
+        if byUser { Telemetry.count(.claudeWoken) }
         update(id) { $0.sleepingClaudeID = nil }
         let text = line.trimmingCharacters(in: .newlines)
         Task { await ControlAPI.deliverPrompt(text, submit: true, to: view, session: id) }
@@ -2373,6 +2434,7 @@ final class AppState: ObservableObject {
     /// in that terminal's folder. The card is linked to it and starts running.
     func openTerminal(for todo: TodoItem) {
         guard let groupID = todo.groupID, let group = groups.first(where: { $0.id == groupID }) else { return }
+        Telemetry.count(.todoTerminal)
         let session = newTerminal(in: group, near: todo.sessionID)
         updateTodos { board in
             board.update(todo.id) { $0.sessionID = session.id }
@@ -2410,6 +2472,7 @@ final class AppState: ObservableObject {
     /// Jump to the most urgent waiting session (⌘⇧K).
     func jumpToNextWaiting() {
         guard let next = attentionQueue.first else { return }
+        Telemetry.count(.jumpToWaiting)
         select(session: next)
     }
 
@@ -2505,6 +2568,7 @@ final class AppState: ObservableObject {
         let groupID = groups.contains { $0.id == closed.session.groupID }
             ? closed.session.groupID : keyGroup()?.group?.id
         guard let groupID else { return }
+        Telemetry.count(.terminalReopened)
         let fresh = addSession(directory: closed.session.currentDirectory, groupID: groupID)
         var session = closed.session.reopened(into: fresh)
         // A sleeping terminal knows its conversation exactly; the others resolve it.
@@ -2553,6 +2617,7 @@ final class AppState: ObservableObject {
     }
 
     func showQuickSwitcher() {
+        Telemetry.count(.quickSwitcher)
         quickSwitcherWindowID = WindowRegistry.shared.keyWindowID() ?? windows.first?.id
     }
 
@@ -2661,6 +2726,7 @@ final class AppState: ObservableObject {
     func startFind(in id: UUID) {
         guard let session = sessions[id] else { return }
         guard finds[id] != nil else {
+            Telemetry.count(.findInTerminal)
             finds[id] = TerminalFind()
             if !searchesInTmux(session) { surfaceView(of: id)?.startSearch() }
             return
@@ -2819,6 +2885,7 @@ final class AppState: ObservableObject {
     /// A terminal was opened by the user (⌘T, the + button, a new project): the moment to mention
     /// what a terminal can do. Never called while a workspace is restored.
     func userOpenedTerminal() {
+        Telemetry.count(.terminalOpened)
         offerHint(.notepad)
     }
 
@@ -2885,6 +2952,7 @@ final class AppState: ObservableObject {
     /// "not now" is that it stops asking. The reminder fires in
     /// `checkSnoozeExpiry`.
     func snooze(session id: UUID, until date: Date) {
+        Telemetry.count(.snoozed)
         setState(id, .free)
         update(id) {
             $0.snoozedUntil = date
@@ -2894,8 +2962,9 @@ final class AppState: ObservableObject {
     }
 
     /// Same for a whole project — one reminder for the project, not one per tab.
-    func snooze(group groupID: UUID, until date: Date) {
+    func snooze(group groupID: UUID, until date: Date, counted: Bool = true) {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
+        if counted { Telemetry.count(.snoozed) }
         for id in group.sessionIDs {
             setState(id, .free)
             update(id) { $0.seen = true }
@@ -3102,7 +3171,9 @@ final class AppState: ObservableObject {
         toolName: String? = nil,
         toolUseID: String? = nil
     ) {
-        guard sessions[sessionID] != nil else { return }
+        guard let stateBefore = sessions[sessionID]?.state else { return }
+        Telemetry.count(.hookEvents)
+        defer { if let after = sessions[sessionID]?.state, after != stateBefore { Telemetry.count(.stateByHook) } }
         if let background { applyBackground(background, to: sessionID) }
         // A hook firing at all proves the agent is alive in this terminal;
         // SessionEnd is the only event that ends it.
@@ -3294,6 +3365,7 @@ final class AppState: ObservableObject {
     /// uses this, not toggleTag: typing the name of an existing tag must add (or
     /// keep) it, never silently remove it.
     func addTag(_ tag: String, on sessionID: UUID) {
+        Telemetry.count(.tagAdded)
         update(sessionID) {
             if !$0.tags.contains(tag) { $0.tags.append(tag) }
         }
@@ -3317,6 +3389,7 @@ final class AppState: ObservableObject {
     /// Apply the proposal: sessions sharing a topic move into a group named
     /// after it. Only ever called after explicit user confirmation.
     func applyTopicGrouping() {
+        Telemetry.count(.groupByTopic)
         for (topic, topicSessions) in topicProposal {
             let target: SessionGroup
             if let existing = groups.first(where: { $0.name.lowercased() == topic }) {
@@ -3350,6 +3423,7 @@ final class AppState: ObservableObject {
 
     /// Manual "summarize everything now" from the AI menu.
     func summarizeAllNow() {
+        Telemetry.count(.summarizeAll)
         for id in sessions.keys { aiAssist.sessionUpdated(id, force: true) }
     }
 
@@ -3364,6 +3438,7 @@ final class AppState: ObservableObject {
         guard let window = window(for: windowID) else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
+        Telemetry.count(.presetSaved)
 
         var projects: [PresetProject] = []
         for group in groups(inWindow: window) {
@@ -3419,6 +3494,7 @@ final class AppState: ObservableObject {
     /// Build a preset's projects and terminals in a window and jump to the first
     /// one. Adds to whatever is already there — it never clears the window.
     func openPreset(_ preset: Preset, inWindow windowID: UUID) {
+        Telemetry.count(.presetOpened)
         var firstSession: TerminalSession?
         for project in preset.projects {
             let group = addGroup(name: project.name, favorite: project.favorite, inWindow: windowID)
@@ -3494,6 +3570,7 @@ final class AppState: ObservableObject {
     /// Import all tabs/sessions from another terminal app. The AppleScript +
     /// `lsof` resolution runs off the main thread so the UI never blocks.
     func importFrom(_ source: MigrationService.Source, windowID: UUID?) {
+        Telemetry.count(.importedTerminals)
         Task {
             let result = await Task.detached(priority: .userInitiated) {
                 MigrationService.importDirectories(from: source)
@@ -3585,6 +3662,7 @@ final class AppState: ObservableObject {
             reviewsEnabled: reviewsEnabled,
             todos: todos,
             todosEnabled: todosEnabled,
+            devServerLinksEnabled: devServerLinksEnabled,
             todoAutoDone: todoAutoDone,
             claudeSleep: claudeSleep,
             jiraEnabled: jiraEnabled,
@@ -3598,7 +3676,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: Self.stateURL.path)
         } catch {
-            NSLog("save failed: \(error)")
+            Log.error("state.save_failed", "save failed: \(error)")
         }
     }
 
@@ -3692,6 +3770,7 @@ final class AppState: ObservableObject {
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
+        devServerLinksEnabled = state.devServerLinksEnabled
         todoAutoDone = state.todoAutoDone
         claudeSleep = state.claudeSleep
         jiraEnabled = state.jiraEnabled
@@ -3831,6 +3910,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
+        devServerLinksEnabled = previous?.devServerLinksEnabled ?? devServerLinksEnabled
         todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
         claudeSleep = previous?.claudeSleep ?? claudeSleep
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled

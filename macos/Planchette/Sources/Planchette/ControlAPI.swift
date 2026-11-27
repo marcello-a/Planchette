@@ -400,7 +400,7 @@ enum ControlAPI {
             // Its Claude sleeps (`ClaudeSleep`): the text would land in the shell and run as a
             // command. Wake it, and let the caller send again once Claude is back.
             if state.isSleeping(session) {
-                state.wakeClaude(session.id)
+                state.wakeClaude(session.id, byUser: false)
                 return encode(
                     ok: false,
                     error: "session is asleep; waking its Claude — send again once it runs (session.wait)")

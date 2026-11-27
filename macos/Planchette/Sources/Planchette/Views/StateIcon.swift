@@ -300,15 +300,11 @@ final class AppActivity: ObservableObject {
 }
 
 /// A state as a pixel sprite, tinted by the state itself. Animated states run
-/// off a shared timeline, so every robot on screen steps in time and no view
-/// holds a timer of its own.
+/// in Core Animation (`AnimatedSprite`), so every robot on screen steps in time,
+/// no view holds a timer of its own and a frame step costs SwiftUI nothing.
 ///
-/// The timeline pauses while the app is in the background: every tick
-/// invalidates the hosting view, and a couple of running robots at the 0.18s
-/// cadence kept the whole app at double-digit CPU while nobody was looking.
-/// The static modifiers (frame, tooltip, accessibility) sit OUTSIDE the
-/// timeline closure for the same reason — a frame step must stay a Canvas
-/// redraw, not a re-attach of view chrome.
+/// The animation stops while the app is in the background: a still sprite
+/// stands in, and nothing runs while nobody is looking.
 struct StateIcon: View {
     let state: AttentionState
     var size: CGFloat = 13
@@ -344,14 +340,14 @@ struct StateIcon: View {
 
     private var animatedOrStill: some View {
         Group {
-            // A static sprite while the app is in the background — no timeline,
-            // no ticks. NOT the .animation schedule with paused:, which wakes
-            // with the display link and measured 4x the cost of .periodic.
+            // A static sprite while the app is in the background — nothing ticks.
+            // In front the frames run in Core Animation (`AnimatedSprite`): a
+            // SwiftUI timeline invalidated the hosting view on every frame, and
+            // each tick escalated into a layout pass of the whole window — about
+            // a quarter of a core with three robots on screen.
             if StatePixels.isAnimated(state) && activity.isActive {
-                TimelineView(.periodic(from: .now, by: StatePixels.frameDuration)) { context in
-                    sprite(frame: Int(context.date.timeIntervalSinceReferenceDate
-                        / StatePixels.frameDuration))
-                }
+                AnimatedSprite(state: state, size: size, tint: tint ?? state.tint)
+                    .frame(width: size, height: size)
             } else {
                 sprite(frame: 0)
             }
@@ -370,11 +366,6 @@ struct StateIcon: View {
                 context.fill(Path(rect), with: .color(color))
             }
         }
-        // The fixed frame stays ON the Canvas, inside the timeline content: a
-        // tick then updates a view whose geometry cannot change, so it stays a
-        // redraw. With the frame outside, every tick re-proposed the content
-        // size and escalated into a full NSHostingView layout pass — measured
-        // at 4x the CPU of this shape.
         .frame(width: size, height: size)
     }
 }
@@ -394,5 +385,115 @@ struct SessionStateIcon: View {
         StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session),
                   shell: marksShell && appState.showsShellMark(session),
                   asleep: session.state == .free && appState.isSleeping(session))
+    }
+}
+
+/// An animated sprite whose frames Core Animation steps through on its own.
+///
+/// The frames are prerendered as 8×8 images, scaled up with nearest-neighbour
+/// filtering so the pixels stay sharp, and played by a discrete keyframe
+/// animation of the layer's `contents`. The render server runs it: no SwiftUI
+/// update, no layout and no main-thread work per frame. Every animation takes
+/// its phase from the media clock, so all sprites of a state step together.
+struct AnimatedSprite: NSViewRepresentable {
+    let state: AttentionState
+    let size: CGFloat
+    let tint: Color
+
+    func makeNSView(context: Context) -> SpriteLayerView { SpriteLayerView() }
+
+    func updateNSView(_ view: SpriteLayerView, context: Context) {
+        view.show(state: state, tint: NSColor(tint))
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: SpriteLayerView, context: Context) -> CGSize? {
+        CGSize(width: size, height: size)
+    }
+}
+
+final class SpriteLayerView: NSView {
+    private var state: AttentionState?
+    private var tint: NSColor?
+    /// What the current images were drawn for; drawn again only when it changes.
+    private var drawn: (state: AttentionState, color: CGColor)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.contentsGravity = .resize
+        layer?.magnificationFilter = .nearest
+    }
+
+    required init?(coder: NSCoder) { fatalError("unsupported") }
+
+    override var isFlipped: Bool { true }
+
+    // Only a picture: a click, a drag or a hover goes to the row, tab or tile
+    // around it, as it did through the Canvas this replaces.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func show(state: AttentionState, tint: NSColor) {
+        self.state = state
+        self.tint = tint
+        refresh()
+    }
+
+    // The tint can be a dynamic colour: resolve it again in the new appearance.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        refresh()
+    }
+
+    // A layer leaving the window loses nothing, but one added back after
+    // `removeAllAnimations` (or a fresh window) needs its animation again.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        drawn = nil
+        refresh()
+    }
+
+    private func refresh() {
+        guard let layer, let state, let tint else { return }
+        var color = tint.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { color = tint.cgColor }
+        if let drawn, drawn.state == state, drawn.color == color,
+           layer.animation(forKey: "frames") != nil || StatePixels.frames(state).count < 2 {
+            return
+        }
+        drawn = (state, color)
+        let images = StatePixels.frames(state).indices.compactMap {
+            SpriteImages.image(state, frame: $0, color: color)
+        }
+        layer.removeAnimation(forKey: "frames")
+        layer.contents = images.first
+        guard images.count > 1 else { return }
+        let animation = CAKeyframeAnimation(keyPath: "contents")
+        animation.values = images
+        animation.calculationMode = .discrete
+        animation.duration = Double(images.count) * StatePixels.frameDuration
+        animation.repeatCount = .infinity
+        animation.isRemovedOnCompletion = false
+        // In step with every other sprite: the cycle position is read off the
+        // media clock, the same for all of them.
+        animation.timeOffset = CACurrentMediaTime().truncatingRemainder(dividingBy: animation.duration)
+        layer.add(animation, forKey: "frames")
+    }
+}
+
+/// The frames of a state as 8×8 images in one colour.
+enum SpriteImages {
+    static func image(_ state: AttentionState, frame: Int, color: CGColor) -> CGImage? {
+        let side = StatePixels.size
+        guard let context = CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.setFillColor(color)
+        for cell in StatePixels.cells(state, frame: frame) {
+            // Row 0 is the top of the sprite; a bitmap context counts from the bottom.
+            context.fill(CGRect(x: cell.x, y: side - 1 - cell.y, width: 1, height: 1))
+        }
+        return context.makeImage()
     }
 }

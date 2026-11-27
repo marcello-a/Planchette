@@ -121,7 +121,9 @@ panel for the whole app, right of the tab and of the notepad, switched on in Set
 like the to-do board's button: `todosEnabled`, `jiraEnabled`). `JiraLook` (site, e-mail, the saved JQL
 queries, open, width) is persisted as `PersistedState.jira`; the API token is in the login Keychain
 (`Keychain`, service `app.planchette.jira`), never in `state.json`, and an isolated instance touches
-neither the Keychain nor Jira. `JiraTickets` is the pure part: the site normalised to https, the
+neither the Keychain nor Jira. The token is read from the Keychain once per launch and kept in memory
+(`KeychainCache`; a write updates it, a Deny is kept too): the release is signed ad hoc, so each build
+is a new app to the Keychain, and each read it was not "Always Allow"ed for asks for the login password. `JiraTickets` is the pure part: the site normalised to https, the
 `/rest/api/3/search/jql` request (a `+` in the JQL is escaped, or Jira reads a space), the parse and the
 errors. `Jira.swift` polls every five minutes and when the panel opens, single-flight, on its own
 `URLSession` that follows a redirect only on the same host (the token is in the header). The answers

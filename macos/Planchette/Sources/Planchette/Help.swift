@@ -126,6 +126,7 @@ enum Help {
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
             Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
+            Entry(.devServersTitle, .devServersEnableHelp, where: .helpWhereSettingsGeneral),
             Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereContextMenu),
         ]),
         Section(titleKey: .notificationsPanel, entries: [
@@ -208,6 +209,11 @@ enum Help {
             Entry(.autoUpdateCheck, .autoUpdateHelp, where: .helpWhereSettingsGeneral),
             Entry(.restoreAtLaunch, .restoreAtLaunchHelp, where: .helpWhereSettingsTerminals),
             Entry(.updateInstallOnQuit, .helpInstallOnQuitDetail),
+        ]),
+        Section(titleKey: .privacyTab, entries: [
+            Entry(.telemetryToggle, .telemetryToggleHelp, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryShowReport, .telemetryWhatNever, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryResetID, .telemetryResetIDHelp, where: .helpWhereSettingsPrivacy),
         ]),
     ]
 

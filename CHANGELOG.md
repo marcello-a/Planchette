@@ -9,6 +9,34 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
+  longer looks for running dev servers and shows no port chips — for projects that run none.
+
+### Changed
+- **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
+  SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
+  used about 26% of a core, now about 2%. The robots walk as before, all in step.
+
+### Fixed
+- **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
+  every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
+  for the login password every five minutes. It now reads the token once and keeps it in memory.
+  Choose "Always Allow", and the question comes only once after each update.
+- **Typing no longer lags in projects with listeners that are not web servers.** Every five
+  seconds, Planchette searched the whole scrollback of every terminal for the URL of each open
+  port, on the thread that handles your keys — and ports that never print one (port-forwards,
+  databases, Claude Code's own sockets) were searched again on every tick. A port is now
+  searched at most three times, and the search runs in the background.
+
+## [0.2.55] — 2026-11-26
+
+### Added
+- **Usage data and error reports, only if you say yes.** Planchette asks once. With your yes it
+  sends at most one report a day, only on a day you use it, to PostHog in the EU under a random
+  ID: how often each feature was used, how many windows, folders, projects, tabs and terminals
+  you have, which errors happened and where the app crashed. Never paths, names, titles, prompts
+  or terminal text. Settings → Privacy changes the answer and shows the last report word for
+  word. [What is sent](docs/TELEMETRY.md).
 - **Settings → Shortcuts shows every key of the app, and you can change the menu keys.** Click a
   shortcut and press the new keys; Esc cancels, Delete removes the shortcut, and an arrow resets
   it. A key that macOS, the terminal or another menu item already has is refused with the reason.

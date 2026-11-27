@@ -293,15 +293,16 @@ enum IDEs {
     /// outcome a user cannot debug.
     static func open(directory: String, in ide: IDE) {
         guard let path = target(directory: directory, for: ide) else {
-            NSLog("ide: \(ide.name) cannot open \(directory) — no project file")
+            Log.info("ide: \(ide.name) cannot open \(directory) — no project file")
             return
         }
         guard let appURL = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: ide.bundleID)
         else {
-            NSLog("ide: \(ide.name) not installed")
+            Log.info("ide: \(ide.name) not installed")
             return
         }
+        Telemetry.count(.ideOpened)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(
@@ -310,7 +311,7 @@ enum IDEs {
             configuration: configuration
         ) { app, error in
             if let error {
-                NSLog("ide: opening \(path) in \(ide.name) failed: \(error)")
+                Log.error("ide.open_failed", "ide: opening \(path) in \(ide.name) failed: \(error)")
                 return
             }
             guard let app else { return }
@@ -324,7 +325,7 @@ enum IDEs {
                 // leaving the user clicking a button that seems dead.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     guard !hasVisibleWindow(pid: app.processIdentifier) else { return }
-                    NSLog("ide: \(ide.name) has no window on this Space")
+                    Log.info("ide: \(ide.name) has no window on this Space")
                     // Two different dead ends, two different remedies: a window
                     // on another Space is one macOS checkbox away from working,
                     // a minimized one only the user can restore. Guessing which
