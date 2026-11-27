@@ -189,9 +189,12 @@ surface can be seen (in a window, and that window visible). Stock libghostty v1.
 skips the draw but still rebuilds the frame (`updateFrame`: the cells, under the terminal
 lock) on every wakeup of the renderer thread — each time a program in a background tab
 prints — and keeps one screen-sized render target per frame of its swap chain. Our patch
-(`vendor/patches/ghostty/0001-…`) skips `updateFrame` while hidden and runs it once when
-the surface becomes visible, and on hide shrinks the targets to 1×1 (Metal only; after
-waiting for the frames the GPU still draws). The first draw after that is a full one.
+(`vendor/patches/ghostty/0001-…`) skips `updateFrame` while hidden (once a first frame
+exists) and marks the frame stale; a stale frame is not drawn — not even from the layer's
+`display` callback on a resize — so the layer keeps what it showed until the first render
+after the surface is visible again updates and draws. After 5 s hidden, the targets shrink
+to 1×1 (Metal only; after waiting for the frames the GPU still draws): a tab switch or a
+re-attach, which hides and shows within a frame, frees nothing.
 
 **A surface needs an awake display.** libghostty's renderer creates a display link
 (`CVDisplayLinkCreateWithActiveCGDisplays`), which fails with zero active displays —
