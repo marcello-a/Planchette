@@ -6,7 +6,11 @@
 # label as $1 ("claude", "codex", …). We wrap it with the terminal identity
 # from $PLANCHETTE_SESSION (injected into every Planchette terminal, inherited
 # by the agent and thus by this hook) and send it to the app's unix socket.
-# Spike version — production will be a static binary with proper JSON handling.
+#
+# The packaged app installs the native helper (planchette-hook.c) under this name
+# wherever it runs — this script costs a shell, `cat` and `nc` per event — and this
+# script where it does not (HookInstaller.deployHook). The two must put the same bytes
+# on the socket: change one, change both, and run scripts/test-hook-helper.sh.
 #
 # Always exit 0: a missing/busy app must never block the agent.
 

@@ -19,7 +19,7 @@ Access control is the socket, enforced from both ends:
 - the app asks the kernel who is on the other end of every connection and drops
   anyone who is not the same user — the socket lives in `/tmp`, where a file name
   is not proof of anything;
-- the CLI and the hook script refuse to talk to a socket that another user owns,
+- the CLI and the hook forwarder refuse to talk to a socket that another user owns,
   because a request carries whatever an agent types into a terminal.
 
 ## Reaching it
@@ -477,4 +477,5 @@ print(call({"planchette_request": "notification.list", "unread_only": True}))
 | `macos/Planchette/Sources/Planchette/HookServer.swift` | the socket, and the split between hook events and requests |
 | `macos/Planchette/Sources/Planchette/AppState.swift` | `notificationSections` — the list panel and API share |
 | `hook/planchette` | the CLI (python3, no dependencies) |
+| `hook/planchette-hook.c`, `hook/planchette-hook` | the hook forwarder: the native helper the app installs, and the shell script it falls back to — the same bytes on the socket |
 | `skills/planchette/SKILL.md` | the short version, as an agent skill |

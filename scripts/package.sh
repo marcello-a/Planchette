@@ -21,6 +21,9 @@ GHOSTTY_SHARE="$ROOT/vendor/ghostty/zig-out/share/ghostty"
 DIST="$ROOT/dist"
 APP="$DIST/Planchette.app"
 BUNDLE_ID="build.planchette.app"
+# Ad-hoc. A Developer ID identity goes here (plus notarization); it signs the app
+# and the hook helper alike.
+SIGN_IDENTITY="-"
 
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
@@ -51,7 +54,12 @@ if [ -d "$GHOSTTY_SHARE/../terminfo" ]; then
     cp -R "$GHOSTTY_SHARE/../terminfo" "$APP/Contents/Resources/terminfo"
 fi
 [ -f "$PKG/Resources/AppIcon.icns" ] && cp "$PKG/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-# Bundle the Claude Code hook script so the app can auto-install it on launch.
+# The Claude Code hook forwarder, which the app installs on launch (HookInstaller.deployHook):
+# the native helper, universal and built warning-free from hook/planchette-hook.c, and the
+# shell script it replaces, installed instead where the helper does not run. Code goes in
+# Contents/Helpers, where codesign treats it as nested code, not as a resource file.
+mkdir -p "$APP/Contents/Helpers"
+sh "$ROOT/hook/build-hook-helper.sh" "$APP/Contents/Helpers/planchette-hook"
 cp "$ROOT/hook/planchette-hook" "$APP/Contents/Resources/planchette-hook"
 chmod +x "$APP/Contents/Resources/planchette-hook"
 # The control CLI agents use to drive Planchette (see skills/planchette).
@@ -91,7 +99,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 # 3. Ad-hoc codesign so Gatekeeper lets it run locally. For distribution to
-#    others, replace with a Developer ID identity + notarization.
+#    others, set SIGN_IDENTITY to a Developer ID identity and notarize.
 # Ad-hoc signing must succeed: Apple Silicon SIGKILLs an unsigned arm64 binary
 # at exec, so a build that skipped signing would ship an app that cannot launch.
 # Fail the build rather than publish it.
@@ -102,14 +110,30 @@ PLIST
 # on that requirement: each update became a new app, and every terminal asked for
 # its folders again. With the identifier, an answer survives updates. The price:
 # any ad-hoc app that claims this identifier matches too — only a Developer ID
-# signature (team-bound requirement) closes that. No --deep: the bundle has no
-# nested code, and --deep would stamp this requirement on any that is added.
-codesign --force --sign - -r="designated => identifier \"$BUNDLE_ID\"" "$APP" || {
+# signature (team-bound requirement) closes that. No --deep: it would stamp the app's
+# requirement on the nested hook helper too. The helper is signed first, on its own and
+# with its own identifier; the app's signature then seals it as nested code.
+HELPER="$APP/Contents/Helpers/planchette-hook"
+codesign --force --sign "$SIGN_IDENTITY" -i "$BUNDLE_ID.hook" \
+    -r="designated => identifier \"$BUNDLE_ID.hook\"" "$HELPER" || {
+    echo "codesign of the hook helper failed — refusing to package an unsigned bundle" >&2
+    exit 1
+}
+codesign --force --sign "$SIGN_IDENTITY" -r="designated => identifier \"$BUNDLE_ID\"" "$APP" || {
     echo "codesign failed — refusing to package an unsigned bundle" >&2
+    exit 1
+}
+codesign --verify --strict "$APP" || {
+    echo "the signed bundle does not verify (is the hook helper sealed?)" >&2
     exit 1
 }
 codesign -d -r- "$APP" 2>&1 | grep -qF "designated => identifier \"$BUNDLE_ID\"" || {
     echo "codesign did not pin the designated requirement — every update would ask for permissions again" >&2
+    exit 1
+}
+# The signed helper must start: without PLANCHETTE_SESSION it is a no-op that exits 0.
+env -i "$HELPER" claude < /dev/null || {
+    echo "the signed hook helper does not run" >&2
     exit 1
 }
 

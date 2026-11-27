@@ -37,3 +37,8 @@ jobs:
 
       - name: Test the libghostty patches
         run: sh scripts/test-ghostty-patches.sh
+
+      # Builds the hook helper as package.sh does (universal, warnings are errors) and
+      # runs it against the shell script it replaces, byte for byte.
+      - name: Test the native hook forwarder
+        run: sh scripts/test-hook-helper.sh

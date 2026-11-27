@@ -88,6 +88,13 @@ helper gets a test. Keep them green on a slow machine: git in a fixture through
 `fixtureGit`, order and progress asserted, never a time limit (AGENTS.md →
 "Tests must survive a slow machine").
 
+The hook forwarder has a test of its own, which CI also runs:
+
+```sh
+sh scripts/test-hook-helper.sh             # the native helper against the shell script, byte for byte
+sh scripts/test-hook-helper.sh --bench 200 # CPU per event of each
+```
+
 **Drive the app for what unit tests cannot see.** `scripts/perf/` starts an
 isolated instance and checks the real thing; read its README ("Safety") first:
 
@@ -146,7 +153,10 @@ command or a response field that changes there changes in the same commit, and t
 (`HookInstaller`: the forwarder into `~/.claude/settings.json`, and into
 `~/.codex/hooks.json` when `~/.codex` exists), with a backup and through symlinks
 into a dotfiles repo. `hook/install-hooks.sh` is the manual route. The hook is a
-no-op outside Planchette terminals, so it is safe to leave installed.
+no-op outside Planchette terminals, so it is safe to leave installed. The forwarder
+the hooks run is the native helper (`hook/planchette-hook.c`) where it runs and the shell
+script (`hook/planchette-hook`) otherwise, under the same name; a change to one is a
+change to both, and `scripts/test-hook-helper.sh` holds them to the same bytes.
 
 **The default `review-pr` skill** lives in `skills/review-pr` and is bundled into the
 app. A user without a skill of that name gets it installed at the first review; it is
@@ -165,8 +175,10 @@ sh scripts/package.sh            # → dist/Planchette.app, .dmg, .zip and SHA25
 ```
 
 The `.zip` is what the in-app updater downloads, checked against `SHA256SUMS`. The
-bundle carries the Ghostty resources and terminfo, the hook and the `planchette` CLI,
-the screen rules, the hint pictures and the default `review-pr` skill.
+bundle carries the Ghostty resources and terminfo, the hook forwarder (the native
+helper, universal and signed in `Contents/Helpers`, and the shell script) and the
+`planchette` CLI, the screen rules, the hint pictures and the default `review-pr` skill.
+Building the helper needs only the Xcode / Command Line Tools `clang`.
 
 `scripts/install.sh` is the user-facing counterpart: it pulls the latest release,
 verifies it against `SHA256SUMS`, installs it and clears the quarantine flag.
@@ -174,8 +186,8 @@ Keep it working when the release assets change — the README points people at i
 as the primary install route.
 
 The app is ad-hoc signed (runs locally). Distributing to other machines needs a
-Developer ID identity + notarization — replace the `codesign` line in
-`scripts/package.sh`.
+Developer ID identity + notarization — set `SIGN_IDENTITY` in `scripts/package.sh`,
+which signs the hook helper and the app with it.
 
 The ad-hoc signature carries a designated requirement pinned to the bundle identifier
 (`designated => identifier "build.planchette.app"`), and `package.sh` fails the build

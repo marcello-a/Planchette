@@ -48,11 +48,14 @@ enum Subprocess {
         in directory: String? = nil,
         timeout: TimeInterval = 15,
         stderr stderrMode: Stderr = .discard,
-        input: Data? = nil
+        input: Data? = nil,
+        environment: [String: String]? = nil
     ) -> Output? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        // nil inherits the app's environment; a dictionary replaces it whole.
+        if let environment { process.environment = environment }
         if let directory { process.currentDirectoryURL = URL(fileURLWithPath: directory) }
         // A helper must never wait for a keyboard the app does not have: without
         // `input` it reads /dev/null, with it a pipe that is closed once written.

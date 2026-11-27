@@ -490,7 +490,7 @@ final class HookServerIOTests: XCTestCase {
 /// A one-shot unix-socket server for driving the shipped scripts. Binds a short
 /// path in /tmp (sun_path is only 104 bytes), accepts once, reads to EOF, and
 /// optionally answers.
-private final class FakeApp {
+final class FakeApp {
     let path = "/tmp/plt-\(UUID().uuidString.prefix(8)).sock"
     private var listener: Int32 = -1
     private let done = DispatchSemaphore(value: 0)
@@ -3136,7 +3136,7 @@ final class SubprocessInputTests: XCTestCase {
 
 /// Accepts one connection and holds it, reading nothing and closing nothing, until
 /// `release()`: an app that took the event and stalls.
-private final class StalledApp {
+final class StalledApp {
     let path = "/tmp/plt-\(UUID().uuidString.prefix(8)).sock"
     private var listener: Int32 = -1
     private var client: Int32 = -1

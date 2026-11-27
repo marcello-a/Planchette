@@ -102,8 +102,11 @@ The socket API and the `planchette` CLI have their own manual:
 [docs/API.md](docs/API.md). It is the contract other programs read, so a command
 or a response field that changes has to change there in the same commit.
 
-`hook/planchette-hook` is the tiny shell binary Claude Code invokes; it forwards
-the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
+`~/.planchette/planchette-hook` is what Claude Code invokes on every hook event; it
+forwards the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket. It is one
+of two programs under that one name: the native helper `hook/planchette-hook.c`
+(built by `hook/build-hook-helper.sh`, shipped in `Contents/Helpers`), or the shell
+script `hook/planchette-hook` where the helper does not run (`HookInstaller.deployHook`).
 
 ## Non-obvious things that will bite you
 
@@ -350,6 +353,16 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   OSC 52 *write* must not complete at all (it would write `""` over the user's
   clipboard). Never complete from inside the callback that reported the request —
   hop to the main queue first.
+- **The hook forwarder exists twice and must send the same bytes.** Claude Code runs it on
+  every tool call of every agent, so it is C (`hook/planchette-hook.c`: one process, about
+  2.4 ms of CPU against the script's 15–17 ms), and the shell script `hook/planchette-hook` stays as
+  the fallback the app installs where the helper does not run. A change to one is a change to
+  both: `scripts/test-hook-helper.sh` runs them side by side against fake sockets and compares
+  every byte (CI runs it). Both live under the one name `~/.planchette/planchette-hook`, so the
+  command in `settings.json` never changes — an update needs no config write, and a downgraded
+  app recognizes the command and puts its script back. `deployHook` runs a new helper once
+  before it renames it into place; never write it over the old file (macOS caches a binary's
+  signature per file and kills the next start of one rewritten in place).
 - **Anything that talks to the socket checks who owns it.** The socket is in
   `/tmp`; the hook, the CLI and the click command refuse a socket another user
   owns *and refuse a symlink* (it can be swapped for another listener between the

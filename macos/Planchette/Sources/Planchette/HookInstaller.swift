@@ -44,7 +44,8 @@ enum HookInstaller {
     /// installing — see the note above.
     static let codexEvents = ["SessionStart"]
 
-    /// Stable path for the hook script. Deliberately a space-free path under
+    /// Stable path for the hook forwarder — the native helper or the script, under
+    /// one name (see `deployHook`). Deliberately a space-free path under
     /// ~/.planchette: agents run the hook command through the shell, and a
     /// space (e.g. "Application Support") would break the unquoted path.
     static var hookScriptURL: URL {
@@ -81,7 +82,7 @@ enum HookInstaller {
 
     static func installIfNeeded() {
         do {
-            try deployScript()
+            try deployHook()
             try deployCLI()
         } catch {
             Log.error("hook-install.failed", "hook install failed: \(error)")
@@ -90,7 +91,7 @@ enum HookInstaller {
         }
         // One bad config must not stop the other agents from being wired up.
         do {
-            // Only wire up settings if the hook script is actually deployed.
+            // Only wire up settings if the hook forwarder is actually deployed.
             if FileManager.default.fileExists(atPath: hookScriptURL.path) {
                 let settings = FileManager.default.homeDirectoryForCurrentUser
                     .appendingPathComponent(".claude/settings.json")
@@ -136,18 +137,125 @@ enum HookInstaller {
     /// `hook/install-hooks.sh` instead).
     static func deploy(_ name: String, to dest: URL, from bundle: Bundle = .main) throws {
         guard let bundled = bundledResource(named: name, in: bundle) else { return }
-        let fm = FileManager.default
-        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
-            try? fm.removeItem(at: dest)
-            try fm.copyItem(at: bundled, to: dest)
-        }
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+        try install(try Data(contentsOf: bundled), at: dest)
     }
 
-    private static func deployScript() throws { try deploy("planchette-hook", to: hookScriptURL) }
+    // MARK: The hook forwarder — native helper or shell script
 
-    /// Same refresh-every-launch deal as the hook script.
+    /// What `~/.planchette/planchette-hook` is after `deployHook`.
+    enum HookForwarder: Equatable {
+        /// The compiled helper (`hook/planchette-hook.c`): one process per event.
+        case native
+        /// The shell script (`hook/planchette-hook`): a shell, `cat` and `nc` per event.
+        case script
+        /// Nothing deployed: a dev run, which has no bundle.
+        case none
+    }
+
+    /// The compiled forwarder inside the app. Code lives in `Contents/Helpers`, not
+    /// in `Resources`: it is signed on its own and sealed into the app's signature as
+    /// nested code (scripts/package.sh).
+    static func bundledHelper(in bundle: Bundle = .main) -> URL? {
+        guard bundle.bundleURL.pathExtension == "app" else { return nil }
+        let url = bundle.bundleURL.appendingPathComponent("Contents/Helpers/planchette-hook")
+        return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
+    }
+
+    /// Put the hook forwarder at `dest`: the native helper when the app carries one
+    /// and it runs on this Mac, the shell script otherwise.
+    ///
+    /// Claude Code runs the forwarder on every hook event of every agent, and the
+    /// script cost 15–17 ms of CPU per event (a shell, `cat`, `nc`); the helper
+    /// does the same in one process, about 2.4 ms. The choice is made here, once per
+    /// launch, rather than by a wrapper at every event: a `/bin/sh` wrapper that
+    /// execs the helper starts a shell each time and came to about 6.4 ms, giving
+    /// back a third of the saving (`scripts/test-hook-helper.sh --bench`).
+    ///
+    /// Both are installed under the same name, so the command in the agents'
+    /// configs never changes: an update needs no rewrite of `settings.json`, and an
+    /// older Planchette after a downgrade finds its own command there and puts its
+    /// script back over the helper. A new helper is first written next to `dest`
+    /// and run once (`runs`); only one that ran is renamed into place, so a helper
+    /// macOS refuses to start (quarantine, a broken signature, a CPU it was not
+    /// built for) never becomes the hook — the script does. The rename is atomic:
+    /// an agent firing a hook meanwhile finds the old file or the new one, never
+    /// none.
+    @discardableResult
+    static func deployHook(
+        from bundle: Bundle = .main, to dest: URL = hookScriptURL,
+        runs: (URL) -> Bool = helperRuns
+    ) throws -> HookForwarder {
+        guard bundle.bundleURL.pathExtension == "app" else { return .none }
+        if let helper = bundledHelper(in: bundle), let binary = try? Data(contentsOf: helper) {
+            if (try? Data(contentsOf: dest)) == binary {
+                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+                return .native
+            }
+            let staged = try stage(binary, next: dest)
+            if runs(staged) {
+                try commit(staged, to: dest)
+                Log.info("hook install: native hook forwarder installed at \(dest.path)")
+                return .native
+            }
+            try? FileManager.default.removeItem(at: staged)
+            Log.error("hook-install.helper_refused",
+                      "hook install: the native hook forwarder did not run on this Mac; using the shell script")
+        }
+        guard let script = bundledResource(named: "planchette-hook", in: bundle) else { return .none }
+        try install(try Data(contentsOf: script), at: dest)
+        return .script
+    }
+
+    /// True when the helper at `url` starts and does its no-op: without
+    /// `PLANCHETTE_SESSION` it must exit 0 at once. A helper the system refuses to
+    /// run is killed or never starts, and fails this. The environment is replaced,
+    /// not inherited: a dev run started from a Planchette terminal carries a real
+    /// `PLANCHETTE_SESSION`, and the probe must not send an event.
+    static func helperRuns(_ url: URL) -> Bool {
+        guard let result = Subprocess.run(
+            url.path, ["claude"], timeout: 10, input: Data(), environment: ["PATH": "/usr/bin:/bin"])
+        else { return false }
+        return result.succeeded
+    }
+
+    /// Write `data` to `dest` (mode 0755) unless it is already there, through a
+    /// temporary file and a rename.
+    static func install(_ data: Data, at dest: URL) throws {
+        if (try? Data(contentsOf: dest)) == data {
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+            return
+        }
+        try commit(try stage(data, next: dest), to: dest)
+    }
+
+    /// `data` in a new executable file beside `dest`. A new file, not an overwrite:
+    /// macOS caches a binary's signature per file, and rewriting a signed binary in
+    /// place gets the next start of it killed. Written from the bytes rather than
+    /// copied, so no extended attribute of the bundle (a quarantine flag) comes along.
+    private static func stage(_ data: Data, next dest: URL) throws -> URL {
+        let fm = FileManager.default
+        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let staged = dest.deletingLastPathComponent()
+            .appendingPathComponent(".\(dest.lastPathComponent).\(UUID().uuidString).tmp")
+        do {
+            try data.write(to: staged)
+            try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: staged.path)
+        } catch {
+            try? fm.removeItem(at: staged)
+            throw error
+        }
+        return staged
+    }
+
+    private static func commit(_ staged: URL, to dest: URL) throws {
+        guard rename(staged.path, dest.path) == 0 else {
+            let code = errno
+            try? FileManager.default.removeItem(at: staged)
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(code))
+        }
+    }
+
+    /// Same refresh-every-launch deal as the hook forwarder.
     private static func deployCLI() throws { try deploy("planchette", to: cliURL) }
 
     // MARK: Claude Code — ~/.claude/settings.json
