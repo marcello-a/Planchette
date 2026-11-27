@@ -127,19 +127,22 @@ enum Durable {
         # bindings go: the selection stays until the next click, and any key
         # leaves copy mode and still reaches the program (`Any` runs for every
         # key without its own binding; a bare send-keys resends that key).
-        # The other mouse events are bound to a no-op so `Any` cannot see
-        # them: a click into scrolled-back history must not jump to the end.
+        # A mouse event `Any` sees (⌥-click, a sideways wheel, which has no key
+        # name to bind) is no typing and leaves the view where it is. A click at
+        # the bottom leaves copy mode — its view is a snapshot, and the pane
+        # would stay frozen until a key, which goes to the agent — while a
+        # click in scrolled-back history only clears the selection.
         set -g mode-keys emacs
         unbind -T copy-mode -a
         bind -T copy-mode WheelUpPane select-pane \\; send -X -N 5 scroll-up
         bind -T copy-mode WheelDownPane select-pane \\; send -X -N 5 scroll-down
-        bind -T copy-mode MouseDown1Pane select-pane \\; send -X clear-selection
+        bind -T copy-mode MouseDown1Pane select-pane \\; if -F '#{==:#{scroll_position},0}' { send -X cancel } { send -X clear-selection }
         bind -T copy-mode MouseDrag1Pane select-pane \\; send -X begin-selection
         bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear
         bind -T copy-mode DoubleClick1Pane select-pane \\; send -X select-word \\; send -X copy-pipe-no-clear
         bind -T copy-mode TripleClick1Pane select-pane \\; send -X select-line \\; send -X copy-pipe-no-clear
         \(mouseNoOps.map { "bind -T copy-mode \($0) select-pane" }.joined(separator: "\n"))
-        bind -T copy-mode Any send -X cancel \\; send-keys
+        bind -T copy-mode Any if -F '#{!=:#{mouse_x},}' { select-pane } { send -X cancel ; send-keys }
         bind -n DoubleClick1Pane select-pane -t = \\; if -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send -M } { copy-mode -H ; send -X select-word ; send -X copy-pipe-no-clear }
         bind -n TripleClick1Pane select-pane -t = \\; if -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send -M } { copy-mode -H ; send -X select-line ; send -X copy-pipe-no-clear }
 
@@ -463,7 +466,10 @@ enum Durable {
     static func parsePanes(_ output: String) -> [UUID: Pane] {
         var panes: [UUID: Pane] = [:]
         for line in output.components(separatedBy: "\n") {
-            let fields = line.split(separator: " ", maxSplits: 2).map(String.init)
+            // An empty name (tmux could not name the process) is kept as empty, not dropped:
+            // the pane is there, and a dropped pane would read as its program going away.
+            let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
+                .map(String.init)
             guard fields.count == 3, fields[0].hasPrefix("planchette-"),
                   let id = UUID(uuidString: String(fields[0].dropFirst("planchette-".count))),
                   let pid = Int32(fields[1])
@@ -495,6 +501,14 @@ enum Durable {
         return children.mapValues { $0.joined(separator: " | ") }
     }
 
+    /// Programs whose command line can make them a tunnel to a database (`isDatabase`): the
+    /// only ones worth a `ps`.
+    static let tunnelCommands: Set<String> = ["kubectl", "oc", "ssh"]
+
+    /// Process names an agent can run under besides its own (an npm-installed Claude is `node`):
+    /// after a restart such a pane may still be the agent that ran there.
+    static let agentHosts: Set<String> = ["node", "bun", "deno", "python", "python3", "Python"]
+
     /// Database clients and servers, by process name.
     static let databaseClients: Set<String> = [
         "psql", "pgcli", "postgres", "mysql", "mysqld", "mariadb", "mycli",
@@ -510,8 +524,11 @@ enum Durable {
         if command.hasPrefix("cloud-sql-proxy") || command.hasPrefix("cloud_sql_proxy") { return true }
         guard let original = arguments else { return false }
         // `-L` is a tunnel and `-l` a login name: ssh's flags are read before anything is lowercased.
+        // Only flags without a value may stand before the L (`-NL`, `-fNL`): in `-oLogLevel=…`
+        // the L belongs to the option's value.
         let tunnel = (["kubectl", "oc"].contains(command) && original.contains("port-forward"))
-            || (command == "ssh" && original.range(of: #"(^|\s)-\w*L"#, options: .regularExpression) != nil)
+            || (command == "ssh"
+                && original.range(of: #"(^|\s)-[46AaCfGgKkMNnqsTtVvXxYy]*L"#, options: .regularExpression) != nil)
         guard tunnel else { return false }
         let arguments = original.lowercased()
         let word = #"postgres|mysql|mariadb|redis|mongo|elastic|database|\bdb\b"#

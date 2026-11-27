@@ -34,11 +34,15 @@ struct DevServer: Identifiable, Equatable {
 /// of the scrollback. Most listeners never print a URL (port-forwards,
 /// databases, agents' own sockets); searching them on every tick copied and
 /// scanned every terminal's whole buffer for nothing and made typing lag. So a
-/// port gets `maxTries` searches — a banner can follow its port by a moment —
-/// and everything about a port is forgotten when it goes away, so a new
-/// process on it starts over.
+/// port gets `maxTries` searches in a row — a banner can follow its port by a
+/// moment — and after that one every `retryInterval`: some servers open the
+/// port first and print the address only after their first build (Create React
+/// App, Storybook), which on a big project takes a minute or more. Everything
+/// about a port is forgotten when it goes away, so a new process on it starts over.
 struct ServerURLLookups: Equatable {
     static let maxTries = 3
+    /// How long an unresolved port waits between searches after its first `maxTries`.
+    static let retryInterval: TimeInterval = 60
 
     /// Addresses already learned, keyed by port. Kept because a banner scrolls
     /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
@@ -46,15 +50,20 @@ struct ServerURLLookups: Equatable {
     private(set) var urls: [Int: URL] = [:]
     /// Searches per port that found nothing yet.
     private(set) var tries: [Int: Int] = [:]
+    /// When each unresolved port was last searched.
+    private(set) var lastTry: [Int: Date] = [:]
 
     /// Whether this port's scrollback should be searched now.
-    func isDue(_ port: Int) -> Bool {
-        urls[port] == nil && (tries[port] ?? 0) < Self.maxTries
+    func isDue(_ port: Int, now: Date = Date()) -> Bool {
+        guard urls[port] == nil else { return false }
+        return (tries[port] ?? 0) < Self.maxTries
+            || now.timeIntervalSince(lastTry[port] ?? .distantPast) >= Self.retryInterval
     }
 
     /// A search for this port is starting.
-    mutating func recordTry(_ port: Int) {
+    mutating func recordTry(_ port: Int, now: Date = Date()) {
         tries[port, default: 0] += 1
+        lastTry[port] = now
     }
 
     /// Store what a search found, for ports still served when it came back:
@@ -63,6 +72,7 @@ struct ServerURLLookups: Equatable {
         for (port, url) in found where livePorts.contains(port) {
             urls[port] = url
             tries[port] = nil
+            lastTry[port] = nil
         }
     }
 
@@ -70,6 +80,7 @@ struct ServerURLLookups: Equatable {
     mutating func keep(livePorts: Set<Int>) {
         urls = urls.filter { livePorts.contains($0.key) }
         tries = tries.filter { livePorts.contains($0.key) }
+        lastTry = lastTry.filter { livePorts.contains($0.key) }
     }
 }
 

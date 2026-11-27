@@ -473,7 +473,10 @@ final class DurableTests: XCTestCase {
         let c = Durable.configContents
         XCTAssertTrue(c.contains("bind -T copy-mode MouseDragEnd1Pane send -X copy-pipe-no-clear"))
         XCTAssertFalse(c.contains("copy-pipe-and-cancel"))
-        XCTAssertTrue(c.contains("bind -T copy-mode Any send -X cancel \\; send-keys"))
+        XCTAssertTrue(c.contains("bind -T copy-mode Any if -F '#{!=:#{mouse_x},}' { select-pane } { send -X cancel ; send-keys }"),
+                      "a key leaves copy mode and reaches the program; a mouse event does neither")
+        XCTAssertTrue(c.contains("#{==:#{scroll_position},0}' { send -X cancel }"),
+                      "a click at the bottom leaves copy mode: its view is a frozen snapshot")
         for event in ["MouseUp1Pane", "SecondClick1Pane", "MouseDown2Pane", "MouseDragEnd3Pane"] {
             XCTAssertTrue(c.contains("bind -T copy-mode \(event) select-pane"),
                           "\(event) must not reach the Any binding")
@@ -2626,6 +2629,15 @@ final class HelpTests: XCTestCase {
         }
     }
 
+    // The Help tab lists each section with ForEach: two entries with one id make SwiftUI
+    // draw one of them twice or drop it (the dev-server title stood in two places).
+    func testEveryEntryHasItsOwnID() {
+        for section in Help.sections {
+            let ids = section.entries.map(\.id)
+            XCTAssertEqual(Set(ids).count, ids.count, "duplicate id in \(section.titleKey)")
+        }
+    }
+
     func testSearchMatchesTitleAndDetail() {
         L10n.current = .en
         XCTAssertFalse(Help.sections(matching: "folder").isEmpty)
@@ -3052,6 +3064,18 @@ final class IDEOpenProjectTests: XCTestCase {
             markers: [".idea", ".cursor"], defaultBundleID: nil, running: [phpstorm.bundleID],
             installed: [cursor, phpstorm], alreadyOpenIn: [cursor.bundleID, phpstorm.bundleID])
         XCTAssertEqual(target, phpstorm)
+    }
+
+    // With no IDE running and nothing else to go on, the IDE whose state file lists the
+    // project is still the best guess: without it "Look at code" asked, and a ⌘-clicked
+    // path opened in the file type's default app.
+    func testWithNothingRunningAClosedIDEsListingIsTheLastClue() {
+        let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+        let cursor = IDEs.known.first { $0.name == "Cursor" }!
+        let target = IDEs.resolve(
+            markers: [], defaultBundleID: nil, running: [],
+            installed: [vscode, cursor], alreadyOpenIn: [cursor.bundleID])
+        XCTAssertEqual(target, cursor)
     }
 
     func testAmongSeveralOpenTheEvidenceDecidesNotTheListOrder() {

@@ -17,6 +17,22 @@ final class ServerURLLookupsTests: XCTestCase {
         XCTAssertFalse(lookups.isDue(3306), "no search after \(ServerURLLookups.maxTries) misses")
     }
 
+    // Create React App and Storybook print their address only after the first build,
+    // which can take a minute: a port that missed its first searches is searched again, slowly.
+    func testAnUnresolvedPortIsSearchedAgainAfterTheRetryInterval() {
+        var lookups = ServerURLLookups()
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        for attempt in 0..<ServerURLLookups.maxTries {
+            lookups.recordTry(3000, now: start.addingTimeInterval(Double(attempt) * 5))
+        }
+        let last = start.addingTimeInterval(Double(ServerURLLookups.maxTries - 1) * 5)
+        XCTAssertFalse(lookups.isDue(3000, now: last.addingTimeInterval(ServerURLLookups.retryInterval - 1)))
+        XCTAssertTrue(lookups.isDue(3000, now: last.addingTimeInterval(ServerURLLookups.retryInterval)))
+        lookups.recordTry(3000, now: last.addingTimeInterval(ServerURLLookups.retryInterval))
+        XCTAssertFalse(lookups.isDue(3000, now: last.addingTimeInterval(ServerURLLookups.retryInterval + 5)),
+                       "one search a minute, not one a tick")
+    }
+
     func testTriesAreCountedPerPort() {
         var lookups = ServerURLLookups()
         for _ in 1...ServerURLLookups.maxTries { lookups.recordTry(3306) }

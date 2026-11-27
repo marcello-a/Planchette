@@ -447,17 +447,28 @@ final class GhosttySurfaceNSView: NSView {
     /// while it is on libghostty only looks for links with Shift held — so ⌘-click
     /// on a URL or a printed path did nothing there, only ⌘⇧-click did. libghostty
     /// drops that Shift again before matching the link's ⌘. Not in a plain
-    /// terminal, where nothing reports the mouse and the Shift would spoil the match.
+    /// terminal, where nothing reports the mouse and the Shift would spoil the match,
+    /// and only while the mouse is reported (not on tmux's `[exited]` screen).
     private func mouseMods(_ event: NSEvent) -> ghostty_input_mods_e {
         var flags = event.modifierFlags
-        if isDurableTerminal, flags.contains(.command), !flags.contains(.control), !flags.contains(.option) {
-            flags.insert(.shift)
-        }
+        if addsShift(flags) { flags.insert(.shift) }
         return flags.ghosttyMods
+    }
+
+    /// The press's answer, kept until its release: a ⌘ pressed or let go in the
+    /// middle of a drag must not turn a press tmux saw into a release it never sees.
+    private var pressAddsShift: Bool?
+
+    private func addsShift(_ flags: NSEvent.ModifierFlags) -> Bool {
+        if let pressAddsShift { return pressAddsShift }
+        guard isDurableTerminal, let surface, ghostty_surface_mouse_captured(surface) else { return false }
+        return flags.contains(.command) && !flags.contains(.control) && !flags.contains(.option)
     }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        pressAddsShift = nil
+        pressAddsShift = addsShift(event.modifierFlags)
         sendMousePos(event)   // position first → click lands where clicked
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
@@ -465,6 +476,7 @@ final class GhosttySurfaceNSView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        defer { pressAddsShift = nil }
         sendMousePos(event)
         guard let surface else { return }
         _ = ghostty_surface_mouse_button(
@@ -609,6 +621,11 @@ final class GhosttySurfaceNSView: NSView {
 
     override func scrollWheel(with event: NSEvent) {
         guard let surface else { return }
+        // The wheel reports the modifiers of the last pointer event. After a move
+        // with ⌘ held that was ⌘ as Shift (`mouseMods`), and tmux has no binding
+        // for a Shift wheel: scrolling did nothing. The real ones, first.
+        let pos = convert(event.locationInWindow, from: nil)
+        ghostty_surface_mouse_pos(surface, pos.x, frame.height - pos.y, event.modifierFlags.ghosttyMods)
         var mods: Int32 = 0
         if event.hasPreciseScrollingDeltas { mods |= 1 }
         ghostty_surface_mouse_scroll(

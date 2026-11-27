@@ -50,7 +50,7 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   seconds, Planchette searched the whole scrollback of every terminal for the URL of each open
   port, on the thread that handles your keys — and ports that never print one (port-forwards,
   databases, Claude Code's own sockets) were searched again on every tick. A port is now
-  searched at most three times, and the search runs in the background.
+  searched three times in a row and then once a minute, and the search runs in the background.
 - **Text selected with the mouse in a durable terminal stays selected.** tmux copied it on release
   and dropped the selection at once, so it vanished under the pointer. The selection now stays
   until the next click; it is still on the clipboard as soon as you let go. Typing clears it and
