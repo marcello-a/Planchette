@@ -346,7 +346,7 @@ enum IDEs {
     /// IDE takes a moment to exit.
     static func open(file: String, line: Int?, column: Int?, in ide: IDE) {
         guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: ide.bundleID) else {
-            NSLog("ide: \(ide.name) not installed")
+            Log.info("ide: \(ide.name) not installed")
             return
         }
         let request = FileOpenRequest.make(
@@ -364,10 +364,10 @@ enum IDEs {
                 do {
                     try process.run()
                 } catch {
-                    NSLog("ide: \(ide.name) launcher failed: \(error)")
+                    Log.error("ide.launcher_failed", "ide: \(ide.name) launcher failed: \(error)")
                 }
             }
-            activate(appURL: appURL)
+            raiseOnceHandedOver(ide)
         case .url(let url):
             NSWorkspace.shared.open(url)
         case .launcher, .plain:
@@ -377,17 +377,20 @@ enum IDEs {
             NSWorkspace.shared.open(
                 [URL(fileURLWithPath: file)], withApplicationAt: appURL, configuration: configuration
             ) { _, error in
-                if let error { NSLog("ide: opening \(file) in \(ide.name) failed: \(error)") }
+                if let error { Log.error("ide.open_failed", "ide: opening \(file) in \(ide.name) failed: \(error)") }
             }
         }
     }
 
     /// Bring a running IDE forward once its launcher has handed over the file.
-    private static func activate(appURL: URL) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.activates = true
+    /// Only one that runs: opening the bundle while the launcher still starts the
+    /// IDE could start a second copy, and an IDE that starts comes to the front
+    /// on its own.
+    private static func raiseOnceHandedOver(_ ide: IDE) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            NSWorkspace.shared.openApplication(at: appURL, configuration: configuration) { _, _ in }
+            guard let app = NSRunningApplication.runningApplications(
+                withBundleIdentifier: ide.bundleID).first else { return }
+            raise(app)
         }
     }
 

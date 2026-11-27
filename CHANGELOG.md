@@ -11,11 +11,22 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ### Added
 - **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
   longer looks for running dev servers and shows no port chips — for projects that run none.
+- **⌘-click a path a program printed to open it at its line in your IDE.** `src/Foo.php:42` or
+  `web/app.ts:3:7` opens in the IDE "Look at code" uses for that project (PhpStorm and the other
+  JetBrains IDEs, VS Code, Cursor, Windsurf, Zed, Sublime Text, Xcode). A path printed inside a
+  container or a VM, such as `/var/www/html/src/Foo.php` from tests run in a pod, finds its file
+  in the project. Before, a click on a path did nothing.
+- **⌘-click opens links in durable terminals.** tmux keeps mouse reporting on, and then only
+  ⌘⇧-click reached a link; ⌘ alone does now, for web links as well as paths.
 
 ### Changed
 - **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
   SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
   used about 26% of a core, now about 2%. The robots walk as before, all in step.
+- **"Look at code" no longer picks an IDE that is closed.** An IDE that quit with the project open
+  still counted as showing it, and among several the first in the list won — a closed Cursor
+  took the click from a running PhpStorm. Only a running IDE counts as open now, and among
+  several the checkout's marker and the IDE you last used decide.
 
 ### Fixed
 - **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
@@ -46,19 +57,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   one place.
 - **A tag in the project panel has an × when you point at it.** Click it to take the tag off
   the terminal.
-- **⌘-click a path a program printed to open it at its line in your IDE.** `src/Foo.php:42` or
-  `web/app.ts:3:7` opens in the IDE "Look at code" uses for that project (PhpStorm and the other
-  JetBrains IDEs, VS Code, Cursor, Windsurf, Zed, Sublime Text, Xcode). A path printed inside a
-  container or a VM, such as `/var/www/html/src/Foo.php` from tests run in a pod, finds its file
-  in the project. Before, a click on a path did nothing.
-- **⌘-click opens links in durable terminals.** tmux keeps mouse reporting on, and then only
-  ⌘⇧-click reached a link; ⌘ alone does now, for web links as well as paths.
 
 ### Changed
-- **"Look at code" no longer picks an IDE that is closed.** An IDE that quit with the project open
-  still counted as showing it, and among several the first in the list won — a closed Cursor
-  took the click from a running PhpStorm. Only a running IDE counts as open now, and among
-  several the checkout's marker and the IDE you last used decide.
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
 

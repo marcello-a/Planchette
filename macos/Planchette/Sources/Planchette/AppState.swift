@@ -1525,7 +1525,7 @@ final class AppState: ObservableObject {
             link.path, cwd: cwd, project: group.flatMap(projectDirectory(of:)),
             home: NSHomeDirectory(), isFile: isFile)
         else {
-            NSLog("file link: no file for \(link.path)")
+            Log.info("file link: no file for \(link.path)")
             return
         }
         if let group, let ide = fileLinkIDE(for: group) {
