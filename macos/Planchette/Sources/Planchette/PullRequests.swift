@@ -120,6 +120,9 @@ enum PullRequests {
         let directory: String
         let branch: String
         var ids: [UUID]
+        /// The checkout's root folder (where `.git` is), nil outside a repository: the key
+        /// of the repository `gh` names for it (`RepoCache`).
+        var root: String? = nil
     }
 
     /// The lookups of a sweep. Terminals in one checkout on one branch share a
@@ -135,7 +138,8 @@ enum PullRequests {
         for terminal in terminals where isWorkBranch(terminal.branch) && !terminal.directory.isEmpty {
             let key = "\(terminal.root ?? terminal.directory)\u{0}\(terminal.branch)"
             if byKey[key] == nil {
-                byKey[key] = Checkout(directory: terminal.directory, branch: terminal.branch, ids: [])
+                byKey[key] = Checkout(directory: terminal.directory, branch: terminal.branch, ids: [],
+                                      root: terminal.root)
                 order.append(key)
             }
             byKey[key]?.ids.append(terminal.id)
@@ -349,89 +353,159 @@ enum PullRequests {
     /// No failure is an alert: no `gh`, no login, no network all mean "no pill".
     static func lookup(branch: String, in directory: String) -> Lookup {
         guard let gh = ghPath() else { return .none }
-        // A hung network call must not hold a poll forever.
-        guard let result = Subprocess.run(
-            gh,
-            ["pr", "list", "--head", branch, "--state", "all",
-             "--limit", String(lookupLimit), "--json", jsonFields],
-            in: directory, timeout: lookupTimeout),
+        return lookup(branch: branch, in: directory, run: runner(gh))
+    }
+
+    static func lookup(branch: String, in directory: String, run: GhRun) -> Lookup {
+        guard let result = run(["pr", "list", "--head", branch, "--state", "all",
+                                "--limit", String(lookupLimit), "--json", jsonFields], directory, nil),
               result.succeeded
         else { return .failed }
         return parse(result.stdout).map(Lookup.found) ?? .none
     }
 
-    /// The deadline of one `gh` call, alone or batched.
+    /// The deadline of one `gh` call — a hung network call must not hold a poll forever.
     static let lookupTimeout: TimeInterval = 20
 
-    /// The lookups of a sweep, in the order of `checkouts`. Every checkout whose repository
-    /// is certain (`GhRepoResolver`) is asked in one `gh api graphql` call per
-    /// `PullRequestBatch.cap` checkouts; the others — and those the call did not answer —
-    /// get their own `gh pr list`, as before. Blocking: call it off the main thread.
-    static func lookup(_ checkouts: [Checkout]) -> [Lookup] {
-        guard !checkouts.isEmpty, ghPath() != nil else { return checkouts.map { _ in .none } }
-        let environment = ProcessInfo.processInfo.environment
-        let resolutions: [RepoResolution]
-        if let blocker = GhRepoResolver.environmentBlocker(environment) {
-            resolutions = checkouts.map { _ in .uncertain(blocker) }
-        } else {
-            let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
-            let outer = GhRepoResolver.outerRules(
-                paths: GhRepoResolver.outerConfigPaths(environment: environment, home: home), home: home)
-            resolutions = checkouts.map {
-                GhRepoResolver.resolve(checkoutRoot: Titles.checkoutRoot(forDirectory: $0.directory), outer: outer)
-            }
+    /// Runs `gh` with these arguments in a folder (nil: anywhere), with this stdin.
+    typealias GhRun = (_ arguments: [String], _ directory: String?, _ input: Data?) -> Subprocess.Output?
+
+    static func runner(_ gh: String) -> GhRun {
+        { arguments, directory, input in
+            Subprocess.run(gh, arguments, in: directory, timeout: lookupTimeout, input: input)
         }
-        return lookup(checkouts, resolutions: resolutions, call: callGraphQL,
-                      single: { lookup(branch: $0.branch, in: $0.directory) })
     }
 
-    /// The sweep with its side effects passed in (`call` runs one batch, `single` one
-    /// `gh pr list`), so the tests drive it. Logs each fallback once per checkout and reason.
+    /// What a sweep takes from the world; the tests pass their own.
+    struct SweepContext {
+        var run: GhRun
+        var now: () -> Date = Date.init
+        var stamp: (String) -> FileStamp? = FileStamp.of
+        var environment: [String: String]
+        var home: String
+        /// The most `gh` processes at once.
+        var concurrency = 4
+    }
+
+    /// `gh repo view`'s answers, for every sweep of the app.
+    static let repoCache = OSAllocatedUnfairLock(initialState: RepoCache())
+
+    /// The lookups of a sweep, in the order of `checkouts`. A checkout whose repository gh
+    /// named on github.com (`RepoCache`) is asked in one `gh api graphql` call per
+    /// `PullRequestBatch.cap` checkouts; every other one — not known yet, on another host,
+    /// or left out by the call — gets its own `gh pr list`, as before. Blocking: call it off
+    /// the main thread.
+    static func lookup(_ checkouts: [Checkout]) -> [Lookup] {
+        guard !checkouts.isEmpty, let gh = ghPath() else { return checkouts.map { _ in .none } }
+        let environment = ProcessInfo.processInfo.environment
+        let home = environment["HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? NSHomeDirectory()
+        return lookup(checkouts, context: SweepContext(run: runner(gh), environment: environment, home: home),
+                      cache: repoCache)
+    }
+
+    /// The sweep. One pool of at most `context.concurrency` processes runs the batch calls,
+    /// the `gh pr list` of every checkout outside the batch and the `gh repo view` of every
+    /// root the cache does not know; a checkout the batch left out is asked alone after it.
+    /// A root that is new is answered by its own `gh pr list` this time and joins the batch
+    /// from the next sweep on — so the first sweep runs no step after another that the old
+    /// one-by-one lookups did not.
     static func lookup(
-        _ checkouts: [Checkout], resolutions: [RepoResolution],
-        call: ([PullRequestBatch.Request]) -> PullRequestBatch.Outcome,
-        single: (Checkout) -> Lookup
+        _ checkouts: [Checkout], context: SweepContext, cache: OSAllocatedUnfairLock<RepoCache>
     ) -> [Lookup] {
-        let plan = PullRequestBatch.plan(resolutions: resolutions, branches: checkouts.map(\.branch))
-        let outcomes = plan.calls.map(call)
-        for (index, checkout) in checkouts.enumerated() {
-            noteFallback(key: checkout.directory, reason: plan.alone[index].map { "looked up alone: \($0)" })
+        let now = context.now()
+        // `gh repo view` ignores GH_REPO, `gh pr list` does not (gh 2.106).
+        let overridden = !(context.environment["GH_REPO"] ?? "").isEmpty
+        var repos: [GitHubRepo?] = []
+        var unknownRoots: [(root: String, stamps: [FileStamp?])] = []
+        for checkout in checkouts {
+            var repo: GitHubRepo?
+            if overridden {
+                noteFallback(key: checkout.root ?? checkout.directory, reason: "GH_REPO is set")
+            } else if let root = checkout.root {
+                let stamps = RepoCache.stampedFiles(root: root, environment: context.environment, home: context.home)
+                    .map(context.stamp)
+                switch cache.withLock({ $0.answer(root: root, stamps: stamps, now: now) }) {
+                case .github(let found)?:
+                    repo = found
+                case .elsewhere(let host)?:
+                    noteFallback(key: root, reason: "its repository is on \(host)")
+                case .failed(let reason)?:
+                    noteFallback(key: root, reason: reason)
+                case nil:
+                    if !unknownRoots.contains(where: { $0.root == root }) { unknownRoots.append((root, stamps)) }
+                }
+            } else {
+                noteFallback(key: checkout.directory, reason: "not in a checkout")
+            }
+            repos.append(repo)
         }
-        var problem: String?
-        for (call, outcome) in zip(plan.calls, outcomes) where problem == nil {
-            switch outcome {
-            case .answered(let answers) where answers.count < call.count:
-                problem = "GitHub did not answer \(call.count - answers.count) of \(call.count) checkouts; they are looked up alone"
-            case .unreachable:
-                problem = "gh api graphql did not reach GitHub; the lookups failed"
-            case .notUnderstood:
-                problem = "the answer of gh api graphql is not understood; its checkouts are looked up alone"
-            case .answered:
-                break
+
+        let plan = PullRequestBatch.plan(repos: repos, branches: checkouts.map(\.branch))
+        let alone = checkouts.indices.filter { plan.requestOf[$0] == nil }
+        enum Job { case call(Int), single(Int), view(Int) }
+        enum Result { case call(PullRequestBatch.Outcome), single(Lookup), view(RepoAnswer) }
+        let jobs = plan.calls.indices.map(Job.call) + alone.map(Job.single) + unknownRoots.indices.map(Job.view)
+        let results = PullRequestBatch.concurrentMap(jobs.count, limit: context.concurrency) { index -> Result in
+            switch jobs[index] {
+            case .call(let call):
+                return .call(callGraphQL(plan.calls[call], run: context.run))
+            case .single(let checkout):
+                return .single(lookup(branch: checkouts[checkout].branch, in: checkouts[checkout].directory,
+                                      run: context.run))
+            case .view(let root):
+                return .view(RepoAnswer.from(context.run(RepoAnswer.arguments, unknownRoots[root].root, nil)))
             }
         }
-        noteFallback(key: "the batch", reason: problem)
-        return PullRequestBatch.lookups(count: checkouts.count, plan: plan, outcomes: outcomes) { single(checkouts[$0]) }
+
+        var outcomes: [PullRequestBatch.Outcome] = []
+        var lookups: [Int: Lookup] = [:]
+        for (job, result) in zip(jobs, results) {
+            switch (job, result) {
+            case (.call, .call(let outcome)): outcomes.append(outcome)
+            case (.single(let checkout), .single(let lookup)): lookups[checkout] = lookup
+            case (.view(let root), .view(let answer)):
+                let (path, stamps) = unknownRoots[root]
+                cache.withLock { $0.store(root: path, answer: answer, stamps: stamps, at: now) }
+            default: break
+            }
+        }
+        for outcome in outcomes {
+            switch outcome {
+            case .unreachable: noteFallback(key: "the batch", reason: "gh api graphql had no answer; its lookups failed")
+            case .notUnderstood: noteFallback(key: "the batch", reason: "gh api graphql answered in a shape this does not read")
+            case .answered: break
+            }
+        }
+
+        let merged = PullRequestBatch.merge(plan: plan, outcomes: outcomes)
+        lookups.merge(merged.answers) { old, _ in old }
+        for index in merged.alone {
+            noteFallback(key: checkouts[index].root ?? checkouts[index].directory,
+                         reason: "the batch did not answer it")
+        }
+        let retried = PullRequestBatch.concurrentMap(merged.alone.count, limit: context.concurrency) { index in
+            lookup(branch: checkouts[merged.alone[index]].branch, in: checkouts[merged.alone[index]].directory,
+                   run: context.run)
+        }
+        for (index, lookup) in zip(merged.alone, retried) { lookups[index] = lookup }
+        return checkouts.indices.map { lookups[$0] ?? .failed }
     }
 
     /// One batch through `gh api graphql`, always against github.com: `gh api` would
     /// otherwise take the host from `GH_HOST` or the only host logged in.
-    static func callGraphQL(_ requests: [PullRequestBatch.Request]) -> PullRequestBatch.Outcome {
-        guard let gh = ghPath(),
-              let result = Subprocess.run(
-                gh, ["api", "graphql", "--hostname", "github.com", "--input", "-"],
-                timeout: lookupTimeout, input: PullRequestBatch.body(for: requests))
+    static func callGraphQL(_ requests: [PullRequestBatch.Request], run: GhRun) -> PullRequestBatch.Outcome {
+        guard let result = run(["api", "graphql", "--hostname", "github.com", "--input", "-"],
+                               nil, PullRequestBatch.body(for: requests))
         else { return .unreachable }
-        return PullRequestBatch.outcome(stdout: result.stdout, succeeded: result.succeeded,
-                                        timedOut: result.timedOut, count: requests.count)
+        return PullRequestBatch.outcome(stdout: result.stdout, timedOut: result.timedOut, count: requests.count)
     }
 
     private static let fallbackNotes = OSAllocatedUnfairLock(initialState: FallbackNotes())
 
-    /// A debug line when a checkout (or the batch) falls back, once per reason — not on
-    /// every sweep.
-    private static func noteFallback(key: String, reason: String?) {
-        guard fallbackNotes.withLock({ $0.isNews(key: key, reason: reason) }), let reason else { return }
+    /// A debug line when a checkout (or the batch) is not batched, once per checkout and
+    /// reason — not on every sweep.
+    private static func noteFallback(key: String, reason: String) {
+        guard fallbackNotes.withLock({ $0.isNews(key: key, reason: reason) }) else { return }
         Log.debug("pull requests: \(key): \(reason)")
     }
 }

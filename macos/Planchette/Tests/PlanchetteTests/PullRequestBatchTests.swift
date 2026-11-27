@@ -1,317 +1,76 @@
 import XCTest
+import os
 @testable import Planchette
 
 // The batched PR lookup must give every checkout the answer its own `gh pr list` gives.
-// The tables below for gh's repository choice were measured with gh 2.106 (`GH_DEBUG=api
-// gh pr list --head x` in a scratch repository, one config per row) — see the comments.
+// The repository is gh's own answer (`gh repo view`), cached per checkout root.
 
 private func repo(_ owner: String, _ name: String) -> GitHubRepo { GitHubRepo(owner: owner, name: name) }
 
-private func remote(_ name: String, _ url: String, push: String? = nil, resolved: String? = nil) -> GitRemote {
-    GitRemote(name: name, urls: [url], pushURLs: push.map { [$0] } ?? [], ghResolved: resolved)
+private func output(_ text: String, status: Int32 = 0, timedOut: Bool = false) -> Subprocess.Output {
+    Subprocess.Output(status: status, stdout: Data(text.utf8), stderr: Data(), timedOut: timedOut)
 }
 
-// MARK: - git config files
-
-final class GitConfigFileTests: XCTestCase {
-    private func entries(_ text: String) -> [String]? {
-        GitConfigFile.parse(text)?.entries.map { entry in
-            // git prints a key outside any section without one, an empty subsection as `s..k`.
-            let name = [entry.section.isEmpty ? nil : entry.section, entry.subsection, entry.key]
-                .compactMap { $0 }.joined(separator: ".")
-            return entry.value.map { "\(name)=\($0)" } ?? name
-        }
-    }
-
-    func testSectionsSubsectionsAndKeys() {
-        let text = """
-        [core]
-        \trepositoryformatversion = 0
-        [Remote "Origin"]
-        \tURL = https://github.com/a/b.git
-        \tfetch = +refs/heads/*:refs/remotes/origin/*
-        [remote.Upstream]
-        \turl = git@github.com:c/d
-        """
-        XCTAssertEqual(entries(text), [
-            "core.repositoryformatversion=0",
-            "remote.Origin.url=https://github.com/a/b.git",
-            "remote.Origin.fetch=+refs/heads/*:refs/remotes/origin/*",
-            // The old dotted form lowercases the subsection too.
-            "remote.upstream.url=git@github.com:c/d",
-        ])
-    }
-
-    func testValuesAsGitReadsThem() {
-        let text = #"""
-        [s]
-          a = plain value   ; a comment
-          b = "quoted # not a comment"
-          c = "with \"escapes\" and \\ backslash"
-          d = tab\tand\nnewline
-          e = continued \
-        line
-          f
-          g =
-          h = x  "  y  "  z
-        [t] k = same line
-        """#
-        XCTAssertEqual(entries(text), [
-            "s.a=plain value",
-            "s.b=quoted # not a comment",
-            #"s.c=with "escapes" and \ backslash"#,
-            "s.d=tab\tand\nnewline",
-            "s.e=continued line",
-            "s.f",
-            "s.g=",
-            "s.h=x    y    z",
-            "t.k=same line",
-        ])
-    }
-
-    func testCRLFAndAByteOrderMark() {
-        XCTAssertEqual(entries("\u{FEFF}[remote \"origin\"]\r\n\turl = https://github.com/a/b\r\n"),
-                       ["remote.origin.url=https://github.com/a/b"])
-    }
-
-    func testWhatGitRefusesIsUnreadable() {
-        for bad in [
-            "[s]\n a = \"unclosed\n",
-            "[s]\n a = bad \\q escape\n",
-            "[s]\n a # comment after a bare key\n",
-            "[s \"sub\" x]\n",
-            "[s \"unclosed]\n",
-            "[]\n",
-            "[s]\n 1a = starts with a digit\n",
-            "[s]\n a_b = underscore\n",
-        ] {
-            XCTAssertNil(GitConfigFile.parse(bad), bad)
-        }
-    }
-
-    func testIncludePaths() {
-        let file = GitConfigFile.parse("""
-        [include]
-          path = ~/a
-        [includeIf "gitdir:~/work/"]
-          path = work.inc
-        [user]
-          path = not-an-include
-        """)
-        XCTAssertEqual(file?.includePaths, ["~/a", "work.inc"])
-    }
-
-    /// git itself is the oracle: every file it reads, this reads to the same entries, and
-    /// every file it refuses, this refuses.
-    func testGitAgrees() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("planchette-gitconfig-\(UUID().uuidString)").path
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
-        let samples = [
-            "[remote \"origin\"]\n\turl = https://github.com/a/b.git\n\tgh-resolved = base\n",
-            "[Remote \"Mixed Case\"]\n\tURL = x\n[remote.Old]\n\turl = y\n",
-            "[s]\n  a = plain value   ; comment\n  b = \"q # x\"\n  c = \"e \\\"q\\\" \\\\ b\"\n  d = t\\tn\\n\n",
-            "[s]\n  e = one \\\ntwo\n  f\n  g =\n  h = x  \"  y  \"  z\n[t] k = same line\n",
-            "\u{FEFF}[remote \"origin\"]\r\n\turl = https://github.com/a/b\r\n",
-            "[url \"git@github.com:\"]\n\tinsteadOf = https://github.com/\n",
-            "[s]\n a = \"unclosed\n",
-            "[s]\n a = bad \\q escape\n",
-            "[s]\n a # comment\n",
-            "a = no section\n",
-            "[s \"unclosed]\n",
-            "[remote \"o\\\"q\"]\n\turl = z\n",
-            "[s \"a\\\\b\\x\"]\n k = v\n",
-            "[s]\nk=v\n[s]\n\tk = w # c\n",
-            "[a.B.c]\n k = v\n",
-            "[s]\n k = \"\" \n m =   \"  lead\"\n",
-            "[s]\n k = v\\",
-            "[s]\n k = a\\\n",
-            "[s]\n k = 1\n[S]\n K = 2\n[s \"\"]\n k = 3\n",
-            "[s]\n k = \"a\nb\"\n",
-        ]
-        for (index, sample) in samples.enumerated() {
-            let path = "\(dir)/\(index).config"
-            try sample.write(toFile: path, atomically: true, encoding: .utf8)
-            let ours = entries(sample)
-            if let listed = try? fixtureGit(["config", "--file", path, "--null", "--list"], in: dir) {
-                let git = listed.split(separator: "\0", omittingEmptySubsequences: true).map { item -> String in
-                    let parts = item.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-                    return parts.count == 2 ? "\(parts[0])=\(parts[1])" : String(parts[0])
-                }
-                XCTAssertEqual(ours, git, "sample \(index): \(sample)")
-            } else {
-                XCTAssertNil(ours, "git refuses sample \(index): \(sample)")
-            }
-        }
-    }
-
-    func testRemotesInOrderWithTheLastGhResolved() {
-        let first = GitConfigFile.parse("""
-        [remote "origin"]
-          url = https://github.com/a/b
-          gh-resolved = base
-        [remote "upstream"]
-          url = https://github.com/c/d
-          pushurl = https://github.com/e/f
-        [remote "origin"]
-          gh-resolved = c/d
-        """)!
-        let second = GitConfigFile.parse("[remote \"fork\"]\n url = https://github.com/g/h\n")!
-        XCTAssertEqual(GitRemote.all(in: [first, second]), [
-            GitRemote(name: "origin", urls: ["https://github.com/a/b"], pushURLs: [], ghResolved: "c/d"),
-            GitRemote(name: "upstream", urls: ["https://github.com/c/d"], pushURLs: ["https://github.com/e/f"]),
-            GitRemote(name: "fork", urls: ["https://github.com/g/h"]),
-        ])
+extension PullRequestBatch {
+    /// The answers of a call, nil for any other outcome.
+    static func parse(_ data: Data, count: Int) -> [Int: PullRequests.Lookup]? {
+        if case .answered(let answers) = outcome(stdout: data, timedOut: false, count: count) { return answers }
+        return nil
     }
 }
 
-// MARK: - Which repository
+/// git for a fixture, deaf to the user's own config: no global or system file, no signing,
+/// no hooks.
+@discardableResult
+private func isolatedGit(_ arguments: [String], in directory: String) throws -> String {
+    let result = try XCTUnwrap(Subprocess.run(
+        "/usr/bin/env",
+        ["GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "git",
+         "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"] + arguments,
+        in: directory, timeout: 300, stderr: .capture))
+    XCTAssertTrue(result.succeeded, "git \(arguments): \(result.stderrString)")
+    return result.stdoutString
+}
 
-final class GhRepoResolverTests: XCTestCase {
-    func testRemoteURLs() {
-        let cases: [(String, GhRepoResolver.RemoteURL)] = [
-            ("https://github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("https://github.com/cli/cli", .github(repo("cli", "cli"))),
-            ("https://github.com/cli/cli/", .github(repo("cli", "cli"))),
-            ("http://github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("https://user:token@github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("https://github.com:443/cli/cli.git", .github(repo("cli", "cli"))),
-            ("https://www.github.com/cli/cli.git", .github(repo("cli", "cli"))),   // gh: cli/cli
-            ("https://GitHub.COM/Cli/CLI", .github(repo("Cli", "CLI"))),
-            ("git+https://github.com/cli/cli", .github(repo("cli", "cli"))),
-            ("git@github.com:cli/cli.git", .github(repo("cli", "cli"))),
-            ("git@github.com:cli/cli", .github(repo("cli", "cli"))),             // gh: cli/cli
-            ("github.com:cli/cli.git", .github(repo("cli", "cli"))),
-            ("git@github.com:/cli/cli.git", .github(repo("cli", "cli"))),
-            ("ssh://git@github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("ssh://git@ssh.github.com:443/cli/cli.git", .github(repo("cli", "cli"))),   // gh: cli/cli
-            ("git+ssh://git@github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("git://github.com/cli/cli.git", .github(repo("cli", "cli"))),
-            ("https://github.com/cli/cli.git.git", .github(repo("cli", "cli.git"))),
-            ("https://github.com/o/ünïcödé-repo", .github(repo("o", "ünïcödé-repo"))),
-            // An SSH alias stands for whatever `ssh -G` says: gh 2.106 refused this one
-            // ("none of the git remotes ... point to a known GitHub host").
-            ("git@github.com-work:cli/cli.git", .otherHost("github.com-work")),
-            ("https://ghe.example.com/cli/cli.git", .otherHost("ghe.example.com")),
-            ("https://octo.ghe.com/cli/cli.git", .otherHost("octo.ghe.com")),
-            ("https://gitlab.com/cli/cli.git", .otherHost("gitlab.com")),
-            ("/Users/me/repos/cli", .localPath),
-            ("/Users/me/My Repos/a:b%20c", .localPath),
-            ("./sibling", .localPath),
-            ("../sibling", .localPath),
-            ("~/repos/cli", .localPath),
-            ("sibling", .localPath),
-            ("file:///Users/me/repos/cli", .localPath),
-            ("https://github.com/cli/cli/extra", .unknown),   // gh: refused
-            ("https://github.com/cli", .unknown),
-            ("https://github.com/cli//cli", .unknown),
-            ("https://github.com/cli/.git", .unknown),
-            ("ssh+git://github.com/cli/cli", .unknown),
-            ("HTTPS://github.com/cli/cli", .unknown),
-            ("git:cli/cli", .unknown),
-            ("dir/sub:cli/cli", .unknown),
-            ("https://github.com/cli/cli%20x", .unknown),
-            ("https://github.com/cli/cli?x=1", .unknown),
-            ("https://[::1]/cli/cli", .unknown),
-            ("https://github.com:x/cli/cli", .unknown),
-            ("file://host/share/cli", .unknown),
-            ("", .unknown),
-            ("C:\\repos\\cli", .unknown),
+// MARK: - The repository gh names
+
+final class RepoAnswerTests: XCTestCase {
+    func testWhatGhRepoViewSays() {
+        let cases: [(Subprocess.Output?, RepoAnswer)] = [
+            (output(#"{"nameWithOwner":"cli/cli","url":"https://github.com/cli/cli"}"#), .github(repo("cli", "cli"))),
+            (output(#"{"url":"https://GitHub.com/Octo/Hello","nameWithOwner":"Octo/Hello"}"#), .github(repo("Octo", "Hello"))),
+            (output(#"{"nameWithOwner":"a/b","url":"https://ghe.example.com/a/b"}"#), .elsewhere(host: "ghe.example.com")),
+            (output(#"{"nameWithOwner":"a/b","url":"https://octo.ghe.com/a/b"}"#), .elsewhere(host: "octo.ghe.com")),
+            (output("", status: 1), .failed("gh repo view failed")),
+            (output(#"{"nameWithOwner":"a/b","url":"https://github.com/a/b"}"#, status: -1, timedOut: true),
+             .failed("gh repo view timed out")),
+            (nil, .failed("gh repo view could not start")),
+            (output("not json"), .failed("gh repo view gave an unreadable answer")),
+            (output(#"{"nameWithOwner":"a/b"}"#), .failed("gh repo view gave an unreadable answer")),
+            (output(#"{"nameWithOwner":"a/b/c","url":"https://github.com/a/b"}"#), .failed("gh repo view gave an unreadable answer")),
+            (output(#"{"nameWithOwner":"/b","url":"https://github.com/a/b"}"#), .failed("gh repo view gave an unreadable answer")),
         ]
-        for (url, expected) in cases {
-            XCTAssertEqual(GhRepoResolver.classify(url), expected, url)
+        for (given, expected) in cases {
+            XCTAssertEqual(RepoAnswer.from(given), expected, given?.stdoutString ?? "nil")
         }
+        XCTAssertEqual(RepoAnswer.arguments, ["repo", "view", "--json", "nameWithOwner,url"])
     }
 
-    /// The rows measured with gh 2.106 in a scratch repository (`GH_DEBUG=api`), plus the
-    /// cases where gh's answer depends on what this cannot see, which fall back.
-    func testTheRepositoryGhPicks() {
-        let planchette = "https://github.com/marcello-a/Planchette.git"
-        let cli = "git@github.com:cli/cli.git"
-        let cases: [(String, [GitRemote], RepoResolution?)] = [
-            ("origin only", [remote("origin", planchette)], .github(repo("marcello-a", "Planchette"))),
-            ("upstream beats origin", [remote("origin", planchette), remote("upstream", cli)], .github(repo("cli", "cli"))),
-            ("gh-resolved=base on origin", [remote("origin", planchette, resolved: "base"), remote("upstream", cli)],
-             .github(repo("marcello-a", "Planchette"))),
-            ("gh-resolved=base on upstream", [remote("origin", planchette), remote("upstream", cli, resolved: "base")],
-             .github(repo("cli", "cli"))),
-            ("gh-resolved=owner/repo", [remote("origin", planchette, resolved: "octocat/Hello-World"), remote("upstream", cli)],
-             .github(repo("octocat", "Hello-World"))),
-            ("the higher remote's gh-resolved wins",
-             [remote("origin", planchette, resolved: "octocat/Hello-World"), remote("upstream", cli, resolved: "base")],
-             .github(repo("cli", "cli"))),
-            ("github beats origin", [remote("origin", planchette), remote("github", "https://github.com/cli/cli")],
-             .github(repo("cli", "cli"))),
-            ("remote names are compared without case", [remote("origin", planchette), remote("Upstream", "https://github.com/cli/cli/")],
-             .github(repo("cli", "cli"))),
-            ("a local remote is dropped", [remote("origin", "/tmp/somewhere"), remote("upstream", "https://github.com/cli/cli.git")],
-             .github(repo("cli", "cli"))),
-            ("two remotes of one repository", [remote("foo", planchette), remote("bar", "git@github.com:marcello-a/Planchette")],
-             .github(repo("marcello-a", "Planchette"))),
-            ("an empty gh-resolved is none", [remote("origin", planchette, resolved: ""), remote("upstream", cli)],
-             .github(repo("cli", "cli"))),
-            ("a remote without a URL is not listed", [GitRemote(name: "upstream", ghResolved: "base"), remote("origin", planchette)],
-             .github(repo("marcello-a", "Planchette"))),
-            // gh sorts the other names in no fixed order.
-            ("two other remotes", [remote("foo", planchette), remote("bar", cli)], nil),
-            ("two other remotes resolved", [remote("foo", planchette, resolved: "base"), remote("bar", cli, resolved: "base")], nil),
-            ("an SSH alias", [remote("origin", "git@github.com-work:cli/cli.git")], nil),
-            ("Enterprise", [remote("origin", "https://ghe.example.com/cli/cli.git")], nil),
-            // gh drops a host without a login, which this cannot see.
-            ("another host beside github.com", [remote("origin", "https://gitlab.com/cli/cli.git"),
-                                               remote("github", "https://github.com/octocat/Hello-World.git")], nil),
-            // gh 2.106 then asks the push URL.
-            ("a local remote that pushes to GitHub", [remote("origin", "/tmp/somewhere", push: "https://github.com/cli/cli.git")], nil),
-            ("no remotes", [], nil),
-            ("only local remotes", [remote("origin", "/tmp/a")], nil),
-            ("an unreadable URL", [remote("origin", "https://github.com/cli/cli/extra"), remote("upstream", cli)], nil),
-            ("gh-resolved with a host", [remote("origin", planchette, resolved: "github.com/cli/cli")], nil),
-            ("gh-resolved nonsense", [remote("origin", planchette, resolved: "nonsense")], nil),
-            ("several URLs", [GitRemote(name: "origin", urls: [planchette, cli])], nil),
-        ]
-        for (name, remotes, expected) in cases {
-            let resolution = GhRepoResolver.resolve(remotes: remotes, rewrites: [])
-            if let expected {
-                XCTAssertEqual(resolution, expected, name)
-            } else if case .github(let picked) = resolution {
-                XCTFail("\(name): must fall back, picked \(picked)")
-            }
-        }
-    }
-
-    func testARewrittenURLFallsBack() {
-        let remotes = [remote("origin", "https://github.com/cli/cli.git")]
-        XCTAssertEqual(GhRepoResolver.resolve(remotes: remotes, rewrites: ["https://gitlab.com/"]),
-                       .github(repo("cli", "cli")))
-        for prefix in ["https://github.com/", "https://", "", "https://github.com/cli/cli.git"] {
-            guard case .uncertain = GhRepoResolver.resolve(remotes: remotes, rewrites: [prefix]) else {
-                return XCTFail("insteadOf \(prefix) rewrites the URL")
-            }
-        }
-        let pushes = [remote("origin", "https://github.com/cli/cli.git", push: "gh:cli/cli")]
-        guard case .uncertain = GhRepoResolver.resolve(remotes: pushes, rewrites: ["gh:"]) else {
-            return XCTFail("a rewritten push URL falls back too")
-        }
-    }
-
-    func testTheEnvironment() {
-        XCTAssertNil(GhRepoResolver.environmentBlocker([:]))
-        XCTAssertNil(GhRepoResolver.environmentBlocker(["HOME": "/x", "GH_TOKEN": "t", "GH_REPO": ""]))
-        for name in GhRepoResolver.fallbackEnvironment {
-            XCTAssertEqual(GhRepoResolver.environmentBlocker([name: "1"]), "\(name) is set")
-        }
+    func testLifetimes() {
+        XCTAssertEqual(RepoAnswer.github(repo("a", "b")).lifetime, 24 * 60 * 60)
+        XCTAssertEqual(RepoAnswer.elsewhere(host: "x").lifetime, 24 * 60 * 60)
+        XCTAssertEqual(RepoAnswer.failed("x").lifetime, 10 * 60)
     }
 }
 
-// MARK: - Which repository, from the files
+// MARK: - The cache
 
-final class GhRepoResolverFileTests: XCTestCase {
+final class RepoCacheTests: XCTestCase {
     private var root = ""
 
     override func setUpWithError() throws {
         root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("planchette-resolver-\(UUID().uuidString)").path
+            .appendingPathComponent("planchette-repocache-\(UUID().uuidString)").path
         try FileManager.default.createDirectory(atPath: root, withIntermediateDirectories: true)
         root = (root as NSString).resolvingSymlinksInPath
     }
@@ -327,123 +86,92 @@ final class GhRepoResolverFileTests: XCTestCase {
         try text.write(toFile: full, atomically: true, encoding: .utf8)
     }
 
-    private func resolve(_ checkout: String?, outer: GhRepoResolver.OuterRules? = .init()) -> RepoResolution {
-        GhRepoResolver.resolve(checkoutRoot: checkout.map { "\(root)/\($0)" }, outer: outer)
+    private func stamp(_ n: Int) -> FileStamp { FileStamp(device: 1, inode: UInt64(n), size: 10, seconds: n, nanoseconds: n) }
+
+    func testAnAnswerStandsWhileEveryStampDoes() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        let stamps: [FileStamp?] = [stamp(1), nil, stamp(3), stamp(4)]
+        var cache = RepoCache()
+        XCTAssertNil(cache.answer(root: "/r", stamps: stamps, now: t0))
+        cache.store(root: "/r", answer: .github(repo("a", "b")), stamps: stamps, at: t0)
+        XCTAssertEqual(cache.answer(root: "/r", stamps: stamps, now: t0 + 60), .github(repo("a", "b")))
+        XCTAssertNil(cache.answer(root: "/other", stamps: stamps, now: t0 + 60))
+        for position in stamps.indices {
+            var changed = stamps
+            changed[position] = stamps[position] == nil ? stamp(9) : nil     // created or deleted
+            XCTAssertNil(cache.answer(root: "/r", stamps: changed, now: t0 + 60), "file \(position) appeared or went")
+            changed[position] = stamp(99)                                      // rewritten
+            XCTAssertNil(cache.answer(root: "/r", stamps: changed, now: t0 + 60), "file \(position) changed")
+        }
     }
 
-    private func assertUncertain(_ resolution: RepoResolution, _ message: String,
-                                 file: StaticString = #filePath, line: UInt = #line) {
-        if case .github(let picked) = resolution { XCTFail("\(message): picked \(picked)", file: file, line: line) }
+    func testLifetimeOfAnAnswerAndOfAFailure() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        var cache = RepoCache()
+        cache.store(root: "/ok", answer: .github(repo("a", "b")), stamps: [], at: t0)
+        cache.store(root: "/ghe", answer: .elsewhere(host: "ghe"), stamps: [], at: t0)
+        cache.store(root: "/bad", answer: .failed("x"), stamps: [], at: t0)
+        XCTAssertNotNil(cache.answer(root: "/ok", stamps: [], now: t0 + 24 * 3600 - 1))
+        XCTAssertNil(cache.answer(root: "/ok", stamps: [], now: t0 + 24 * 3600))
+        XCTAssertNotNil(cache.answer(root: "/ghe", stamps: [], now: t0 + 24 * 3600 - 1))
+        XCTAssertNil(cache.answer(root: "/ghe", stamps: [], now: t0 + 24 * 3600))
+        XCTAssertNotNil(cache.answer(root: "/bad", stamps: [], now: t0 + 599))
+        XCTAssertNil(cache.answer(root: "/bad", stamps: [], now: t0 + 600))
+        // A clock that went back is no reason to trust an old answer.
+        XCTAssertNil(cache.answer(root: "/ok", stamps: [], now: t0 - 1))
     }
 
-    func testACheckout() throws {
-        try write("main/.git/config", "[remote \"origin\"]\n\turl = git@github.com:a/b.git\n")
-        XCTAssertEqual(resolve("main"), .github(repo("a", "b")))
-    }
-
-    func testALinkedWorktreeReadsTheCommonConfig() throws {
-        try write("main/.git/config", "[remote \"origin\"]\n\turl = https://github.com/a/b\n")
+    func testTheStampedFiles() throws {
+        try write("main/.git/config", "")
         try write("main/.git/worktrees/wt/commondir", "../..\n")
         try write("wt/.git", "gitdir: \(root)/main/.git/worktrees/wt\n")
-        XCTAssertEqual(GhRepoResolver.gitDirs(checkoutRoot: "\(root)/wt"),
-                       .init(gitDir: "\(root)/main/.git/worktrees/wt", commonDir: "\(root)/main/.git"))
-        XCTAssertEqual(resolve("wt"), .github(repo("a", "b")))
+        let files = RepoCache.stampedFiles(root: "\(root)/wt", environment: [:], home: "/h")
+        XCTAssertEqual(files, [
+            "\(root)/wt/.git",
+            "\(root)/main/.git/config",
+            "\(root)/main/.git/worktrees/wt/config.worktree",
+            "/h/.config/git/config", "/h/.gitconfig", "/h/.ssh/config",
+            "/h/.config/gh/hosts.yml", "/h/.config/gh/config.yml",
+        ])
+        XCTAssertEqual(Array(RepoCache.stampedFiles(root: "\(root)/main", environment: ["XDG_CONFIG_HOME": "/x"], home: "/h")),
+                       ["\(root)/main/.git", "\(root)/main/.git/config", "\(root)/main/.git/config.worktree",
+                        "/x/git/config", "/h/.gitconfig", "/h/.ssh/config", "/x/gh/hosts.yml", "/x/gh/config.yml"])
+        XCTAssertEqual(Array(RepoCache.stampedFiles(root: "\(root)/main", environment: ["GH_CONFIG_DIR": "/g"], home: "/h")
+                                .suffix(2)), ["/g/hosts.yml", "/g/config.yml"])
+        // No git dir to read: the `.git` entry and the user's files still count.
+        XCTAssertEqual(RepoCache.stampedFiles(root: "\(root)/none", environment: [:], home: "/h").first, "\(root)/none/.git")
     }
 
-    func testARelativeGitdirAndAnAbsoluteCommondir() throws {
-        try write("store/config", "[remote \"upstream\"]\n\turl = https://github.com/c/d\n")
+    func testGitDirs() throws {
+        try write("plain/.git/config", "")
+        XCTAssertEqual(RepoCache.gitDirs(checkoutRoot: "\(root)/plain"),
+                       .init(gitDir: "\(root)/plain/.git", commonDir: "\(root)/plain/.git"))
         try write("store/worktrees/wt/commondir", "\(root)/store\n")
         try write("wt/.git", "gitdir: ../store/worktrees/wt")
-        XCTAssertEqual(resolve("wt"), .github(repo("c", "d")))
-    }
-
-    func testASubmoduleReadsItsOwnConfig() throws {
-        try write("super/.git/config", "[remote \"origin\"]\n\turl = https://github.com/super/repo\n")
-        try write("super/.git/modules/sub/config", "[remote \"origin\"]\n\turl = https://github.com/sub/repo\n")
+        XCTAssertEqual(RepoCache.gitDirs(checkoutRoot: "\(root)/wt"),
+                       .init(gitDir: "\(root)/store/worktrees/wt", commonDir: "\(root)/store"))
+        try write("super/.git/modules/sub/config", "")
         try write("super/sub/.git", "gitdir: ../.git/modules/sub\n")
-        XCTAssertEqual(resolve("super/sub"), .github(repo("sub", "repo")))
-    }
-
-    func testAWorktreeConfigCounts() throws {
-        try write("main/.git/config", """
-        [extensions]
-        \tworktreeConfig = true
-        [remote "origin"]
-        \turl = https://github.com/a/b
-        [remote "upstream"]
-        \turl = https://github.com/c/d
-        """)
-        try write("main/.git/config.worktree", "[remote \"origin\"]\n\tgh-resolved = base\n")
-        XCTAssertEqual(resolve("main"), .github(repo("a", "b")))
-        // Without the extension git does not read the file.
-        try write("main/.git/config", "[remote \"origin\"]\n\turl = https://github.com/a/b\n[remote \"upstream\"]\n\turl = https://github.com/c/d\n")
-        XCTAssertEqual(resolve("main"), .github(repo("c", "d")))
-    }
-
-    func testWhatFallsBack() throws {
-        assertUncertain(resolve(nil), "no checkout")
-        assertUncertain(resolve("missing"), "no .git")
+        XCTAssertEqual(RepoCache.gitDirs(checkoutRoot: "\(root)/super/sub"),
+                       .init(gitDir: "\(root)/super/.git/modules/sub", commonDir: "\(root)/super/.git/modules/sub"))
         try write("broken/.git", "not a gitdir line\n")
-        assertUncertain(resolve("broken"), "a .git file without gitdir")
-        try write("dangling/.git", "gitdir: \(root)/nowhere\n")
-        assertUncertain(resolve("dangling"), "a gitdir without config")
-        try write("bad/.git/config", "[remote \"origin\"\n\turl = https://github.com/a/b\n")
-        assertUncertain(resolve("bad"), "a config git refuses")
-        try write("inc/.git/config", "[include]\n\tpath = extra\n[remote \"origin\"]\n\turl = https://github.com/a/b\n")
-        assertUncertain(resolve("inc"), "an include")
-        try write("ok/.git/config", "[remote \"origin\"]\n\turl = https://github.com/a/b\n")
-        assertUncertain(resolve("ok", outer: nil), "an unreadable global config")
-        assertUncertain(resolve("ok", outer: .init(rewrites: [], definesRemote: true)), "a global remote")
-        assertUncertain(resolve("ok", outer: .init(rewrites: ["https://github.com/a/"])), "a global insteadOf")
-        try write("local/.git/config", "[remote \"origin\"]\n\turl = https://github.com/a/b\n[url \"x\"]\n\tinsteadOf = https://github.com/\n")
-        assertUncertain(resolve("local"), "a local insteadOf")
+        XCTAssertNil(RepoCache.gitDirs(checkoutRoot: "\(root)/broken"))
+        XCTAssertNil(RepoCache.gitDirs(checkoutRoot: "\(root)/missing"))
     }
 
-    /// The layout git itself writes: `git worktree add` and remotes set by git.
-    func testARealRepositoryAndWorktree() throws {
+    /// The layout git itself writes: a linked worktree's stamps include the main config,
+    /// and a remote added there changes the stamp the worktree's answer depends on.
+    func testARealWorktreeSeesTheCommonConfigChange() throws {
         let main = "\(root)/real"
         try FileManager.default.createDirectory(atPath: main, withIntermediateDirectories: true)
-        try fixtureGit(["init", "-q", "-b", "main"], in: main)
-        try fixtureGit(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], in: main)
-        try fixtureGit(["remote", "add", "origin", "https://github.com/me/fork.git"], in: main)
-        try fixtureGit(["remote", "add", "upstream", "git@github.com:them/project.git"], in: main)
-        try fixtureGit(["worktree", "add", "-q", "-b", "feature", "\(root)/linked"], in: main)
-        XCTAssertEqual(resolve("real"), .github(repo("them", "project")))
-        XCTAssertEqual(resolve("linked"), .github(repo("them", "project")))
-        try fixtureGit(["config", "remote.origin.gh-resolved", "base"], in: main)
-        XCTAssertEqual(resolve("linked"), .github(repo("me", "fork")))
-    }
-
-    func testOuterRulesFollowEveryInclude() throws {
-        try write("home/.gitconfig", """
-        [user]
-        \tname = me
-        [include]
-        \tpath = ~/.config/extra
-        [includeIf "gitdir:~/work/"]
-        \tpath = work.inc
-        [include]
-        \tpath = ~/.gitconfig
-        """)
-        try write("home/.config/extra", "[url \"git@github.com-work:\"]\n\tinsteadOf = git@github.com:\n")
-        try write("home/work.inc", "[url \"x\"]\n\tpushInsteadOf = https://\n")
-        let home = "\(root)/home"
-        let rules = GhRepoResolver.outerRules(paths: ["\(home)/.gitconfig", "\(root)/missing"], home: home)
-        XCTAssertEqual(rules, .init(rewrites: ["git@github.com:", "https://"], definesRemote: false))
-
-        try write("home/.config/extra", "[remote \"origin\"]\n\turl = https://github.com/a/b\n")
-        XCTAssertEqual(GhRepoResolver.outerRules(paths: ["\(home)/.gitconfig"], home: home)?.definesRemote, true)
-
-        try write("home/.config/extra", "[broken\n")
-        XCTAssertNil(GhRepoResolver.outerRules(paths: ["\(home)/.gitconfig"], home: home))
-    }
-
-    func testOuterConfigPaths() {
-        let paths = GhRepoResolver.outerConfigPaths(environment: [:], home: "/Users/me")
-        XCTAssertEqual(Array(paths.suffix(2)), ["/Users/me/.config/git/config", "/Users/me/.gitconfig"])
-        XCTAssertTrue(paths.contains("/etc/gitconfig"))
-        XCTAssertEqual(Array(GhRepoResolver.outerConfigPaths(environment: ["XDG_CONFIG_HOME": "/x"], home: "/h").suffix(2)),
-                       ["/x/git/config", "/h/.gitconfig"])
+        try isolatedGit(["init", "-q", "-b", "main"], in: main)
+        try isolatedGit(["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], in: main)
+        try isolatedGit(["worktree", "add", "-q", "-b", "feature", "\(root)/linked"], in: main)
+        let files = RepoCache.stampedFiles(root: "\(root)/linked", environment: [:], home: "/nonexistent")
+        XCTAssertTrue(files.contains("\(main)/.git/config"), "\(files)")
+        let before = files.map(FileStamp.of)
+        try isolatedGit(["remote", "add", "upstream", "https://github.com/a/b.git"], in: main)
+        XCTAssertNotEqual(files.map(FileStamp.of), before)
     }
 }
 
@@ -555,16 +283,24 @@ final class PullRequestBatchParseTests: XCTestCase {
         XCTAssertEqual(parse(json, count: 1), [0: pr(6, .merged)])
     }
 
-    func testAnAnswerAsAWholeNotUnderstood() {
+    /// Without a `data` object no alias can be answered, and asking each checkout alone
+    /// would hit the same token and the same limit: the call's checkouts fail.
+    func testAnAnswerWithoutDataIsUnreachable() {
         for json in [
-            "", "not json", "[]", "{}", #"{"data":null}"#, #"{"data":[]}"#,
-            #"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}"#,
-            #"{"data":{"r0":null},"errors":[{"message":"an error without a path"}]}"#,
-            #"{"data":{"r0":null},"errors":{"path":["r0"]}}"#,
-            #"{"data":{"r0":null},"errors":[{"path":[]}]}"#,
+            "", "not json", "<html>502 Bad Gateway</html>", "[]", "{}", #"{"data":null}"#,
             #"{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}"#,
+            #"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}"#,
+            #"{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again.","documentation_url":"https://docs.github.com/rest/overview/rate-limits-for-the-rest-api#about-secondary-rate-limits","status":"403"}"#,
+            #"{"data":{"r0":null},"errors":[{"message":"an error without a path"}]}"#,
+            #"{"data":{"r0":null},"errors":[{"path":[]}]}"#,
         ] {
-            XCTAssertNil(parse(json, count: 1), json)
+            XCTAssertEqual(PullRequestBatch.outcome(stdout: Data(json.utf8), timedOut: false, count: 1), .unreachable, json)
+        }
+    }
+
+    func testADataObjectOfTheWrongShapeIsNotUnderstood() {
+        for json in [#"{"data":[]}"#, #"{"data":"x"}"#, #"{"data":{"r0":null},"errors":{"path":["r0"]}}"#] {
+            XCTAssertEqual(PullRequestBatch.outcome(stdout: Data(json.utf8), timedOut: false, count: 1), .notUnderstood, json)
         }
         XCTAssertEqual(parse(#"{"data":{"r0":{"pullRequests":{"nodes":[]}}},"errors":null}"#, count: 1),
                        [0: PullRequests.Lookup.none])
@@ -573,16 +309,9 @@ final class PullRequestBatchParseTests: XCTestCase {
     func testTheOutcomeOfACall() {
         let answer = Data(#"{"data":{"r0":{"pullRequests":{"nodes":[]}},"r1":null},"errors":[{"path":["r1"]}]}"#.utf8)
         // gh exits 1 when an alias has an error, and still prints the answer.
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: answer, succeeded: false, timedOut: false, count: 2),
+        XCTAssertEqual(PullRequestBatch.outcome(stdout: answer, timedOut: false, count: 2),
                        .answered([0: PullRequests.Lookup.none]))
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: answer, succeeded: false, timedOut: true, count: 2), .unreachable)
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: Data(), succeeded: false, timedOut: false, count: 2), .unreachable)
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: Data("<html>502</html>".utf8), succeeded: false, timedOut: false, count: 2),
-                       .unreachable)
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: Data(#"{"message":"Bad credentials"}"#.utf8), succeeded: false,
-                                                timedOut: false, count: 2), .notUnderstood)
-        XCTAssertEqual(PullRequestBatch.outcome(stdout: Data("garbage".utf8), succeeded: true, timedOut: false, count: 2),
-                       .notUnderstood)
+        XCTAssertEqual(PullRequestBatch.outcome(stdout: answer, timedOut: true, count: 2), .unreachable)
     }
 }
 
@@ -670,111 +399,305 @@ private struct SeededGenerator: RandomNumberGenerator {
 
 // MARK: - The sweep
 
-final class PullRequestBatchSweepTests: XCTestCase {
-    private func checkout(_ index: Int, branch: String? = nil) -> PullRequests.Checkout {
-        PullRequests.Checkout(directory: "/work/\(index)", branch: branch ?? "feature-\(index)", ids: [UUID()])
+/// A stand-in for `gh`: answers `repo view`, `pr list` and `api graphql` as told, and counts
+/// every process the sweep starts (and how many run at once).
+private final class FakeGh: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var calls: [(arguments: [String], directory: String?)] = []
+    private var running = 0
+    private(set) var mostAtOnce = 0
+    var delay: useconds_t = 0
+
+    /// The repository per root; a root not named here fails.
+    var repoView: (String) -> Subprocess.Output? = { _ in output("", status: 1) }
+    /// `gh pr list` per branch: a PR titled with the branch.
+    var prList: (String) -> Subprocess.Output? = { branch in
+        output(#"[{"isDraft":false,"number":1,"reviewDecision":"","state":"OPEN","title":"\#(branch)","url":"https://github.com/o/n/pull/1"}]"#)
+    }
+    /// `gh api graphql`: by default each alias answers with a PR titled with its branch.
+    var graphQL: (Data) -> Subprocess.Output? = { body in output(FakeGh.answerEveryAlias(body)) }
+
+    static func answerEveryAlias(_ body: Data) -> String {
+        let object = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any]
+        let variables = object?["variables"] as? [String: String] ?? [:]
+        let aliases = (0..<(variables.count / 3)).map { index in
+            #""r\#(index)":{"pullRequests":{"nodes":[{"number":1,"state":"OPEN","isDraft":false,"reviewDecision":null,"url":"https://github.com/o/n/pull/1","title":"\#(variables["b\(index)"] ?? "")"}]}}"#
+        }
+        return #"{"data":{"# + aliases.joined(separator: ",") + "}}"
     }
 
-    /// An answer that names its request, so a mixed-up alias shows.
-    private func answer(for request: PullRequestBatch.Request) -> PullRequests.Lookup {
-        .found(PullRequest(number: abs(request.branch.hashValue % 100_000), status: .open, review: nil,
-                           url: URL(string: "https://github.com/\(request.repo.owner)/\(request.repo.name)/pull/1")!,
-                           title: request.branch))
-    }
-
-    func testThePlanSplitsAndShares() {
-        let resolutions: [RepoResolution] = (0..<45).map { $0 == 7 ? .uncertain("alias") : .github(repo("o", "n")) }
-        var branches = (0..<45).map { "b\($0)" }
-        branches[3] = "b2"          // a second clone on b2 shares its alias
-        branches[9] = "fork:b9"     // left to gh
-        let plan = PullRequestBatch.plan(resolutions: resolutions, branches: branches)
-        XCTAssertEqual(plan.calls.map(\.count), [20, 20, 2])
-        XCTAssertEqual(Set(plan.calls.flatMap { $0 }).count, 42)
-        XCTAssertEqual(plan.alone.keys.sorted(), [7, 9])
-        XCTAssertEqual(plan.requestOf[3], plan.requestOf[2])
-        XCTAssertNil(plan.requestOf[7])
-        XCTAssertEqual(PullRequestBatch.plan(resolutions: resolutions, branches: branches, cap: 50).calls.map(\.count), [42])
-        XCTAssertEqual(PullRequestBatch.plan(resolutions: [], branches: []), PullRequestBatch.Plan())
-    }
-
-    func testASweepAsksInCallsOfTheCap() {
-        let checkouts = (0..<45).map { checkout($0) }
-        var calls: [[PullRequestBatch.Request]] = []
-        var singles: [String] = []
-        let lookups = PullRequests.lookup(
-            checkouts, resolutions: checkouts.map { _ in .github(repo("o", "n")) },
-            call: { requests in
-                calls.append(requests)
-                return .answered(Dictionary(uniqueKeysWithValues: requests.enumerated().map { ($0.offset, self.answer(for: $0.element)) }))
-            },
-            single: { singles.append($0.directory); return .failed })
-        XCTAssertEqual(calls.map(\.count), [20, 20, 5])
-        XCTAssertEqual(singles, [])
-        for (index, lookup) in lookups.enumerated() {
-            XCTAssertEqual(lookup, answer(for: .init(repo: repo("o", "n"), branch: "feature-\(index)")), "checkout \(index)")
+    func run(_ arguments: [String], _ directory: String?, _ input: Data?) -> Subprocess.Output? {
+        lock.withLock {
+            calls.append((arguments, directory))
+            running += 1
+            mostAtOnce = max(mostAtOnce, running)
+        }
+        if delay > 0 { usleep(delay) }
+        defer { lock.withLock { running -= 1 } }
+        switch Array(arguments.prefix(2)) {
+        case ["repo", "view"]: return repoView(directory ?? "")
+        case ["pr", "list"]: return prList(arguments[3])
+        case ["api", "graphql"]: return graphQL(input ?? Data())
+        default: XCTFail("unexpected gh \(arguments)"); return nil
         }
     }
 
-    func testAnAliasThatFailsFallsBackAloneAndOnlyIt() {
-        let checkouts = (0..<5).map { checkout($0) }
-        var singles: [Int] = []
-        let lookups = PullRequests.lookup(
-            checkouts,
-            resolutions: [.github(repo("o", "n")), .github(repo("gone", "repo")), .uncertain("GHE"),
-                          .github(repo("o", "n")), .github(repo("o", "n"))],
-            call: { requests in
-                XCTAssertEqual(requests.map(\.branch), ["feature-0", "feature-1", "feature-3", "feature-4"])
-                // The repository of alias 1 is gone; alias 3 has no PR.
-                return .answered([0: self.answer(for: requests[0]), 2: self.answer(for: requests[2]), 3: .none])
-            },
-            single: { checkout in
-                singles.append(Int(checkout.directory.split(separator: "/").last!)!)
-                return checkout.directory == "/work/1" ? .failed : .none
-            })
-        XCTAssertEqual(singles, [1, 2])
-        XCTAssertEqual(lookups, [answer(for: .init(repo: repo("o", "n"), branch: "feature-0")), .failed, .none,
-                                 answer(for: .init(repo: repo("o", "n"), branch: "feature-3")), .none])
+    func count(_ command: String) -> Int {
+        lock.withLock { calls.filter { $0.arguments.prefix(2).joined(separator: " ") == command }.count }
     }
 
-    func testAWholeCallThatFails() {
-        let checkouts = (0..<25).map { checkout($0) }
-        let resolutions: [RepoResolution] = checkouts.map { _ in .github(repo("o", "n")) }
-        var singles = 0
-        // Not reached: every checkout of the call failed, none asked again.
-        var lookups = PullRequests.lookup(checkouts, resolutions: resolutions,
-                                          call: { _ in .unreachable }, single: { _ in singles += 1; return .none })
-        XCTAssertEqual(lookups, Array(repeating: .failed, count: 25))
-        XCTAssertEqual(singles, 0)
-        // Not understood: the first call's checkouts are asked alone, the second call answered.
-        var call = 0
-        lookups = PullRequests.lookup(
-            checkouts, resolutions: resolutions,
-            call: { requests in
-                call += 1
-                return call == 1 ? .notUnderstood
-                    : .answered(Dictionary(uniqueKeysWithValues: requests.indices.map { ($0, PullRequests.Lookup.none) }))
-            },
-            single: { _ in singles += 1; return .failed })
-        XCTAssertEqual(singles, 20)
-        XCTAssertEqual(lookups, Array(repeating: .failed, count: 20) + Array(repeating: .none, count: 5))
+    func reset() { lock.withLock { calls = []; mostAtOnce = 0 } }
+}
+
+final class PullRequestBatchSweepTests: XCTestCase {
+    private var gh = FakeGh()
+    private var now = Date(timeIntervalSince1970: 1_000_000)
+    private var stamps: [String: FileStamp] = [:]
+    private var environment: [String: String] = [:]
+    private var cache = OSAllocatedUnfairLock(initialState: RepoCache())
+
+    override func setUp() {
+        gh = FakeGh()
+        gh.repoView = { root in
+            output(#"{"nameWithOwner":"o/\#((root as NSString).lastPathComponent)","url":"https://github.com/o/\#((root as NSString).lastPathComponent)"}"#)
+        }
     }
 
-    func testNothingCertainMeansNoCall() {
+    private func checkout(_ index: Int, root: String? = nil, branch: String? = nil) -> PullRequests.Checkout {
+        PullRequests.Checkout(directory: "/work/r\(index)/sub", branch: branch ?? "feature-\(index)", ids: [UUID()],
+                              root: root ?? "/work/r\(index)")
+    }
+
+    private func sweep(_ checkouts: [PullRequests.Checkout]) -> [PullRequests.Lookup] {
+        let context = PullRequests.SweepContext(
+            run: { [gh] in gh.run($0, $1, $2) }, now: { [now] in now },
+            stamp: { [stamps] in stamps[$0] ?? FileStamp(device: 1, inode: 1, size: 1, seconds: 1, nanoseconds: 1) },
+            environment: environment, home: "/home")
+        return PullRequests.lookup(checkouts, context: context, cache: cache)
+    }
+
+    private func titles(_ lookups: [PullRequests.Lookup]) -> [String?] {
+        lookups.map { if case .found(let pr) = $0 { return pr.title }; return nil }
+    }
+
+    func testANewRootIsAnsweredAloneOnceThenBatched() {
         let checkouts = (0..<3).map { checkout($0) }
-        let lookups = PullRequests.lookup(
-            checkouts, resolutions: checkouts.map { _ in .uncertain("GH_REPO is set") },
-            call: { _ in XCTFail("no call"); return .unreachable }, single: { _ in .none })
-        XCTAssertEqual(lookups, [.none, .none, .none])
+        // The first sweep: gh pr list each, and gh repo view each root beside it.
+        XCTAssertEqual(titles(sweep(checkouts)), ["feature-0", "feature-1", "feature-2"])
+        XCTAssertEqual(gh.count("pr list"), 3)
+        XCTAssertEqual(gh.count("repo view"), 3)
+        XCTAssertEqual(gh.count("api graphql"), 0)
+        XCTAssertEqual(Set(gh.calls.filter { $0.arguments.first == "repo" }.compactMap(\.directory)),
+                       ["/work/r0", "/work/r1", "/work/r2"], "gh repo view runs in the checkout's root")
+        // From then on: one call.
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), ["feature-0", "feature-1", "feature-2"])
+        XCTAssertEqual(gh.calls.count, 1)
+        XCTAssertEqual(gh.count("api graphql"), 1)
     }
 
-    func testAFallbackIsNewsOncePerReason() {
+    func testEveryStampedFileThatChangesAsksGhAgain() throws {
+        // A real git dir, so the repository's `config` and `config.worktree` are among the files.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("planchette-sweep-\(UUID().uuidString)").path
+        try FileManager.default.createDirectory(atPath: root + "/.git", withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: root) }
+        let one = [checkout(0, root: root)]
+        let files = RepoCache.stampedFiles(root: root, environment: environment, home: "/home")
+        XCTAssertEqual(files.count, 8)
+        XCTAssertTrue(files.contains(root + "/.git/config") && files.contains(root + "/.git/config.worktree"))
+        _ = sweep(one)
+        for file in files {
+            gh.reset()
+            _ = sweep(one)
+            XCTAssertEqual(gh.count("repo view"), 0, "nothing changed before \(file)")
+            stamps[file] = FileStamp(device: 1, inode: 2, size: 1, seconds: 1, nanoseconds: 1)
+            gh.reset()
+            _ = sweep(one)
+            XCTAssertEqual(gh.count("repo view"), 1, "\(file) changed")
+            XCTAssertEqual(gh.count("pr list"), 1, "\(file) changed: answered alone meanwhile")
+        }
+    }
+
+    func testAnAnswerExpiresAfterADay() {
+        let one = [checkout(0)]
+        _ = sweep(one)
+        now += 24 * 3600 - 1
+        gh.reset()
+        _ = sweep(one)
+        XCTAssertEqual(gh.count("repo view"), 0)
+        now += 1
+        gh.reset()
+        _ = sweep(one)
+        XCTAssertEqual(gh.count("repo view"), 1)
+    }
+
+    func testAFailureIsKeptForTenMinutes() {
+        gh.repoView = { _ in output("", status: 1) }
+        let one = [checkout(0)]
+        XCTAssertEqual(titles(sweep(one)), ["feature-0"])
+        now += 599
+        gh.reset()
+        XCTAssertEqual(titles(sweep(one)), ["feature-0"])
+        XCTAssertEqual(gh.count("repo view"), 0, "a failure is not asked again on every sweep")
+        XCTAssertEqual(gh.count("pr list"), 1, "but the checkout is still looked up alone")
+        now += 1
+        gh.reset()
+        _ = sweep(one)
+        XCTAssertEqual(gh.count("repo view"), 1)
+    }
+
+    func testAnotherHostStaysAlone() {
+        gh.repoView = { _ in output(#"{"nameWithOwner":"o/n","url":"https://ghe.example.com/o/n"}"#) }
+        let one = [checkout(0)]
+        _ = sweep(one)
+        now += 3600
+        gh.reset()
+        XCTAssertEqual(titles(sweep(one)), ["feature-0"])
+        XCTAssertEqual(gh.count("api graphql"), 0)
+        XCTAssertEqual(gh.count("repo view"), 0, "a GHE answer is kept like any other")
+        XCTAssertEqual(gh.count("pr list"), 1)
+    }
+
+    func testARepoViewThatFailsOrHangsFallsBackOnlyForItsCheckout() {
+        let checkouts = (0..<4).map { checkout($0) }
+        _ = sweep(Array(checkouts.prefix(2)))
+        gh.repoView = { root in
+            root == "/work/r2" ? output("", status: -1, timedOut: true)
+                : root == "/work/r3" ? output("", status: 1) : nil
+        }
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), ["feature-0", "feature-1", "feature-2", "feature-3"])
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), ["feature-0", "feature-1", "feature-2", "feature-3"])
+        XCTAssertEqual(gh.count("api graphql"), 1)
+        XCTAssertEqual(gh.calls.filter { $0.arguments.prefix(2) == ["pr", "list"] }.map { $0.arguments[3] }.sorted(),
+                       ["feature-2", "feature-3"])
+        XCTAssertEqual(gh.count("repo view"), 0)
+    }
+
+    func testAtMostFourAtOnce() {
+        gh.delay = 30_000
+        let checkouts = (0..<12).map { checkout($0) }
+        XCTAssertEqual(titles(sweep(checkouts)), (0..<12).map { "feature-\($0)" })
+        XCTAssertEqual(gh.calls.count, 24, "a pr list and a repo view per new root")
+        XCTAssertLessThanOrEqual(gh.mostAtOnce, 4)
+        XCTAssertGreaterThan(gh.mostAtOnce, 1, "the new roots are asked side by side")
+    }
+
+    func testACallWithoutDataFailsItsCheckoutsWithNoMoreProcesses() {
+        let checkouts = (0..<25).map { checkout($0) }
+        _ = sweep(checkouts)
+        for answer in [
+            output(#"{"message":"Bad credentials","documentation_url":"https://docs.github.com/rest"}"#, status: 1),
+            output(#"{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}"#, status: 1),
+            output(#"{"message":"You have exceeded a secondary rate limit.","status":"403"}"#, status: 1),
+            output(#"{"data":{"r0":null},"errors":[{"message":"Something went wrong"}]}"#, status: 1),
+            output("", status: 1),
+            output("", status: -1, timedOut: true),
+        ] {
+            gh.graphQL = { _ in answer }
+            gh.reset()
+            XCTAssertEqual(sweep(checkouts), Array(repeating: .failed, count: 25), answer.stdoutString)
+            XCTAssertEqual(gh.calls.count, 2, "two calls of the batch, nothing alone: \(answer.stdoutString)")
+        }
+    }
+
+    func testADataObjectNotUnderstoodIsAskedAlone() {
+        let checkouts = (0..<25).map { checkout($0) }
+        _ = sweep(checkouts)
+        // The two calls run side by side: the call of 20 gets the answer this does not read.
+        gh.graphQL = { body in
+            let variables = ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])?["variables"] as? [String: String]
+            return variables?.count == 60 ? output(#"{"data":[]}"#) : output(FakeGh.answerEveryAlias(body))
+        }
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), (0..<25).map { "feature-\($0)" })
+        XCTAssertEqual(gh.count("api graphql"), 2)
+        XCTAssertEqual(gh.count("pr list"), 20, "only the first call's checkouts")
+    }
+
+    func testAnAliasWithAnErrorIsAskedAloneAndOnlyIt() {
+        let checkouts = (0..<4).map { checkout($0) }
+        _ = sweep(checkouts)
+        gh.graphQL = { body in
+            let all = FakeGh.answerEveryAlias(body)
+            // r1's repository is gone: null, with an error that names it (gh then exits 1).
+            let others = all.replacingOccurrences(of: #""r1":{"pullRequests"#, with: #""r1x":{"pullRequests"#)
+            return output(String(others.dropLast(2)) + #","r1":null},"errors":[{"type":"NOT_FOUND","path":["r1"]}]}"#,
+                          status: 1)
+        }
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), (0..<4).map { "feature-\($0)" })
+        XCTAssertEqual(gh.calls.filter { $0.arguments.prefix(2) == ["pr", "list"] }.map { $0.arguments[3] }, ["feature-1"])
+    }
+
+    func testCallsOfTheCapEachAnswerTheirOwnCheckouts() throws {
+        let checkouts = (0..<45).map { checkout($0) }
+        _ = sweep(checkouts)
+        gh.reset()
+        XCTAssertEqual(titles(sweep(checkouts)), (0..<45).map { "feature-\($0)" })
+        XCTAssertEqual(gh.count("api graphql"), 3)
+        XCTAssertEqual(gh.calls.count, 3)
+    }
+
+    func testGhRepoIsLeftToGhPrList() {
+        environment["GH_REPO"] = "octocat/Hello-World"
+        let checkouts = (0..<2).map { checkout($0) }
+        XCTAssertEqual(titles(sweep(checkouts)), ["feature-0", "feature-1"])
+        XCTAssertEqual(gh.count("repo view"), 0, "gh repo view ignores GH_REPO")
+        XCTAssertEqual(gh.count("pr list"), 2)
+        XCTAssertEqual(gh.count("api graphql"), 0)
+    }
+
+    func testOutsideACheckoutIsAlone() {
+        let plain = PullRequests.Checkout(directory: "/tmp/plain", branch: "x", ids: [], root: nil)
+        XCTAssertEqual(titles(sweep([plain])), ["x"])
+        XCTAssertEqual(gh.count("repo view"), 0)
+    }
+
+    func testTwoClonesOfOneRepositoryShareAnAlias() {
+        gh.repoView = { _ in output(#"{"nameWithOwner":"o/n","url":"https://github.com/o/n"}"#) }
+        let checkouts = [checkout(0, branch: "b"), checkout(1, branch: "b"), checkout(2, branch: "c")]
+        _ = sweep(checkouts)
+        var aliases = 0
+        gh.graphQL = { body in
+            aliases = ((try? JSONSerialization.jsonObject(with: body)) as? [String: Any])
+                .flatMap { $0["variables"] as? [String: String] }.map { $0.count / 3 } ?? -1
+            return output(FakeGh.answerEveryAlias(body))
+        }
+        XCTAssertEqual(titles(sweep(checkouts)), ["b", "b", "c"])
+        XCTAssertEqual(aliases, 2)
+    }
+
+    func testThePlanSplitsAndShares() {
+        var repos: [GitHubRepo?] = (0..<45).map { _ in repo("o", "n") }
+        repos[7] = nil
+        var branches = (0..<45).map { "b\($0)" }
+        branches[3] = "b2"          // a second clone on b2 shares its alias
+        branches[9] = "fork:b9"     // left to gh
+        let plan = PullRequestBatch.plan(repos: repos, branches: branches)
+        XCTAssertEqual(plan.calls.map(\.count), [20, 20, 2])
+        XCTAssertEqual(Set(plan.calls.flatMap { $0 }).count, 42)
+        XCTAssertEqual(plan.requestOf[3], plan.requestOf[2])
+        XCTAssertNil(plan.requestOf[7])
+        XCTAssertNil(plan.requestOf[9])
+        XCTAssertEqual(PullRequestBatch.plan(repos: repos, branches: branches, cap: 50).calls.map(\.count), [42])
+        XCTAssertEqual(PullRequestBatch.plan(repos: [], branches: []), PullRequestBatch.Plan())
+    }
+
+    func testConcurrentMapKeepsTheOrder() {
+        XCTAssertEqual(PullRequestBatch.concurrentMap(100, limit: 4) { $0 * 2 }, (0..<100).map { $0 * 2 })
+        XCTAssertEqual(PullRequestBatch.concurrentMap(0, limit: 4) { $0 }, [])
+        XCTAssertEqual(PullRequestBatch.concurrentMap(3, limit: 0) { $0 }, [0, 1, 2])
+    }
+
+    func testAFallbackIsNewsOncePerCheckoutAndReason() {
         var notes = FallbackNotes()
         XCTAssertTrue(notes.isNews(key: "/a", reason: "GHE"))
         XCTAssertFalse(notes.isNews(key: "/a", reason: "GHE"))
         XCTAssertTrue(notes.isNews(key: "/b", reason: "GHE"))
-        XCTAssertTrue(notes.isNews(key: "/a", reason: "an alias"))
-        XCTAssertFalse(notes.isNews(key: "/a", reason: nil))
-        XCTAssertTrue(notes.isNews(key: "/a", reason: "an alias"))
+        XCTAssertTrue(notes.isNews(key: "/a", reason: "timed out"))
+        XCTAssertFalse(notes.isNews(key: "/a", reason: "GHE"), "another reason in between is no reason to repeat")
     }
 }
 
@@ -788,16 +711,8 @@ final class PullRequestBatchLiveTests: XCTestCase {
         let environment = ProcessInfo.processInfo.environment
         try XCTSkipUnless(environment["PLANCHETTE_LIVE_GH"] == "1", "set PLANCHETTE_LIVE_GH=1 to ask GitHub")
         let gh = try XCTUnwrap(PullRequests.ghPath(), "gh is not installed")
-        let here = (#filePath as NSString).deletingLastPathComponent
-        let directory = environment["PLANCHETTE_LIVE_GH_DIR"] ?? here
+        let directory = environment["PLANCHETTE_LIVE_GH_DIR"] ?? (#filePath as NSString).deletingLastPathComponent
         let root = try XCTUnwrap(Titles.checkoutRoot(forDirectory: directory))
-        let home = environment["HOME"] ?? NSHomeDirectory()
-        let outer = GhRepoResolver.outerRules(
-            paths: GhRepoResolver.outerConfigPaths(environment: environment, home: home), home: home)
-        let resolution = GhRepoResolver.resolve(checkoutRoot: root, outer: outer)
-        guard case .github(let resolved) = resolution else {
-            throw XCTSkip("\(root) falls back (\(resolution)): nothing to compare")
-        }
 
         let listed = try XCTUnwrap(Subprocess.run(
             gh, ["pr", "list", "--state", "all", "--limit", "12", "--json", "headRefName"], in: root, timeout: 60))
@@ -805,87 +720,43 @@ final class PullRequestBatchLiveTests: XCTestCase {
         let heads = (try JSONSerialization.jsonObject(with: listed.stdout) as? [[String: Any]] ?? [])
             .compactMap { $0["headRefName"] as? String }
         var branches = [String]()
-        for branch in heads + [Titles.gitBranch(forDirectory: root) ?? "", "main", "planchette-live-no-such-branch-\(UUID().uuidString.prefix(8))"]
+        for branch in heads + [Titles.gitBranch(forDirectory: root) ?? "", "main",
+                               "planchette-live-no-such-branch-\(UUID().uuidString.prefix(8))"]
         where !branch.isEmpty && !branches.contains(branch) {
             branches.append(branch)
         }
-        let checkouts = branches.map { PullRequests.Checkout(directory: root, branch: $0, ids: []) }
-        let alone = checkouts.map { PullRequests.lookup(branch: $0.branch, in: $0.directory) }
-        let batched = PullRequests.lookup(checkouts, resolutions: checkouts.map { _ in resolution },
-                                          call: PullRequests.callGraphQL,
-                                          single: { XCTFail("\($0.branch) fell back"); return .failed })
+        let checkouts = branches.map { PullRequests.Checkout(directory: root, branch: $0, ids: [], root: root) }
+        func seconds(_ work: () -> Void) -> String {
+            let start = DispatchTime.now().uptimeNanoseconds
+            work()
+            return String(format: "%.1f s", Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9)
+        }
+        var alone: [PullRequests.Lookup] = []
+        let oneByOne = seconds { alone = checkouts.map { PullRequests.lookup(branch: $0.branch, in: $0.directory) } }
+
+        let counted = OSAllocatedUnfairLock(initialState: [String: Int]())
+        let real = PullRequests.runner(gh)
+        let context = PullRequests.SweepContext(
+            run: { arguments, directory, input in
+                counted.withLock { $0[arguments.prefix(2).joined(separator: " "), default: 0] += 1 }
+                return real(arguments, directory, input)
+            },
+            environment: environment, home: environment["HOME"] ?? NSHomeDirectory())
+        let cache = OSAllocatedUnfairLock(initialState: RepoCache())
+        var first: [PullRequests.Lookup] = []
+        let firstSweep = seconds { first = PullRequests.lookup(checkouts, context: context, cache: cache) }
+        XCTAssertEqual(first, alone, "the first sweep")
+        counted.withLock { $0 = [:] }
+        var batched: [PullRequests.Lookup] = []
+        let laterSweep = seconds { batched = PullRequests.lookup(checkouts, context: context, cache: cache) }
+        print("live timing: one by one \(oneByOne), first sweep \(firstSweep), later sweep \(laterSweep)")
+        XCTAssertEqual(counted.withLock { $0 }, ["api graphql": 1], "the second sweep is one call")
         var found = 0
         for (index, branch) in branches.enumerated() {
             XCTAssertNotEqual(alone[index], .failed, "gh pr list failed for \(branch)")
             XCTAssertEqual(batched[index], alone[index], branch)
-            if case .found(let pr) = batched[index] {
-                found += 1
-                XCTAssertTrue(pr.url.absoluteString.lowercased()
-                    .hasPrefix("https://github.com/\(resolved.owner)/\(resolved.name)/pull/".lowercased()), pr.url.absoluteString)
-            }
+            if case .found = batched[index] { found += 1 }
         }
-        // The app's own entry point: the same answers.
-        XCTAssertEqual(PullRequests.lookup(checkouts), alone)
-        print("live: \(resolved.owner)/\(resolved.name), \(branches.count) branches, \(found) with a PR, all equal")
-    }
-
-    /// The installed gh is the oracle for the repository choice: for every config, the
-    /// repository `gh pr list` asks (read from `GH_DEBUG=api`) is the one the resolver names,
-    /// wherever the resolver is certain.
-    func testTheResolverPicksWhatGhPicks() throws {
-        let environment = ProcessInfo.processInfo.environment
-        try XCTSkipUnless(environment["PLANCHETTE_LIVE_GH"] == "1", "set PLANCHETTE_LIVE_GH=1 to ask GitHub")
-        let gh = try XCTUnwrap(PullRequests.ghPath(), "gh is not installed")
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("planchette-ghpick-\(UUID().uuidString)").path
-        try FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(atPath: dir) }
-        try fixtureGit(["init", "-q"], in: dir)
-        let planchette = "https://github.com/marcello-a/Planchette.git"
-        let cli = "git@github.com:cli/cli.git"
-        let configs: [(String, String)] = [
-            ("origin", "[remote \"origin\"]\n\turl = \(planchette)\n"),
-            ("origin+upstream", "[remote \"origin\"]\n\turl = \(planchette)\n[remote \"upstream\"]\n\turl = \(cli)\n"),
-            ("origin base", "[remote \"origin\"]\n\turl = \(planchette)\n\tgh-resolved = base\n[remote \"upstream\"]\n\turl = \(cli)\n"),
-            ("upstream base", "[remote \"origin\"]\n\turl = \(planchette)\n[remote \"upstream\"]\n\turl = \(cli)\n\tgh-resolved = base\n"),
-            ("origin owner/repo", "[remote \"origin\"]\n\turl = \(planchette)\n\tgh-resolved = octocat/Hello-World\n[remote \"upstream\"]\n\turl = \(cli)\n"),
-            ("both resolved", "[remote \"origin\"]\n\turl = \(planchette)\n\tgh-resolved = octocat/Hello-World\n[remote \"upstream\"]\n\turl = \(cli)\n\tgh-resolved = base\n"),
-            ("github+origin", "[remote \"origin\"]\n\turl = \(planchette)\n[remote \"github\"]\n\turl = https://github.com/cli/cli\n"),
-            ("Upstream", "[remote \"origin\"]\n\turl = \(planchette)\n[remote \"Upstream\"]\n\turl = https://github.com/cli/cli/\n"),
-            ("old dotted", "[remote.upstream]\n\turl = \(cli)\n[remote \"origin\"]\n\turl = \(planchette)\n"),
-            ("local+upstream", "[remote \"origin\"]\n\turl = /tmp/x\n[remote \"upstream\"]\n\turl = https://github.com/cli/cli.git\n"),
-            ("scp", "[remote \"origin\"]\n\turl = git@github.com:cli/cli\n"),
-            ("ssh port", "[remote \"origin\"]\n\turl = ssh://git@ssh.github.com:443/cli/cli.git\n"),
-            ("www", "[remote \"origin\"]\n\turl = https://www.github.com/cli/cli.git\n"),
-            ("quoted url", "[remote \"origin\"]\n\turl = \"https://github.com/cli/cli.git\" ; comment\n"),
-            ("foo+bar", "[remote \"foo\"]\n\turl = \(planchette)\n[remote \"bar\"]\n\turl = \(cli)\n"),
-            ("alias", "[remote \"origin\"]\n\turl = git@github.com-work:cli/cli.git\n"),
-            ("local pushurl", "[remote \"origin\"]\n\turl = /tmp/x\n\tpushurl = https://github.com/cli/cli.git\n"),
-        ]
-        var compared = 0
-        for (name, remotes) in configs {
-            let config = "[core]\n\trepositoryformatversion = 0\n\tbare = false\n" + remotes
-            try config.write(toFile: "\(dir)/.git/config", atomically: true, encoding: .utf8)
-            let resolution = GhRepoResolver.resolve(checkoutRoot: dir, outer: .init())
-            let run = try XCTUnwrap(Subprocess.run(
-                "/usr/bin/env",
-                ["-u", "GH_REPO", "-u", "GH_HOST", "GH_DEBUG=api", gh, "pr", "list", "--head", "x",
-                 "--state", "all", "--limit", "1", "--json", "number"],
-                in: dir, timeout: 60, stderr: .capture))
-            let picked = run.stderrString.components(separatedBy: "\n")
-                .first { $0.hasPrefix("GraphQL variables: ") }
-                .flatMap { line -> GitHubRepo? in
-                    let json = Data(line.dropFirst("GraphQL variables: ".count).utf8)
-                    guard let variables = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-                          let owner = variables["owner"] as? String, let repo = variables["repo"] as? String
-                    else { return nil }
-                    return GitHubRepo(owner: owner, name: repo)
-                }
-            if case .github(let ours) = resolution {
-                XCTAssertEqual(ours, picked, name)
-                compared += 1
-            }
-            print("gh pick \(name): gh \(picked.map { "\($0.owner)/\($0.name)" } ?? "none"), resolver \(resolution)")
-        }
-        XCTAssertEqual(compared, 14)
+        print("live: \(root), \(branches.count) branches, \(found) with a PR, batch equal to gh pr list")
     }
 }
