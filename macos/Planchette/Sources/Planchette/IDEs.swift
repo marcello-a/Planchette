@@ -173,21 +173,20 @@ enum IDEs {
     }
 
     /// The answer of `parse` for `file`, parsed again only when the file's modification
-    /// date changed. The dev-server tick asks every 5 s; the files (up to ~100 KB of
-    /// JSON each) change when a window opens or closes.
+    /// date or size changed (`TranscriptStamp`: a file system with whole-second times
+    /// can take two writes in one second). The dev-server tick asks every 5 s; the files
+    /// (up to ~100 KB of JSON each) change when a window opens or closes.
     static func parsedOnChange(_ file: URL, parse: (URL) -> Set<String>?) -> Set<String> {
-        guard let modified = (try? FileManager.default.attributesOfItem(atPath: file.path))?[
-            .modificationDate] as? Date
-        else { return [] }
-        if let hit = parsedFiles.withLock({ $0[file.path] }), hit.modified == modified {
+        guard let stamp = TranscriptStamp.of(path: file.path) else { return [] }
+        if let hit = parsedFiles.withLock({ $0[file.path] }), hit.stamp == stamp {
             return hit.projects
         }
         let projects = parse(file) ?? []
-        parsedFiles.withLock { $0[file.path] = (modified, projects) }
+        parsedFiles.withLock { $0[file.path] = (stamp, projects) }
         return projects
     }
 
-    private static let parsedFiles = OSAllocatedUnfairLock<[String: (modified: Date, projects: Set<String>)]>(
+    private static let parsedFiles = OSAllocatedUnfairLock<[String: (stamp: String, projects: Set<String>)]>(
         initialState: [:])
 
     /// Pure: the `opened="true"` entries of a JetBrains `recentProjects.xml`,

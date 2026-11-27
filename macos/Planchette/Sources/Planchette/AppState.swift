@@ -589,8 +589,9 @@ final class AppState: ObservableObject {
                 extendedContextSessions.insert(claudeID)
                 refreshContextUsage()
             }
-            let detection = ScreenDetector.detect(
-                lines: text.components(separatedBy: "\n"), rules: rules)
+            let detection = screenReadings.detection(for: id, text: text, rules: rules) {
+                ScreenDetector.detect(lines: text.components(separatedBy: "\n"), rules: rules)
+            }
             // A terminal held at running by its background work sits at an idle prompt on
             // purpose: that is not "a turn that ended without a hook", and "free" would be
             // undone at once anyway (`setState` settles it) — after rewriting the state its
@@ -642,6 +643,8 @@ final class AppState: ObservableObject {
     /// screen may therefore end again.
     private var screenRaisedIDs: Set<UUID> = []
     private var screenConfirmation = ScreenConfirmation()
+    /// The last verdict per terminal, reused while its viewport is unchanged.
+    private var screenReadings = ScreenReadings()
 
     /// Pick up an edited or freshly downloaded ruleset. One stat per tick; the
     /// file is only parsed when its mtime moved.
@@ -975,7 +978,7 @@ final class AppState: ObservableObject {
                         for id in moved { kept[id] = nil }
                         if kept != self.pullRequests { self.pullRequests = kept }
                     }
-                    // Tab names and tickets read the branch through a cache.
+                    // `displayTitle` and the AI summary read the branch through a cache.
                     Titles.forgetBranches()
                     // A new branch may already have a PR — do not make it wait
                     // a whole PR poll interval to show it. Only the terminals whose
@@ -992,10 +995,25 @@ final class AppState: ObservableObject {
     /// One branch poll at a time (see `SingleFlight`).
     private var branchFlight = SingleFlight()
 
+    /// What each terminal's running turn did to git (`TurnGitRecord`).
+    private var turnGitRecord = TurnGitRecord()
+
+    /// A turn (`endsTurn`) or a subagent ended. The branch is read again in any case
+    /// (a local read); `gh` is asked only when a tool call of the turn may have touched
+    /// git, or when nothing said what the turn did. A turn that only read and edited
+    /// files cannot have pushed or made a PR, and the minute poll is there for the rest.
+    private func turnEnded(_ id: UUID, endsTurn: Bool) {
+        if turnGitRecord.turnEnded(id, endsTurn: endsTurn) {
+            gitMayHaveChanged(in: id)
+        } else {
+            refreshBranches()
+        }
+    }
+
     /// When `gitMayHaveChanged` last asked `gh`, per folder and branch (several
     /// terminals of one checkout share it), and for the whole app (`""`: the app came
-    /// to the front). See `PullRequests.eagerGap`.
-    private var lastEagerPullRequestRefresh: [String: Date] = [:]
+    /// to the front), and who waits for the end of a gap. See `PullRequests.eagerGap`.
+    private var eagerLookups = EagerLookups()
 
     /// A command or an agent's turn just ended in terminal `id` (nil: the app came to
     /// the front): it may have switched the branch (`git checkout`, `git switch`) or
@@ -1007,15 +1025,31 @@ final class AppState: ObservableObject {
     /// one `gh` per branch every 15 s, in front and behind.
     func gitMayHaveChanged(in id: UUID? = nil, now: Date = Date()) {
         refreshBranches()
+        // The app came to the front: every checkout is asked (a PR merged in the
+        // browser shows on the way back), at most once per `eagerGap`.
         let key = id.map { "\(sessions[$0]?.currentDirectory ?? "")\u{0}\(branches[$0] ?? "")" } ?? ""
-        guard PullRequests.eagerRefreshDue(last: lastEagerPullRequestRefresh[key], now: now) else { return }
-        // Only the gaps still running are worth keeping: the table stays small.
-        lastEagerPullRequestRefresh = lastEagerPullRequestRefresh.filter {
-            !PullRequests.eagerRefreshDue(last: $0.value, now: now)
+        switch eagerLookups.request(key: key, id: id, now: now) {
+        case .askNow:
+            refreshPullRequests(id.map { .sessions([$0]) } ?? .all)
+        case .deferFor(let wait):
+            // Inside the gap the request waits for its end, not dropped: `git push`
+            // and then `gh pr create` a few seconds later must still show the PR before
+            // the minute poll. Every terminal that asks meanwhile joins this lookup.
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let ids = self.eagerLookups.takeDeferred(key: key, now: Date())
+                        .filter { self.sessions[$0] != nil }
+                    guard !ids.isEmpty else { return }
+                    self.refreshBranches()
+                    self.refreshPullRequests(.sessions(ids))
+                }
+            }
+        case .joined, .dropped:
+            break
         }
-        lastEagerPullRequestRefresh[key] = now
-        refreshPullRequests(id.map { .sessions([$0]) } ?? .all)
     }
+
 
     // MARK: Pull request per terminal
 
@@ -1110,7 +1144,7 @@ final class AppState: ObservableObject {
                 var result = PullRequests.merge(
                     answers: answers, asked: askedNow, branches: self.branches,
                     previous: self.pullRequests)
-                if scope != .all {
+                if !scope.coversAll {
                     for (id, pr) in self.pullRequests where askedNow[id] == nil { result[id] = pr }
                 }
                 let now = Date()
@@ -1262,16 +1296,19 @@ final class AppState: ObservableObject {
                let title = session.renamedTitle { acc[path] = title }
         }
         let extended = extendedContextSessions
+        // The usage is read only while it is shown (see `shownUsage` below). The stamp
+        // says whether a reading has it, so switching it on reads every transcript again.
+        let readsUsage = sidebarDetails.showsTranscriptUsage
         Task.detached {
-            let configured = ContextWindow.configuredModel()
+            let configured = readsUsage ? ContextWindow.configuredModel() : nil
             var newStamps = stamps
             var scanByPath = known
             let livePaths = Set(targets.values.map(\.path))
             for path in livePaths {
-                let stamp = TranscriptStamp.of(path: path) ?? "-1-0"
+                let stamp = (TranscriptStamp.of(path: path) ?? "-1-0") + (readsUsage ? "+usage" : "")
                 guard newStamps[path] != stamp else { continue }
                 newStamps[path] = stamp
-                scanByPath[path] = ContextUsageReader.scan(path: path)
+                scanByPath[path] = ContextUsageReader.scan(path: path, usage: readsUsage)
                     .keepingRename(of: scanByPath[path] ?? renamed[path].map { TranscriptScan(customTitle: $0) })
             }
             // Every Claude conversation is a new transcript path. Keeping the
@@ -1302,8 +1339,8 @@ final class AppState: ObservableObject {
                 // The usage changes with every request of a running turn, and it is drawn
                 // only when the sidebar shows the model, the ring or the cache timer — all
                 // off by default. Kept out of the published state otherwise: every publish
-                // redraws the whole window. Turning one on brings it back at once, from the
-                // readings kept above.
+                // redraws the whole window. Turning one on reads the transcripts again at
+                // once (the `+usage` stamp above), and the usage shows after that read.
                 let shownUsage = self.sidebarDetails.showsTranscriptUsage ? found : [:]
                 if self.contextUsage != shownUsage { self.contextUsage = shownUsage }
                 if self.agentTitles != titles { self.agentTitles = titles }
@@ -1553,10 +1590,17 @@ final class AppState: ObservableObject {
 
     /// Re-read which IDEs exist on this machine.
     func refreshInstalledIDEs() {
-        let installed = IDEs.installed()
-        if installedIDEs != installed { installedIDEs = installed }
         let running = IDEs.runningBundleIDs()
         if running != runningIDEs { runningIDEs = running }
+        // LaunchServices, once per known IDE: off the main thread (rule 6), on every
+        // switch to an IDE.
+        Task.detached {
+            let installed = IDEs.installed()
+            await MainActor.run { [weak self] in
+                guard let self, self.installedIDEs != installed else { return }
+                self.installedIDEs = installed
+            }
+        }
     }
 
     private func refreshDevServers() {
@@ -1963,6 +2007,9 @@ final class AppState: ObservableObject {
         if databasePrograms.contains(id) { databasePrograms.remove(id) }
         screenRaisedIDs.remove(id)
         screenConfirmation.forget(id)
+        screenReadings.forget(id)
+        turnGitRecord.forget(id)
+        eagerLookups.forget(id)
         escalatedIDs.remove(id)
         aiAssist.forget(id)
         if let idx = groups.firstIndex(where: { $0.id == session.groupID }) {
@@ -2112,6 +2159,9 @@ final class AppState: ObservableObject {
             backgroundTasks[sid] = nil
             screenRaisedIDs.remove(sid)
             screenConfirmation.forget(sid)
+            screenReadings.forget(sid)
+            turnGitRecord.forget(sid)
+            eagerLookups.forget(sid)
             escalatedIDs.remove(sid)
             aiAssist.forget(sid)
         }
@@ -3384,7 +3434,8 @@ final class AppState: ObservableObject {
         isSubagent: Bool = false,
         toolName: String? = nil,
         toolUseID: String? = nil,
-        toolMayChangeGit: Bool = true
+        toolMayChangeGit: Bool = true,
+        toolMayTouchGitByTurnEnd: Bool = true
     ) {
         guard let stateBefore = sessions[sessionID]?.state else { return }
         Telemetry.count(.hookEvents)
@@ -3473,6 +3524,10 @@ final class AppState: ObservableObject {
             }
         }
         // Per-event side effects.
+        // What the turn did to git, for its end (`turnEnded`). Every end of a tool call
+        // counts — a failed one too (`gh pr create && gh pr merge` can fail after making
+        // the PR). A new prompt or the end of the session starts the record again.
+        turnGitRecord.record(event: hookEvent, id: sessionID, mayTouchGit: toolMayTouchGitByTurnEnd)
         switch hookEvent {
         case "Notification", "PermissionRequest":
             // Only a question arrives as "X asks": the idle nudge, a login or quota notice
@@ -3486,11 +3541,12 @@ final class AppState: ObservableObject {
             aiAssist.sessionUpdated(sessionID)
         case "Stop":
             aiAssist.sessionUpdated(sessionID)
-            gitMayHaveChanged(in: sessionID)
+            // A subagent's `Stop` is not the end of the main agent's turn.
+            turnEnded(sessionID, endsTurn: !isSubagent)
         case "SubagentStop":
             // Not the end of the turn (the main agent keeps working): no summary, which
             // would be stale at once and costs a whole `claude` run.
-            gitMayHaveChanged(in: sessionID)
+            turnEnded(sessionID, endsTurn: false)
         case "PostToolUse":
             // A tool call can be the `git checkout` or `gh pr create` itself — but a
             // Read, an Edit or a search cannot (`PullRequests.toolMayChangeGit`).
@@ -3854,7 +3910,8 @@ final class AppState: ObservableObject {
         let state = PersistedState(
             groups: groups,
             // The notepads are written here, from where they live while the app runs.
-            sessions: sessions.values.map { session in
+            // In a fixed order, so an unchanged workspace encodes to the same bytes.
+            sessions: sessions.values.sorted { $0.id.uuidString < $1.id.uuidString }.map { session in
                 var stored = session
                 stored.notepad = notepadText[session.id]
                 stored.notepadHistory = notepadHistory[session.id]
@@ -3893,13 +3950,32 @@ final class AppState: ObservableObject {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(state).write(to: Self.stateURL, options: .atomic)
+            let data = try encoder.encode(state)
+            // A save is asked for on every resign and hide, changed or not: the same
+            // bytes are not written again (an atomic write is a new file, a rename
+            // and an fsync) — while the file is still the one written last. One that
+            // was deleted or rewritten by someone else is written again.
+            if let last = lastSavedState, last.data == data,
+               let file = Self.fileIdentity(Self.stateURL.path), file == last.file { return }
+            try data.write(to: Self.stateURL, options: .atomic)
+            lastSavedState = (data, Self.fileIdentity(Self.stateURL.path))
             // User-only: state carries cwd, titles and Claude session ids.
             try? FileManager.default.setAttributes(
                 [.posixPermissions: 0o600], ofItemAtPath: Self.stateURL.path)
         } catch {
             Log.error("state.save_failed", "save failed: \(error)")
         }
+    }
+
+    /// The bytes `saveNow` wrote last, and the file it wrote them to (nil: none yet).
+    private var lastSavedState: (data: Data, file: String?)?
+
+    /// A file's device, inode, size and modification time: which file this is, and
+    /// whether it was written since. Nil when there is none.
+    nonisolated static func fileIdentity(_ path: String) -> String? {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        return "\(info.st_dev):\(info.st_ino):\(info.st_size):\(info.st_mtimespec.tv_sec).\(info.st_mtimespec.tv_nsec)"
     }
 
     /// Read the saved state without applying it (for the restore dialog).
@@ -4104,6 +4180,7 @@ final class AppState: ObservableObject {
             try? FileManager.default.copyItem(at: Self.stateURL, to: archive)
         }
         try? FileManager.default.removeItem(at: Self.stateURL)
+        lastSavedState = nil
         // Drop stale scrollback dumps so a fresh start shows no old history.
         try? FileManager.default.removeItem(at: Self.scrollbackDir)
         // "Start fresh" means fresh: no durable session from the discarded state

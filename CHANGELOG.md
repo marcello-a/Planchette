@@ -33,7 +33,26 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **Quieter while the screens sleep.** With every display asleep, all polls run at their slow
   background rate, also when Planchette is still the app in front. With the app in front, an idle
   terminal you cannot see has its screen read every 6 seconds instead of every 1.5; a running,
-  asking or visible one is still read every 1.5 seconds.
+  asking or visible one is still read every 1.5 seconds (one that only waits on background work
+  counts as idle).
+- **Reading the screens costs a fraction of what it did.** A terminal whose screen did not change
+  since the last look is not read through the rules again, and the rules match bytes instead of
+  characters — that string work was the largest steady cost on the main thread.
+- **Fewer GitHub lookups.** A `git status`, `git diff` or `git log` of an agent no longer starts a
+  `gh` lookup (only a `git` that can change something, and `gh` itself, do), and a turn that only
+  read, edited, searched and ran read-only `git` no longer asks at its end. A terminal's lookup
+  asked for within 15 seconds of the last one for the same branch now runs at the end of that gap
+  instead of being dropped, so `git push` followed by `gh pr create` shows the new PR within
+  15 seconds.
+- **A reopened pull request shows.** A lookup asked for while another one ran could be swallowed
+  by the next minute's sweep, which skips merged and closed PRs for 15 minutes.
+- **AI summaries do not pile up.** With many agents at work, a terminal waits in the summary queue
+  at most once (with its newest conversation), and the context usage is no longer read from the
+  transcripts while the sidebar does not show it. An answer that is no JSON no longer pauses the
+  summaries of every other terminal; an empty one still counts as a failed run.
+- **Fewer disk writes.** The workspace file and the terminals' scrollback are written only when
+  they changed, not on every switch to another app; the branch poll reads `HEAD` only when it
+  changed; "how long ago" labels redraw when their text changes (and no longer lag up to a minute).
 - **The hook cannot hold an agent for long.** If the app accepts an event but does not answer,
   the hook gives up after 5 seconds per socket instead of waiting for the agent's own hook timeout, and it
   starts one process less per event.

@@ -57,7 +57,12 @@ enum ContextWindow {
     /// (`Opus 5.5 (1M context)`). Pure, so the screen poll can call it on the
     /// viewport text it already has.
     static func screenShowsExtended(_ text: String) -> Bool {
-        text.range(of: "1M context", options: .caseInsensitive) != nil
+        // A byte search first: the case-insensitive one cost five rules readings, on
+        // every read of every Claude terminal while the ring is on, and almost no
+        // screen holds the word.
+        guard ScreenDetector.bytesContain(text, "ontext") || ScreenDetector.bytesContain(text, "ONTEXT")
+        else { return false }
+        return text.range(of: "1M context", options: .caseInsensitive) != nil
     }
 
     /// The model the user configured for Claude Code, if any. Read once per
@@ -180,7 +185,9 @@ enum ContextUsageReader {
     /// One read for both answers: the sweep that wants them runs per changed
     /// transcript, and reading the same half megabyte a second time to find a
     /// line that sits in it already would buy nothing.
-    static func scan(path: String, window: UInt64 = 512 * 1024) -> TranscriptScan {
+    /// `usage: false` leaves the usage out (nil): it is drawn only when the sidebar
+    /// shows the model, the ring or the cache timer, and its pass is half a scan.
+    static func scan(path: String, window: UInt64 = 512 * 1024, usage: Bool = true) -> TranscriptScan {
         guard let handle = FileHandle(forReadingAtPath: path) else { return TranscriptScan() }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
@@ -189,7 +196,7 @@ enum ContextUsageReader {
         // Bytes, not a String: each answer is found by a byte search for its marker,
         // and only the lines that hold it are parsed. Splitting the half megabyte into
         // lines three times cost about 31 ms a scan; the search costs well under one.
-        return TranscriptScan(usage: latest(inJSONL: data),
+        return TranscriptScan(usage: usage ? latest(inJSONL: data) : nil,
                               title: AgentTitle.latest(inJSONL: data),
                               customTitle: AgentTitle.latestCustom(inJSONL: data))
     }

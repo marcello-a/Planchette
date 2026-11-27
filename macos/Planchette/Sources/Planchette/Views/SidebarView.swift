@@ -1432,24 +1432,34 @@ extension BranchTrim {
     }
 }
 
-/// When a "how long ago" label has to redraw: every second while it still counts
-/// seconds, once a minute afterwards. A fixed minute cadence would leave "3s"
-/// standing for the better part of a minute, and a fixed second cadence would
-/// redraw every row of a workspace that has been idle for hours.
+/// When a "how long ago" label has to redraw: at the moments its text changes, counted
+/// from `since` — every second while it counts seconds, on the minute while it counts
+/// minutes, then on the hour and on the day (`WaitingTimeText.format` shows two units
+/// at most). A cadence counted from the moment the view appeared left a label up to a
+/// minute behind, and redrew a "2d 3h" every minute for nothing.
 struct AgeSchedule: TimelineSchedule {
     let since: Date
 
     func entries(from start: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
         var next = start
         return AnyIterator {
-            let step: TimeInterval = next.timeIntervalSince(since) < 60 ? 1 : 60
-            defer { next = next.addingTimeInterval(step) }
+            defer { next = Self.nextChange(after: next, since: since) }
             return next
         }
     }
+
+    /// The first moment after `date` at which the age counted from `since` reads
+    /// differently. Pure.
+    static func nextChange(after date: Date, since: Date) -> Date {
+        let age = date.timeIntervalSince(since)
+        // A clock that moved back reads "0s" until the age reaches one second.
+        guard age >= 0 else { return since.addingTimeInterval(1) }
+        let unit: TimeInterval = age < 60 ? 1 : age < 86_400 ? 60 : age < 7 * 86_400 ? 3_600 : 86_400
+        return since.addingTimeInterval(((age / unit).rounded(.down) + 1) * unit)
+    }
 }
 
-/// "12m" — how long ago the state last changed, updated once a minute.
+/// "12m" — how long ago the state last changed, redrawn when the text changes (`AgeSchedule`).
 struct WaitingTimeText: View {
     let since: Date
 

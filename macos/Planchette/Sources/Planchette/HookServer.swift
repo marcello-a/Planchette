@@ -451,9 +451,9 @@ final class HookServer {
         // the other agents' hooks carry none of these fields).
         let background = BackgroundTasks.signal(from: event)
         // Whether the tool call can have touched a branch or a PR (for the PR pill).
-        let toolMayChangeGit = PullRequests.toolMayChangeGit(
-            toolName: toolName,
-            command: (event["tool_input"] as? [String: Any])?["command"] as? String)
+        let toolCommand = (event["tool_input"] as? [String: Any])?["command"] as? String
+        let toolMayChangeGit = PullRequests.toolMayChangeGit(toolName: toolName, command: toolCommand)
+        let toolMayTouchGitByTurnEnd = PullRequests.toolMayTouchGitByTurnEnd(toolName: toolName, command: toolCommand)
 
         DispatchQueue.main.async { [weak self] in
             self?.appState?.applyHookEvent(
@@ -470,7 +470,8 @@ final class HookServer {
                 isSubagent: isSubagent,
                 toolName: toolName,
                 toolUseID: toolUseID,
-                toolMayChangeGit: toolMayChangeGit
+                toolMayChangeGit: toolMayChangeGit,
+                toolMayTouchGitByTurnEnd: toolMayTouchGitByTurnEnd
             )
         }
         return false

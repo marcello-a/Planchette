@@ -2222,6 +2222,30 @@ final class ClaudeResumeTests: XCTestCase {
 /// The one "how long ago" label in the app: the sidebar, the notifications
 /// panel, the folder overview and the quick switcher all render this.
 final class WaitingTimeTests: XCTestCase {
+    /// An age label redraws exactly where its text changes, counted from the start.
+    func testAnAgeLabelRedrawsWhereItsTextChanges() {
+        let since = Date(timeIntervalSince1970: 1_000_000)
+        func next(_ age: TimeInterval) -> TimeInterval {
+            AgeSchedule.nextChange(after: since.addingTimeInterval(age), since: since).timeIntervalSince(since)
+        }
+        XCTAssertEqual(next(0), 1)
+        XCTAssertEqual(next(59.5), 60)
+        XCTAssertEqual(next(60), 120)
+        XCTAssertEqual(next(61), 120)
+        XCTAssertEqual(next(86_399), 86_400)
+        XCTAssertEqual(next(86_400 + 10), 86_400 + 3_600)
+        XCTAssertEqual(next(8 * 86_400 + 5), 9 * 86_400)
+        XCTAssertEqual(next(-30), 1)
+        // Every step changes the text, and no change falls between two steps.
+        var age: TimeInterval = 0
+        while age < 10 * 86_400 {
+            let after = next(age)
+            XCTAssertNotEqual(WaitingTimeText.format(age), WaitingTimeText.format(after), "\(age)")
+            XCTAssertEqual(WaitingTimeText.format(age), WaitingTimeText.format(after - 0.5), "\(age)")
+            age = after
+        }
+    }
+
     func testUsesUnitSymbols() {
         XCTAssertEqual(WaitingTimeText.format(0), "0s")
         XCTAssertEqual(WaitingTimeText.format(42), "42s")
@@ -3857,21 +3881,46 @@ final class PullRequestSweepTests: XCTestCase {
 
     func testScopesAddUp() {
         XCTAssertEqual(PullRequests.SweepScope.sessions([a]).adding(.sessions([b])), .sessions([a, b]))
-        XCTAssertEqual(PullRequests.SweepScope.sessions([a]).adding(.all), .all)
-        XCTAssertEqual(PullRequests.SweepScope.all.adding(.sessions([a])), .all)
+        // A terminal asked about by name stays named when a sweep of all joins it.
+        XCTAssertEqual(PullRequests.SweepScope.sessions([a]).adding(.all), .allNaming([a]))
+        XCTAssertEqual(PullRequests.SweepScope.all.adding(.sessions([a])), .allNaming([a]))
+        XCTAssertEqual(PullRequests.SweepScope.all.adding(.all), .all)
+        XCTAssertEqual(PullRequests.SweepScope.allNaming([a]).adding(.sessions([b])), .allNaming([a, b]))
         XCTAssertTrue(PullRequests.SweepScope.all.contains(a))
+        XCTAssertTrue(PullRequests.SweepScope.allNaming([b]).contains(a))
         XCTAssertFalse(PullRequests.SweepScope.sessions([b]).contains(a))
+    }
+
+    /// `gh pr reopen` during a sweep, then the minute timer: the two wait for one run
+    /// of all terminals, and the one that reopened its PR must still be asked.
+    func testANamedTerminalIsAskedEvenWhileItsDecidedPRRests() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/r", directory: "/r", branch: "feat/x"),
+            PullRequests.Terminal(id: b, root: "/s", directory: "/s", branch: "feat/y"),
+        ]
+        let merged = PullRequests.SweepScope.sessions([a]).adding(.all)
+        let asked = PullRequests.checkouts(of: terminals, scope: merged, resting: [a, b])
+        XCTAssertEqual(asked.map(\.ids), [[a]])
     }
 
     func testWhichToolCallsCanChangeABranchOrAPR() {
         for command in ["git push", "git checkout -b feat/x", "cd app && gh pr create --fill",
-                        "/usr/bin/git switch main", "make && git commit -m x", "(git status)",
+                        "/usr/bin/git switch main", "make && git commit -m x", "(git commit -am x)",
                         "echo hi; gh pr merge 3"] {
             XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
         }
         for command in ["ls -la", "npm run digit", "cat .github/workflows/x.yml", "pnpm test",
-                        "grep -r ghost .", "legit-tool run", "git-lfs-like"] {
+                        "grep -r ghost .", "legit-tool run", "git-lfs-like",
+                        // A read cannot change a branch or a PR.
+                        "git status", "git diff --stat", "git -C ../app log --oneline -5",
+                        "git --no-pager diff HEAD~1", "cd app && git status && git diff",
+                        "git -c color.ui=never show HEAD"] {
             XCTAssertFalse(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
+        }
+        for command in ["git status && git push", "git", "git $CMD", "gh pr view 3",
+                        "git -C ../app checkout main", "git branch -m new-name", "git remote set-url origin x",
+                        "git log; git switch -"] {
+            XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
         }
         XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: nil))
         XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: nil, command: nil), "no tool name: as before")
@@ -3992,7 +4041,7 @@ final class ChildArgumentsTests: XCTestCase {
         let shell = Process()
         shell.executableURL = URL(fileURLWithPath: "/bin/sh")
         // Two children of the shell, so the join is checked too.
-        shell.arguments = ["-c", "/bin/sleep 30 & /bin/sleep 31 & wait"]
+        shell.arguments = ["-c", "/bin/sleep 3000 & /bin/sleep 3001 & wait"]
         try shell.run()
         defer {
             // The children first: they are not the test runner's to clean up.
@@ -4003,7 +4052,7 @@ final class ChildArgumentsTests: XCTestCase {
         // Wait (by progress) until both children have run `exec`: between fork and exec a
         // child still shows the shell's command line. The deadline only ends a broken run;
         // a slow machine (endpoint security) may take long to get there.
-        let expected = "/bin/sleep 30 | /bin/sleep 31"
+        let expected = "/bin/sleep 3000 | /bin/sleep 3001"
         var kernel: String?
         let deadline = Date().addingTimeInterval(300)
         while Date() < deadline {

@@ -74,20 +74,34 @@ enum PullRequests {
     enum SweepScope: Equatable {
         case all
         case sessions(Set<UUID>)
+        /// Every terminal, and these were asked about by name: a sweep of some terminals
+        /// that waited for the same run as a sweep of all. A named terminal is asked
+        /// even while its decided PR rests (`resting`) — a `gh pr reopen` must show.
+        case allNaming(Set<UUID>)
 
         /// Two requests that wait for the same run, as one.
         func adding(_ other: SweepScope) -> SweepScope {
-            switch (self, other) {
-            case (.sessions(let a), .sessions(let b)): return .sessions(a.union(b))
-            default: return .all
+            if case .sessions(let a) = self, case .sessions(let b) = other { return .sessions(a.union(b)) }
+            let named = self.named.union(other.named)
+            return named.isEmpty ? .all : .allNaming(named)
+        }
+
+        /// The terminals asked about by name.
+        var named: Set<UUID> {
+            switch self {
+            case .all: return []
+            case .sessions(let ids), .allNaming(let ids): return ids
             }
         }
 
+        /// Whether the sweep covers every terminal.
+        var coversAll: Bool {
+            if case .sessions = self { return false }
+            return true
+        }
+
         func contains(_ id: UUID) -> Bool {
-            switch self {
-            case .all: return true
-            case .sessions(let ids): return ids.contains(id)
-            }
+            coversAll || named.contains(id)
         }
     }
 
@@ -127,7 +141,9 @@ enum PullRequests {
         }
         return order.compactMap { byKey[$0] }.filter { checkout in
             checkout.ids.contains(where: scope.contains)
-                && !(scope == .all && checkout.ids.allSatisfy(resting.contains))
+                && !(scope.coversAll && checkout.ids.allSatisfy {
+                    resting.contains($0) && !scope.named.contains($0)
+                })
         }
     }
 
@@ -144,16 +160,102 @@ enum PullRequests {
     }
 
     /// Whether a finished tool call can have switched a branch or made a PR, so its
-    /// terminal's PR is worth asking about now. A shell command that names `git` or
-    /// `gh` can; Claude Code's file, search and web tools cannot, and an MCP tool that
-    /// makes a PR is seen at the end of the turn or by the next poll. A tool this does
-    /// not know (another agent's names) counts as "can": the old behaviour.
+    /// terminal's PR is worth asking about now. A shell command that runs `gh`, or a
+    /// `git` that is not only a read (`readOnlyGitCommands`), can; Claude Code's file,
+    /// search and web tools cannot, and an MCP tool that makes a PR is seen at the end
+    /// of the turn or by the next poll. A tool this does not know (another agent's
+    /// names) counts as "can": the old behaviour. Agents run `git status` and `git diff`
+    /// all the time, and each one started a `gh` process.
     static func toolMayChangeGit(toolName: String?, command: String?) -> Bool {
         guard let toolName else { return true }
         guard toolName == "Bash" else { return !Self.toolsThatLeaveGitAlone.contains(toolName) && !toolName.hasPrefix("mcp__") }
         guard let command else { return true }
-        return command.range(of: #"(^|[^A-Za-z0-9_.-])(git|gh)($|[^A-Za-z0-9_-])"#, options: .regularExpression) != nil
+        return commandMayChangeGit(command)
     }
+
+    /// Whether a finished tool call means the end of its turn should ask about the PR.
+    /// Wider than `toolMayChangeGit`, which starts a lookup at once: any shell command
+    /// counts unless all it does with git is read (`make pr`, a script, an alias can
+    /// push and open a PR without naming `git`), and so does an MCP tool. Only a turn
+    /// of reads, edits, searches and `git status` skips the lookup at its end.
+    static func toolMayTouchGitByTurnEnd(toolName: String?, command: String?) -> Bool {
+        guard let toolName else { return true }
+        if toolName.hasPrefix("mcp__") { return true }
+        guard toolName == "Bash" else { return toolMayChangeGit(toolName: toolName, command: command) }
+        guard let command else { return true }
+        return !onlyReadsGit(command)
+    }
+
+    /// Pure: whether a command runs git, and only to read (`git status && git diff`,
+    /// `git log | head`). Every simple command of it has to be a read-only `git` or a
+    /// command in `commandsThatLeaveGitAlone`: `git status && make pr` can push.
+    static func onlyReadsGit(_ command: String) -> Bool {
+        var readsGit = false
+        let simpleCommands = command.split(whereSeparator: { ";&|()\n`{}".contains($0) })
+        for simple in simpleCommands {
+            var words = simple.split(whereSeparator: \.isWhitespace)[...]
+            while let word = words.first, word.contains("="), !word.hasPrefix("-") {
+                words = words.dropFirst()   // `GIT_PAGER=cat git log`
+            }
+            guard let name = words.first.map(String.init) else { continue }
+            if name == "git" {
+                let rest = words.dropFirst().joined(separator: " ")
+                guard let sub = gitSubcommand(after: rest), readOnlyGitCommands.contains(sub) else { return false }
+                readsGit = true
+            } else if !commandsThatLeaveGitAlone.contains(name) {
+                return false
+            }
+        }
+        return readsGit
+    }
+
+    /// Shell commands that never change a branch or a PR, for `onlyReadsGit`.
+    static let commandsThatLeaveGitAlone: Set<String> = [
+        "cd", "pwd", "ls", "cat", "echo", "printf", "grep", "head", "tail", "wc", "sort",
+        "uniq", "cut", "tr", "true", "false", "test", "[", "[[", "]", "]]",
+    ]
+
+    private static let gitOrGhPattern = #"(^|[^A-Za-z0-9_.-])(git|gh)($|[^A-Za-z0-9_-])"#
+
+    /// Pure: whether a shell command names `gh`, or a `git` whose subcommand is not
+    /// in `readOnlyGitCommands` (or cannot be told). Each `git` of a compound command
+    /// counts on its own: `git status && git push` can.
+    static func commandMayChangeGit(_ command: String) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: gitOrGhPattern) else { return true }
+        let text = command as NSString
+        for match in regex.matches(in: command, range: NSRange(location: 0, length: text.length)) {
+            let name = text.substring(with: match.range(at: 2))
+            if name == "gh" { return true }
+            let rest = text.substring(from: match.range(at: 2).upperBound)
+            guard let sub = gitSubcommand(after: rest), readOnlyGitCommands.contains(sub) else { return true }
+        }
+        return false
+    }
+
+    /// The subcommand of a `git` call, from the text after the word `git`: its global
+    /// options skipped (`-C <dir>`, `-c <key=value>`, `--no-pager`), up to the end of
+    /// the simple command. Nil when there is none (`git` alone, `git $CMD`).
+    static func gitSubcommand(after text: String) -> String? {
+        let simple = text.prefix { !";&|()\n`".contains($0) }
+        var words = simple.split(whereSeparator: \.isWhitespace).map(String.init)[...]
+        while let word = words.first {
+            words = words.dropFirst()
+            if ["-C", "-c", "--git-dir", "--work-tree", "--namespace"].contains(word) {
+                words = words.dropFirst()
+                continue
+            }
+            if word.hasPrefix("-") { continue }
+            return word.allSatisfy({ $0.isLetter || $0 == "-" }) ? word : nil
+        }
+        return nil
+    }
+
+    /// `git` subcommands that read and never change the branch, its commits on the
+    /// remote, or which repository a PR is looked up in.
+    static let readOnlyGitCommands: Set<String> = [
+        "status", "diff", "log", "show", "blame", "rev-parse", "ls-files", "ls-tree", "grep",
+        "describe", "shortlog", "reflog", "cat-file", "ls-remote", "fetch", "rev-list", "whatchanged",
+    ]
 
     /// Claude Code's own tools that never touch a branch or a PR.
     static let toolsThatLeaveGitAlone: Set<String> = [
@@ -246,5 +348,90 @@ enum PullRequests {
               result.succeeded
         else { return .failed }
         return parse(result.stdout).map(Lookup.found) ?? .none
+    }
+}
+
+/// The eager `gh` lookups (`AppState.gitMayHaveChanged`): when each checkout and
+/// branch was last asked, and which terminals wait for the end of its gap. Pure,
+/// so the timing is tested without the app.
+struct EagerLookups {
+    enum Decision: Equatable {
+        /// Ask `gh` now.
+        case askNow
+        /// The first request inside the gap: call `takeDeferred` after this long.
+        case deferFor(TimeInterval)
+        /// A request inside the gap whose key already waits: it joins that lookup.
+        case joined
+        /// A request inside the gap with no terminal (the app came to the front).
+        case dropped
+    }
+
+    private(set) var last: [String: Date] = [:]
+    private(set) var waiting: [String: Set<UUID>] = [:]
+
+    /// A request for `key` (folder and branch; `""` for the whole app) from
+    /// terminal `id`, nil when the app came to the front.
+    mutating func request(key: String, id: UUID?, now: Date) -> Decision {
+        if PullRequests.eagerRefreshDue(last: last[key], now: now) {
+            mark(key, now: now)
+            return .askNow
+        }
+        guard let id else { return .dropped }
+        if waiting[key] != nil {
+            waiting[key]?.insert(id)
+            return .joined
+        }
+        waiting[key] = [id]
+        let elapsed = last[key].map { now.timeIntervalSince($0) } ?? 0
+        return .deferFor(max(0, PullRequests.eagerGap - elapsed))
+    }
+
+    /// The gap of `key` ended: the terminals that asked inside it, now asked about.
+    mutating func takeDeferred(key: String, now: Date) -> Set<UUID> {
+        let ids = waiting.removeValue(forKey: key) ?? []
+        if !ids.isEmpty { mark(key, now: now) }
+        return ids
+    }
+
+    /// A closed terminal waits for nothing.
+    mutating func forget(_ id: UUID) {
+        for key in waiting.keys {
+            waiting[key]?.remove(id)
+        }
+    }
+
+    private mutating func mark(_ key: String, now: Date) {
+        // Only the gaps still running are worth keeping: the table stays small.
+        last = last.filter { !PullRequests.eagerRefreshDue(last: $0.value, now: now) }
+        last[key] = now
+    }
+}
+
+/// Per terminal, whether a tool call of the running turn may have touched git (a
+/// shell command that is not only a git read, an MCP tool, a tool this does not
+/// know). Nothing is recorded while no tool call was reported — an agent without
+/// tool hooks, or a turn that called none — and such a turn asks. Pure.
+struct TurnGitRecord {
+    private var touched: [UUID: Bool] = [:]
+
+    /// A hook event arrived for terminal `id`.
+    mutating func record(event: String, id: UUID, mayTouchGit: Bool) {
+        if AttentionState.toolDoneEvents.contains(event) {
+            touched[id] = (touched[id] ?? false) || mayTouchGit
+        } else if event == "UserPromptSubmit" || event == "SessionEnd" {
+            touched[id] = nil
+        }
+    }
+
+    /// A turn (`endsTurn`) or a subagent ended: whether to ask `gh`. A subagent's end
+    /// keeps the record for the turn that runs on.
+    mutating func turnEnded(_ id: UUID, endsTurn: Bool) -> Bool {
+        let asks = touched[id] != false
+        if endsTurn { touched[id] = nil }
+        return asks
+    }
+
+    mutating func forget(_ id: UUID) {
+        touched[id] = nil
     }
 }

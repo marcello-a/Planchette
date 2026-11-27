@@ -1251,6 +1251,7 @@ final class TerminalRegistry {
     func close(_ id: UUID) {
         views[id]?.destroySurface()
         views[id] = nil
+        writtenScrollback[id] = nil
     }
 
     /// The live surface view for a session, if it exists (no creation).
@@ -1277,6 +1278,7 @@ final class TerminalRegistry {
     /// process exit.
     func saveScrollback(to dir: URL, sync: Bool = false) {
         var writes: [(url: URL, text: String)] = []
+        var snapshots: [(url: URL, text: String)] = []
         var removals: [URL] = []
         for (id, view) in views {
             // Scrollback (visual history).
@@ -1284,9 +1286,16 @@ final class TerminalRegistry {
             // bytes a character, the most for one scalar) become a Swift string first.
             // A line of emoji built from several scalars keeps a little less.
             if let text = view.readScrollback(lastBytes: 800_000), !text.isEmpty {
-                writes.append((
-                    dir.appendingPathComponent("\(id.uuidString).txt"),
-                    String(text.suffix(200_000))))
+                // A terminal that printed nothing since the last snapshot is not
+                // written again: most of them, on most app switches.
+                // (A file removed meanwhile — "Start fresh" — is written again.)
+                let url = dir.appendingPathComponent("\(id.uuidString).txt")
+                let digest = Self.digest(text)
+                if sync || writtenScrollback[id] != digest
+                    || !FileManager.default.fileExists(atPath: url.path) {
+                    writtenScrollback[id] = digest
+                    snapshots.append((url, text))
+                }
             }
             // Unsent input at the prompt (best-effort) — write, or clear stale.
             let inputURL = dir.appendingPathComponent("\(id.uuidString).input")
@@ -1296,11 +1305,13 @@ final class TerminalRegistry {
                 removals.append(inputURL)
             }
         }
-        let work: @Sendable () -> Void = { [writes, removals] in
+        let work: @Sendable () -> Void = { [writes, snapshots, removals] in
             try? FileManager.default.createDirectory(
                 at: dir, withIntermediateDirectories: true,
                 attributes: [.posixPermissions: 0o700])
-            for (url, text) in writes {
+            // Cut to whole characters here, off the main thread: `suffix` walks
+            // 200,000 graphemes per terminal.
+            for (url, text) in snapshots.map({ ($0.url, String($0.text.suffix(200_000))) }) + writes {
                 if (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil {
                     try? FileManager.default.setAttributes(
                         [.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -1315,6 +1326,18 @@ final class TerminalRegistry {
         } else {
             DispatchQueue.global(qos: .utility).async(execute: work)
         }
+    }
+
+    /// A digest of each terminal's last written scrollback (`saveScrollback`).
+    private var writtenScrollback: [UUID: Int] = [:]
+
+    /// A hash of the text's UTF-8 bytes (not `hashValue`, which normalizes non-ASCII
+    /// text first). Only compared within one run of the app.
+    private static func digest(_ text: String) -> Int {
+        var text = text
+        var hasher = Hasher()
+        text.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+        return hasher.finalize()
     }
 }
 

@@ -124,17 +124,23 @@ enum ScreenDetector {
             // instead?" wraps over two lines, and a phrase that wraps must still
             // be the phrase (a marker that fails to match leaves a terminal stuck).
             let haystack = haystacks[rule.tailLines] ?? {
-                let built = region.joined(separator: " ")
+                var built = region.joined(separator: " ")
                     .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+                // The needles are precomposed (`validated`); text a program printed
+                // decomposed ("lo\u{308}schen") is too, so the bytes compare as the
+                // characters did. ASCII, nearly every screen, needs nothing.
+                if built.utf8.contains(where: { $0 >= 0x80 }) {
+                    built = built.precomposedStringWithCanonicalMapping
+                }
                 haystacks[rule.tailLines] = built
                 return built
             }()
 
-            if !rule.contains.allSatisfy({ haystack.contains($0.lowercased()) }) { continue }
-            if rule.none.contains(where: { haystack.contains($0.lowercased()) }) { continue }
+            if !rule.contains.allSatisfy({ bytesContain(haystack, $0.lowercased()) }) { continue }
+            if rule.none.contains(where: { bytesContain(haystack, $0.lowercased()) }) { continue }
             if !rule.any.isEmpty {
                 let groupMatched = rule.any.contains { group in
-                    group.allSatisfy { haystack.contains($0.lowercased()) }
+                    group.allSatisfy { bytesContain(haystack, $0.lowercased()) }
                 }
                 if !groupMatched { continue }
             }
@@ -156,6 +162,24 @@ enum ScreenDetector {
                 idlePrompt: rule.idlePrompt)
         }
         return nil
+    }
+
+    /// Whether `needle` occurs in `haystack`, compared as UTF-8 bytes (`memmem`).
+    /// Foundation's `contains` compares graphemes and was most of a reading's cost
+    /// (measured with `sample` on 29 terminals). The built-in rules are ASCII, and an
+    /// override file's are precomposed when it is read (`validated`), and `detect`
+    /// precomposes a non-ASCII screen, so the bytes decide what the characters did. An empty needle is
+    /// found nowhere, as with Foundation's `contains`. Pure.
+    static func bytesContain(_ haystack: String, _ needle: String) -> Bool {
+        if needle.isEmpty { return false }
+        var haystack = haystack, needle = needle
+        return haystack.withUTF8 { hay in
+            needle.withUTF8 { pin in
+                guard hay.count >= pin.count, let hayBase = hay.baseAddress,
+                      let pinBase = pin.baseAddress else { return false }
+                return memmem(hayBase, hay.count, pinBase, pin.count) != nil
+            }
+        }
     }
 
     /// Regexes compiled once. Detection runs every 1.5s per terminal, and
@@ -213,7 +237,19 @@ enum ScreenDetector {
             Log.error("screen-rules.empty", "screen rules: no rules in file, ignored")
             return nil
         }
-        return set
+        // The matching compares bytes (`bytesContain`): a hand-written pattern in
+        // decomposed form ("e" + U+0301) must still find the precomposed "é".
+        var normalized = set
+        normalized.agents = set.agents.mapValues { rules in
+            rules.map { rule in
+                var rule = rule
+                rule.contains = rule.contains.map(\.precomposedStringWithCanonicalMapping)
+                rule.none = rule.none.map(\.precomposedStringWithCanonicalMapping)
+                rule.any = rule.any.map { $0.map(\.precomposedStringWithCanonicalMapping) }
+                return rule
+            }
+        }
+        return normalized
     }
 
     /// Pure: should `candidate` replace `current`? Only a newer version for the
@@ -466,5 +502,53 @@ struct ScreenConfirmation {
 
     mutating func forget(_ id: UUID) {
         streaks[id] = nil
+    }
+}
+
+/// The last verdict per terminal, given again while its viewport and its rules are
+/// the same. `ScreenDetector.detect` is pure, and an idle or a waiting screen hardly
+/// changes between two polls: the string work (split, join, lowercase, search) was
+/// most of what a poll cost on the main thread. Everything after the verdict
+/// (`AttentionState.fromScreen`, `ScreenConfirmation`) still runs on every poll.
+struct ScreenReadings {
+    private struct Entry {
+        let text: String
+        let rules: [ScreenRule]
+        let detection: ScreenDetection?
+    }
+
+    private var entries: [UUID: Entry] = [:]
+
+    /// The verdict for `text` under `rules`: the kept one when both are unchanged,
+    /// else `detect`'s, which is then kept.
+    mutating func detection(
+        for id: UUID, text: String, rules: [ScreenRule],
+        detect: () -> ScreenDetection?
+    ) -> ScreenDetection? {
+        if let entry = entries[id], Self.sameBytes(entry.text, text), entry.rules == rules {
+            return entry.detection
+        }
+        let detection = detect()
+        entries[id] = Entry(text: text, rules: rules, detection: detection)
+        return detection
+    }
+
+    mutating func forget(_ id: UUID) {
+        entries[id] = nil
+    }
+
+    var count: Int { entries.count }
+
+    /// Byte equality: `==` on two non-ASCII strings compares them by canonical
+    /// equivalence, which normalizes both — more work than the reading it would save.
+    static func sameBytes(_ a: String, _ b: String) -> Bool {
+        guard a.utf8.count == b.utf8.count else { return false }
+        var a = a, b = b
+        return a.withUTF8 { x in
+            b.withUTF8 { y in
+                guard let xBase = x.baseAddress, let yBase = y.baseAddress else { return x.count == y.count }
+                return memcmp(xBase, yBase, x.count) == 0
+            }
+        }
     }
 }

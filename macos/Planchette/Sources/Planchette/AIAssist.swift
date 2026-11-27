@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// Stage 1: deterministic transcript parsing — no LLM involved.
 enum TranscriptReader {
@@ -74,6 +75,16 @@ final class AIAssist {
         Self.workQueue.async { Self.summarizedStamps[id] = nil }
     }
 
+    /// What a waiting summary run reads.
+    private struct SummaryJob: Sendable {
+        let transcriptPath: String
+        let cwd: String
+        let force: Bool
+    }
+
+    /// The terminals with a summary run waiting on `workQueue`, and what it will read.
+    nonisolated private static let queued = OSAllocatedUnfairLock<[UUID: SummaryJob]>(initialState: [:])
+
     /// The transcript stamp of each terminal's last summary. Touched only on `workQueue`.
     nonisolated(unsafe) private static var summarizedStamps: [UUID: String] = [:]
     /// Pauses the summaries while `claude -p` keeps failing. Touched only on `workQueue`.
@@ -92,10 +103,28 @@ final class AIAssist {
         guard let appState, appState.aiEnabled else { return }
         guard let session = appState.sessions[id], let transcriptPath = session.transcriptPath else { return }
         if !force, let last = lastRun[id], Date().timeIntervalSince(last) < minInterval { return }
+        // One waiting run per terminal: with many agents the serial queue can fall
+        // behind, and a second run queued for the same terminal would only summarize
+        // the same transcript again. A request for a terminal that is already waiting
+        // hands its inputs to that run (after `/clear` the transcript is another
+        // file). A run that has started takes its terminal off, so a turn that ends
+        // meanwhile still gets its own.
+        let job = SummaryJob(transcriptPath: transcriptPath, cwd: session.currentDirectory, force: force)
+        let isNew = Self.queued.withLock { jobs -> Bool in
+            if let waiting = jobs[id] {
+                jobs[id] = SummaryJob(transcriptPath: job.transcriptPath, cwd: job.cwd,
+                                      force: job.force || waiting.force)
+                return false
+            }
+            jobs[id] = job
+            return true
+        }
         lastRun[id] = Date()
+        guard isNew else { return }
 
-        let cwd = session.currentDirectory
         Self.workQueue.async { [weak appState] in
+            guard let job = Self.queued.withLock({ $0.removeValue(forKey: id) }) else { return }
+            let transcriptPath = job.transcriptPath, cwd = job.cwd, force = job.force
             // A run is a whole `claude` process: never one for a transcript that has not
             // changed since the last summary of this terminal, and none while the runs
             // keep failing (`SummaryBreaker`).
@@ -109,10 +138,14 @@ final class AIAssist {
             let branch = Titles.gitBranch(forDirectory: cwd)
             let tail = TranscriptReader.tail(path: transcriptPath)
             guard tail.lastUserPrompt != nil || tail.lastAssistantText != nil else { return }
-            let condensed = Self.condense(tail: tail, cwd: cwd, branch: branch)
-            Self.breaker.record(success: condensed != nil, now: Date())
-            guard let result = condensed else { return }
-            Self.summarizedStamps[id] = stamp
+            let outcome = Self.condense(tail: tail, cwd: cwd, branch: branch)
+            // Only a run that failed opens the breaker. An answer that is no JSON came
+            // from a working setup and one transcript (prose, a refusal): it must not
+            // pause every other terminal's summary, and the same unchanged transcript
+            // is not sent again.
+            Self.breaker.record(success: outcome.ran, now: Date())
+            if outcome.ran { Self.summarizedStamps[id] = stamp }
+            guard let result = outcome.condensed else { return }
             Task { @MainActor [weak appState] in
                 appState?.update(id) {
                     $0.aiSummary = result.summary
@@ -127,11 +160,18 @@ final class AIAssist {
         var topic: String
     }
 
+    /// What a summary run came to: whether `claude` answered at all, and the summary
+    /// if its answer could be read.
+    struct CondenseOutcome {
+        var ran: Bool
+        var condensed: Condensed?
+    }
+
     nonisolated private static func condense(
         tail: TranscriptReader.Tail,
         cwd: String,
         branch: String?
-    ) -> Condensed? {
+    ) -> CondenseOutcome {
         let prompt = """
         Fasse den Zustand dieser Coding-Agent-Session in EINEM kurzen deutschen Satz \
         zusammen (max 12 Woerter, kein Punkt am Ende) und vergib ein Topic-Label \
@@ -147,7 +187,11 @@ final class AIAssist {
         Letzte Antwort des Agents: \(String((tail.lastAssistantText ?? "-").prefix(1200)))
         """
 
-        guard let output = runClaude(prompt: prompt) else { return nil }
+        // No answer at all is a failed run too (a wrapper or a login shell that exits 0
+        // without running `claude`), not a transcript Haiku could not summarize.
+        guard let output = runClaude(prompt: prompt),
+              !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return CondenseOutcome(ran: false) }
         // Be lenient: find the first JSON object in the output.
         guard let start = output.firstIndex(of: "{"),
               let end = output.lastIndex(of: "}"),
@@ -157,12 +201,12 @@ final class AIAssist {
               let summary = obj["summary"] as? String
         else {
             Log.error("ai-assist.unparseable_output", "ai-assist: unparseable output: \(output.prefix(200))")
-            return nil
+            return CondenseOutcome(ran: true)
         }
-        return Condensed(
+        return CondenseOutcome(ran: true, condensed: Condensed(
             summary: summary,
             topic: (obj["topic"] as? String ?? "").lowercased()
-        )
+        ))
     }
 
     /// The notepad's text, tidied by `claude -p` (its menu: "Format with AI"): the same content as

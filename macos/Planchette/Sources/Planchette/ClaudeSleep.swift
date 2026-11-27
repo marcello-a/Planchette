@@ -116,11 +116,22 @@ enum ClaudeProcess {
         var size = MemoryLayout<Int32>.size
         var mibMax: [Int32] = [CTL_KERN, KERN_ARGMAX]
         guard sysctl(&mibMax, 2, &argmax, &size, nil, 0) == 0, argmax > 0 else { return nil }
-        var buffer = [UInt8](repeating: 0, count: Int(argmax))
-        var length = buffer.count
+        // Not zero-filled: `kern.argmax` is a megabyte, and a scan reads every node and
+        // claude process of the user. The kernel writes `length` bytes, and only those
+        // are kept.
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-        guard sysctl(&mib, 3, &buffer, &length, nil, 0) == 0 else { return nil }
-        return parseProcArgs(Array(buffer.prefix(length)))
+        var failed = false
+        let buffer = [UInt8](unsafeUninitializedCapacity: Int(argmax)) { storage, initialized in
+            var length = storage.count
+            if sysctl(&mib, 3, storage.baseAddress, &length, nil, 0) == 0 {
+                initialized = min(length, storage.count)
+            } else {
+                failed = true
+                initialized = 0
+            }
+        }
+        guard !failed else { return nil }
+        return parseProcArgs(buffer)
     }
 
     /// Pure: split a `KERN_PROCARGS2` buffer — `argc` (32 bit), the executable path, NUL padding,
