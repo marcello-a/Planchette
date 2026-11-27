@@ -139,33 +139,35 @@ enum ContextUsageReader {
     /// (JSONL). Sidechain lines are skipped: a subagent's prompt lives in its own
     /// window and says nothing about this one. Pure, so it is unit-tested.
     static func latest(inJSONL text: Substring) -> TranscriptUsage? {
+        latest(inJSONL: Data(text.utf8))
+    }
+
+    static func latest(inJSONL data: Data) -> TranscriptUsage? {
         var found: TranscriptUsage?
-        for line in text.split(separator: "\n").reversed() {
-            // Cheap filter before parsing: most lines are tool results.
-            guard line.contains("\"usage\"") else { continue }
-            guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+        // Only the lines that name a usage are parsed: most lines are tool results.
+        JSONLines.newestFirst(in: data, containing: "\"usage\"") { line in
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                   obj["type"] as? String == "assistant",
                   (obj["isSidechain"] as? Bool) != true,
                   let message = obj["message"] as? [String: Any],
                   let model = message["model"] as? String,
                   let usage = message["usage"] as? [String: Any]
-            else { continue }
+            else { return false }
             // `<synthetic>` marks a line Claude Code wrote itself (an interrupt,
             // an API error) — it carries zero usage and would empty the ring.
-            guard !model.hasPrefix("<") else { continue }
+            guard !model.hasPrefix("<") else { return false }
             let used = ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]
                 .reduce(0) { $0 + ((usage[$1] as? Int) ?? 0) }
-            guard used > 0 else { continue }
+            guard used > 0 else { return false }
             let ttl = PromptCache.ttl(fromUsage: usage)
-            if var newest = found {
+            if found != nil {
                 // Only still looking for which cache the session asked for.
-                newest.cacheTTL = ttl
-                if ttl != nil { return newest }
-                continue
+                found?.cacheTTL = ttl
+                return ttl != nil
             }
             let at = (obj["timestamp"] as? String).flatMap { timestampFormat.date(from: $0) }
             found = TranscriptUsage(model: model, usedTokens: used, at: at, cacheTTL: ttl)
-            if ttl != nil { return found }
+            return ttl != nil
         }
         return found
     }
@@ -184,10 +186,62 @@ enum ContextUsageReader {
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > window ? size - window : 0)
         guard let data = try? handle.readToEnd() else { return TranscriptScan() }
-        let text = String(decoding: data, as: UTF8.self)
-        return TranscriptScan(usage: latest(inJSONL: text[...]),
-                              title: AgentTitle.latest(inJSONL: text[...]),
-                              customTitle: AgentTitle.latestCustom(inJSONL: text[...]))
+        // Bytes, not a String: each answer is found by a byte search for its marker,
+        // and only the lines that hold it are parsed. Splitting the half megabyte into
+        // lines three times cost about 31 ms a scan; the search costs well under one.
+        return TranscriptScan(usage: latest(inJSONL: data),
+                              title: AgentTitle.latest(inJSONL: data),
+                              customTitle: AgentTitle.latestCustom(inJSONL: data))
+    }
+}
+
+/// Size and modification date of a transcript, as one comparable value: a reader
+/// whose file has the same stamp as at its last read has nothing new to read.
+enum TranscriptStamp {
+    static func of(path: String) -> String? {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
+        let size = (attrs[.size] as? Int) ?? -1
+        let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size)-\(modified)"
+    }
+}
+
+/// The lines of a JSONL buffer that contain a marker, newest first, found by a byte
+/// search (`memmem`) rather than by splitting the whole buffer into lines. Pure.
+enum JSONLines {
+    /// Calls `body` with each line of `data` that contains `marker`, from the last
+    /// line to the first, until `body` returns true. A line is given once, however
+    /// often the marker appears in it, without its newline.
+    static func newestFirst(in data: Data, containing marker: String, _ body: (Data) -> Bool) {
+        let needle = Array(marker.utf8)
+        guard !needle.isEmpty, data.count >= needle.count else { return }
+        data.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            guard let base = raw.baseAddress else { return }
+            let count = raw.count
+            // One forward pass collects every hit; the lines are then visited backwards.
+            var hits: [Int] = []
+            needle.withUnsafeBytes { pattern in
+                var position = 0
+                while position <= count - needle.count,
+                      let hit = memmem(base + position, count - position, pattern.baseAddress, needle.count) {
+                    let offset = base.distance(to: UnsafeRawPointer(hit))
+                    hits.append(offset)
+                    position = offset + needle.count
+                }
+            }
+            var lineStartOfLastVisit = count + 1
+            for hit in hits.reversed() where hit < lineStartOfLastVisit {
+                // Darwin has no `memrchr`: walk back to the newline before the hit.
+                let bytes = base.assumingMemoryBound(to: UInt8.self)
+                var start = hit
+                while start > 0, bytes[start - 1] != 0x0A { start -= 1 }
+                let after = hit + needle.count
+                let end = memchr(base + after, 0x0A, count - after)
+                    .map { base.distance(to: UnsafeRawPointer($0)) } ?? count
+                lineStartOfLastVisit = start
+                if body(Data(bytes: base + start, count: end - start)) { return }
+            }
+        }
     }
 }
 

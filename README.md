@@ -178,7 +178,7 @@ Also worth a second:
 ### Know who needs you
 
 - Every terminal shows what it is doing: **running · waiting · error · done · free**. The states
-  come from agent hooks, with a screen fallback every 1.5 s when the hooks stay silent — rules in
+  come from agent hooks, with a screen fallback every 1.5 s (6 s for an idle terminal out of sight) when the hooks stay silent — rules in
   editable JSON.
 - A finished or interrupted command ends its state: the "?" of a `brew install` question goes
   when the command does.

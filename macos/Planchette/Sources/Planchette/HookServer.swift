@@ -450,6 +450,10 @@ final class HookServer {
         // What the event says about background shells and agents (Claude only:
         // the other agents' hooks carry none of these fields).
         let background = BackgroundTasks.signal(from: event)
+        // Whether the tool call can have touched a branch or a PR (for the PR pill).
+        let toolMayChangeGit = PullRequests.toolMayChangeGit(
+            toolName: toolName,
+            command: (event["tool_input"] as? [String: Any])?["command"] as? String)
 
         DispatchQueue.main.async { [weak self] in
             self?.appState?.applyHookEvent(
@@ -465,7 +469,8 @@ final class HookServer {
                 notificationType: notificationType,
                 isSubagent: isSubagent,
                 toolName: toolName,
-                toolUseID: toolUseID
+                toolUseID: toolUseID,
+                toolMayChangeGit: toolMayChangeGit
             )
         }
         return false

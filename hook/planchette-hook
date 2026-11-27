@@ -22,8 +22,10 @@ SOCKET="${PLANCHETTE_SOCKET:-/tmp/planchette.sock}"
 # survived. The env var is still tried first: two instances can run at once and
 # this terminal belongs to whichever opened it, so the pointer must never
 # override a socket that answers.
+# `read`, a shell builtin, not `$(cat …)`: this runs on every tool call of every agent,
+# and each process it starts costs milliseconds.
 POINTER=""
-[ -r "$HOME/.planchette/socket" ] && POINTER=$(cat "$HOME/.planchette/socket" 2>/dev/null)
+[ -r "$HOME/.planchette/socket" ] && IFS= read -r POINTER < "$HOME/.planchette/socket" 2>/dev/null
 
 # Agent label, passed through unchanged: the app maps an unknown label to "no
 # recognized agent", which is the safe answer. Guessing "claude" here would hand
@@ -41,8 +43,12 @@ event=$(printf '{"planchette_session":"%s","agent":"%s","event":%s}' \
 # An app that was killed rather than quit leaves its socket file behind, so
 # `-S` proves nothing about whether anyone is listening — only a failed send
 # does. Try each candidate in turn and stop at the first that accepts.
+tried=""
 for target in "$SOCKET" "$POINTER"; do
     [ -n "$target" ] || continue
+    # The pointer usually names the same socket: one failed send to it is enough.
+    [ "$target" = "$tried" ] && continue
+    tried="$target"
     # Only a real socket this user owns — never a symlink to one. The default path
     # lives in /tmp, which every user on the machine can write to: after an app
     # dies its pid can be reused and the old name taken by someone else, and an
@@ -54,7 +60,10 @@ for target in "$SOCKET" "$POINTER"; do
     [ -L "$target" ] && continue
     [ -S "$target" ] || continue
     [ -O "$target" ] || continue
-    if printf '%s' "$event" | nc -U "$target" >/dev/null 2>&1; then
+    # `-w 5` (the app's own read deadline): macOS `nc` waits for the app to close the
+    # connection, and an app that accepted but stalls (a debugger, all read slots taken)
+    # would otherwise hold the agent's tool call until the agent's own hook timeout.
+    if printf '%s' "$event" | nc -w 5 -U "$target" >/dev/null 2>&1; then
         break
     fi
 done

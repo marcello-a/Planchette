@@ -35,20 +35,34 @@ enum AgentTitle {
         latest(type: "custom-title", key: "customTitle", inJSONL: text)
     }
 
+    /// The newest title in `data`, read as bytes (see `ContextUsageReader.scan`).
+    static func latest(inJSONL data: Data) -> String? {
+        latest(type: "ai-title", key: "aiTitle", inJSONL: data)
+    }
+
+    /// The newest `/rename` name in `data`, read as bytes.
+    static func latestCustom(inJSONL data: Data) -> String? {
+        latest(type: "custom-title", key: "customTitle", inJSONL: data)
+    }
+
     private static func latest(type: String, key: String, inJSONL text: Substring) -> String? {
-        let marker = "\"\(type)\""
-        for line in text.split(separator: "\n").reversed() {
-            // Cheap filter before parsing: most lines are tool results.
-            guard line.contains(marker) else { continue }
-            guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+        latest(type: type, key: key, inJSONL: Data(text.utf8))
+    }
+
+    private static func latest(type: String, key: String, inJSONL data: Data) -> String? {
+        var found: String?
+        // Only the lines that name the type are parsed: most lines are tool results.
+        JSONLines.newestFirst(in: data, containing: "\"\(type)\"") { line in
+            guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
                   obj["type"] as? String == type,
                   let title = obj[key] as? String
-            else { continue }
+            else { return false }
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             // Claude Code writes an empty title before it has one to give.
-            guard !trimmed.isEmpty else { continue }
-            return trimmed
+            guard !trimmed.isEmpty else { return false }
+            found = trimmed
+            return true
         }
-        return nil
+        return found
     }
 }

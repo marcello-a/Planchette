@@ -480,13 +480,36 @@ enum Durable {
     }
 
     /// The command lines of the processes the given shells started — what `kubectl` was told to
-    /// do, which its name alone does not say. One `ps` for all of them; nil when it did not answer.
+    /// do, which its name alone does not say. Read from the kernel (the children of each shell,
+    /// then each one's arguments): a `ps` of the whole machine cost about 50 ms of CPU on every
+    /// dev-server tick while a tunnel was in front. `ps` only when the kernel cannot be asked;
+    /// nil when that did not answer either.
     static func childArguments(of parents: Set<Int32>) -> [Int32: String]? {
         guard !parents.isEmpty else { return [:] }
+        if let read = kernelChildArguments(of: parents) { return read }
         guard let result = Subprocess.run("/bin/ps", ["-axo", "pid=,ppid=,args="], timeout: 5),
               !result.timedOut
         else { return nil }
         return parseChildArguments(result.stdoutString, parents: parents)
+    }
+
+    /// `childArguments` through libproc. A child whose arguments cannot be read (gone
+    /// meanwhile) is left out, as `ps` would not list it; nil when a list of children
+    /// cannot be read at all.
+    static func kernelChildArguments(of parents: Set<Int32>) -> [Int32: String]? {
+        var children: [Int32: String] = [:]
+        var buffer = [pid_t](repeating: 0, count: 256)
+        for parent in parents {
+            // The number of pids it wrote (not bytes); a parent with no children answers 0.
+            let count = proc_listchildpids(parent, &buffer, Int32(buffer.count * MemoryLayout<pid_t>.stride))
+            guard count >= 0 else { return nil }
+            let pids = buffer.prefix(min(Int(count), buffer.count)).filter { $0 > 0 }.sorted()
+            let lines = pids.compactMap { pid in
+                ClaudeProcess.arguments(of: pid).map { $0.argv.joined(separator: " ") }
+            }.filter { !$0.isEmpty }
+            if !lines.isEmpty { children[parent] = lines.joined(separator: " | ") }
+        }
+        return children
     }
 
     /// Pure: parse `ps -axo pid=,ppid=,args=` into the command lines of the children of
@@ -502,7 +525,7 @@ enum Durable {
     }
 
     /// Programs whose command line can make them a tunnel to a database (`isDatabase`): the
-    /// only ones worth a `ps`.
+    /// only ones whose command line is read.
     static let tunnelCommands: Set<String> = ["kubectl", "oc", "ssh"]
 
     /// Process names an agent can run under besides its own (an npm-installed Claude is `node`):

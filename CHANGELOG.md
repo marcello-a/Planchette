@@ -8,6 +8,36 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **AI summaries cost about 200 times less and no longer run your hooks.** Each summary ran a
+  full `claude -p` with your MCP servers, skills and plugins — about 387,000 tokens, $0.39 and
+  seven hook runs (sounds, notifications) per summary, plus a 2.5 MB transcript. It now loads
+  none of that: $0.002 and no hooks. A summary also no longer runs when a subagent stops (the turn
+  goes on), skips a conversation that did not change, and pauses for 15 minutes after three failed runs instead of
+  starting a `claude` process on every turn. Failures are logged with their exit status.
+- **Terminals you do not look at stop waking the CPU.** Every terminal counted as focused in the
+  terminal engine, so each one blinked its cursor in the background, and the terminal in front
+  kept redrawing at the display's refresh rate while another app was active. Only the terminal
+  that has the keyboard, in the window in front, is focused now — as in Ghostty itself.
+- **Pull request pills ask GitHub far less.** Any tool call of any agent started a `gh` lookup for
+  every checkout, every 15 seconds. Now a finished turn or command looks up only its own terminal,
+  a tool call only when it is a shell command with `git` or `gh`, terminals in one repository and
+  branch share one lookup, and a merged or closed PR is checked again every 15 minutes.
+- **Less work per agent turn:** the transcript reading for the conversation title and the context
+  ring is about 15 times faster, the context usage no longer redraws the window while it is not
+  shown, IDE state files are read only when they change, and a dev-server port that never prints
+  its address is searched less and less often.
+- **No more `lsof` and `ps` every 5 seconds.** The dev-server ports and the command line of a
+  database tunnel are read from the kernel: about 2 ms instead of 60 ms of CPU per look, and no
+  process started.
+- **Quieter while the screens sleep.** With every display asleep, all polls run at their slow
+  background rate, also when Planchette is still the app in front. With the app in front, an idle
+  terminal you cannot see has its screen read every 6 seconds instead of every 1.5; a running,
+  asking or visible one is still read every 1.5 seconds.
+- **The hook cannot hold an agent for long.** If the app accepts an event but does not answer,
+  the hook gives up after 5 seconds per socket instead of waiting for the agent's own hook timeout, and it
+  starts one process less per event.
+
 ## [0.2.56] — 2026-11-27
 
 ### Added

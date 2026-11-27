@@ -1,4 +1,5 @@
 import AppKit
+import os
 import GhosttyKit
 import UniformTypeIdentifiers
 
@@ -64,7 +65,15 @@ final class GhosttyRuntime {
             userdata: nil,
             supports_selection_clipboard: false,
             wakeup_cb: { _ in
-                DispatchQueue.main.async { GhosttyRuntime.shared.tick() }
+                // One main-queue block per burst, not one per wakeup: a tick drains
+                // the whole mailbox, so every wakeup that arrives before it runs is
+                // already served by it.
+                let schedule = GhosttyRuntime.tickPending.withLock { pending -> Bool in
+                    if pending { return false }
+                    pending = true
+                    return true
+                }
+                if schedule { DispatchQueue.main.async { GhosttyRuntime.shared.pendingTick() } }
             },
             action_cb: { _, target, action in
                 GhosttyRuntime.handleAction(target: target, action: action)
@@ -119,6 +128,16 @@ final class GhosttyRuntime {
     func tick() {
         guard let app else { return }
         ghostty_app_tick(app)
+    }
+
+    /// Whether a tick is already queued on the main queue (`wakeup_cb`).
+    nonisolated static let tickPending = OSAllocatedUnfairLock(initialState: false)
+
+    /// The queued tick. The flag is cleared *before* the tick, so a wakeup that comes
+    /// in while it runs queues the next one instead of being lost.
+    private func pendingTick() {
+        Self.tickPending.withLock { $0 = false }
+        tick()
     }
 
     // MARK: Appearance

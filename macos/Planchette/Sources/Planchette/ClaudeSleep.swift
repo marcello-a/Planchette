@@ -111,7 +111,7 @@ enum ClaudeProcess {
     }
 
     /// The command line and environment of a process of this user (`KERN_PROCARGS2`).
-    private static func arguments(of pid: pid_t) -> (argv: [String], env: [String])? {
+    static func arguments(of pid: pid_t) -> (argv: [String], env: [String])? {
         var argmax: Int32 = 0
         var size = MemoryLayout<Int32>.size
         var mibMax: [Int32] = [CTL_KERN, KERN_ARGMAX]

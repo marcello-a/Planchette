@@ -47,14 +47,17 @@ enum Subprocess {
         _ arguments: [String] = [],
         in directory: String? = nil,
         timeout: TimeInterval = 15,
-        stderr stderrMode: Stderr = .discard
+        stderr stderrMode: Stderr = .discard,
+        input: Data? = nil
     ) -> Output? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         if let directory { process.currentDirectoryURL = URL(fileURLWithPath: directory) }
-        // A helper must never wait for a keyboard the app does not have.
-        process.standardInput = FileHandle.nullDevice
+        // A helper must never wait for a keyboard the app does not have: without
+        // `input` it reads /dev/null, with it a pipe that is closed once written.
+        let inPipe: Pipe? = input == nil ? nil : Pipe()
+        process.standardInput = inPipe ?? FileHandle.nullDevice
         let outPipe = Pipe()
         process.standardOutput = outPipe
         let errPipe: Pipe? = stderrMode == .capture ? Pipe() : nil
@@ -63,6 +66,17 @@ enum Subprocess {
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { return nil }
+        if let inPipe, let input {
+            // Written from another thread: a child that reads nothing must not block
+            // the read loop below on a full pipe. `write(contentsOf:)` throws on
+            // EPIPE (a child that exited at once) where `write(_:)` would raise.
+            // No SIGPIPE either way, whatever AppKit does with the signal.
+            _ = fcntl(inPipe.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+            DispatchQueue.global(qos: .utility).async {
+                try? inPipe.fileHandleForWriting.write(contentsOf: input)
+                try? inPipe.fileHandleForWriting.close()
+            }
+        }
 
         let start = DispatchTime.now().uptimeNanoseconds
         func remaining() -> TimeInterval {

@@ -114,14 +114,21 @@ enum ScreenDetector {
     /// Pure: the caller supplies the lines, so this is fully unit-testable.
     static func detect(lines: [String], rules: [ScreenRule]) -> ScreenDetection? {
         let nonEmpty = lines.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        // Most rules read the same number of lines: each haystack is built once per
+        // reading, not once per rule.
+        var haystacks: [Int: String] = [:]
         for rule in rules.sorted(by: { $0.priority > $1.priority }) {
             let region = Array(nonEmpty.suffix(rule.tailLines))
             guard !region.isEmpty else { continue }
             // One line of single spaces: in a narrow pane "What should Claude do
             // instead?" wraps over two lines, and a phrase that wraps must still
             // be the phrase (a marker that fails to match leaves a terminal stuck).
-            let haystack = region.joined(separator: " ")
-                .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+            let haystack = haystacks[rule.tailLines] ?? {
+                let built = region.joined(separator: " ")
+                    .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+                haystacks[rule.tailLines] = built
+                return built
+            }()
 
             if !rule.contains.allSatisfy({ haystack.contains($0.lowercased()) }) { continue }
             if rule.none.contains(where: { haystack.contains($0.lowercased()) }) { continue }

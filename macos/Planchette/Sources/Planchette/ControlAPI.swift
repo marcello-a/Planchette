@@ -167,7 +167,7 @@ enum ControlAPI {
         dict["muted"] = state.isMuted(session)
         // The row's middle line — what the panel actually prints there.
         if let prompt = session.promptLine { dict["prompt"] = prompt }
-        if let ticket = session.ticket { dict["ticket"] = ticket }
+        if let ticket = state.ticket(of: session) { dict["ticket"] = ticket }
         if let branch = state.branches[session.id] { dict["branch"] = branch }
         if let summary = session.aiSummary { dict["ai_summary"] = summary }
         if let topic = session.aiTopic { dict["ai_topic"] = topic }
@@ -510,7 +510,8 @@ enum ControlAPI {
         _ id: UUID, until: Set<String>, timeout: TimeInterval, state: AppState,
         clientAlive: @Sendable () -> Bool
     ) async -> TerminalSession? {
-        let deadline = Date().addingTimeInterval(min(max(timeout, 1), 3600))
+        let start = Date()
+        let deadline = start.addingTimeInterval(min(max(timeout, 1), 3600))
         while Date() < deadline {
             guard let session = state.sessions[id] else { return nil }
             // The turn again: a worker that has answered is ready, whatever it still runs.
@@ -518,7 +519,11 @@ enum ControlAPI {
             // Nobody is left to read the answer: stop holding a task, and the
             // descriptor, for the rest of the timeout.
             guard clientAlive() else { return nil }
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            // A quick answer stays quick; a wait of minutes (a worker's whole turn) looks
+            // once a second, not four times — each look is a main-thread wakeup, for up
+            // to an hour, per waiting caller.
+            let interval: UInt64 = Date().timeIntervalSince(start) < 5 ? 250_000_000 : 1_000_000_000
+            try? await Task.sleep(nanoseconds: interval)
         }
         return nil
     }

@@ -41,8 +41,18 @@ struct DevServer: Identifiable, Equatable {
 /// about a port is forgotten when it goes away, so a new process on it starts over.
 struct ServerURLLookups: Equatable {
     static let maxTries = 3
-    /// How long an unresolved port waits between searches after its first `maxTries`.
+    /// How long an unresolved port waits before its first search after `maxTries`.
+    /// Each search that finds nothing doubles the wait, up to `maxRetryInterval`: a port
+    /// that never prints an address (a tunnel, a database) used to cost a read of every
+    /// terminal's scrollback of its project on the main thread once a minute, for good.
     static let retryInterval: TimeInterval = 60
+    static let maxRetryInterval: TimeInterval = 15 * 60
+
+    /// The wait before the next search of a port that was searched `tries` times. Pure.
+    static func retryDelay(afterTries tries: Int) -> TimeInterval {
+        let doublings = max(0, tries - maxTries)
+        return min(maxRetryInterval, retryInterval * pow(2, Double(min(doublings, 10))))
+    }
 
     /// Addresses already learned, keyed by port. Kept because a banner scrolls
     /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
@@ -56,8 +66,9 @@ struct ServerURLLookups: Equatable {
     /// Whether this port's scrollback should be searched now.
     func isDue(_ port: Int, now: Date = Date()) -> Bool {
         guard urls[port] == nil else { return false }
-        return (tries[port] ?? 0) < Self.maxTries
-            || now.timeIntervalSince(lastTry[port] ?? .distantPast) >= Self.retryInterval
+        let tried = tries[port] ?? 0
+        return tried < Self.maxTries
+            || now.timeIntervalSince(lastTry[port] ?? .distantPast) >= Self.retryDelay(afterTries: tried)
     }
 
     /// A search for this port is starting.
@@ -84,9 +95,9 @@ struct ServerURLLookups: Equatable {
     }
 }
 
-/// Finds dev servers by asking the OS who is listening: one `lsof` for the
-/// listening sockets, one for those processes' working directories, then a
-/// pure match of directory → project. Everything that parses or matches is
+/// Finds dev servers by asking the OS who is listening: the kernel's list of
+/// listening sockets (libproc; `lsof` when that cannot be read), the processes'
+/// working directories, then a pure match of directory → project. Everything that parses or matches is
 /// pure and unit-tested; only `scan` touches the system.
 enum DevServerScanner {
     /// One listening TCP socket: who, what, where.
@@ -215,7 +226,7 @@ enum DevServerScanner {
 
     /// The URL a dev server announced for `port`, read off its terminal.
     ///
-    /// The port comes from the OS (`lsof`), which knows it for certain but
+    /// The port comes from the OS (the kernel's socket list), which knows it for certain but
     /// nothing else; the scheme and the host only exist in what the server
     /// printed. Vite serving `https://photo-frame-designer.myposter.de:8082`
     /// on port 8082 is the case that matters: guessing `http://localhost` there
@@ -296,24 +307,29 @@ enum DevServerScanner {
         }
     }
 
-    /// The impure end: one `lsof` for the listening sockets, an in-process lookup
-    /// for each listener's working directory, then the pure match. Call off the
-    /// main thread — the `lsof` costs ~50ms.
+    /// The impure end: the listening sockets from the kernel (`listeningSockets`,
+    /// `lsof` only when that fails), an in-process lookup for each listener's working
+    /// directory, then the pure match. Call off the main thread.
     ///
     /// The working directories used to be a second `lsof -p <pids>`, i.e. a second
     /// process spawn on every tick. `proc_pidinfo` answers the same question for
     /// every process of this user in about a microsecond each.
     ///
-    /// Nil when `lsof` did not finish: a listing cut off by the deadline can end in
+    /// Nil when the fallback `lsof` did not finish: a listing cut off by the deadline can end in
     /// the middle of a record (`n*:3000` read as port 30, `p12345` as pid 123) and
     /// would attribute servers to the wrong project, and "no answer" must not
     /// look like "no servers" either — the caller keeps what it showed before.
     static func scan(projectDirs: [UUID: [String]]) -> [UUID: [DevServer]]? {
         guard !projectDirs.isEmpty else { return [:] }
-        guard let listing = run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"]) else {
-            return nil
+        let listeners: [Listener]
+        if let read = listeningSockets() {
+            listeners = read
+        } else {
+            guard let listing = run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpcn"]) else {
+                return nil
+            }
+            listeners = parseListeners(listing)
         }
-        let listeners = parseListeners(listing)
         guard !listeners.isEmpty else { return [:] }
         let pids = Set(listeners.map(\.pid))
         var cwds: [Int: String] = [:]
@@ -334,6 +350,59 @@ enum DevServerScanner {
             cwds: cwds,
             projectDirs: projectDirs,
             isProjectRoot: looksLikeProjectRoot)
+    }
+
+    /// The listening TCP sockets of this user's processes, read from the kernel
+    /// (libproc) — what `lsof -nP -iTCP -sTCP:LISTEN` lists without root, without
+    /// starting it. `lsof` cost about 60 ms of CPU on every dev-server tick (every 5 s);
+    /// this costs a few milliseconds in the app. Deduped per pid and port (IPv4 and
+    /// IPv6 twins), like `parseListeners`. Nil when the process list cannot be read:
+    /// the caller then asks `lsof`.
+    static func listeningSockets() -> [Listener]? {
+        let pidSize = MemoryLayout<pid_t>.stride
+        let needed = proc_listpids(UInt32(PROC_UID_ONLY), UInt32(getuid()), nil, 0)
+        guard needed > 0 else { return nil }
+        // Room for processes started between the two calls.
+        var pids = [pid_t](repeating: 0, count: Int(needed) / pidSize + 64)
+        let filled = proc_listpids(
+            UInt32(PROC_UID_ONLY), UInt32(getuid()), &pids, Int32(pids.count * pidSize))
+        guard filled > 0 else { return nil }
+
+        var result: [Listener] = []
+        var seen = Set<String>()
+        let fdSize = MemoryLayout<proc_fdinfo>.stride
+        var fds = [proc_fdinfo](repeating: proc_fdinfo(), count: 256)
+        for pid in pids.prefix(Int(filled) / pidSize) where pid > 0 {
+            // A process that is gone, or not ours, answers 0: skipped, as by `lsof`.
+            let fdBytes = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nil, 0)
+            guard fdBytes > 0 else { continue }
+            let wanted = Int(fdBytes) / fdSize + 16
+            if fds.count < wanted { fds = [proc_fdinfo](repeating: proc_fdinfo(), count: wanted) }
+            let got = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, &fds, Int32(fds.count * fdSize))
+            guard got > 0 else { continue }
+            var command: String?
+            for fd in fds.prefix(Int(got) / fdSize) where fd.proc_fdtype == UInt32(PROX_FDTYPE_SOCKET) {
+                var info = socket_fdinfo()
+                let size = Int32(MemoryLayout<socket_fdinfo>.size)
+                guard proc_pidfdinfo(pid, fd.proc_fd, PROC_PIDFDSOCKETINFO, &info, size) == size,
+                      info.psi.soi_kind == Int32(SOCKINFO_TCP),
+                      info.psi.soi_proto.pri_tcp.tcpsi_state == Int32(TSI_S_LISTEN)
+                else { continue }
+                let rawPort = info.psi.soi_proto.pri_tcp.tcpsi_ini.insi_lport
+                let port = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: rawPort)))
+                guard port > 0, seen.insert("\(pid):\(port)").inserted else { continue }
+                if command == nil { command = processName(pid) }
+                result.append(Listener(pid: Int(pid), command: command ?? "", port: port))
+            }
+        }
+        return result
+    }
+
+    /// The name the kernel keeps for a process — what `lsof` prints as its command.
+    private static func processName(_ pid: pid_t) -> String? {
+        var buffer = [CChar](repeating: 0, count: 2 * Int(MAXCOMLEN) + 1)
+        guard proc_name(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return String(cString: buffer)
     }
 
     /// A process's current directory, read from the kernel — no subprocess. Nil

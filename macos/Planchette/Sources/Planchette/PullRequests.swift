@@ -59,10 +59,108 @@ enum PullRequests {
         Set(old.keys.filter { new[$0] != old[$0] })
     }
 
-    /// The least time between two `gh` sweeps that a finished command or turn
-    /// asks for. An agent ends many tool calls a minute; the regular poll stays
-    /// `AppState.pullRequestPollInterval`.
+    /// The least time between two `gh` lookups that a finished command or turn in
+    /// one terminal asks for. An agent ends many tool calls a minute; the regular
+    /// poll stays `AppState.pullRequestPollInterval`.
     static let eagerGap: TimeInterval = 15
+
+    /// How long the regular poll leaves a merged or closed PR alone. A decided PR
+    /// hardly changes again; a branch that gets a new PR is caught by the eager
+    /// lookup after the `gh pr create` or the `git push` that made it.
+    static let decidedRecheck: TimeInterval = 15 * 60
+
+    /// Which terminals a sweep asks `gh` about: every one (the timer, the app coming
+    /// to the front), or the ones where something just happened.
+    enum SweepScope: Equatable {
+        case all
+        case sessions(Set<UUID>)
+
+        /// Two requests that wait for the same run, as one.
+        func adding(_ other: SweepScope) -> SweepScope {
+            switch (self, other) {
+            case (.sessions(let a), .sessions(let b)): return .sessions(a.union(b))
+            default: return .all
+            }
+        }
+
+        func contains(_ id: UUID) -> Bool {
+            switch self {
+            case .all: return true
+            case .sessions(let ids): return ids.contains(id)
+            }
+        }
+    }
+
+    /// A terminal as a sweep sees it: its checkout's root folder (nil outside a
+    /// repository, then its own folder stands in), its folder and its branch.
+    struct Terminal: Equatable {
+        let id: UUID
+        let root: String?
+        let directory: String
+        let branch: String
+    }
+
+    /// One `gh` lookup: a checkout's branch and every terminal that shows its PR.
+    struct Checkout: Equatable {
+        let directory: String
+        let branch: String
+        var ids: [UUID]
+    }
+
+    /// The lookups of a sweep. Terminals in one checkout on one branch share a
+    /// lookup — the root of a monorepo and a package folder in it used to ask `gh`
+    /// the same question twice. A checkout is asked about when its scope names one of
+    /// its terminals, and skipped when every terminal of it is in `resting` (a decided
+    /// PR checked a short while ago). The order is stable, for tests and for `gh`.
+    static func checkouts(
+        of terminals: [Terminal], scope: SweepScope, resting: Set<UUID>
+    ) -> [Checkout] {
+        var byKey: [String: Checkout] = [:]
+        var order: [String] = []
+        for terminal in terminals where isWorkBranch(terminal.branch) && !terminal.directory.isEmpty {
+            let key = "\(terminal.root ?? terminal.directory)\u{0}\(terminal.branch)"
+            if byKey[key] == nil {
+                byKey[key] = Checkout(directory: terminal.directory, branch: terminal.branch, ids: [])
+                order.append(key)
+            }
+            byKey[key]?.ids.append(terminal.id)
+        }
+        return order.compactMap { byKey[$0] }.filter { checkout in
+            checkout.ids.contains(where: scope.contains)
+                && !(scope == .all && checkout.ids.allSatisfy(resting.contains))
+        }
+    }
+
+    /// The terminals whose PR is decided (merged, closed) and was asked about less
+    /// than `decidedRecheck` ago: the regular poll leaves them alone.
+    static func resting(
+        shown: [UUID: PullRequest], decidedAt: [UUID: Date], now: Date
+    ) -> Set<UUID> {
+        Set(shown.compactMap { id, pr in
+            guard pr.status == .merged || pr.status == .closed,
+                  let at = decidedAt[id], now.timeIntervalSince(at) < decidedRecheck else { return nil }
+            return id
+        })
+    }
+
+    /// Whether a finished tool call can have switched a branch or made a PR, so its
+    /// terminal's PR is worth asking about now. A shell command that names `git` or
+    /// `gh` can; Claude Code's file, search and web tools cannot, and an MCP tool that
+    /// makes a PR is seen at the end of the turn or by the next poll. A tool this does
+    /// not know (another agent's names) counts as "can": the old behaviour.
+    static func toolMayChangeGit(toolName: String?, command: String?) -> Bool {
+        guard let toolName else { return true }
+        guard toolName == "Bash" else { return !Self.toolsThatLeaveGitAlone.contains(toolName) && !toolName.hasPrefix("mcp__") }
+        guard let command else { return true }
+        return command.range(of: #"(^|[^A-Za-z0-9_.-])(git|gh)($|[^A-Za-z0-9_-])"#, options: .regularExpression) != nil
+    }
+
+    /// Claude Code's own tools that never touch a branch or a PR.
+    static let toolsThatLeaveGitAlone: Set<String> = [
+        "Read", "Edit", "MultiEdit", "Write", "NotebookEdit", "Grep", "Glob", "LS",
+        "WebFetch", "WebSearch", "TodoWrite", "Task", "Agent", "Skill", "ToolSearch",
+        "BashOutput", "KillShell", "ExitPlanMode", "AskUserQuestion", "LSP", "Monitor",
+    ]
 
     static func eagerRefreshDue(last: Date?, now: Date) -> Bool {
         guard let last else { return true }

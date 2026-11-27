@@ -81,6 +81,16 @@ final class GhosttySurfaceNSView: NSView {
             self, selector: #selector(windowOcclusionChanged(_:)),
             name: NSWindow.didChangeOcclusionStateNotification, object: nil)
 
+        // The same for focus: a window that stops being key (another app in front,
+        // another Planchette window) does not take the first responder from this view,
+        // so libghostty would go on treating the terminal as focused — see `syncFocus`.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged(_:)),
+            name: NSWindow.didBecomeKeyNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowKeyChanged(_:)),
+            name: NSWindow.didResignKeyNotification, object: nil)
+
         createSurface()
     }
 
@@ -161,6 +171,12 @@ final class GhosttySurfaceNSView: NSView {
         // this the moment the surface actually appears. The terminal itself is
         // unaffected — PTY, state and reads work occluded; only drawing stops.
         ghostty_surface_set_occlusion(surface, false)
+        // ...and born unfocused: libghostty starts every surface as focused, and a
+        // focused surface keeps its cursor-blink timer (a renderer wakeup that locks
+        // the terminal every 600 ms) and, once visible, a display link at the
+        // display's refresh rate. A restore builds every terminal, and none of them
+        // is ever told otherwise unless it was the first responder once.
+        ghostty_surface_set_focus(surface, false)
         catchUpWithView()
         return true
     }
@@ -193,7 +209,24 @@ final class GhosttySurfaceNSView: NSView {
             NSDeviceDescriptionKey("NSScreenNumber")] as? UInt32 {
             ghostty_surface_set_display_id(surface, number)
         }
-        if window.firstResponder === self { ghostty_surface_set_focus(surface, true) }
+        syncFocus()
+    }
+
+    /// libghostty's focus = the keyboard goes here: this view is its window's first
+    /// responder AND that window is the key window (the app is in front). Anything less
+    /// stops the cursor blink and the display link, as in Ghostty itself, and reports a
+    /// focus-out to a program that asked for focus events (tmux passes it on). Typing,
+    /// pasting and reading the screen do not depend on it.
+    private func syncFocus() {
+        guard let surface else { return }
+        let focused = window.map { $0.isKeyWindow && $0.firstResponder === self } ?? false
+        ghostty_surface_set_focus(surface, focused)
+    }
+
+    @objc private func windowKeyChanged(_ notification: Notification) {
+        guard let window, let object = notification.object as? NSWindow,
+              window == object else { return }
+        syncFocus()
     }
 
     /// Renderer visibility = attached to a window AND that window is visible
@@ -348,7 +381,7 @@ final class GhosttySurfaceNSView: NSView {
 
     /// The full screen buffer (scrollback + screen) as plain text, for
     /// persistence. Plain text only — colors/styling aren't captured.
-    func readScrollback() -> String? {
+    func readScrollback(lastBytes: Int? = nil) -> String? {
         guard let surface else { return nil }
         var text = ghostty_text_s()
         let sel = ghostty_selection_s(
@@ -360,7 +393,19 @@ final class GhosttySurfaceNSView: NSView {
         guard ghostty_surface_read_text(surface, sel, &text) else { return nil }
         defer { Self.freeText(&text) }
         guard let ptr = text.text else { return nil }
-        return String(cString: ptr)
+        guard let lastBytes else { return String(cString: ptr) }
+        // Only the tail becomes a Swift string: a plain terminal's buffer can be
+        // megabytes, and the snapshot keeps only its end.
+        return Self.utf8Tail(UnsafeRawPointer(ptr), count: Int(text.text_len), maxBytes: lastBytes)
+    }
+
+    /// The last `maxBytes` of a UTF-8 buffer as a string, started on a character's
+    /// first byte (a continuation byte is `10xxxxxx`). Pure.
+    static func utf8Tail(_ base: UnsafeRawPointer, count: Int, maxBytes: Int) -> String {
+        let bytes = base.assumingMemoryBound(to: UInt8.self)
+        var start = max(0, count - max(0, maxBytes))
+        while start < count, bytes[start] & 0xC0 == 0x80 { start += 1 }
+        return String(decoding: UnsafeBufferPointer(start: bytes + start, count: count - start), as: UTF8.self)
     }
 
     /// The visible viewport as plain text, for screen-based state detection.
@@ -388,8 +433,9 @@ final class GhosttySurfaceNSView: NSView {
         // wait out its timer (cheap: a no-op once there is a surface).
         if window != nil { createSurface() }
         // Covers attach AND detach: window == nil (a background tab, a closed
-        // window) reads as not visible.
+        // window) reads as not visible, and as not focused.
         syncOcclusion()
+        syncFocus()
         viewDidChangeBackingProperties()
         // SwiftUI re-attaches NSViews on structural updates; the first
         // responder is lost in the process. Reclaim it if we're the active
@@ -421,7 +467,8 @@ final class GhosttySurfaceNSView: NSView {
     override var acceptsFirstResponder: Bool { true }
 
     override func becomeFirstResponder() -> Bool {
-        if let surface { ghostty_surface_set_focus(surface, true) }
+        // `window.firstResponder` is not this view yet, so `syncFocus` cannot tell.
+        if let surface { ghostty_surface_set_focus(surface, window?.isKeyWindow == true) }
         onFocus?()
         return super.becomeFirstResponder()
     }
@@ -1233,7 +1280,10 @@ final class TerminalRegistry {
         var removals: [URL] = []
         for (id, view) in views {
             // Scrollback (visual history).
-            if let text = view.readScrollback(), !text.isEmpty {
+            // About the last 200,000 characters, as before; only the last 800 KB (four
+            // bytes a character, the most for one scalar) become a Swift string first.
+            // A line of emoji built from several scalars keeps a little less.
+            if let text = view.readScrollback(lastBytes: 800_000), !text.isEmpty {
                 writes.append((
                     dir.appendingPathComponent("\(id.uuidString).txt"),
                     String(text.suffix(200_000))))

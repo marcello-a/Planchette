@@ -106,7 +106,8 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
 - **Hooks are the authority; the screen is a bounded fallback.** State
   transitions come from agent hooks routed by the `PLANCHETTE_SESSION` env var
   injected into each terminal. `ScreenDetection.swift` adds a second, weaker
-  signal read off the viewport every 1.5s, and `AttentionState.fromScreen`
+  signal read off the viewport every 1.5s (6s for a terminal that is idle and out of sight,
+  or with the app in the background), and `AttentionState.fromScreen`
   decides who wins: while a full-lifecycle agent (Claude Code) is live, the
   screen may **only** escalate to `waiting` on a visible blocker — a hook can
   miss a permission prompt, the screen cannot. Without hook authority (no
@@ -178,6 +179,10 @@ the event JSON (wrapped with `$PLANCHETTE_SESSION`) to the socket.
   cancel"), and `AttentionState.fromScreen` lets it move **only a waiting terminal** to running, after
   two polls (`ScreenConfirmation.answered`). It never starts work from idle: that stays the hooks'.
   Waiting terminals are read on every poll tick, the quiet ones in the background included.
+  While the app is in front and a display is awake (`AppState.pollsAtFullRate`), running and
+  visible terminals are read on every tick and an idle one (`free`, `ready`, held by background
+  work) that you cannot see on every fourth (6 s). Otherwise every poller runs at its background
+  rate: waiting terminals on every tick, the others on every fourth.
 - **Background work keeps a terminal `running`, in one place.** `AppState.setState` turns a requested
   `ready` or `free` into `running` while `backgroundTasks[id]` is not empty (`AttentionState.settled`),
   so no writer — a hook, the screen, a finished command — can undo it; only the user's own "Mark as

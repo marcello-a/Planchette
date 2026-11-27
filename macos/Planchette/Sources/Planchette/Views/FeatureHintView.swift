@@ -69,10 +69,22 @@ struct FeatureHintCard: View {
 
     private static let width: CGFloat = 420
 
+    /// Each hint's GIF, read and decoded once: the card watches `AppState`, and every
+    /// publish while it is open ran `body` again, which read the file again.
+    @MainActor private static var images: [FeatureHint: NSImage] = [:]
+
+    @MainActor private static func image(for hint: FeatureHint) -> NSImage? {
+        if let cached = images[hint] { return cached }
+        guard let url = FeatureHintMedia.url(for: hint), let image = NSImage(contentsOf: url),
+              image.size.width > 0 else { return nil }
+        images[hint] = image
+        return image
+    }
+
     var body: some View {
         let content = FeatureHintContent.of(hint)
         VStack(alignment: .leading, spacing: 10) {
-            if let url = FeatureHintMedia.url(for: hint), let image = NSImage(contentsOf: url), image.size.width > 0 {
+            if let image = Self.image(for: hint) {
                 AnimatedImage(image: image, label: L10n.t(content.title))
                     .frame(width: Self.width, height: Self.width * image.size.height / image.size.width)
                     .clipShape(RoundedRectangle(cornerRadius: 6))

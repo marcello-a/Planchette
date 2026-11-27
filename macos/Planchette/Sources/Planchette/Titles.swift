@@ -10,11 +10,14 @@ enum Titles {
 
     /// The ticket key inside a branch name (`marcello/feat/NIE-123-x` → `NIE-123`).
     static func ticket(inBranch branch: String) -> String? {
-        guard let range = branch.range(of: #"[A-Z]{2,10}-\d+"#, options: .regularExpression) else {
-            return nil
-        }
-        return String(branch[range])
+        let range = NSRange(branch.startIndex..., in: branch)
+        guard let match = ticketPattern.firstMatch(in: branch, range: range),
+              let found = Range(match.range, in: branch) else { return nil }
+        return String(branch[found])
     }
+
+    /// Compiled once: rows and tab names ask on every redraw.
+    private static let ticketPattern = try! NSRegularExpression(pattern: #"[A-Z]{2,10}-\d+"#)
 
     /// A branch from its ticket on: `marcello/feat/NIE-1902-format-switch` →
     /// `NIE-1902-format-switch`. Everything before the ticket is the same lead-in
@@ -123,6 +126,21 @@ enum Titles {
             url = parent
         }
         return .notARepository
+    }
+
+    /// The root folder of the checkout `dir` is in — where its `.git` is — or nil
+    /// outside a repository. The same walk as `headState`, physical path included.
+    static func checkoutRoot(forDirectory dir: String, maxLevels: Int = 64) -> String? {
+        var url = URL(fileURLWithPath: physicalPath(of: dir))
+        for _ in 0..<max(1, maxLevels) {
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) {
+                return url.path
+            }
+            let parent = url.deletingLastPathComponent()
+            if parent.path == url.path { break }
+            url = parent
+        }
+        return nil
     }
 
     /// `realpath(3)`: every symlink resolved, `/tmp` and `/var` included (which

@@ -130,11 +130,16 @@ final class TelemetryService: ObservableObject {
         guard record.consent == true, let screen = live?() else { return }
         agentSeconds += Telemetry.agentSeconds(sinceLastSample: gap, running: screen.agentsRunning,
                                                interval: Self.agentSampleInterval)
-        let before = record.peaks
-        record.observe(.terminals, screen.terminals)
-        record.observe(.agentsRunning, screen.agentsRunning)
-        record.observe(.waiting, screen.waiting)
-        if record.peaks != before { save() }
+        // On a copy: each mutation of the `@Published` record publishes, even one that
+        // changes nothing, and the window's root view watches this object.
+        var observed = record
+        observed.observe(.terminals, screen.terminals)
+        observed.observe(.agentsRunning, screen.agentsRunning)
+        observed.observe(.waiting, screen.waiting)
+        if observed.peaks != record.peaks {
+            record = observed
+            save()
+        }
     }
 
     /// The snapshot with what `AppState` does not know: the hook install and the notifications.
