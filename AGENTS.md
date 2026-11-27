@@ -361,13 +361,17 @@ script `hook/planchette-hook` where the helper does not run (`HookInstaller.depl
   every byte (CI runs it). Both live under the one name `~/.planchette/planchette-hook`, so the
   command in `settings.json` never changes — an update needs no config write, and a downgraded
   app recognizes the command and puts its script back. `deployHook` runs a new helper once
-  before it renames it into place; never write it over the old file (macOS caches a binary's
-  signature per file and kills the next start of one rewritten in place).
+  before it renames it into place, and an installed one again at every launch (off the main
+  thread); never write it over the old file (macOS caches a binary's signature per file and
+  kills the next start of one rewritten in place). The fake apps in the tests check that every
+  event ends with a half-close: the app answers on EOF, and a forwarder that only closes at
+  its deadline would hold every tool call 5 s while every byte still arrives.
 - **Anything that talks to the socket checks who owns it.** The socket is in
   `/tmp`; the hook, the CLI and the click command refuse a socket another user
   owns *and refuse a symlink* (it can be swapped for another listener between the
-  check and the connect), the CLI also asks the kernel who is listening
-  (`LOCAL_PEERCRED`), and `HookServer` checks every peer with `getpeereid`.
+  check and the connect), the CLI and the native hook helper also ask the kernel who is
+  listening (`LOCAL_PEERCRED` / `getpeereid`), and `HookServer` checks every peer with
+  `getpeereid`. (The hook's shell script cannot; it is only the fallback.)
 - **`ghostty_surface_new` fails while every display is asleep — and a view with no
   surface must come back to life.** The renderer needs a display link, and there is
   none with zero active displays. `GhosttySurfaceNSView.createSurface()` is repeatable

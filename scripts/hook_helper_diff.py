@@ -13,7 +13,12 @@ Every case runs both forwarders against fresh fake app sockets (unix sockets in
     the script's contract says (`expected`, computed here independently), and
     byte-identical between the script and the helper;
   - the same exit status (0, always) and nothing on stdout;
-  - for the helper: nothing on stderr either, and the time bound of the case.
+  - every event an app read whole ended with a half-close: at EOF the fake app sends
+    one byte, which only a client that half-closed and still listens accepts. The
+    real app answers on EOF; a forwarder that never half-closes is only seen ending
+    at its 5 s deadline, and every tool call would wait that long;
+  - for the helper: nothing on stderr either, and the time bound of the case — for
+    a case without a deadline in it, DEADLINE - 1.5 s.
 
 Where the two differ on purpose, the case says so and why:
 
@@ -33,6 +38,7 @@ Nothing here touches ~/.planchette, ~/.claude or a running Planchette: HOME is a
 fresh directory for every run, and every socket is a new path in /tmp.
 """
 import argparse
+import concurrent.futures
 import os
 import resource
 import shutil
@@ -48,6 +54,7 @@ import uuid
 
 DEADLINE = 5.0      # the forwarder's deadline per candidate (nc -w 5)
 SLACK = 3.0         # a loaded CI runner may start a process slowly
+FAST_BOUND = DEADLINE - 1.5   # every case without a deadline in it ends before this
 HOLD = 8.0          # how long a stalled fake app holds a connection before it lets go
 
 EVENTS = [
@@ -81,6 +88,7 @@ class FakeApp:
         self.dir = tempfile.mkdtemp(prefix="plt-hh-", dir="/tmp")
         self.path = path or os.path.join(self.dir, f"{uuid.uuid4().hex[:8]}.sock")
         self.connections = []           # bytes received, one entry per connection
+        self.probes = []                # the half-close probe, one entry per connection
         self.lock = threading.Lock()
         self.threads = []
         self.released = threading.Event()
@@ -106,6 +114,12 @@ class FakeApp:
         with self.lock:
             return [bytes(c) for c in self.connections]
 
+    def half_closes(self):
+        """Per connection: True when the client half-closed after its event and still
+        listened, False when it had gone, None when there was no end to probe."""
+        with self.lock:
+            return list(self.probes)
+
     def _accept(self):
         while not self.stopped:
             try:
@@ -115,33 +129,55 @@ class FakeApp:
             with self.lock:
                 buf = bytearray()
                 self.connections.append(buf)
-            t = threading.Thread(target=self._serve, args=(client, buf), daemon=True)
+                self.probes.append(None)
+                index = len(self.probes) - 1
+            t = threading.Thread(target=self._serve, args=(client, buf, index), daemon=True)
             t.start()
             with self.lock:
                 self.threads.append(t)
 
     def _read_to_eof(self, client, buf, limit=None):
+        """Read until EOF (True) or `limit` bytes, a timeout or an error (False)."""
         client.settimeout(30)
         try:
             while limit is None or len(buf) < limit:
                 chunk = client.recv(65536 if limit is None else min(65536, limit - len(buf)))
                 if not chunk:
-                    break
+                    return True
                 with self.lock:
                     buf.extend(chunk)
         except OSError:
             pass
+        return False
 
-    def _serve(self, client, buf):
+    def _probe(self, client, index):
+        """At EOF: did the client half-close and still listen? Then one byte goes
+        through. A client that closed outright (or only at its deadline) fails with
+        EPIPE. The real app answers on EOF, so a forwarder that never half-closes is
+        only seen ending at its 5 s deadline, on every tool call."""
+        try:
+            ok = client.send(b"!") == 1
+        except OSError:
+            ok = False
+        with self.lock:
+            self.probes[index] = ok
+
+    def _serve(self, client, buf, index):
         try:
             b = self.behavior
             if b == "read":
-                self._read_to_eof(client, buf)
+                if self._read_to_eof(client, buf):
+                    self._probe(client, index)
             elif b == "reply":
-                self._read_to_eof(client, buf)
-                client.sendall(b'{"ok": true, "note": "a hook must not print this"}\n')
+                if self._read_to_eof(client, buf):
+                    self._probe(client, index)
+                try:
+                    client.sendall(b'{"ok": true, "note": "a hook must not print this"}\n')
+                except OSError:
+                    pass
             elif b == "read_hold":
-                self._read_to_eof(client, buf)
+                if self._read_to_eof(client, buf):
+                    self._probe(client, index)
                 self.released.wait(HOLD)
             elif b == "stall":
                 self.released.wait(HOLD)
@@ -439,6 +475,12 @@ def build_cases():
         # is protected from DYLD_INSERT_LIBRARIES. Its control case is "event Stop".
         Case("our socket seen with another euid is refused (helper only)", apps={"app": "read"},
              setup=plain, expected=lambda ctx: {"app": []}, helper_only=True, preload="fake_euid"),
+        # The kernel says another user listens: connected, nothing sent, the pointer
+        # tried (and refused the same way). The script cannot make this check.
+        Case("a peer running as another user gets nothing (helper only)", apps={"app": "read", "live": "read"},
+             setup=lambda ctx: (ctx.pointer(ctx.apps["live"].path.encode() + b"\n"),
+                                env_with(ctx, ctx.apps["app"].path))[1],
+             expected=lambda ctx: {"app": [b""], "live": [b""]}, helper_only=True, preload="fake_peer"),
     ]
 
     # The default socket path, when nothing names one. Skipped when that path is taken.
@@ -488,9 +530,10 @@ def build_cases():
 # ---------------------------------------------------------------------------
 
 class Run:
-    def __init__(self, status, stdout, stderr, seconds, received, hung):
+    def __init__(self, status, stdout, stderr, seconds, received, hung, probes):
         self.status, self.stdout, self.stderr = status, stdout, stderr
         self.seconds, self.received, self.hung = seconds, received, hung
+        self.probes = probes
 
 
 def run_one(command, case, tools, is_script=False):
@@ -537,7 +580,8 @@ def run_one(command, case, tools, is_script=False):
         for app in ctx.apps.values():
             app.stop()
         received = {name: app.received() for name, app in ctx.apps.items()}
-        return Run(process.returncode, out, err, seconds, received, hung)
+        probes = {name: (app.behavior, app.half_closes()) for name, app in ctx.apps.items()}
+        return Run(process.returncode, out, err, seconds, received, hung, probes)
     finally:
         for app in ctx.apps.values():
             app.stop()
@@ -553,13 +597,23 @@ def show(data, limit=120):
     return repr(data)
 
 
-def check_case(case, script, helper, tools):
-    """Returns a list of failure messages (empty: the case passed) and the runs."""
+def check_case(case, script, helper, tools, together=False):
+    """Returns a list of failure messages (empty: the case passed) and the runs.
+    `together` runs the script and the helper at the same time (each against its own
+    fake apps): a deadline case then costs its slowest run, not both."""
     failures = []
     runs = {}
-    if not case.helper_only:
-        runs["script"] = run_one(script, case, tools, is_script=True)
-    runs["helper"] = run_one(helper, case, tools)
+    if together and not case.helper_only:
+        def script_run():
+            runs["script"] = run_one(script, case, tools, is_script=True)
+        t = threading.Thread(target=script_run)
+        t.start()
+        runs["helper"] = run_one(helper, case, tools)
+        t.join()
+    else:
+        if not case.helper_only:
+            runs["script"] = run_one(script, case, tools, is_script=True)
+        runs["helper"] = run_one(helper, case, tools)
     if any(r is None for r in runs.values()):
         return None, runs
     if runs["helper"].hung:
@@ -586,11 +640,22 @@ def check_case(case, script, helper, tools):
             failures.append(f"{label}: exit status {run.status}, expected 0 (stderr: {run.stderr[:300]!r})")
         if run.stdout:
             failures.append(f"{label}: printed {show(run.stdout)} on stdout")
+        # Every event an app read whole must have ended with a half-close.
+        for name, (behavior, probes) in run.probes.items():
+            if behavior not in ("read", "reply", "read_hold"):
+                continue
+            for i, (data, probe) in enumerate(zip(run.received[name], probes)):
+                if data and probe is not True:
+                    failures.append(f"{label}: app '{name}' connection {i}: no half-close after the event "
+                                    f"(probe {probe}), so the app would wait for the deadline")
     helper_run = runs["helper"]
     if helper_run.stderr:
         failures.append(f"helper: printed {show(helper_run.stderr)} on stderr")
-    if case.max_seconds is not None and helper_run.seconds > case.max_seconds:
-        failures.append(f"helper: took {helper_run.seconds:.2f}s, bound {case.max_seconds:.1f}s")
+    # Without a bound of its own, a case must end well before the deadline: a second line
+    # of defence against a forwarder that waits out the deadline on every event.
+    bound = case.max_seconds if case.max_seconds is not None else FAST_BOUND
+    if helper_run.seconds > bound:
+        failures.append(f"helper: took {helper_run.seconds:.2f}s, bound {bound:.1f}s")
     if case.min_seconds is not None and helper_run.seconds < case.min_seconds:
         failures.append(f"helper: left after {helper_run.seconds:.2f}s, before the deadline "
                         f"({case.min_seconds:.1f}s) — nc waits for the app to close")
@@ -607,22 +672,45 @@ def check_case(case, script, helper, tools):
     return failures, runs
 
 
+INTERPOSERS = {
+    # geteuid: our own socket file then belongs to "someone else".
+    "fake_euid": (
+        "#include <unistd.h>\n"
+        "static uid_t fake_geteuid(void) { return getuid() + 1; }\n"
+        "__attribute__((used)) static const struct { const void *replacement; const void *replacee; }\n"
+        "interposers[] __attribute__((section(\"__DATA,__interpose\"))) = {\n"
+        "    { (const void *)fake_geteuid, (const void *)geteuid },\n"
+        "};\n"),
+    # getpeereid: the file is ours, but the kernel reports another user listening (the
+    # race between the path checks and the connect).
+    "fake_peer": (
+        "#include <unistd.h>\n"
+        "static int fake_getpeereid(int fd, uid_t *uid, gid_t *gid) {\n"
+        "    int result = getpeereid(fd, uid, gid);\n"
+        "    if (result == 0) *uid += 1;\n"
+        "    return result;\n"
+        "}\n"
+        "__attribute__((used)) static const struct { const void *replacement; const void *replacee; }\n"
+        "interposers[] __attribute__((section(\"__DATA,__interpose\"))) = {\n"
+        "    { (const void *)fake_getpeereid, (const void *)getpeereid },\n"
+        "};\n"),
+}
+
+
 def build_tools(workdir):
-    """The geteuid interposer: our own socket then belongs to "someone else"."""
-    source = os.path.join(workdir, "fake_euid.c")
-    with open(source, "w") as f:
-        f.write(
-            "#include <unistd.h>\n"
-            "static uid_t fake_geteuid(void) { return getuid() + 1; }\n"
-            "__attribute__((used)) static const struct { const void *replacement; const void *replacee; }\n"
-            "interposers[] __attribute__((section(\"__DATA,__interpose\"))) = {\n"
-            "    { (const void *)fake_geteuid, (const void *)geteuid },\n"
-            "};\n")
-    dylib = os.path.join(workdir, "fake_euid.dylib")
-    # Both slices, so the case also runs against the helper's x86_64 slice (Rosetta).
-    subprocess.run(["xcrun", "clang", "-dynamiclib", "-arch", "arm64", "-arch", "x86_64", "-Wall", "-Werror",
-                    "-o", dylib, source], check=True)
-    return {"fake_euid": dylib}
+    """The interposers, as dylibs for DYLD_INSERT_LIBRARIES (the helper is not
+    protected by SIP; /bin/sh is, so these cases are the helper's only)."""
+    tools = {}
+    for name, source_text in INTERPOSERS.items():
+        source = os.path.join(workdir, f"{name}.c")
+        with open(source, "w") as f:
+            f.write(source_text)
+        dylib = os.path.join(workdir, f"{name}.dylib")
+        # Both slices, so the cases also run against the helper's x86_64 slice (Rosetta).
+        subprocess.run(["xcrun", "clang", "-dynamiclib", "-arch", "arm64", "-arch", "x86_64", "-Wall", "-Werror",
+                        "-o", dylib, source], check=True)
+        tools[name] = dylib
+    return tools
 
 
 def differential(script, helper, only):
@@ -633,21 +721,24 @@ def differential(script, helper, only):
     skipped = 0
     print(f"{'case':<62} {'script':>8} {'helper':>8}  result")
     print("-" * 92)
-    # Stalled cases take seconds each: run cases in parallel, report in order.
+    # The quick cases run eight at a time. The cases about the deadline run one after
+    # the other, so a loaded runner (or a parallel 5 MB event) cannot push one past its
+    # bound; within such a case the script and the helper run side by side. Results are
+    # reported in order.
     results = [None] * len(cases)
 
-    def work(i):
-        results[i] = check_case(cases[i], script, helper, tools)
+    def work(i, together=False):
+        results[i] = check_case(cases[i], script, helper, tools, together)
 
     default_cases = [i for i, c in enumerate(cases) if "default" in c.apps]
-    others = [i for i in range(len(cases)) if i not in default_cases]
-    threads = [threading.Thread(target=work, args=(i,)) for i in others]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    deadline_cases = [i for i, c in enumerate(cases) if c.min_seconds is not None]
+    quick = [i for i in range(len(cases)) if i not in default_cases and i not in deadline_cases]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(work, quick))
     for i in default_cases:     # one fixed path: never two at once
         work(i)
+    for i in deadline_cases:
+        work(i, together=True)
 
     for case, (failures, runs) in zip(cases, results):
         s = runs.get("script")

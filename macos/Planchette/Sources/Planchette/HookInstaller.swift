@@ -179,53 +179,103 @@ enum HookInstaller {
     /// macOS refuses to start (quarantine, a broken signature, a CPU it was not
     /// built for) never becomes the hook — the script does. The rename is atomic:
     /// an agent firing a hook meanwhile finds the old file or the new one, never
-    /// none.
+    /// none. An installed helper is run again at every launch: a policy or a
+    /// signature cache that starts killing it later must not leave the hooks dead
+    /// until the next release. Blocking (the probe waits on a process): call it off
+    /// the main thread, as `installIfNeeded` is.
     @discardableResult
     static func deployHook(
         from bundle: Bundle = .main, to dest: URL = hookScriptURL,
-        runs: (URL) -> Bool = helperRuns
+        runs: (URL) -> Bool = { helperRuns($0) }
     ) throws -> HookForwarder {
         guard bundle.bundleURL.pathExtension == "app" else { return .none }
+        removeStaleStagedCopies(of: dest)
         if let helper = bundledHelper(in: bundle), let binary = try? Data(contentsOf: helper) {
             if (try? Data(contentsOf: dest)) == binary {
-                try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
-                return .native
+                if runs(dest) {
+                    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+                    return .native
+                }
+                Log.error("hook-install.helper_stopped_running",
+                          "hook install: the installed native hook forwarder no longer runs; using the shell script")
+            } else {
+                let staged = try stage(binary, next: dest)
+                if runs(staged) {
+                    try commit(staged, to: dest)
+                    Log.info("hook install: native hook forwarder installed at \(dest.path)")
+                    return .native
+                }
+                try? FileManager.default.removeItem(at: staged)
+                Log.error("hook-install.helper_refused",
+                          "hook install: the native hook forwarder did not run on this Mac; using the shell script")
             }
-            let staged = try stage(binary, next: dest)
-            if runs(staged) {
-                try commit(staged, to: dest)
-                Log.info("hook install: native hook forwarder installed at \(dest.path)")
-                return .native
-            }
-            try? FileManager.default.removeItem(at: staged)
-            Log.error("hook-install.helper_refused",
-                      "hook install: the native hook forwarder did not run on this Mac; using the shell script")
         }
         guard let script = bundledResource(named: "planchette-hook", in: bundle) else { return .none }
         try install(try Data(contentsOf: script), at: dest)
         return .script
     }
 
+    /// How long the probe may take. Generous on purpose: endpoint security scans a
+    /// binary at its first start, and on a managed Mac that can take seconds. It runs
+    /// off the main thread, so the wait costs nothing visible.
+    static let probeTimeout: TimeInterval = 30
+
     /// True when the helper at `url` starts and does its no-op: without
-    /// `PLANCHETTE_SESSION` it must exit 0 at once. A helper the system refuses to
-    /// run is killed or never starts, and fails this. The environment is replaced,
-    /// not inherited: a dev run started from a Planchette terminal carries a real
-    /// `PLANCHETTE_SESSION`, and the probe must not send an event.
-    static func helperRuns(_ url: URL) -> Bool {
+    /// `PLANCHETTE_SESSION` it must exit 0. A helper the system refuses to run is
+    /// killed or never starts, and fails this.
+    ///
+    /// The probe runs with `probeEnvironment(from:)`, not with the app's environment:
+    /// a dev run started from a Planchette terminal carries a real
+    /// `PLANCHETTE_SESSION`, and the probe must not send that terminal an event.
+    static func helperRuns(
+        _ url: URL, timeout: TimeInterval = probeTimeout,
+        appEnvironment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
         guard let result = Subprocess.run(
-            url.path, ["claude"], timeout: 10, input: Data(), environment: ["PATH": "/usr/bin:/bin"])
+            url.path, ["claude"], timeout: timeout, input: Data(),
+            environment: probeEnvironment(from: appEnvironment))
         else { return false }
         return result.succeeded
+    }
+
+    /// The probe's environment: the app's `PATH` and nothing else — no session, no
+    /// socket, no `HOME` that could lead the helper to a socket pointer.
+    static func probeEnvironment(from appEnvironment: [String: String]) -> [String: String] {
+        ["PATH": appEnvironment["PATH"] ?? "/usr/bin:/bin"]
     }
 
     /// Write `data` to `dest` (mode 0755) unless it is already there, through a
     /// temporary file and a rename.
     static func install(_ data: Data, at dest: URL) throws {
+        removeStaleStagedCopies(of: dest)
         if (try? Data(contentsOf: dest)) == data {
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
             return
         }
         try commit(try stage(data, next: dest), to: dest)
+    }
+
+    /// The name of a staged copy of `dest`: `.<name>.<UUID>.tmp`, beside it.
+    static func isStagedCopy(named file: String, of dest: URL) -> Bool {
+        file.hasPrefix(".\(dest.lastPathComponent).") && file.hasSuffix(".tmp")
+    }
+
+    /// Delete the staged copies of `dest` that a crash between `stage` and `commit`
+    /// left behind. Only those older than `age`: a younger one may be another
+    /// instance's install in progress.
+    static func removeStaleStagedCopies(of dest: URL, olderThan age: TimeInterval = 60, now: Date = Date()) {
+        let fm = FileManager.default
+        let dir = dest.deletingLastPathComponent()
+        guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
+        for name in names where isStagedCopy(named: name, of: dest) {
+            let url = dir.appendingPathComponent(name)
+            guard let attributes = try? fm.attributesOfItem(atPath: url.path),
+                  attributes[.type] as? FileAttributeType == .typeRegular,
+                  let modified = attributes[.modificationDate] as? Date,
+                  now.timeIntervalSince(modified) > age
+            else { continue }
+            try? fm.removeItem(at: url)
+        }
     }
 
     /// `data` in a new executable file beside `dest`. A new file, not an overwrite:

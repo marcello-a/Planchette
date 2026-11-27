@@ -18,6 +18,9 @@
  *     equal to the one tried before it, is skipped.
  *   - A candidate is used only when it is a socket this user owns and not a
  *     symlink (`[ -L ]`, `[ -S ]`, `[ -O ]` in the script; see there for why).
+ *     After the connect, the peer must run as this user too (getpeereid, as the
+ *     CLI checks LOCAL_PEERCRED); a foreign peer counts as a refused socket. This
+ *     one check the script cannot make.
  *   - A candidate that refuses the connection, or that breaks it before the whole
  *     event is written, is a failed send: the next candidate is tried. One that
  *     took the whole event is the end, however it answers.
@@ -280,6 +283,15 @@ static int send_event(const char *path, const struct buffer *event) {
     int64_t deadline = now_ms() + DEADLINE_MS;
     int fd = connect_socket(path, deadline);
     if (fd < 0) return -1;
+    /* The kernel's word on who listens (LOCAL_PEERCRED), as the CLI asks it: the
+     * path checks cannot close the gap between the check and the connect. Someone
+     * else at the other end is treated like a socket that refused. */
+    uid_t peer_uid;
+    gid_t peer_gid;
+    if (getpeereid(fd, &peer_uid, &peer_gid) != 0 || peer_uid != geteuid()) {
+        close(fd);
+        return -1;
+    }
     if (write_all(fd, event->bytes, event->length, deadline) != 0) {
         close(fd);
         return -1;

@@ -97,6 +97,9 @@ final class NativeHookForwarderTests: XCTestCase {
         app.waitUntilServed()
         XCTAssertTrue(result.succeeded, "\(forwarder) must exit 0 (status \(result.status))")
         XCTAssertTrue(result.stdout.isEmpty, "\(forwarder) printed \(result.stdoutString)")
+        // The end of the event must be a half-close: the app answers on EOF, and a
+        // forwarder that only closes at its deadline holds every tool call 5 s.
+        XCTAssertEqual(app.halfClosed, true, "\(forwarder) did not half-close after the event")
         return app.received
     }
 
@@ -195,6 +198,7 @@ final class NativeHookForwarderTests: XCTestCase {
         app.waitUntilServed()
         XCTAssertTrue(result.succeeded)
         XCTAssertEqual(app.received, expectedEvent(session: session, agent: "claude", stdin: stdin))
+        XCTAssertEqual(app.halfClosed, true)
     }
 
     // An app that accepted the event but never answers does not hold the agent's tool
@@ -302,17 +306,39 @@ final class HookForwarderDeployTests: XCTestCase {
         try assertNoLeftovers()
     }
 
-    // A downgrade: an older app carries no helper and puts its script back — both
-    // through this installer and through the plain copy every older version runs.
+    // A downgrade, run as the older versions do it: the body of `HookInstaller.deploy`
+    // up to v0.2.56, step for step — compare, remove, copy, chmod. Over an installed helper it must put the script back, and the
+    // command it wires (`isPlanchetteCommand`) must still be the installed one.
     func testADowngradePutsTheScriptBack() throws {
         let older = try makeApp(helper: nil, script: Data("#!/bin/sh\n# older\n".utf8), name: "Older.app")
-        try put(helper, at: dest)
-        XCTAssertEqual(try HookInstaller.deployHook(from: older, to: dest) { _ in XCTFail("no helper to probe"); return true },
-                       .script)
-        XCTAssertEqual(try String(contentsOf: dest, encoding: .utf8), "#!/bin/sh\n# older\n")
+        try HookInstaller.deployHook(from: try makeApp(helper: helper), to: dest) { _ in true }
+        XCTAssertEqual(try Data(contentsOf: dest), helper)
 
+        // What every Planchette before the helper runs at launch.
+        let bundled = try XCTUnwrap(older.resourceURL?.appendingPathComponent("planchette-hook"))
+        let fm = FileManager.default
+        try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if (try? Data(contentsOf: bundled)) != (try? Data(contentsOf: dest)) {
+            try? fm.removeItem(at: dest)
+            try fm.copyItem(at: bundled, to: dest)
+        }
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: dest.path)
+
+        XCTAssertEqual(try String(contentsOf: dest, encoding: .utf8), "#!/bin/sh\n# older\n")
+        XCTAssertTrue(HookInstaller.isPlanchetteCommand("\(dest.path) claude"))
+        try assertNoLeftovers()
+    }
+
+    // An app without a helper (a build that could not make one) installs its script
+    // over whatever is there, without a probe.
+    func testABundleWithoutAHelperInstallsItsScript() throws {
+        let older = try makeApp(helper: nil, script: Data("#!/bin/sh\n# older\n".utf8), name: "Older.app")
         try put(helper, at: dest)
-        try HookInstaller.deploy("planchette-hook", to: dest, from: older)
+        let installed = try HookInstaller.deployHook(from: older, to: dest) { _ in
+            XCTFail("no helper to probe")
+            return true
+        }
+        XCTAssertEqual(installed, .script)
         XCTAssertEqual(try String(contentsOf: dest, encoding: .utf8), "#!/bin/sh\n# older\n")
         try assertNoLeftovers()
     }
@@ -336,14 +362,70 @@ final class HookForwarderDeployTests: XCTestCase {
                        before, "settings.json is not rewritten by the switch")
     }
 
-    func testAnInstalledHelperIsNotProbedAgain() throws {
+    // An installed helper is run again at each launch — the installed file itself, with
+    // nothing staged — and stays while it runs.
+    func testAnInstalledHelperIsProbedAndKept() throws {
         try put(helper, at: dest)
-        let installed = try HookInstaller.deployHook(from: try makeApp(helper: helper), to: dest) { _ in
-            XCTFail("an installed helper is not run again")
-            return false
+        let inode = try FileManager.default.attributesOfItem(atPath: dest.path)[.systemFileNumber] as? Int
+        var probed: [String] = []
+        let installed = try HookInstaller.deployHook(from: try makeApp(helper: helper), to: dest) {
+            probed.append($0.path)
+            return true
         }
         XCTAssertEqual(installed, .native)
+        XCTAssertEqual(probed, [dest.path])
         XCTAssertEqual(try Data(contentsOf: dest), helper)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: dest.path)[.systemFileNumber] as? Int,
+                       inode, "an installed helper that runs is left as it is")
+        try assertNoLeftovers()
+    }
+
+    // A helper that ran when it was installed and no longer does (a new macOS policy, a
+    // signature cache that kills it): the script takes over at this launch, not at the
+    // next release.
+    func testAnInstalledHelperThatStoppedRunningGivesWayToTheScript() throws {
+        try put(helper, at: dest)
+        let installed = try HookInstaller.deployHook(from: try makeApp(helper: helper), to: dest) { _ in false }
+        XCTAssertEqual(installed, .script)
+        XCTAssertEqual(try Data(contentsOf: dest), script)
+        try assertNoLeftovers()
+    }
+
+    // A crash between staging and the rename leaves `.planchette-hook.<UUID>.tmp`
+    // behind. The next install removes the old ones — not a young one, which may be
+    // another instance's install in progress — and the CLI's alike.
+    func testStaleStagedCopiesAreRemoved() throws {
+        let dir = dest.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let old = dir.appendingPathComponent(".planchette-hook.\(UUID().uuidString).tmp")
+        let young = dir.appendingPathComponent(".planchette-hook.\(UUID().uuidString).tmp")
+        let oldCLI = dir.appendingPathComponent(".planchette.\(UUID().uuidString).tmp")
+        let foreign = dir.appendingPathComponent(".planchette-hook.notes")
+        for url in [old, young, oldCLI, foreign] { try Data("x".utf8).write(to: url) }
+        let longAgo = Date().addingTimeInterval(-600)
+        for url in [old, oldCLI, foreign] {
+            try FileManager.default.setAttributes([.modificationDate: longAgo], ofItemAtPath: url.path)
+        }
+
+        try HookInstaller.deployHook(from: try makeApp(helper: helper), to: dest) { _ in true }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path), "a stale staged copy is removed")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: young.path), "a young one may be in use")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: foreign.path), "only staged copies are touched")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: oldCLI.path), "the CLI's copies are its own install's")
+
+        let cli = dir.appendingPathComponent("planchette")
+        try HookInstaller.install(Data("#!/bin/sh\n".utf8), at: cli)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: oldCLI.path), "the CLI install cleans its own")
+    }
+
+    func testStagedCopyNamesDoNotCrossBetweenFiles() {
+        let hook = URL(fileURLWithPath: "/x/.planchette/planchette-hook")
+        let cli = URL(fileURLWithPath: "/x/.planchette/planchette")
+        XCTAssertTrue(HookInstaller.isStagedCopy(named: ".planchette-hook.ABC.tmp", of: hook))
+        XCTAssertFalse(HookInstaller.isStagedCopy(named: ".planchette-hook.ABC.tmp", of: cli))
+        XCTAssertTrue(HookInstaller.isStagedCopy(named: ".planchette.ABC.tmp", of: cli))
+        XCTAssertFalse(HookInstaller.isStagedCopy(named: ".planchette.ABC.tmp", of: hook))
+        XCTAssertFalse(HookInstaller.isStagedCopy(named: "planchette-hook", of: hook))
     }
 
     // A helper that failed its probe last launch is tried again: the next start may be
@@ -415,43 +497,50 @@ final class HookHelperProbeTests: XCTestCase {
     }
 
     func testTheBuiltHelperRuns() throws {
-        XCTAssertTrue(HookInstaller.helperRuns(URL(fileURLWithPath: try BuiltHelper.path())))
+        XCTAssertTrue(HookInstaller.helperRuns(URL(fileURLWithPath: try BuiltHelper.path()), timeout: 300))
     }
 
     // What Gatekeeper does to a binary it refuses: SIGKILL at exec.
     func testAHelperKilledAtStartDoesNotRun() throws {
         let killed = try executable("killed", Data("#!/bin/sh\nkill -9 $$\n".utf8))
-        XCTAssertFalse(HookInstaller.helperRuns(killed))
+        XCTAssertFalse(HookInstaller.helperRuns(killed, timeout: 300))
     }
 
     // A file the kernel cannot execute (a CPU it was not built for, a truncated copy).
     func testAFileThatCannotBeExecutedDoesNotRun() throws {
         let garbage = try executable("garbage", Data([0xCF, 0xFA, 0xED, 0xFE] + Array(repeating: 0, count: 64)))
-        XCTAssertFalse(HookInstaller.helperRuns(garbage))
+        XCTAssertFalse(HookInstaller.helperRuns(garbage, timeout: 300))
     }
 
     func testAHelperThatFailsDoesNotRun() throws {
         let failing = try executable("failing", Data("#!/bin/sh\nexit 3\n".utf8))
-        XCTAssertFalse(HookInstaller.helperRuns(failing))
+        XCTAssertFalse(HookInstaller.helperRuns(failing, timeout: 300))
     }
 
-    // The probe replaces the environment: a dev run started from a Planchette terminal
-    // has a real PLANCHETTE_SESSION, and the probe must not send that terminal an event.
+    // The probe does not pass the app's environment on: a dev run started from a
+    // Planchette terminal has a real PLANCHETTE_SESSION, and the probe must not send that
+    // terminal an event. The app's environment is handed in, not set on this process.
     func testTheProbeSendsNoEventEvenInsideAPlanchetteTerminal() throws {
         let helper = URL(fileURLWithPath: try BuiltHelper.path())
         let app = try FakeApp()
-        let saved = ["PLANCHETTE_SESSION", "PLANCHETTE_SOCKET"].map { ($0, ProcessInfo.processInfo.environment[$0]) }
-        setenv("PLANCHETTE_SESSION", UUID().uuidString, 1)
-        setenv("PLANCHETTE_SOCKET", app.path, 1)
-        defer {
-            for (key, value) in saved {
-                if let value { setenv(key, value, 1) } else { unsetenv(key) }
-            }
-        }
-        XCTAssertTrue(HookInstaller.helperRuns(helper))
+        let pointerHome = try makeHome(self, pointingAt: app.path)
+        let insideATerminal = [
+            "PATH": "/usr/bin:/bin", "HOME": pointerHome,
+            "PLANCHETTE_SESSION": UUID().uuidString, "PLANCHETTE_SOCKET": app.path,
+        ]
+        XCTAssertTrue(HookInstaller.helperRuns(helper, timeout: 300, appEnvironment: insideATerminal))
         app.stop()
         app.waitUntilServed()
         XCTAssertTrue(app.received.isEmpty, "the probe must not reach a socket")
+    }
+
+    func testTheProbeEnvironmentKeepsOnlyThePath() {
+        let env = HookInstaller.probeEnvironment(from: [
+            "PATH": "/opt/bin:/usr/bin", "HOME": "/Users/x",
+            "PLANCHETTE_SESSION": "s", "PLANCHETTE_SOCKET": "/tmp/x.sock",
+        ])
+        XCTAssertEqual(env, ["PATH": "/opt/bin:/usr/bin"])
+        XCTAssertEqual(HookInstaller.probeEnvironment(from: [:]), ["PATH": "/usr/bin:/bin"])
     }
 
     // End to end: the real helper in a packaged app, the real probe, a real install.
@@ -467,8 +556,12 @@ final class HookHelperProbeTests: XCTestCase {
                                          to: resources.appendingPathComponent("planchette-hook"))
         let dest = sandbox.appendingPathComponent("home/.planchette/planchette-hook")
 
-        XCTAssertEqual(try HookInstaller.deployHook(from: try XCTUnwrap(Bundle(url: app)), to: dest), .native)
+        let bundle = try XCTUnwrap(Bundle(url: app))
+        let probe: (URL) -> Bool = { HookInstaller.helperRuns($0, timeout: 300) }
+        XCTAssertEqual(try HookInstaller.deployHook(from: bundle, to: dest, runs: probe), .native)
         XCTAssertEqual(try Data(contentsOf: dest), try Data(contentsOf: URL(fileURLWithPath: try BuiltHelper.path())))
+        // The next launch runs the installed helper itself, and keeps it.
+        XCTAssertEqual(try HookInstaller.deployHook(from: bundle, to: dest, runs: probe), .native)
 
         let fake = try FakeApp()
         let session = UUID().uuidString
@@ -480,5 +573,6 @@ final class HookHelperProbeTests: XCTestCase {
         fake.waitUntilServed()
         XCTAssertTrue(result.succeeded)
         XCTAssertEqual(fake.received, expectedEvent(session: session, agent: "claude", stdin: stdin))
+        XCTAssertEqual(fake.halfClosed, true)
     }
 }

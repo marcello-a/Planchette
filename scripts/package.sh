@@ -21,8 +21,8 @@ GHOSTTY_SHARE="$ROOT/vendor/ghostty/zig-out/share/ghostty"
 DIST="$ROOT/dist"
 APP="$DIST/Planchette.app"
 BUNDLE_ID="build.planchette.app"
-# Ad-hoc. A Developer ID identity goes here (plus notarization); it signs the app
-# and the hook helper alike.
+# "-" signs ad-hoc. A Developer ID identity here signs the app and the hook helper
+# alike, with the hardened runtime and a timestamp (step 3).
 SIGN_IDENTITY="-"
 
 VERSION="${1:-}"
@@ -59,7 +59,9 @@ fi
 # shell script it replaces, installed instead where the helper does not run. Code goes in
 # Contents/Helpers, where codesign treats it as nested code, not as a resource file.
 mkdir -p "$APP/Contents/Helpers"
-sh "$ROOT/hook/build-hook-helper.sh" "$APP/Contents/Helpers/planchette-hook"
+# --no-werror: a warning from a newer clang must not stop a release. CI's tests build the
+# same source with every warning an error before this runs.
+sh "$ROOT/hook/build-hook-helper.sh" --no-werror "$APP/Contents/Helpers/planchette-hook"
 cp "$ROOT/hook/planchette-hook" "$APP/Contents/Resources/planchette-hook"
 chmod +x "$APP/Contents/Resources/planchette-hook"
 # The control CLI agents use to drive Planchette (see skills/planchette).
@@ -98,35 +100,52 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# 3. Ad-hoc codesign so Gatekeeper lets it run locally. For distribution to
-#    others, set SIGN_IDENTITY to a Developer ID identity and notarize.
-# Ad-hoc signing must succeed: Apple Silicon SIGKILLs an unsigned arm64 binary
-# at exec, so a build that skipped signing would ship an app that cannot launch.
-# Fail the build rather than publish it.
+# 3. Codesign. Ad-hoc (SIGN_IDENTITY="-") so Gatekeeper lets it run locally. For
+#    distribution to others, set SIGN_IDENTITY to a Developer ID identity; notarizing
+#    the result (`xcrun notarytool submit`, then `xcrun stapler staple`) is still a
+#    step of its own. Not tried with a real identity yet: under the hardened runtime
+#    the iTerm2 / Terminal migration (AppleScript) also needs the
+#    com.apple.security.automation.apple-events entitlement.
+# Signing must succeed: Apple Silicon SIGKILLs an unsigned arm64 binary at exec, so a
+# build that skipped signing would ship an app that cannot launch. Fail the build
+# rather than publish it.
 #
-# The designated requirement is pinned to the bundle identifier. Left to itself,
-# an ad-hoc signature's requirement is the cdhash of this exact build, and macOS
-# keys every privacy answer (Documents, Desktop, Downloads, network volumes, ...)
-# on that requirement: each update became a new app, and every terminal asked for
-# its folders again. With the identifier, an answer survives updates. The price:
-# any ad-hoc app that claims this identifier matches too — only a Developer ID
-# signature (team-bound requirement) closes that. No --deep: it would stamp the app's
-# requirement on the nested hook helper too. The helper is signed first, on its own and
-# with its own identifier; the app's signature then seals it as nested code.
+# Ad-hoc, the designated requirement is pinned to the bundle identifier. Left to
+# itself, an ad-hoc signature's requirement is the cdhash of this exact build, and
+# macOS keys every privacy answer (Documents, Desktop, Downloads, network volumes, ...)
+# on that requirement: each update became a new app, and every terminal asked for its
+# folders again. With the identifier, an answer survives updates. The price: any ad-hoc
+# app that claims this identifier matches too. Only a Developer ID signature closes
+# that, with its default requirement (the identifier AND the team's certificate), so
+# that one is left alone: pinning it to the identifier would drop the team anchor. A
+# Developer ID signature also gets the hardened runtime and a secure timestamp, which
+# notarization requires.
+#
+# No --deep: it would stamp the app's requirement on the nested hook helper too. The
+# helper is signed first, on its own and with its own identifier; the app's signature
+# then seals it as nested code.
+sign() {   # sign <path> <identifier>
+    if [ "$SIGN_IDENTITY" = "-" ]; then
+        codesign --force --sign - -i "$2" -r="designated => identifier \"$2\"" "$1"
+    else
+        codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp -i "$2" "$1"
+    fi
+}
 HELPER="$APP/Contents/Helpers/planchette-hook"
-codesign --force --sign "$SIGN_IDENTITY" -i "$BUNDLE_ID.hook" \
-    -r="designated => identifier \"$BUNDLE_ID.hook\"" "$HELPER" || {
+sign "$HELPER" "$BUNDLE_ID.hook" || {
     echo "codesign of the hook helper failed — refusing to package an unsigned bundle" >&2
     exit 1
 }
-codesign --force --sign "$SIGN_IDENTITY" -r="designated => identifier \"$BUNDLE_ID\"" "$APP" || {
+sign "$APP" "$BUNDLE_ID" || {
     echo "codesign failed — refusing to package an unsigned bundle" >&2
     exit 1
 }
-codesign --verify --strict "$APP" || {
+# The check the in-app updater makes on a download (UpdateService), nested code included.
+codesign --verify --deep --strict "$APP" || {
     echo "the signed bundle does not verify (is the hook helper sealed?)" >&2
     exit 1
 }
+# Ad-hoc: the pinned requirement. Developer ID: its default requirement starts the same way.
 codesign -d -r- "$APP" 2>&1 | grep -qF "designated => identifier \"$BUNDLE_ID\"" || {
     echo "codesign did not pin the designated requirement — every update would ask for permissions again" >&2
     exit 1

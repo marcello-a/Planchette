@@ -186,8 +186,13 @@ Keep it working when the release assets change — the README points people at i
 as the primary install route.
 
 The app is ad-hoc signed (runs locally). Distributing to other machines needs a
-Developer ID identity + notarization — set `SIGN_IDENTITY` in `scripts/package.sh`,
-which signs the hook helper and the app with it.
+Developer ID identity and notarization. Set `SIGN_IDENTITY` in `scripts/package.sh`:
+it then signs the hook helper and the app with the hardened runtime and a secure
+timestamp, and keeps the default designated requirement, which includes the team.
+Notarizing (`xcrun notarytool submit`, `xcrun stapler staple`) is still a separate,
+manual step. This path is not tried yet: under the hardened runtime the iTerm2 /
+Terminal migration also needs the `com.apple.security.automation.apple-events`
+entitlement, which `package.sh` does not add.
 
 The ad-hoc signature carries a designated requirement pinned to the bundle identifier
 (`designated => identifier "build.planchette.app"`), and `package.sh` fails the build
