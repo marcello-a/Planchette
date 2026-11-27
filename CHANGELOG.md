@@ -29,6 +29,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   every checkout, every 15 seconds. Now a finished turn or command looks up only its own terminal,
   a tool call only when it is a shell command with `git` or `gh`, terminals in one repository and
   branch share one lookup, and a merged or closed PR is checked again every 15 minutes.
+- **One GitHub request for all pull request pills.** The minute poll started one `gh` process per
+  checkout and branch — about 3.5 % of a core with 30 terminals. It now asks GitHub about all of
+  them in one request. A checkout whose repository is not certain (another host than github.com,
+  an SSH host alias, several remotes without `gh repo set-default`) is still asked on its own.
 - **Less work per agent turn:** the transcript reading for the conversation title and the context
   ring is about 15 times faster, the context usage no longer redraws the window while it is not
   shown, IDE state files are read only when they change, and a dev-server port that never prints

@@ -443,6 +443,26 @@ all of it is a git read, since `make pr` can push). One checkout and branch is a
 at most once per `PullRequests.eagerGap`; a terminal that asks inside the gap waits
 for its end, together with every other terminal that asks meanwhile (`EagerLookups`).
 
+**A sweep asks GitHub once, where the repository is certain.** `PullRequests.lookup(_:)`
+sends the checkouts of a sweep as one `gh api graphql --hostname github.com` call
+(`PullRequestBatch`: one aliased `repository { pullRequests(headRefName:) }` per checkout,
+every owner, name and branch a GraphQL variable, at most `PullRequestBatch.cap` per call),
+instead of one `gh pr list` process each. The answer is picked by the same rule as
+`PullRequests.parse` (an open or draft PR first, else the newest). The risk is the
+repository: `gh pr list` picks it from the folder's git remotes, so `GhRepoResolver` reads
+the checkout's config (through a worktree's `commondir`, a submodule's git dir and
+`config.worktree`) and applies gh's rule — `upstream` > `github` > `origin`, the first
+`gh-resolved` (`gh repo set-default`) wins, a local remote is dropped. Wherever that is not
+one certain github.com repository it answers `uncertain` and the checkout keeps its own
+`gh pr list`: another host or an SSH alias (`gh` resolves those with `ssh -G`), a URL an
+`insteadOf` rewrites, two remotes that tie, an include in the repository's config, a remote
+in the global config, a config git would refuse, or `GH_REPO`, `GH_HOST` or a `GIT_*`
+override in the app's environment. An alias GitHub answers with an error (a repository that
+is gone or hidden) is looked up alone; a call that never reached GitHub fails its checkouts as
+one `gh pr list` would. Fallbacks are logged once per reason (`Log.debug`). The tests check
+the resolver against the installed `gh` (`GH_DEBUG=api`) and the batch against `gh pr list`
+when run with `PLANCHETTE_LIVE_GH=1`.
+
 **The branch is read, not asked.** `Titles.headState` reads `.git/HEAD`;
 `Worktrees.currentBranch` asks git only when the file cannot answer: the reftable
 layout (whose HEAD is a stub), or a `.git` entry that exists but is unusable (a

@@ -1058,7 +1058,7 @@ final class AppState: ObservableObject {
     @Published var pullRequests: [UUID: PullRequest] = [:]
     private var pullRequestTimer: Timer?
     private var pullRequestTicks = 0
-    /// One `gh` call per checkout goes over the network, so this is slow on
+    /// A sweep goes over the network, so this is slow on
     /// purpose; a review arriving a minute late is still news on time.
     static let pullRequestPollInterval: TimeInterval = 60
 
@@ -1087,7 +1087,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// One `gh pr list` per distinct checkout + branch, off-main. Terminals on a
+    /// One question per distinct checkout + branch, off-main — batched into one `gh api
+    /// graphql` where the repository is certain (`PullRequestBatch`). Terminals on a
     /// trunk branch are skipped (see `PullRequests.trunkBranches`). A sweep of some
     /// terminals (`scope`) leaves the pills of the others as they are.
     func refreshPullRequests(_ scope: PullRequests.SweepScope = .all) {
@@ -1123,8 +1124,9 @@ final class AppState: ObservableObject {
             let checkouts = PullRequests.checkouts(of: seen, scope: scope, resting: resting)
             var found: [UUID: PullRequests.Lookup] = [:]
             var asked: [UUID: String] = [:]
-            for checkout in checkouts {
-                let answer = PullRequests.lookup(branch: checkout.branch, in: checkout.directory)
+            // One `gh api graphql` for the checkouts whose repository is certain, a
+            // `gh pr list` each for the rest (`PullRequests.lookup(_:)`).
+            for (checkout, answer) in zip(checkouts, PullRequests.lookup(checkouts)) {
                 for id in checkout.ids {
                     found[id] = answer
                     asked[id] = checkout.branch
