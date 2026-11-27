@@ -71,6 +71,9 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 - **The hook cannot hold an agent for long.** If the app accepts an event but does not answer,
   the hook gives up after 5 seconds per socket instead of waiting for the agent's own hook timeout, and it
   starts one process less per event.
+- **Typing in a long notepad is much faster.** Every key drew the whole pad again — headlines,
+  lists, code colours — and laid all of it out again, which took tens of milliseconds per key in a
+  long pad. A key now draws and lays out only the lines it changed. The pad looks exactly as before.
 
 ## [0.2.56] — 2026-11-27
 

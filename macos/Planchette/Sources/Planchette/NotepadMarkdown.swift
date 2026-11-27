@@ -35,10 +35,18 @@ enum NotepadMarkdown {
     /// Every styled stretch of the text, in the order to apply it: later spans win over earlier ones.
     static func spans(in text: String) -> [Span] {
         let ns = text as NSString
+        return spans(in: ns, lines: NSRange(location: 0, length: ns.length), inFence: false)
+    }
+
+    /// The spans of the whole lines in `range` only. A line's spans depend on the line and on
+    /// whether it is inside a fenced block, nothing else — `inFence` says that for the first line —
+    /// so the notepad restyles only the lines an edit can change (`NotepadStyle`).
+    static func spans(in ns: NSString, lines range: NSRange, inFence startsInFence: Bool) -> [Span] {
         var result: [Span] = []
-        var inFence = false
-        var location = 0
-        while location < ns.length {
+        var inFence = startsInFence
+        var location = range.location
+        let end = NSMaxRange(range)
+        while location < end {
             let full = ns.lineRange(for: NSRange(location: location, length: 0))
             location = NSMaxRange(full)
             let line = contentRange(of: full, in: ns)
