@@ -79,6 +79,8 @@ enum Help {
             Entry(.addTerminalHelp, nil, shortcut: "⌘T", where: .helpWhereTabBar),
             Entry(.addTerminal, .addTerminalHelp, where: .helpWhereProjectOverview),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
+            Entry(.stateProgram, .programDesc, where: .helpWhereSidebar),
+            Entry(.stateDatabase, .databaseDesc, where: .helpWhereSidebar),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
             Entry(.notepad, .helpNotepadDetail, shortcut: "⌘J", where: .helpWhereTabBar),
             Entry(.notepadMarkdownTitle, .notepadMarkdownHelp, where: .helpWhereTabBar),

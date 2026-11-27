@@ -412,6 +412,98 @@ enum Durable {
         return ["zsh", "bash", "sh", "fish", "dash", "ksh", "tcsh", "csh", "nu", "login"].contains(name)
     }
 
+    /// One pane of our sessions: the shell's pid (`#{pane_pid}`) and what runs in front of it.
+    struct Pane: Equatable {
+        var pid: Int32
+        var command: String
+    }
+
+    /// Every pane of our sessions, by terminal — `paneCommands` plus the shell's pid, which
+    /// `childArguments` needs. nil when tmux did not answer.
+    static func panes() -> [UUID: Pane]? {
+        guard let tmux = tmuxPath() else { return [:] }
+        guard let out = output(
+            tmux, ["-L", serverName, "list-panes", "-a", "-F",
+                   "#{session_name} #{pane_pid} #{pane_current_command}"])
+        else { return nil }
+        return parsePanes(out)
+    }
+
+    /// Pure: parse `list-panes -F '#{session_name} #{pane_pid} #{pane_current_command}'`, ours only.
+    static func parsePanes(_ output: String) -> [UUID: Pane] {
+        var panes: [UUID: Pane] = [:]
+        for line in output.components(separatedBy: "\n") {
+            let fields = line.split(separator: " ", maxSplits: 2).map(String.init)
+            guard fields.count == 3, fields[0].hasPrefix("planchette-"),
+                  let id = UUID(uuidString: String(fields[0].dropFirst("planchette-".count))),
+                  let pid = Int32(fields[1])
+            else { continue }
+            panes[id] = panes[id] ?? Pane(pid: pid, command: fields[2])
+        }
+        return panes
+    }
+
+    /// The command lines of the processes the given shells started — what `kubectl` was told to
+    /// do, which its name alone does not say. One `ps` for all of them; nil when it did not answer.
+    static func childArguments(of parents: Set<Int32>) -> [Int32: String]? {
+        guard !parents.isEmpty else { return [:] }
+        guard let result = Subprocess.run("/bin/ps", ["-axo", "pid=,ppid=,args="], timeout: 5),
+              !result.timedOut
+        else { return nil }
+        return parseChildArguments(result.stdoutString, parents: parents)
+    }
+
+    /// Pure: parse `ps -axo pid=,ppid=,args=` into the command lines of the children of
+    /// `parents`, joined per parent (a pipeline is several children).
+    static func parseChildArguments(_ output: String, parents: Set<Int32>) -> [Int32: String] {
+        var children: [Int32: [String]] = [:]
+        for line in output.components(separatedBy: "\n") {
+            let fields = line.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: true)
+            guard fields.count == 3, let ppid = Int32(fields[1]), parents.contains(ppid) else { continue }
+            children[ppid, default: []].append(String(fields[2]))
+        }
+        return children.mapValues { $0.joined(separator: " | ") }
+    }
+
+    /// Database clients and servers, by process name.
+    static let databaseClients: Set<String> = [
+        "psql", "pgcli", "postgres", "mysql", "mysqld", "mariadb", "mycli",
+        "redis-cli", "redis-server", "iredis", "mongosh", "mongo", "mongod", "usql",
+    ]
+
+    /// Pure: whether the program in front is a database — a client or a server by its name, or a
+    /// tunnel to one (`kubectl port-forward svc/postgres 5432:5432`, `ssh -L 3306:…`): a tunnel's
+    /// name is only `kubectl`, so its command line decides, by a database word or a default port
+    /// (Postgres 5432, MySQL 3306, Redis 6379, MongoDB 27017, Elasticsearch 9200).
+    static func isDatabase(command: String, arguments: String?) -> Bool {
+        if databaseClients.contains(command) { return true }
+        if command.hasPrefix("cloud-sql-proxy") || command.hasPrefix("cloud_sql_proxy") { return true }
+        guard let original = arguments else { return false }
+        // `-L` is a tunnel and `-l` a login name: ssh's flags are read before anything is lowercased.
+        let tunnel = (["kubectl", "oc"].contains(command) && original.contains("port-forward"))
+            || (command == "ssh" && original.range(of: #"(^|\s)-\w*L"#, options: .regularExpression) != nil)
+        guard tunnel else { return false }
+        let arguments = original.lowercased()
+        let word = #"postgres|mysql|mariadb|redis|mongo|elastic|database|\bdb\b"#
+        let port = #"(^|[^0-9])(5432|3306|6379|27017|9200)([^0-9]|$)"#
+        return arguments.range(of: word, options: .regularExpression) != nil
+            || arguments.range(of: port, options: .regularExpression) != nil
+    }
+
+    /// Pure: the program a durable terminal runs in front of its shell, as a name worth
+    /// showing — `k9s`, `kubectl`, `node`. Nil for a shell at its prompt, and for an agent: a live
+    /// one speaks through its hooks, and an agent's process name is no name. The native Claude
+    /// install runs a versioned file, so the kernel calls it `2.1.323`; a name that is only a
+    /// version is taken to be an agent even before its first hook.
+    static func foregroundProgram(paneCommand: String?, agentLive: Bool) -> String? {
+        guard !agentLive, let command = paneCommand?.trimmingCharacters(in: .whitespaces),
+              !command.isEmpty, !isShell(command)
+        else { return nil }
+        if ["claude", "codex"].contains(command) { return nil }
+        if command.range(of: #"^\d+(\.\d+)+$"#, options: .regularExpression) != nil { return nil }
+        return command
+    }
+
     /// Pure: the sessions safe to reap.
     ///
     /// An attached session belongs to a Planchette that is running right now: a

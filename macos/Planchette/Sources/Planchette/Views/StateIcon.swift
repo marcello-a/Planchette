@@ -164,6 +164,19 @@ enum StatePixels {
         "........",
     ]
 
+    /// A database, for a terminal that runs a database client or a tunnel to one
+    /// (`AppState.showsDatabaseMark`).
+    static let database = [
+        "..####..",
+        ".#....#.",
+        ".######.",
+        ".#....#.",
+        ".######.",
+        ".#....#.",
+        "..####..",
+        "........",
+    ]
+
     /// `>_`, a shell prompt, for a free terminal with no agent in it (`AppState.showsShellMark`):
     /// the free dot says "Claude is idle here", and a plain shell is not an idle Claude.
     static let shell = [
@@ -313,10 +326,14 @@ struct StateIcon: View {
     /// The globe in place of the robot: the turn is over and only background work runs. Only
     /// meaningful for `running`; it keeps the running colour and does not move.
     var inBackground = false
-    /// `>_` in place of the free dot: a plain shell, no agent in it. Only meaningful for `free`.
+    /// `>_` in place of the free dot (a plain shell, no agent in it) or of the robot (a program
+    /// runs in front of the shell). Only meaningful for `free` and `running`.
     var shell = false
     /// `zZ`: its Claude sleeps (`ClaudeSleep`). Wins over `shell`, in the free colour.
     var asleep = false
+    /// The database in place of the robot: a database client or a tunnel to one runs in front.
+    /// Only meaningful for `running`.
+    var database = false
 
     @ObservedObject private var activity = AppActivity.shared
 
@@ -329,10 +346,14 @@ struct StateIcon: View {
             PixelIcon(sprite: StatePixels.asleep, size: size, tint: tint ?? AttentionState.free.tint)
                 .accessibilityLabel(L10n.t(.stateAsleep))
                 .help(L10n.t(.stateAsleep))
-        } else if shell && state == .free {
+        } else if database && state == .running {
+            PixelIcon(sprite: StatePixels.database, size: size, tint: tint ?? state.tint)
+                .accessibilityLabel(L10n.t(.stateDatabase))
+                .help(L10n.t(.stateDatabase))
+        } else if shell && (state == .free || state == .running) {
             PixelIcon(sprite: StatePixels.shell, size: size, tint: tint ?? state.tint)
-                .accessibilityLabel(L10n.t(.stateShell))
-                .help(L10n.t(.stateShell))
+                .accessibilityLabel(L10n.t(state == .free ? .stateShell : .stateProgram))
+                .help(L10n.t(state == .free ? .stateShell : .stateProgram))
         } else {
             animatedOrStill
         }
@@ -383,8 +404,9 @@ struct SessionStateIcon: View {
 
     var body: some View {
         StateIcon(state: session.state, size: size, inBackground: appState.runsInBackground(session),
-                  shell: marksShell && appState.showsShellMark(session),
-                  asleep: session.state == .free && appState.isSleeping(session))
+                  shell: appState.showsProgramMark(session) || (marksShell && appState.showsShellMark(session)),
+                  asleep: session.state == .free && appState.isSleeping(session),
+                  database: appState.showsDatabaseMark(session))
     }
 }
 

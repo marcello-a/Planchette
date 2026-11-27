@@ -331,9 +331,10 @@ struct TerminalAreaView: View {
             StateIcon(
                 state: state, size: 13,
                 inBackground: sessions.contains { appState.runsInBackground($0) },
-                // Every pane a plain shell: no agent in this tab to be idle.
-                shell: sessions.allSatisfy { appState.showsShellMark($0) },
-                asleep: state == .free && sessions.contains { appState.isSleeping($0) })
+                // Every pane a plain shell or a program: no agent in this tab, idle or at work.
+                shell: sessions.allSatisfy { appState.showsShellMark($0) || appState.showsProgramMark($0) },
+                asleep: state == .free && sessions.contains { appState.isSleeping($0) },
+                database: sessions.allSatisfy { appState.showsDatabaseMark($0) })
             if let color = session.color.color {
                 ColorTag(color: color, height: 10)
             }

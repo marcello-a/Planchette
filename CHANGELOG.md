@@ -9,6 +9,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **A database icon for database terminals.** A durable terminal that runs a database client
+  (`psql`, `mysql`, `redis-cli`, `mongosh`, …) or a tunnel to a database — a `kubectl
+  port-forward` or `ssh -L` to Postgres, MySQL, Redis, MongoDB or Elasticsearch, known by the
+  service name or the default port — shows a database instead of `>_`. Both icons are in
+  Settings → Status icons and in Help.
 - **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
   longer looks for running dev servers and shows no port chips — for projects that run none.
 - **⌘-click a path a program printed to open it at its line in your IDE.** `src/Foo.php:42` or
@@ -29,6 +34,14 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   several the checkout's marker and the IDE you last used decide.
 
 ### Fixed
+- **A durable terminal that runs a program is no longer "free".** `k9s`, a `kubectl
+  port-forward`, `tail -f` or `vim` showed the gray "free" state — and "free" as its name — for
+  as long as they ran, because the shell reports only when a command ends. Planchette now reads
+  what runs in front of the shell from tmux every 5 s (20 s in the background): the terminal
+  is `running`, is named after the program (`k9s`) and shows `>_` in purple instead of the
+  robot, in the project panel and in its tab — no agent works there. "Mark as free" on it stays
+  as you set it.
+  Plain (non-durable) terminals are unchanged.
 - **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
   every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
   for the login password every five minutes. It now reads the token once and keeps it in memory.
