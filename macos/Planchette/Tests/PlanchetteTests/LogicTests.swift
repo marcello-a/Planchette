@@ -3044,6 +3044,26 @@ final class IDEOpenProjectTests: XCTestCase {
         XCTAssertEqual(target, phpstorm)
     }
 
+    func testAClosedIDEsLastWindowsDoNotCount() {
+        let cursor = IDEs.known.first { $0.name == "Cursor" }!
+        let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+        // Cursor quit with the project open; its state file still says so.
+        let target = IDEs.resolve(
+            markers: [".idea", ".cursor"], defaultBundleID: nil, running: [phpstorm.bundleID],
+            installed: [cursor, phpstorm], alreadyOpenIn: [cursor.bundleID, phpstorm.bundleID])
+        XCTAssertEqual(target, phpstorm)
+    }
+
+    func testAmongSeveralOpenTheEvidenceDecidesNotTheListOrder() {
+        let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
+        let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!
+        let target = IDEs.resolve(
+            markers: [".idea"], defaultBundleID: nil,
+            running: [vscode.bundleID, phpstorm.bundleID], installed: [vscode, phpstorm],
+            alreadyOpenIn: [vscode.bundleID, phpstorm.bundleID])
+        XCTAssertEqual(target, phpstorm, "VS Code comes first in the list, but the checkout is a JetBrains one")
+    }
+
     func testNotOpenAnywhereFallsBackToTheMarker() {
         let vscode = IDEs.known.first { $0.name == "Visual Studio Code" }!
         let phpstorm = IDEs.known.first { $0.name == "PhpStorm" }!

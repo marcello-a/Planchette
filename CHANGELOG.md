@@ -9,6 +9,58 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Added
+- **A database icon for database terminals.** A durable terminal that runs a database client
+  (`psql`, `mysql`, `redis-cli`, `mongosh`, …) or a tunnel to a database — a `kubectl
+  port-forward` or `ssh -L` to Postgres, MySQL, Redis, MongoDB or Elasticsearch, known by the
+  service name or the default port — shows a database instead of `>_`. Both icons are in
+  Settings → Status icons and in Help.
+- **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
+  longer looks for running dev servers and shows no port chips — for projects that run none.
+- **⌘-click a path a program printed to open it at its line in your IDE.** `src/Foo.php:42` or
+  `web/app.ts:3:7` opens in the IDE "Look at code" uses for that project (PhpStorm and the other
+  JetBrains IDEs, VS Code, Cursor, Windsurf, Zed, Sublime Text, Xcode). A path printed inside a
+  container or a VM, such as `/var/www/html/src/Foo.php` from tests run in a pod, finds its file
+  in the project. Before, a click on a path did nothing.
+- **⌘-click opens links in durable terminals.** tmux keeps mouse reporting on, and then only
+  ⌘⇧-click reached a link; ⌘ alone does now, for web links as well as paths.
+
+### Changed
+- **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
+  SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
+  used about 26% of a core, now about 2%. The robots walk as before, all in step.
+- **"Look at code" no longer picks an IDE that is closed.** An IDE that quit with the project open
+  still counted as showing it, and among several the first in the list won — a closed Cursor
+  took the click from a running PhpStorm. Only a running IDE counts as open now, and among
+  several the checkout's marker and the IDE you last used decide.
+
+### Fixed
+- **A durable terminal that runs a program is no longer "free".** `k9s`, a `kubectl
+  port-forward`, `tail -f` or `vim` showed the gray "free" state — and "free" as its name — for
+  as long as they ran, because the shell reports only when a command ends. Planchette now reads
+  what runs in front of the shell from tmux every 5 s (20 s in the background): the terminal
+  is `running`, is named after the program (`k9s`) and shows `>_` in purple instead of the
+  robot, in the project panel and in its tab — no agent works there. "Mark as free" on it stays
+  as you set it.
+  Plain (non-durable) terminals are unchanged.
+- **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
+  every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
+  for the login password every five minutes. It now reads the token once and keeps it in memory.
+  Choose "Always Allow", and the question comes only once after each update.
+- **Typing no longer lags in projects with listeners that are not web servers.** Every five
+  seconds, Planchette searched the whole scrollback of every terminal for the URL of each open
+  port, on the thread that handles your keys — and ports that never print one (port-forwards,
+  databases, Claude Code's own sockets) were searched again on every tick. A port is now
+  searched at most three times, and the search runs in the background.
+
+## [0.2.55] — 2026-11-26
+
+### Added
+- **Usage data and error reports, only if you say yes.** Planchette asks once. With your yes it
+  sends at most one report a day, only on a day you use it, to PostHog in the EU under a random
+  ID: how often each feature was used, how many windows, folders, projects, tabs and terminals
+  you have, which errors happened and where the app crashed. Never paths, names, titles, prompts
+  or terminal text. Settings → Privacy changes the answer and shows the last report word for
+  word. [What is sent](docs/TELEMETRY.md).
 - **Settings → Shortcuts shows every key of the app, and you can change the menu keys.** Click a
   shortcut and press the new keys; Esc cancels, Delete removes the shortcut, and an arrow resets
   it. A key that macOS, the terminal or another menu item already has is refused with the reason.

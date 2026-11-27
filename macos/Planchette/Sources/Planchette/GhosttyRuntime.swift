@@ -9,6 +9,8 @@ extension Notification.Name {
     static let planchetteCommandFinished = Notification.Name("planchette.surface.commandFinished")
     static let planchetteSurfaceProcessExited = Notification.Name("planchette.surface.processExited")
     static let planchetteSurfaceSearch = Notification.Name("planchette.surface.search")
+    /// A path a program printed was ⌘-clicked (or opened from the menu): `sessionID`, `link`.
+    static let planchetteOpenFileLink = Notification.Name("planchette.surface.openFileLink")
 }
 
 /// libghostty runtime: one app instance, ticked on the main thread on wakeup.
@@ -48,12 +50,12 @@ final class GhosttyRuntime {
         }
 
         guard ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) == GHOSTTY_SUCCESS else {
-            NSLog("ghostty_init failed")
+            Log.error("ghostty.init_failed", "ghostty_init failed")
             return
         }
 
         guard let config = GhosttyRuntime.makeConfig(dark: GhosttyRuntime.isDarkAppearance()) else {
-            NSLog("ghostty_config_new failed")
+            Log.error("ghostty.config_failed", "ghostty_config_new failed")
             return
         }
         self.config = config
@@ -104,7 +106,7 @@ final class GhosttyRuntime {
         )
 
         guard let app = ghostty_app_new(&runtime, config) else {
-            NSLog("ghostty_app_new failed")
+            Log.error("ghostty.app_failed", "ghostty_app_new failed")
             return
         }
         self.app = app
@@ -281,6 +283,11 @@ final class GhosttyRuntime {
             guard let ptr = u.url, u.len > 0,
                   let str = String(bytes: UnsafeRawBufferPointer(start: ptr, count: Int(u.len)), encoding: .utf8)
             else { return false }
+            // A path (`src/Foo.php:42`) opens in the project's IDE at its line;
+            // only the terminal's own project knows which IDE and which folder.
+            if let view = view(for: target), postFileLink(str, from: view.sessionID) {
+                return true
+            }
             // Handled either way. Returning false makes libghostty run `open` on the
             // raw string itself, with none of the policy in `openExternalURL` — and
             // a string `URL` cannot parse (`http://[`, a space in the host) is
@@ -288,13 +295,26 @@ final class GhosttyRuntime {
             if let url = URL(string: str.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 DispatchQueue.main.async { openExternalURL(url) }
             } else {
-                NSLog("blocked a link that is not a valid URL")
+                Log.info("blocked a link that is not a valid URL")
             }
             return true
 
         default:
             return false
         }
+    }
+
+    /// Hand a printed path to `AppState.openFileLink`; false when `raw` is not a path.
+    @discardableResult
+    static func postFileLink(_ raw: String, from sessionID: UUID) -> Bool {
+        let link = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard FileLink.parse(link) != nil else { return false }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: .planchetteOpenFileLink, object: nil,
+                userInfo: ["sessionID": sessionID, "link": link])
+        }
+        return true
     }
 
     /// What to do with a URL that came out of terminal text.
@@ -381,10 +401,10 @@ final class GhosttyRuntime {
         case .open:
             NSWorkspace.shared.open(target)
         case .reveal:
-            NSLog("link points at something that would run: revealing it instead")
+            Log.info("link points at something that would run: revealing it instead")
             NSWorkspace.shared.activateFileViewerSelecting([target])
         case .block:
-            NSLog("blocked opening url with scheme: \(url.scheme ?? "none")")
+            Log.info("blocked opening url with scheme: \(url.scheme ?? "none")")
         }
     }
 

@@ -224,18 +224,32 @@ enum IDEs {
         guard !candidates.isEmpty else { return nil }
         // An open window beats a preference: the default says which IDE to
         // *start*, and there is nothing to start when the project is on screen
-        // already. Only a default that also has it open would win here anyway.
-        if let open = candidates.first(where: { alreadyOpenIn.contains($0.bundleID) }) {
-            // Among several, a chosen default still decides.
-            if let chosen = ide(bundleID: defaultBundleID),
-               alreadyOpenIn.contains(chosen.bundleID), candidates.contains(chosen) {
+        // already. Only a running IDE shows a window: a closed one's state file
+        // still lists what it had open when it quit (Cursor, closed for days,
+        // took every click from a running PhpStorm).
+        let open = candidates.filter { alreadyOpenIn.contains($0.bundleID) && running.contains($0.bundleID) }
+        if !open.isEmpty {
+            // Among several, a chosen default still decides, then the same
+            // evidence as below — never the order of the list.
+            if let chosen = ide(bundleID: defaultBundleID), open.contains(chosen) {
                 return chosen
             }
-            return open
+            return best(of: open, markers: markers, running: running, lastActivated: lastActivated)
         }
         if let chosen = ide(bundleID: defaultBundleID), candidates.contains(chosen) {
             return chosen
         }
+        return best(of: candidates, markers: markers, running: running, lastActivated: lastActivated,
+                    requireEvidence: true)
+    }
+
+    /// The candidate with the most evidence: the checkout's marker, then the
+    /// IDE last in front, then a running one; ties keep the order of `known`.
+    /// With `requireEvidence`, nil when nothing speaks for any of them.
+    private static func best(
+        of candidates: [IDE], markers: [String], running: Set<String>, lastActivated: String?,
+        requireEvidence: Bool = false
+    ) -> IDE? {
         let scored = candidates.map { ide -> (ide: IDE, score: Int) in
             var score = 0
             if markers.contains(ide.marker) { score += 4 }
@@ -250,7 +264,7 @@ enum IDEs {
                 ? a.score < b.score
                 // Same score: keep the declared order (index in `known`).
                 : (known.firstIndex(of: a.ide) ?? 0) > (known.firstIndex(of: b.ide) ?? 0)
-        }), best.score > 0
+        }), best.score > 0 || !requireEvidence
         else { return nil }
         return best.ide
     }
@@ -279,15 +293,16 @@ enum IDEs {
     /// outcome a user cannot debug.
     static func open(directory: String, in ide: IDE) {
         guard let path = target(directory: directory, for: ide) else {
-            NSLog("ide: \(ide.name) cannot open \(directory) — no project file")
+            Log.info("ide: \(ide.name) cannot open \(directory) — no project file")
             return
         }
         guard let appURL = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: ide.bundleID)
         else {
-            NSLog("ide: \(ide.name) not installed")
+            Log.info("ide: \(ide.name) not installed")
             return
         }
+        Telemetry.count(.ideOpened)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.open(
@@ -296,7 +311,7 @@ enum IDEs {
             configuration: configuration
         ) { app, error in
             if let error {
-                NSLog("ide: opening \(path) in \(ide.name) failed: \(error)")
+                Log.error("ide.open_failed", "ide: opening \(path) in \(ide.name) failed: \(error)")
                 return
             }
             guard let app else { return }
@@ -310,7 +325,7 @@ enum IDEs {
                 // leaving the user clicking a button that seems dead.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                     guard !hasVisibleWindow(pid: app.processIdentifier) else { return }
-                    NSLog("ide: \(ide.name) has no window on this Space")
+                    Log.info("ide: \(ide.name) has no window on this Space")
                     // Two different dead ends, two different remedies: a window
                     // on another Space is one macOS checkbox away from working,
                     // a minimized one only the user can restore. Guessing which
@@ -322,6 +337,60 @@ enum IDEs {
                         sessionID: nil)
                 }
             }
+        }
+    }
+
+    /// Open one file at a line in an IDE and bring the IDE forward — a ⌘-click
+    /// on `src/Foo.php:42` in the terminal (see `FileLink`). The launcher runs
+    /// off the main thread: a JetBrains launcher that hands the file to a running
+    /// IDE takes a moment to exit.
+    static func open(file: String, line: Int?, column: Int?, in ide: IDE) {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: ide.bundleID) else {
+            Log.info("ide: \(ide.name) not installed")
+            return
+        }
+        let request = FileOpenRequest.make(
+            file: file, line: line, column: column, ide: ide, appPath: appURL.path,
+            executable: Bundle(url: appURL)?.executableURL?.path)
+        switch request {
+        case .launcher(let executable, let arguments)
+            where FileManager.default.isExecutableFile(atPath: executable):
+            DispatchQueue.global(qos: .userInitiated).async {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: executable)
+                process.arguments = arguments
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                do {
+                    try process.run()
+                } catch {
+                    Log.error("ide.launcher_failed", "ide: \(ide.name) launcher failed: \(error)")
+                }
+            }
+            raiseOnceHandedOver(ide)
+        case .url(let url):
+            NSWorkspace.shared.open(url)
+        case .launcher, .plain:
+            // No launcher to name the line with: the file at least opens there.
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            NSWorkspace.shared.open(
+                [URL(fileURLWithPath: file)], withApplicationAt: appURL, configuration: configuration
+            ) { _, error in
+                if let error { Log.error("ide.open_failed", "ide: opening \(file) in \(ide.name) failed: \(error)") }
+            }
+        }
+    }
+
+    /// Bring a running IDE forward once its launcher has handed over the file.
+    /// Only one that runs: opening the bundle while the launcher still starts the
+    /// IDE could start a second copy, and an IDE that starts comes to the front
+    /// on its own.
+    private static func raiseOnceHandedOver(_ ide: IDE) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            guard let app = NSRunningApplication.runningApplications(
+                withBundleIdentifier: ide.bundleID).first else { return }
+            raise(app)
         }
     }
 

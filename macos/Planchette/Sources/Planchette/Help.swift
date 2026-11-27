@@ -79,6 +79,8 @@ enum Help {
             Entry(.addTerminalHelp, nil, shortcut: "⌘T", where: .helpWhereTabBar),
             Entry(.addTerminal, .addTerminalHelp, where: .helpWhereProjectOverview),
             Entry(.newWorktree, .newWorktreeHelp, shortcut: "⌘⇧T"),
+            Entry(.stateProgram, .programDesc, where: .helpWhereSidebar),
+            Entry(.stateDatabase, .databaseDesc, where: .helpWhereSidebar),
             Entry(.helpClusterTitle, .helpClusterDetail, where: .helpWhereTabBar),
             Entry(.notepad, .helpNotepadDetail, shortcut: "⌘J", where: .helpWhereTabBar),
             Entry(.notepadMarkdownTitle, .notepadMarkdownHelp, where: .helpWhereTabBar),
@@ -102,6 +104,7 @@ enum Help {
             Entry(.tabNameTitle, .tabNameSummaryHelp, where: .helpWhereSettingsTabs),
             Entry(.tabShowsSection, .tabShowPathHelp, where: .helpWhereSettingsTabs),
             Entry(.menuOpenLink, .menuOpenLinkHelp, where: .helpWhereContextMenu),
+            Entry(.fileLinksTitle, .fileLinksDetail),
             Entry(.clipboardHelpTitle, .clipboardHelpDetail),
             Entry(.tags, .tagsHelp, where: .helpWhereContextMenu),
             Entry(.tagEditorTitle, .tagEditorHelp, where: .helpWhereSettingsProjectPanel),
@@ -125,6 +128,7 @@ enum Help {
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
             Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
+            Entry(.devServersTitle, .devServersEnableHelp, where: .helpWhereSettingsGeneral),
             Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereContextMenu),
         ]),
         Section(titleKey: .notificationsPanel, entries: [
@@ -207,6 +211,11 @@ enum Help {
             Entry(.autoUpdateCheck, .autoUpdateHelp, where: .helpWhereSettingsGeneral),
             Entry(.restoreAtLaunch, .restoreAtLaunchHelp, where: .helpWhereSettingsTerminals),
             Entry(.updateInstallOnQuit, .helpInstallOnQuitDetail),
+        ]),
+        Section(titleKey: .privacyTab, entries: [
+            Entry(.telemetryToggle, .telemetryToggleHelp, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryShowReport, .telemetryWhatNever, where: .helpWhereSettingsPrivacy),
+            Entry(.telemetryResetID, .telemetryResetIDHelp, where: .helpWhereSettingsPrivacy),
         ]),
     ]
 

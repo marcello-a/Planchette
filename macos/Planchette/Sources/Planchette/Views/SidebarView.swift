@@ -514,7 +514,7 @@ struct SidebarView: View {
         .contextMenu {
             Button(L10n.t(.rename)) { renameFolder(folder) }
             colorPicker(current: folder.color) { color in
-                appState.updateFolder(folder.id, inWindow: windowID) { $0.color = color }
+                Telemetry.count(.colorSet); appState.updateFolder(folder.id, inWindow: windowID) { $0.color = color }
             }
             Divider()
             Button(L10n.t(.dissolveFolder)) { appState.removeFolder(folder.id, inWindow: windowID) }
@@ -896,7 +896,7 @@ struct SidebarView: View {
             .help(L10n.t(.favoriteHelp))
             Button(L10n.t(.rename)) { rename(group: group) }
             colorPicker(current: group.color) { color in
-                appState.updateGroup(group.id) { $0.color = color }
+                Telemetry.count(.colorSet); appState.updateGroup(group.id) { $0.color = color }
             }
             Button(L10n.t(.startupCommand)) { appState.promptStartupCommand(session: session) }
                 .help(L10n.t(.startupCommandHelp))
@@ -1043,7 +1043,7 @@ struct SidebarView: View {
             Button(L10n.t(.makeFavorite)) { appState.setFavorite(true, forGroups: targets) }
             Button(L10n.t(.unmakeFavorite)) { appState.setFavorite(false, forGroups: targets) }
             colorPicker(current: group.color) { color in
-                for id in targets { appState.updateGroup(id) { $0.color = color } }
+                Telemetry.count(.colorSet); for id in targets { appState.updateGroup(id) { $0.color = color } }
             }
             Divider()
             bulkFolderPicker(targets)
@@ -1065,7 +1065,7 @@ struct SidebarView: View {
             .help(L10n.t(.favoriteHelp))
             Button(L10n.t(.rename)) { rename(group: group) }
             colorPicker(current: group.color) { color in
-                appState.updateGroup(group.id) { $0.color = color }
+                Telemetry.count(.colorSet); appState.updateGroup(group.id) { $0.color = color }
             }
             Divider()
             folderPicker(for: group)
@@ -1101,6 +1101,7 @@ struct SidebarView: View {
     private func promptNewFolder(containing targets: [UUID]) {
         appState.promptText(title: L10n.t(.newFolderTitle), value: "") { name in
             guard !name.isEmpty else { return }
+            Telemetry.count(.folderCreated)
             let folder = appState.addFolder(name: name, inWindow: windowID)
             appState.moveGroups(targets, toFolder: folder.id, inWindow: windowID)
         }
@@ -1287,7 +1288,7 @@ struct SidebarView: View {
             Divider()
             Button(L10n.t(.rename)) { appState.promptRename(session: session) }
             colorPicker(current: session.color) { color in
-                appState.update(session.id) { $0.color = color }
+                Telemetry.count(.colorSet); appState.update(session.id) { $0.color = color }
             }
             Button(L10n.t(.startupCommand)) { appState.promptStartupCommand(session: session) }
                 .help(L10n.t(.startupCommandHelp))

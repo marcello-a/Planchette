@@ -30,6 +30,49 @@ struct DevServer: Identifiable, Equatable {
     var label: String { "\(port)" }
 }
 
+/// Which servers' announced URLs are known, and which ports still get a search
+/// of the scrollback. Most listeners never print a URL (port-forwards,
+/// databases, agents' own sockets); searching them on every tick copied and
+/// scanned every terminal's whole buffer for nothing and made typing lag. So a
+/// port gets `maxTries` searches — a banner can follow its port by a moment —
+/// and everything about a port is forgotten when it goes away, so a new
+/// process on it starts over.
+struct ServerURLLookups: Equatable {
+    static let maxTries = 3
+
+    /// Addresses already learned, keyed by port. Kept because a banner scrolls
+    /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
+    /// that stays true until the port itself goes away.
+    private(set) var urls: [Int: URL] = [:]
+    /// Searches per port that found nothing yet.
+    private(set) var tries: [Int: Int] = [:]
+
+    /// Whether this port's scrollback should be searched now.
+    func isDue(_ port: Int) -> Bool {
+        urls[port] == nil && (tries[port] ?? 0) < Self.maxTries
+    }
+
+    /// A search for this port is starting.
+    mutating func recordTry(_ port: Int) {
+        tries[port, default: 0] += 1
+    }
+
+    /// Store what a search found, for ports still served when it came back:
+    /// one that went away meanwhile stays forgotten.
+    mutating func learn(_ found: [Int: URL], livePorts: Set<Int>) {
+        for (port, url) in found where livePorts.contains(port) {
+            urls[port] = url
+            tries[port] = nil
+        }
+    }
+
+    /// Forget every port that is no longer served.
+    mutating func keep(livePorts: Set<Int>) {
+        urls = urls.filter { livePorts.contains($0.key) }
+        tries = tries.filter { livePorts.contains($0.key) }
+    }
+}
+
 /// Finds dev servers by asking the OS who is listening: one `lsof` for the
 /// listening sockets, one for those processes' working directories, then a
 /// pure match of directory → project. Everything that parses or matches is

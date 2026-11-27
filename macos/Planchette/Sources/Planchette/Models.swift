@@ -181,6 +181,20 @@ enum AttentionState: String, Codable {
         state == .free && !agentLive
     }
 
+    /// Pure: whether a terminal shows `>_` in the running colour instead of the robot. It runs a
+    /// program in front of its shell (`k9s`, a port-forward; `AppState.foregroundPrograms`), and
+    /// the robot means an agent at work. Shown wherever the terminal's state is drawn, the
+    /// project panel included: no agent works there, wherever you look.
+    static func showsProgramMark(state: AttentionState, programInFront: Bool) -> Bool {
+        state == .running && programInFront
+    }
+
+    /// Pure: whether that program mark is a database (`Durable.isDatabase`): a client, or a tunnel
+    /// to one. Same terminals as `showsProgramMark`, another sprite.
+    static func showsDatabaseMark(state: AttentionState, programInFront: Bool, isDatabase: Bool) -> Bool {
+        showsProgramMark(state: state, programInFront: programInFront) && isDatabase
+    }
+
     /// The `notification_type`s that ask you something. Everything else Claude Code
     /// notifies about — the idle nudge, a login that worked, a quota that resumed, a
     /// subagent that finished, a plugin's own message — is news, not a question.
@@ -273,6 +287,28 @@ enum AttentionState: String, Codable {
     static func afterCommandFinish(exitCode: Int) -> AttentionState {
         if exitCode == 130 { return .free }
         return exitCode > 0 ? .error : .ready
+    }
+
+    /// The state a durable terminal moves to from what its tmux pane runs in front
+    /// (`Durable.foregroundProgram`), or nil for no change. A shell sends no mark when a
+    /// command *starts* that reaches us, so `k9s` or a `kubectl port-forward` left the
+    /// terminal `free` — "take me" — for as long as it ran. A program in front is work in
+    /// progress: `running`. A question (`waiting`) stays, it is on the screen.
+    ///
+    /// Only a program that has just appeared (`programAppeared`: none or another one on the
+    /// last reading) raises it. A program that keeps running is no news, so "Mark as free"
+    /// on a terminal with a port-forward in it stays what you decided.
+    ///
+    /// The way back is the shell's own: OSC 133 `D` names the result (`afterCommandFinish`).
+    /// Only a shell that sends no `D` needs the pane: back at its prompt (`atPrompt`), a
+    /// `running` this rule raised (`raisedByProgram`) becomes `free`.
+    static func forForegroundProgram(
+        _ current: AttentionState, programAppeared: Bool, atPrompt: Bool, raisedByProgram: Bool
+    ) -> AttentionState? {
+        if programAppeared {
+            return [.free, .ready, .error].contains(current) ? .running : nil
+        }
+        return atPrompt && raisedByProgram && current == .running ? .free : nil
     }
 
     /// The state a saved terminal starts with after a restart. `running` and
@@ -1041,6 +1077,8 @@ struct PersistedState: Codable {
     var todos = TodoBoard()
     /// The to-do board's button (Settings): off by default, and for a state that never carried the key.
     var todosEnabled = false
+    /// The dev-server port chips (Settings): on by default, and for a state that never carried the key.
+    var devServerLinksEnabled = true
     /// When a card moves to `done` on its own (Settings): never by default.
     var todoAutoDone = TodoAutoDone.never
     /// When idle Claude sessions are put to sleep (Settings): never by default.
@@ -1078,6 +1116,7 @@ struct PersistedState: Codable {
         reviewsEnabled: Bool = false,
         todos: TodoBoard = TodoBoard(),
         todosEnabled: Bool = false,
+        devServerLinksEnabled: Bool = true,
         todoAutoDone: TodoAutoDone = .never,
         claudeSleep: ClaudeSleep = .off,
         jiraEnabled: Bool = false,
@@ -1110,6 +1149,7 @@ struct PersistedState: Codable {
         self.reviewsEnabled = reviewsEnabled
         self.todos = todos
         self.todosEnabled = todosEnabled
+        self.devServerLinksEnabled = devServerLinksEnabled
         self.todoAutoDone = todoAutoDone
         self.claudeSleep = claudeSleep
         self.jiraEnabled = jiraEnabled
@@ -1159,6 +1199,7 @@ struct PersistedState: Codable {
         // The user's own list: a board a newer build wrote loses the cards it cannot read, not all.
         todos = (try? c.decodeIfPresent(TodoBoard.self, forKey: .todos)) ?? TodoBoard()
         todosEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .todosEnabled)) ?? false
+        devServerLinksEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .devServerLinksEnabled)) ?? true
         todoAutoDone = (try? c.decodeIfPresent(TodoAutoDone.self, forKey: .todoAutoDone)) ?? .never
         claudeSleep = (try? c.decodeIfPresent(ClaudeSleep.self, forKey: .claudeSleep)) ?? .off
         jiraEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .jiraEnabled)) ?? false
