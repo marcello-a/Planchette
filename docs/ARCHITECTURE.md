@@ -129,7 +129,11 @@ AppKit picks one font for a line break and a combining mark after it. A new widt
 Returns per prompt draws everything. Nothing is drawn while an input method composes (`hasMarkedText`,
 or `NotepadTextView.isSettingMarkedText`); the edits are kept and drawn when it ends. The folds and the
 code boxes read the blocks off the same fence list (`NotepadStyler.blocks()`), not off a scan of the
-text. `NotepadStyleTests` holds the old full restyle verbatim and checks, after each of thousands of
+text. The margin buttons and the code bar read the prompts the same way (`NotepadStyler.prompts`):
+cut once, then kept with every edit — the prompts above the edit stay, those below move, and only
+the prompts around it are cut again (`NotepadStyle.promptExtent` finds edges in text the edit did
+not touch). Before, each key cut the whole text into prompts three times (4 ms each at 16 KB). The
+code bar asks the fence list which lines are code already (`NotepadStyle.isFenced`). `NotepadStyleTests` holds the old full restyle verbatim and checks, after each of thousands of
 seeded random edits, that the pad is attribute for attribute that full restyle.
 
 **The Jira panel** (`JiraTickets.swift`, `Jira.swift`, `Keychain.swift`, `Views/JiraPanel.swift`). One

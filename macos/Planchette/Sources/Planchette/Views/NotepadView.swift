@@ -794,10 +794,12 @@ struct NotepadEditor: NSViewRepresentable {
             let text = textView.string
             var found: NotepadCode.Suggestion?
             if textView.isEditable,
-               let prompt = NotepadPrompts.promptValue(at: textView.selectedRange().location, in: text,
-                                                       returns: parent.appState.notepad.returnsPerPrompt),
+               let prompt = NotepadPrompts.promptValue(
+                at: textView.selectedRange().location,
+                among: styler.prompts(returns: parent.appState.notepad.returnsPerPrompt),
+                length: (text as NSString).length),
                !prompt.isDone,
-               let candidate = NotepadCode.suggestion(within: prompt.range, of: text),
+               let candidate = styler.suggestion(within: prompt.range, of: text),
                !dismissed.contains(Self.key(of: candidate, in: text)) {
                 found = candidate
             }
@@ -902,7 +904,7 @@ struct NotepadEditor: NSViewRepresentable {
             let clip = scroll.contentView
             let visibleTop = clip.bounds.minY
             let shown = clip.bounds.height
-            let rows: [NotepadRow] = NotepadPrompts.prompts(in: textView.string, returns: parent.appState.notepad.returnsPerPrompt).compactMap { line in
+            let rows: [NotepadRow] = styler.prompts(returns: parent.appState.notepad.returnsPerPrompt).compactMap { line in
                 // A prompt in the folded part of a block has no row of its own to put buttons at.
                 guard line.range.location < length, !folding.isHidden(line.range.location) else { return nil }
                 let glyph = layout.glyphIndexForCharacter(at: line.range.location)
@@ -931,8 +933,9 @@ struct NotepadEditor: NSViewRepresentable {
         func loadCurrentLine(submit: Bool) {
             guard let textView,
                   let prompt = NotepadPrompts.promptValue(
-                    at: textView.selectedRange().location, in: textView.string,
-                    returns: parent.appState.notepad.returnsPerPrompt)
+                    at: textView.selectedRange().location,
+                    among: styler.prompts(returns: parent.appState.notepad.returnsPerPrompt),
+                    length: (textView.string as NSString).length)
             else { return }
             let row = NotepadRow(id: prompt.range.location, prompt: prompt.text, y: 0, height: 0, isDone: prompt.isDone)
             parent.appState.loadPrompt(prompt.text, into: parent.sessionID, submit: submit) { [weak self] in

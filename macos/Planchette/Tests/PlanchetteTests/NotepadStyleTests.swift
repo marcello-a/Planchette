@@ -279,7 +279,8 @@ final class NotepadStyleTests: XCTestCase {
         let layout: NSLayoutManager?
         let container: NSTextContainer?
 
-        init(_ text: String, width: Double, returns: Int, kind: StorageKind = .unfixed, inline: Bool = true) {
+        init(_ text: String, width: Double, returns: Int, kind: StorageKind = .unfixed, inline: Bool = true,
+             keepsPrompts: Bool = true) {
             drawsInline = inline
             storage = NotepadStyleTests.makeStorage(text, kind)
             self.kind = kind
@@ -299,6 +300,7 @@ final class NotepadStyleTests: XCTestCase {
             }
             styler.attach(to: storage)
             styler.restyle(look: look)
+            if keepsPrompts { _ = styler.prompts(returns: returns) }    // cut once; kept with every edit after
             // As the pad: every edit is drawn as it is processed, unless a composition is open.
             styler.lookNow = { [unowned self] in self.drawsInline && !self.composing ? self.look : nil }
         }
@@ -340,6 +342,45 @@ final class NotepadStyleTests: XCTestCase {
             if styler.blocks() != blocks { return "blocks \(styler.blocks()) != \(blocks)" }
             if styler.blockRanges() != blocks.map(\.range) {
                 return "block ranges \(styler.blockRanges()) != \(blocks.map(\.range))"
+            }
+            return promptMismatch()
+        }
+
+        /// Nil when the kept prompts, the code bar's suggestion in each prompt and the fenced lines
+        /// are what the whole text gives — also while nothing is drawn (a composition).
+        func promptMismatch() -> String? {
+            let text = storage.string
+            let ns = text as NSString
+            let fresh = NotepadPrompts.prompts(in: text, returns: look.returns)
+            let kept = styler.prompts(returns: look.returns)
+            if kept != fresh {
+                let first = zip(kept, fresh).enumerated().first { $0.element.0 != $0.element.1 }?.offset
+                    ?? min(kept.count, fresh.count)
+                return "prompts differ at \(first) of \(kept.count) kept / \(fresh.count) cut: "
+                    + "\(kept.dropFirst(first).first.map { "\($0)" } ?? "none") vs "
+                    + "\(fresh.dropFirst(first).first.map { "\($0)" } ?? "none")"
+            }
+            // The prompt under a few insertion points, and the code bar's offer in it.
+            for location in [0, ns.length / 3, ns.length / 2, ns.length] {
+                let at = NotepadStyleTests.boundary(location, in: ns)
+                let prompt = NotepadPrompts.promptValue(at: at, among: kept, length: ns.length)
+                if prompt != NotepadPrompts.promptValue(at: at, in: text, returns: look.returns) {
+                    return "the prompt at \(at) differs"
+                }
+                if let prompt, styler.suggestion(within: prompt.range, of: text)
+                    != NotepadCode.suggestion(within: prompt.range, of: text) {
+                    return "the suggestion in \(prompt.range) differs"
+                }
+            }
+            let fenced = Set(NotepadCode.blocks(in: text).flatMap { block in
+                [block.open.location] + block.lines.map(\.location) + (block.close.map { [$0.location] } ?? [])
+            })
+            var location = 0
+            while location < ns.length {
+                if NotepadStyle.isFenced(lineAt: location, in: styler.fences) != fenced.contains(location) {
+                    return "the line at \(location) is fenced: \(fenced.contains(location))"
+                }
+                location = NSMaxRange(ns.lineRange(for: NSRange(location: location, length: 0)))
             }
             return nil
         }
@@ -395,7 +436,14 @@ final class NotepadStyleTests: XCTestCase {
                     composingSteps -= 1
                     if composingSteps > 0 {
                         history.append(described.joined(separator: "; "))
-                        continue                         // the text view draws nothing meanwhile
+                        // The text view draws nothing meanwhile; the margin still reads the prompts.
+                        if let problem = pad.promptMismatch() {
+                            XCTFail("seed \(seed), document \(documentIndex), edit \(editIndex), composing: "
+                                    + "\(problem)\ntext now: \(Self.escaped(pad.storage.string))",
+                                    file: file, line: line)
+                            return checked
+                        }
+                        continue
                     }
                     pad.composing = false
                     described.append("composition ends")
@@ -544,6 +592,26 @@ final class NotepadStyleTests: XCTestCase {
     func testLaidOutTextLooksExactlyLikeAFullRestyle() {
         let checked = walk(seed: Self.baseSeed &+ 3, documents: 10, edits: 40, lines: 0...30, kind: .laidOut)
         XCTAssertGreaterThanOrEqual(checked, 300)
+    }
+
+    /// The prompts the margin and the code bar read are kept with every edit, never cut again from
+    /// the whole text: after every step they must be what a fresh cut gives (`Pad.promptMismatch`
+    /// runs in every walk; this one is for the prompts alone, drawn afterwards or not at all).
+    func testThePromptsAreKeptExactlyAfterEveryEdit() {
+        let checked = walk(seed: Self.baseSeed &+ 7, documents: 40, edits: 80, lines: 0...50, batch: 1...3,
+                           inline: false)
+        XCTAssertGreaterThanOrEqual(checked, 2500)
+    }
+
+    func testPromptsForAnotherNumberOfReturnsAreCutAgain() {
+        let pad = Pad("a\nb\n\nc\n\n\nd", width: 300, returns: 2)
+        XCTAssertEqual(pad.styler.prompts(returns: 2).map(\.text), ["a\nb", "c", "d"])
+        XCTAssertEqual(pad.styler.prompts(returns: 3).map(\.text), ["a\nb\n\nc", "d"])
+        XCTAssertEqual(pad.styler.prompts(returns: 1).map(\.text), ["a", "b", "c", "d"])
+        pad.replace(NSRange(location: 1, length: 0), with: "\n")       // "a\n\nb": a gap at 2 and 3
+        XCTAssertEqual(pad.styler.prompts(returns: 1).map(\.text), ["a", "b", "c", "d"])
+        XCTAssertEqual(pad.styler.prompts(returns: 2).map(\.text), ["a", "b", "c", "d"])
+        XCTAssertEqual(pad.styler.prompts(returns: 3).map(\.text), ["a\n\nb\n\nc", "d"])
     }
 
     /// An edit is drawn while it is processed — nothing is left for the restyle after it — and not
@@ -805,5 +873,67 @@ final class NotepadStyleTests: XCTestCase {
             XCTAssertLessThan(total(after), total(before) / 5, report.last!)
         }
         print("NotepadStyle timing (one key, typed mid-text):\n  " + report.joined(separator: "\n  "))
+    }
+
+    /// What the margin and the code bar cost per key at 16 KB and 64 KB. Before, each key cut the
+    /// whole text into prompts three times (the margin's rows; the code bar after the text changed
+    /// and again after the insertion point moved) and looked for the blocks of the whole text twice.
+    /// Now the prompts are kept with the edit and read three times. Printed; the bound is a ratio,
+    /// generous, so a slow machine still passes.
+    func testTheMarginAndTheCodeBarCostLittlePerKey() {
+        var report: [String] = []
+        for kilobytes in [16, 64] {
+            var rng = SeededGenerator(seed: 0xBEEF)
+            var text = ""
+            while (text as NSString).length < kilobytes * 1024 {
+                text += Self.document(lines: 30, using: &rng) + "\n\n"
+            }
+            let typed = Array("the quick brown fox jumps over the lazy dog, again and again ")
+            /// Milliseconds per key: the edit (with its restyle, and keeping the prompts), and what
+            /// the margin and the code bar read after it.
+            func measure(kept: Bool) -> (edit: Double, read: Double) {
+                let pad = Pad(text, width: 300, returns: 2, kind: .appKit, keepsPrompts: kept)
+                var caret = (pad.storage.string as NSString).length / 2
+                caret = (pad.storage.string as NSString).lineRange(for: NSRange(location: caret, length: 0)).location
+                var edit: UInt64 = 0, read: UInt64 = 0
+                for character in typed {
+                    let t0 = DispatchTime.now().uptimeNanoseconds
+                    pad.replace(NSRange(location: caret, length: 0), with: String(character))
+                    caret += 1
+                    let t1 = DispatchTime.now().uptimeNanoseconds
+                    let string = pad.storage.string
+                    let length = (string as NSString).length
+                    var suggested = 0
+                    if kept {
+                        _ = pad.styler.prompts(returns: 2)                                     // the rows
+                        for _ in 0..<2 {                                                        // the code bar
+                            let all = pad.styler.prompts(returns: 2)
+                            if let prompt = NotepadPrompts.promptValue(at: caret, among: all, length: length),
+                               pad.styler.suggestion(within: prompt.range, of: string) != nil { suggested += 1 }
+                        }
+                    } else {
+                        _ = NotepadPrompts.prompts(in: string, returns: 2)
+                        for _ in 0..<2 {
+                            if let prompt = NotepadPrompts.promptValue(at: caret, in: string, returns: 2),
+                               NotepadCode.suggestion(within: prompt.range, of: string) != nil { suggested += 1 }
+                        }
+                    }
+                    let t2 = DispatchTime.now().uptimeNanoseconds
+                    edit += t1 - t0; read += t2 - t1
+                    XCTAssertLessThan(suggested, 3)
+                }
+                let keys = Double(typed.count) * 1e6
+                return (Double(edit) / keys, Double(read) / keys)
+            }
+            let before = measure(kept: false)
+            let after = measure(kept: true)
+            report.append(String(format: """
+                %d KB: before %.2f ms per key (edit %.2f, margin and code bar %.2f); \
+                after %.2f ms per key (edit with the prompts kept %.2f, margin and code bar %.3f)
+                """, kilobytes, before.edit + before.read, before.edit, before.read,
+                                 after.edit + after.read, after.edit, after.read))
+            XCTAssertLessThan(after.edit + after.read, (before.edit + before.read) / 3, report.last!)
+        }
+        print("Notepad margin and code bar timing (one key, typed mid-text):\n  " + report.joined(separator: "\n  "))
     }
 }

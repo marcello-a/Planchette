@@ -89,9 +89,17 @@ enum NotepadCode {
     /// The first stretch of code in `range` (a prompt): lines of code, with blank lines between
     /// them but no line of words, outside any fence. Nil when there is none.
     static func suggestion(within range: NSRange, of text: String) -> Suggestion? {
+        let fenced = fencedLineStarts(in: text as NSString)
+        return suggestion(within: range, of: text, isFenced: fenced.contains)
+    }
+
+    /// The same, where `isFenced` says whether the line starting at a location is a fence or inside
+    /// a block — the pad answers that from its fence lines (`NotepadStyle.isFenced`), without
+    /// looking for the blocks of the whole text on every key.
+    static func suggestion(within range: NSRange, of text: String, isFenced: (Int) -> Bool) -> Suggestion? {
         let ns = text as NSString
         guard NSMaxRange(range) <= ns.length else { return nil }
-        let fenced = fencedLineStarts(in: ns)
+        let fenced = isFenced
         var run: [NSRange] = []
         var codeLines = 0
         func finish() -> Suggestion? {
@@ -105,7 +113,7 @@ enum NotepadCode {
         while location < NSMaxRange(range) {
             let line = contentRange(of: ns.lineRange(for: NSRange(location: location, length: 0)), in: ns)
             location = NSMaxRange(ns.lineRange(for: NSRange(location: location, length: 0)))
-            let lineKind: LineKind = fenced.contains(line.location) ? .prose : kind(of: ns.substring(with: line))
+            let lineKind: LineKind = fenced(line.location) ? .prose : kind(of: ns.substring(with: line))
             switch lineKind {
             case .code:
                 run.append(line); codeLines += 1

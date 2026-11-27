@@ -109,6 +109,13 @@ enum NotepadStyle {
         fenceCount(before: location, in: fences) % 2 == 1
     }
 
+    /// Whether the line that starts at `location` is a fence line or inside a block — the lines
+    /// `NotepadCode.suggestion` never offers to fence.
+    static func isFenced(lineAt location: Int, in fences: [Fence]) -> Bool {
+        let before = fenceCount(before: location, in: fences)
+        return before % 2 == 1 || (before < fences.count && fences[before].line.location == location)
+    }
+
     /// The whole lines an edit touched, and one line before and after them: a `\r` typed in front
     /// of a `\n`, or a `\n` deleted after a `\r`, moves the end of the line before.
     static func lines(around edited: NSRange, in ns: NSString) -> NSRange {
@@ -419,7 +426,12 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
         fences = NotepadStyle.fences(in: ns, lines: NSRange(location: 0, length: ns.length))
         pending = nil
         attributes = nil
+        promptCache = nil
     }
+
+    /// The text cut into prompts for one number of Returns, kept current with every edit; nil until
+    /// someone asks (`prompts(returns:)`).
+    private var promptCache: (returns: Int, prompts: [NotepadPrompts.Prompt])?
 
     /// The next restyle draws everything.
     func invalidate() { attributes = nil }
@@ -458,7 +470,55 @@ final class NotepadStyler: NSObject, NSTextStorageDelegate {
             end = below.first?.line.location ?? length
         }
         fences = Array(above) + new + below
-        pending = NSUnionRange(dirty, NSRange(location: region.location, length: end - region.location))
+        let reach = NSRange(location: region.location, length: end - region.location)
+        pending = NSUnionRange(dirty, reach)
+        updatePrompts(in: ns, reach: reach, delta: delta)
+    }
+
+    /// The prompts after an edit that reached `reach` (whole lines, fences included): those above
+    /// the prompts around it stay, those below move by `delta`, and only the prompts around it are
+    /// cut again. The edges are where a prompt may start or end (`promptExtent`), in text the edit
+    /// did not touch, so the same edges cut the text before the edit.
+    private func updatePrompts(in ns: NSString, reach: NSRange, delta: Int) {
+        guard let cache = promptCache else { return }
+        let extent = NotepadStyle.promptExtent(of: reach, in: ns, fences: fences, returns: cache.returns)
+        let oldEnd = NSMaxRange(extent) - delta
+        let above = cache.prompts.prefix { $0.range.location < extent.location }
+        let below = cache.prompts.drop { $0.range.location < oldEnd }.map {
+            NotepadPrompts.Prompt(range: NSRange(location: $0.range.location + delta, length: $0.range.length),
+                                  text: $0.text, isDone: $0.isDone)
+        }
+        let around = NotepadPrompts.prompts(in: ns, range: extent,
+                                            inFence: NotepadStyle.inFence(at: extent.location, in: fences),
+                                            returns: cache.returns)
+        promptCache = (cache.returns, Array(above) + around + below)
+    }
+
+    /// The text cut into prompts, as `NotepadPrompts.prompts(in:returns:)` cuts it — for the margin
+    /// and the code bar, which ask on every key. Cut once, then kept with each edit; cut again only
+    /// for another number of Returns. While the storage is in the middle of an edit, cut from the
+    /// text itself.
+    func prompts(returns: Int) -> [NotepadPrompts.Prompt] {
+        guard let storage else { return [] }
+        let returns = NotepadLook.sanitized(returns: returns)
+        if storage.editedMask.contains(.editedCharacters) {
+            return NotepadPrompts.prompts(in: storage.string, returns: returns)
+        }
+        if let cache = promptCache, cache.returns == returns { return cache.prompts }
+        let fresh = NotepadPrompts.prompts(in: storage.string, returns: returns)
+        promptCache = (returns, fresh)
+        return fresh
+    }
+
+    /// `NotepadCode.suggestion(within:of:)`, with the fenced lines read off the fence lines.
+    func suggestion(within range: NSRange, of text: String) -> NotepadCode.Suggestion? {
+        guard let storage, !storage.editedMask.contains(.editedCharacters) else {
+            return NotepadCode.suggestion(within: range, of: text)
+        }
+        let fences = fences
+        return NotepadCode.suggestion(within: range, of: text) {
+            NotepadStyle.isFenced(lineAt: $0, in: fences)
+        }
     }
 
     /// Draws what changed since the last restyle — everything when the look changed or none was

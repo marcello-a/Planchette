@@ -225,10 +225,13 @@ enum NotepadPrompts {
 
     /// The same, with where it is — what is needed to do something to it afterwards.
     static func promptValue(at location: Int, in text: String, returns: Int) -> Prompt? {
-        let length = (text as NSString).length
+        promptValue(at: location, among: prompts(in: text, returns: returns), length: (text as NSString).length)
+    }
+
+    /// The same, among prompts already cut from a text `length` long (`NotepadStyler.prompts`).
+    static func promptValue(at location: Int, among prompts: [Prompt], length: Int) -> Prompt? {
         let at = min(max(location, 0), length)
-        return prompts(in: text, returns: returns)
-            .first { $0.range.location <= at && at <= NSMaxRange($0.range) }
+        return prompts.first { $0.range.location <= at && at <= NSMaxRange($0.range) }
     }
 
     /// Typed text for a terminal: one kind of line break, nothing around it.
