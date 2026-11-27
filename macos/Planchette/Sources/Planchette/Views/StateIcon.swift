@@ -300,15 +300,11 @@ final class AppActivity: ObservableObject {
 }
 
 /// A state as a pixel sprite, tinted by the state itself. Animated states run
-/// off a shared timeline, so every robot on screen steps in time and no view
-/// holds a timer of its own.
+/// in Core Animation (`AnimatedSprite`), so every robot on screen steps in time,
+/// no view holds a timer of its own and a frame step costs SwiftUI nothing.
 ///
-/// The timeline pauses while the app is in the background: every tick
-/// invalidates the hosting view, and a couple of running robots at the 0.18s
-/// cadence kept the whole app at double-digit CPU while nobody was looking.
-/// The static modifiers (frame, tooltip, accessibility) sit OUTSIDE the
-/// timeline closure for the same reason — a frame step must stay a Canvas
-/// redraw, not a re-attach of view chrome.
+/// The animation stops while the app is in the background: a still sprite
+/// stands in, and nothing runs while nobody is looking.
 struct StateIcon: View {
     let state: AttentionState
     var size: CGFloat = 13
@@ -370,11 +366,6 @@ struct StateIcon: View {
                 context.fill(Path(rect), with: .color(color))
             }
         }
-        // The fixed frame stays ON the Canvas, inside the timeline content: a
-        // tick then updates a view whose geometry cannot change, so it stays a
-        // redraw. With the frame outside, every tick re-proposed the content
-        // size and escalated into a full NSHostingView layout pass — measured
-        // at 4x the CPU of this shape.
         .frame(width: size, height: size)
     }
 }
@@ -436,6 +427,10 @@ final class SpriteLayerView: NSView {
     required init?(coder: NSCoder) { fatalError("unsupported") }
 
     override var isFlipped: Bool { true }
+
+    // Only a picture: a click, a drag or a hover goes to the row, tab or tile
+    // around it, as it did through the Canvas this replaces.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     func show(state: AttentionState, tint: NSColor) {
         self.state = state

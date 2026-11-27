@@ -8,6 +8,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Changed
+- **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
+  SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
+  used about 26% of a core, now about 2%. The robots walk as before, all in step.
+
 ### Fixed
 - **The Keychain asks for the Jira token at most once per launch.** Planchette read the token for
   every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
@@ -34,9 +39,6 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   the terminal.
 
 ### Changed
-- **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
-  SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
-  used about 26% of a core, now about 2%. The robots walk as before, all in step.
 - **The + in the tab bar stands right after the last tab**, as in iTerm. It was about 70 points
   away, behind an empty drop zone. A tab dropped on the + goes to the end of the strip.
 
