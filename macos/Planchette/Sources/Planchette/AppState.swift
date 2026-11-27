@@ -40,6 +40,20 @@ final class AppState: ObservableObject {
             finishMergedTodos()
         }
     }
+    /// Settings → General → Panels: the dev-server port chips. Off skips the `lsof` sweep and the
+    /// scrollback search for announced URLs, which a machine full of non-HTTP listeners (port-forwards,
+    /// agents' own sockets) pays every tick for nothing.
+    @Published var devServerLinksEnabled = true {
+        didSet {
+            guard devServerLinksEnabled != oldValue else { return }
+            scheduleSave()
+            if !devServerLinksEnabled {
+                serverURLs = ServerURLLookups()
+                if !devServers.isEmpty { devServers = [:] }
+            }
+            refreshDevServers()
+        }
+    }
     /// Settings → General → Panels: when a card moves to `done` on its own (`TodoAutoDone`).
     /// Never by default. Switched to "PR merged", the PRs known now count at once.
     @Published var todoAutoDone = TodoAutoDone.never {
@@ -390,6 +404,7 @@ final class AppState: ObservableObject {
             reviews = saved.reviews
             reviewsEnabled = saved.reviewsEnabled
             todosEnabled = saved.todosEnabled
+            devServerLinksEnabled = saved.devServerLinksEnabled
             todoAutoDone = saved.todoAutoDone
             claudeSleep = saved.claudeSleep
             jiraEnabled = saved.jiraEnabled
@@ -1384,10 +1399,12 @@ final class AppState: ObservableObject {
         }
         guard devServerFlight.begin() else { return }
         let knownSchemes = serverSchemes
+        let scansServers = devServerLinksEnabled
         Task.detached {
             // Nil: `lsof` did not finish. Everything below that depends on its
             // answer is left as it was rather than blanked for one tick.
-            let scanned = DevServerScanner.scan(projectDirs: dirs)
+            // Switched off: no sweep, and an empty answer keeps the chips away.
+            let scanned = scansServers ? DevServerScanner.scan(projectDirs: dirs) : [:]
             let scanFinished = scanned != nil
             let found = scanned ?? [:]
             let markers = projectDirs.mapValues { IDEs.markers(in: $0) }
@@ -1419,6 +1436,7 @@ final class AppState: ObservableObject {
                     let withURLs = self.resolvingServerURLs(found)
                     // Publish only a real change (see refreshBranches).
                     if self.devServers != withURLs { self.devServers = withURLs }
+                    self.lookUpServerURLs(in: found)
                 }
                 if self.devServerFlight.end() { self.refreshDevServers() }
             }
@@ -1429,47 +1447,66 @@ final class AppState: ObservableObject {
     /// cost grows with the machine's open sockets.
     private var devServerFlight = SingleFlight()
 
-    /// Addresses already learned, keyed by port. Kept because a banner scrolls
-    /// away: once a server has told us it serves `https://vite.myposter.de:8082`,
-    /// that stays true until the port itself goes away.
-    private var serverURLs: [Int: URL] = [:]
+    /// The URLs servers announced, and which ports still get a search (see `ServerURLLookups`).
+    private var serverURLs = ServerURLLookups()
 
-    /// Fill in each server's announced URL, reading a terminal's scrollback only
-    /// for ports we have never resolved. The read locks the renderer and copies
-    /// the whole buffer, so it happens once per port, not once per tick.
+    /// Fill in each server's announced URL from what is already known, else the
+    /// probed scheme on localhost. Never reads a terminal: see `lookUpServerURLs`.
     private func resolvingServerURLs(_ found: [UUID: [DevServer]]) -> [UUID: [DevServer]] {
         let livePorts = Set(found.values.flatMap { $0.map(\.port) })
-        serverURLs = serverURLs.filter { livePorts.contains($0.key) }
-        var result = found
-        for (groupID, servers) in found {
-            guard let group = groups.first(where: { $0.id == groupID }) else { continue }
-            let unresolved = servers.filter { serverURLs[$0.port] == nil }
-            if !unresolved.isEmpty {
-                // The banner is in the terminal that started the server; which
-                // one that is we don't know, so read the project's terminals.
-                let texts = sessions(in: group).compactMap {
-                    TerminalRegistry.shared.existingView($0.id)?.readScrollback()
-                }
-                for server in unresolved {
-                    for text in texts {
-                        if let url = DevServerScanner.bestURL(forPort: server.port, in: text) {
-                            serverURLs[server.port] = url
-                            break
-                        }
-                    }
-                }
-            }
-            result[groupID] = servers.map {
+        serverURLs.keep(livePorts: livePorts)
+        return found.mapValues { servers in
+            servers.map {
                 var server = $0
                 // What the server announced, else at least the right scheme:
                 // the port was probed, and `https://localhost:8082` is a page,
                 // while `http://localhost:8082` on a TLS server is not.
-                server.resolvedURL = serverURLs[$0.port]
+                server.resolvedURL = serverURLs.urls[$0.port]
                     ?? URL(string: "\(serverSchemes[$0.port] ?? "http")://localhost:\($0.port)")
                 return server
             }
         }
-        return result
+    }
+
+    /// Search the project's terminals for the URL each unresolved server
+    /// announced. The banner is in the terminal that started the server; which
+    /// one that is we don't know, so read the project's terminals. Only the copy
+    /// of the buffers happens here (the surfaces are main-thread objects); the
+    /// search runs off-main, and a port gets `ServerURLLookups.maxTries` tries.
+    private func lookUpServerURLs(in found: [UUID: [DevServer]]) {
+        var work: [(port: Int, texts: [String])] = []
+        for (groupID, servers) in found {
+            let due = servers.map(\.port).filter(serverURLs.isDue)
+            guard !due.isEmpty, let group = groups.first(where: { $0.id == groupID }) else { continue }
+            let texts = sessions(in: group).compactMap {
+                TerminalRegistry.shared.existingView($0.id)?.readScrollback()
+            }
+            for port in due {
+                serverURLs.recordTry(port)
+                work.append((port, texts))
+            }
+        }
+        guard !work.isEmpty else { return }
+        Task.detached {
+            var learned: [Int: URL] = [:]
+            for item in work {
+                for text in item.texts {
+                    if let url = DevServerScanner.bestURL(forPort: item.port, in: text) {
+                        learned[item.port] = url
+                        break
+                    }
+                }
+            }
+            guard !learned.isEmpty else { return }
+            let urls = learned
+            await MainActor.run { [weak self] in
+                guard let self, self.devServerLinksEnabled else { return }
+                let live = Set(self.devServers.values.flatMap { $0.map(\.port) })
+                self.serverURLs.learn(urls, livePorts: live)
+                let withURLs = self.resolvingServerURLs(self.devServers)
+                if self.devServers != withURLs { self.devServers = withURLs }
+            }
+        }
     }
 
     /// The IDE a click on this project's button opens — nil when there is no
@@ -3585,6 +3622,7 @@ final class AppState: ObservableObject {
             reviewsEnabled: reviewsEnabled,
             todos: todos,
             todosEnabled: todosEnabled,
+            devServerLinksEnabled: devServerLinksEnabled,
             todoAutoDone: todoAutoDone,
             claudeSleep: claudeSleep,
             jiraEnabled: jiraEnabled,
@@ -3692,6 +3730,7 @@ final class AppState: ObservableObject {
         reviews = state.reviews
         reviewsEnabled = state.reviewsEnabled
         todosEnabled = state.todosEnabled
+        devServerLinksEnabled = state.devServerLinksEnabled
         todoAutoDone = state.todoAutoDone
         claudeSleep = state.claudeSleep
         jiraEnabled = state.jiraEnabled
@@ -3831,6 +3870,7 @@ final class AppState: ObservableObject {
         reviewsEnabled = previous?.reviewsEnabled ?? reviewsEnabled
         // The panels are settings, and the Jira queries the user's own: they outlive the workspace.
         todosEnabled = previous?.todosEnabled ?? todosEnabled
+        devServerLinksEnabled = previous?.devServerLinksEnabled ?? devServerLinksEnabled
         todoAutoDone = previous?.todoAutoDone ?? todoAutoDone
         claudeSleep = previous?.claudeSleep ?? claudeSleep
         jiraEnabled = previous?.jiraEnabled ?? jiraEnabled

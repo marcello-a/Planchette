@@ -8,6 +8,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 
 ## [Unreleased]
 
+### Added
+- **Dev server links can be switched off** in Settings → General → Panels. Off, Planchette no
+  longer looks for running dev servers and shows no port chips — for projects that run none.
+
 ### Changed
 - **Running agents no longer cost a quarter of a CPU core.** Each walking robot redrew through
   SwiftUI, and every step laid out the whole window again: with three agents at work Planchette
@@ -18,6 +22,11 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   every Jira refresh, so after an update (or after "Allow" instead of "Always Allow") macOS asked
   for the login password every five minutes. It now reads the token once and keeps it in memory.
   Choose "Always Allow", and the question comes only once after each update.
+- **Typing no longer lags in projects with listeners that are not web servers.** Every five
+  seconds, Planchette searched the whole scrollback of every terminal for the URL of each open
+  port, on the thread that handles your keys — and ports that never print one (port-forwards,
+  databases, Claude Code's own sockets) were searched again on every tick. A port is now
+  searched at most three times, and the search runs in the background.
 
 ## [0.2.55] — 2026-11-26
 

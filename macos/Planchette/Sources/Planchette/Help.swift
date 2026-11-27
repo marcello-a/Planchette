@@ -125,6 +125,7 @@ enum Help {
             Entry(.helpActiveMarkTitle, .helpActiveMarkDetail, where: .helpWhereSidebar),
             Entry(.helpDropTitle, .dropHint, where: .helpWhereSidebar),
             Entry(.devServersTitle, .devServersDetail, where: .helpWhereTabBar),
+            Entry(.devServersTitle, .devServersEnableHelp, where: .helpWhereSettingsGeneral),
             Entry(.lookAtCode, .lookAtCodeDetail, where: .helpWhereContextMenu),
         ]),
         Section(titleKey: .notificationsPanel, entries: [
