@@ -443,6 +443,28 @@ all of it is a git read, since `make pr` can push). One checkout and branch is a
 at most once per `PullRequests.eagerGap`; a terminal that asks inside the gap waits
 for its end, together with every other terminal that asks meanwhile (`EagerLookups`).
 
+**A sweep asks GitHub once.** `PullRequests.lookup(_:)` sends the checkouts of a sweep as
+one `gh api graphql --hostname github.com` call (`PullRequestBatch`: one aliased
+`repository { pullRequests(headRefName:) }` per checkout, every owner, name and branch a
+GraphQL variable, at most `PullRequestBatch.cap` per call) instead of one `gh pr list` process
+each, and picks each answer by the same rule as `PullRequests.parse`. The repository must be
+the one `gh pr list` asks in that folder, and gh's choice (remote order, `gh-resolved`,
+`ssh -G`, `insteadOf`, the hosts it is logged in to) changes between gh releases, so the app
+does not rebuild it: `gh repo view --json nameWithOwner,url` names it, run like `gh pr list`
+in the checkout. `RepoCache` keeps that answer per checkout root while the files that decide
+it keep their `stat` (the `.git` entry, the repository's `config` and `config.worktree`, the
+user's git configs, `~/.ssh/config`, gh's `hosts.yml` and `config.yml`), for 24 hours, a
+failure for 10 minutes. Only a github.com answer joins the batch; another host, a failure,
+`GH_REPO` (which `gh repo view` ignores) and a checkout outside a repository keep their own
+`gh pr list`. A root the cache does not know is answered by its own `gh pr list` while its
+`gh repo view` runs beside it, so a first sweep is never slower than the old one-by-one
+lookups: everything runs in one pool of at most four `gh` processes. An alias GitHub answers
+with an error (a repository that is gone or hidden), or a `data` object of the wrong shape,
+is looked up alone; a call without `data` (no network, bad credentials, a rate limit) fails
+its checkouts, since lookups alone share the token and the limit. Fallbacks are logged once
+per checkout and reason (`Log.debug`). `PLANCHETTE_LIVE_GH=1` runs a test that compares the
+batch with `gh pr list` against GitHub.
+
 **The branch is read, not asked.** `Titles.headState` reads `.git/HEAD`;
 `Worktrees.currentBranch` asks git only when the file cannot answer: the reftable
 layout (whose HEAD is a stub), or a `.git` entry that exists but is unusable (a

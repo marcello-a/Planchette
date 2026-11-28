@@ -26,4 +26,10 @@ enum Log {
         let text = message()
         logger.notice("\(text, privacy: .public)")
     }
+
+    /// For the developer only: not kept on disk, shown by `log stream --level debug`.
+    static func debug(_ message: @autoclosure () -> String) {
+        let text = message()
+        logger.debug("\(text, privacy: .public)")
+    }
 }
