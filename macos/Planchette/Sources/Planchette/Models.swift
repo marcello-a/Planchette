@@ -615,7 +615,9 @@ struct TerminalSession: Identifiable, Codable, Equatable {
     /// manual rename if there is one, otherwise the ticket. Nil when there is
     /// neither — then the path names it on its own, and inventing a name from the
     /// task would only repeat the row below it.
-    var rowName: String? {
+    /// `ticket` is the ticket of this terminal's branch: the caller passes the one it
+    /// already knows (`AppState.ticket(of:)`), so no row walks the file system.
+    func rowName(ticket: String?) -> String? {
         if let customTitle, !customTitle.isEmpty { return customTitle }
         return ticket
     }

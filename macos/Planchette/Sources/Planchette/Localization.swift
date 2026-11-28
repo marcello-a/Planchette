@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import os
 
 /// Supported UI languages. `.system` follows the OS preference.
 enum AppLanguage: String, CaseIterable, Codable, Identifiable {
@@ -25,12 +26,38 @@ enum AppLanguage: String, CaseIterable, Codable, Identifiable {
     /// falling back to English.
     var resolved: AppLanguage {
         guard self == .system else { return self }
-        for code in Locale.preferredLanguages {
+        return Self.systemLanguage.withLock { cached in
+            if let cached { return cached }
+            let found = Self.match(preferred: Locale.preferredLanguages)
+            cached = found
+            return found
+        }
+    }
+
+    /// The first supported language of the OS preference list, else English. Pure.
+    static func match(preferred: [String]) -> AppLanguage {
+        for code in preferred {
             let base = String(code.prefix(2))
             if let match = AppLanguage(rawValue: base), match != .system { return match }
         }
         return .en
     }
+
+    /// What `.system` resolves to, read once: `Locale.preferredLanguages` reads the
+    /// preferences on every call, and `L10n.t` resolves the language for every string
+    /// of every redraw. Cleared when the system's locale changes and when the app
+    /// comes to the front.
+    private static let systemLanguage: OSAllocatedUnfairLock<AppLanguage?> = {
+        let lock = OSAllocatedUnfairLock<AppLanguage?>(initialState: nil)
+        // And whenever the app comes to the front: a change of the language list may
+        // not post the locale notification, and one read per activation costs nothing.
+        for name in [NSLocale.currentLocaleDidChangeNotification, NSApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { _ in
+                lock.withLock { $0 = nil }
+            }
+        }
+        return lock
+    }()
 }
 
 /// Light/dark/system appearance choice.

@@ -1626,38 +1626,100 @@ final class HardeningStringsTests: XCTestCase {
 
 final class AISummarizerHardeningTests: XCTestCase {
     func testToolsAreSwitchedOffByDefault() {
-        let command = AIAssist.claudeCommand(restrictTools: true)
+        let command = AIAssist.claudeCommand(level: .lean)
         XCTAssertTrue(command.contains("--tools ''"), command)
         XCTAssertTrue(command.contains("-p"), "still headless print mode")
         XCTAssertTrue(command.contains("--model haiku"))
     }
 
-    // What an older claude CLI gets: the original command, minus the stderr discard.
-    func testTheFallbackIsTheOriginalCommand() {
-        XCTAssertEqual(AIAssist.claudeCommand(restrictTools: false), "claude -p --model haiku")
+    // The default run loads none of the user's setup: no MCP server, no skill, no
+    // hook, no saved session — the measured difference was $0.39 against $0.002 a
+    // summary. `--bare` would skip the login and must never be used.
+    func testTheDefaultRunLoadsNothingOfTheUsersSetup() {
+        let command = AIAssist.claudeCommand(level: .lean)
+        for flag in ["--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                     "--settings '{\"disableAllHooks\":true}'", "--system-prompt '"] {
+            XCTAssertTrue(command.contains(flag), "\(flag) missing: \(command)")
+        }
+        XCTAssertFalse(command.contains("--bare"), command)
+        XCTAssertFalse(AIAssist.leanSystemPrompt.contains("'"), "would end the shell quote")
+    }
+
+    // What an older claude CLI gets: the original commands, one level at a time.
+    func testTheFallbacksAreTheOriginalCommands() {
+        XCTAssertEqual(AIAssist.claudeCommand(level: .toolsOff), "claude -p --model haiku --tools ''")
+        XCTAssertEqual(AIAssist.claudeCommand(level: .plain), "claude -p --model haiku")
     }
 
     // stderr is read, not thrown away: it is the only place "unknown option" can be
     // told apart from every other silent failure.
     func testStderrIsLeftForTheCallerToRead() {
-        for restrict in [true, false] {
-            let command = AIAssist.claudeCommand(restrictTools: restrict)
+        for level in [AIAssist.CommandLevel.lean, .toolsOff, .plain] {
+            let command = AIAssist.claudeCommand(level: level)
             XCTAssertFalse(command.contains("2>"), "no redirection of stderr: \(command)")
         }
+    }
+
+    // An unknown lean flag drops only the lean flags; the tools stay off.
+    func testAnUnknownLeanFlagKeepsTheToolsOff() {
+        for flag in AIAssist.CommandLevel.leanFlags {
+            XCTAssertEqual(
+                AIAssist.CommandLevel.lean.fallback(afterStderr: "error: unknown option '\(flag)'\n"),
+                .toolsOff, flag)
+        }
+        XCTAssertEqual(
+            AIAssist.CommandLevel.lean.fallback(afterStderr: "error: unknown option '--tools'"), .plain)
+        XCTAssertEqual(
+            AIAssist.CommandLevel.toolsOff.fallback(afterStderr: "Error: Unknown option '--tools' (did you mean ...)"),
+            .plain)
+        XCTAssertNil(AIAssist.CommandLevel.plain.fallback(afterStderr: "error: unknown option '--tools'"))
     }
 
     // The reviewer's scenario: one unrelated failure must not switch the protection
     // off for the rest of the session.
     func testOnlyTheUnknownOptionMessageCountsAsAnUnsupportedFlag() {
-        XCTAssertTrue(AIAssist.rejectsToolsFlag(stderr: "error: unknown option '--tools'\n"))
-        XCTAssertTrue(AIAssist.rejectsToolsFlag(stderr: "Error: Unknown option '--tools' (did you mean ...)"))
         for unrelated in [
             "", "Execution error", "curl: (6) Could not resolve host: api.anthropic.com",
             "zsh:1: command not found: claude", "error: unknown option '--model'",
             "Please run /login", "error: could not read the --tools list",
+            "error: could not read the --settings file",
         ] {
-            XCTAssertFalse(AIAssist.rejectsToolsFlag(stderr: unrelated), unrelated)
+            XCTAssertNil(AIAssist.CommandLevel.lean.fallback(afterStderr: unrelated), unrelated)
+            XCTAssertNil(AIAssist.CommandLevel.toolsOff.fallback(afterStderr: unrelated), unrelated)
         }
+    }
+
+    // A broken setup (logged out, offline) stops costing a `claude` run per turn.
+    func testTheBreakerPausesAfterFailuresInARowAndRetriesLater() {
+        var breaker = SummaryBreaker()
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        for index in 0..<(SummaryBreaker.limit - 1) {
+            breaker.record(success: false, now: start)
+            XCTAssertTrue(breaker.allows(now: start), "still open after \(index + 1) failures")
+        }
+        breaker.record(success: false, now: start)
+        XCTAssertFalse(breaker.allows(now: start))
+        XCTAssertFalse(breaker.allows(now: start.addingTimeInterval(SummaryBreaker.pause - 1)))
+        XCTAssertTrue(breaker.allows(now: start.addingTimeInterval(SummaryBreaker.pause)))
+        // The retry fails: closed again at once, for another pause.
+        let retry = start.addingTimeInterval(SummaryBreaker.pause)
+        breaker.record(success: false, now: retry)
+        XCTAssertFalse(breaker.allows(now: retry.addingTimeInterval(1)))
+        // A success ends it.
+        breaker.record(success: true, now: retry)
+        XCTAssertTrue(breaker.allows(now: retry))
+        XCTAssertEqual(breaker.failures, 0)
+    }
+
+    // A success between failures starts the count again.
+    func testTheBreakerCountsOnlyFailuresInARow() {
+        var breaker = SummaryBreaker()
+        let now = Date()
+        for _ in 0..<5 {
+            breaker.record(success: false, now: now)
+            breaker.record(success: true, now: now)
+        }
+        XCTAssertTrue(breaker.allows(now: now))
     }
 
     // The summarizer must not run from `/` (a GUI app's working directory).
@@ -3040,5 +3102,146 @@ final class KeyedSerializerTests: XCTestCase {
         await second.value
         XCTAssertEqual(log.events, ["first", "second"])
         XCTAssertEqual(serializer.activeKeys, 0)
+    }
+}
+
+
+// MARK: - Subprocess input
+
+final class SubprocessInputTests: XCTestCase {
+    func testTheInputReachesTheChild() throws {
+        let result = try XCTUnwrap(Subprocess.run("/bin/cat", [], timeout: 300, input: Data("hello".utf8)))
+        XCTAssertTrue(result.succeeded)
+        XCTAssertEqual(result.stdoutString, "hello")
+    }
+
+    // More than a pipe holds, in and out at once: neither side may wait for the other.
+    func testALargeInputDoesNotDeadlock() throws {
+        let big = Data(repeating: UInt8(ascii: "x"), count: 1_000_000)
+        let result = try XCTUnwrap(Subprocess.run("/bin/cat", [], timeout: 300, input: big))
+        XCTAssertTrue(result.succeeded)
+        XCTAssertEqual(result.stdout.count, big.count)
+    }
+
+    // A child that reads nothing and exits at once: the write fails (EPIPE) quietly, and the
+    // test process is not killed by SIGPIPE.
+    func testAChildThatIgnoresItsInputEndsCleanly() throws {
+        let big = Data(repeating: 0, count: 1_000_000)
+        let result = try XCTUnwrap(Subprocess.run("/usr/bin/true", [], timeout: 300, input: big))
+        XCTAssertTrue(result.succeeded)
+    }
+}
+
+// MARK: - Hook script: the pointer and a stalled app
+
+/// Accepts one connection and holds it, reading nothing and closing nothing, until
+/// `release()`: an app that took the event and stalls.
+private final class StalledApp {
+    let path = "/tmp/plt-\(UUID().uuidString.prefix(8)).sock"
+    private var listener: Int32 = -1
+    private var client: Int32 = -1
+    private let released = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var acceptedFlag = false
+    var accepted: Bool { lock.lock(); defer { lock.unlock() }; return acceptedFlag }
+
+    init() throws {
+        unlink(path)
+        listener = socket(AF_UNIX, SOCK_STREAM, 0)
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &addr.sun_path) { buf in
+            path.utf8CString.withUnsafeBytes { buf.copyBytes(from: $0.prefix(buf.count - 1)) }
+        }
+        let size = socklen_t(MemoryLayout<sockaddr_un>.size)
+        let bound = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, size) }
+        }
+        guard bound == 0, listen(listener, 4) == 0 else { throw NSError(domain: "StalledApp", code: Int(errno)) }
+        Thread.detachNewThread { [self] in
+            let fd = accept(listener, nil, nil)
+            lock.lock(); client = fd; acceptedFlag = fd >= 0; lock.unlock()
+            released.wait()
+            if fd >= 0 { close(fd) }
+        }
+    }
+
+    func release() { released.signal() }
+
+    deinit {
+        close(listener)
+        unlink(path)
+    }
+}
+
+final class HookScriptDeliveryTests: XCTestCase {
+    private var hook: String {
+        get throws {
+            var url = URL(fileURLWithPath: #filePath)
+            for _ in 0..<5 { url.deleteLastPathComponent() }
+            let path = url.appendingPathComponent("hook/planchette-hook").path
+            guard FileManager.default.isExecutableFile(atPath: path) else { throw XCTSkip("\(path) not found") }
+            return path
+        }
+    }
+
+    private func home(pointingAt socket: String?) throws -> String {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("plt-home-\(UUID().uuidString)")
+        let dir = home.appendingPathComponent(".planchette")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let socket { try (socket + "\n").write(to: dir.appendingPathComponent("socket"), atomically: true, encoding: .utf8) }
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        return home.path
+    }
+
+    private func start(env: [String: String]) throws -> (Process, DispatchSemaphore) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [try hook, "claude"]
+        var environment = ["PATH": "/usr/bin:/bin"]
+        environment.merge(env) { $1 }
+        process.environment = environment
+        let input = Pipe()
+        process.standardInput = input
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        try process.run()
+        try input.fileHandleForWriting.write(contentsOf: Data(#"{"hook_event_name":"Stop"}"#.utf8))
+        try input.fileHandleForWriting.close()
+        return (process, exited)
+    }
+
+    // A durable terminal's own socket is gone: the event reaches the running app through
+    // the pointer, read without starting a process.
+    func testTheEventReachesTheAppThroughThePointer() throws {
+        let app = try StalledApp()   // used here only as a listener that sees the connection
+        defer { app.release() }
+        let (process, exited) = try start(env: [
+            "PLANCHETTE_SESSION": UUID().uuidString,
+            "PLANCHETTE_SOCKET": "/tmp/plt-gone-\(UUID().uuidString.prefix(8)).sock",
+            "HOME": try home(pointingAt: app.path),
+        ])
+        XCTAssertEqual(exited.wait(timeout: .now() + 300), .success, "the hook ended")
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertTrue(app.accepted, "the pointer's socket got the connection")
+    }
+
+    // An app that accepted the event but never answers no longer holds the agent's tool
+    // call: the hook ends while the app still holds the connection.
+    func testTheHookEndsWhileAStalledAppStillHoldsTheConnection() throws {
+        let app = try StalledApp()
+        let (process, exited) = try start(env: [
+            "PLANCHETTE_SESSION": UUID().uuidString, "PLANCHETTE_SOCKET": app.path,
+            "HOME": try home(pointingAt: nil),
+        ])
+        // Order, not time: the app releases the connection only after the hook ended (or
+        // after the generous deadline, when the hook would have waited for good).
+        let ended = exited.wait(timeout: .now() + 300)
+        app.release()
+        XCTAssertEqual(ended, .success, "the hook ended before the app let go")
+        XCTAssertTrue(app.accepted)
+        XCTAssertEqual(process.terminationStatus, 0)
     }
 }

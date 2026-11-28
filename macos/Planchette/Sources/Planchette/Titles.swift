@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 enum Titles {
     /// Extract a ticket id (e.g. NIE-4213) from the git branch of a directory.
@@ -10,11 +11,14 @@ enum Titles {
 
     /// The ticket key inside a branch name (`marcello/feat/NIE-123-x` → `NIE-123`).
     static func ticket(inBranch branch: String) -> String? {
-        guard let range = branch.range(of: #"[A-Z]{2,10}-\d+"#, options: .regularExpression) else {
-            return nil
-        }
-        return String(branch[range])
+        let range = NSRange(branch.startIndex..., in: branch)
+        guard let match = ticketPattern.firstMatch(in: branch, range: range),
+              let found = Range(match.range, in: branch) else { return nil }
+        return String(branch[found])
     }
+
+    /// Compiled once: rows and tab names ask on every redraw.
+    private static let ticketPattern = try! NSRegularExpression(pattern: #"[A-Z]{2,10}-\d+"#)
 
     /// A branch from its ticket on: `marcello/feat/NIE-1902-format-switch` →
     /// `NIE-1902-format-switch`. Everything before the ticket is the same lead-in
@@ -104,7 +108,7 @@ enum Titles {
             let dotGit = url.appendingPathComponent(".git")
             if let gitDir = resolveGitDir(dotGit) {
                 let head = gitDir.appendingPathComponent("HEAD")
-                if let content = try? String(contentsOf: head, encoding: .utf8) {
+                if let content = StatCachedText.read(head.path) {
                     let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
                     if trimmed.hasPrefix("ref: refs/heads/") {
                         let name = String(trimmed.dropFirst("ref: refs/heads/".count))
@@ -123,6 +127,21 @@ enum Titles {
             url = parent
         }
         return .notARepository
+    }
+
+    /// The root folder of the checkout `dir` is in — where its `.git` is — or nil
+    /// outside a repository. The same walk as `headState`, physical path included.
+    static func checkoutRoot(forDirectory dir: String, maxLevels: Int = 64) -> String? {
+        var url = URL(fileURLWithPath: physicalPath(of: dir))
+        for _ in 0..<max(1, maxLevels) {
+            if FileManager.default.fileExists(atPath: url.appendingPathComponent(".git").path) {
+                return url.path
+            }
+            let parent = url.deletingLastPathComponent()
+            if parent.path == url.path { break }
+            url = parent
+        }
+        return nil
     }
 
     /// `realpath(3)`: every symlink resolved, `/tmp` and `/var` included (which
@@ -144,7 +163,7 @@ enum Titles {
             return nil
         }
         if isDir.boolValue { return dotGit }
-        guard let text = try? String(contentsOf: dotGit, encoding: .utf8) else { return nil }
+        guard let text = StatCachedText.read(dotGit.path) else { return nil }
         let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard line.hasPrefix("gitdir:") else { return nil }
         let path = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
@@ -229,5 +248,35 @@ enum Titles {
     /// which isn't a useful name — an idle terminal showing this is "free".
     static func looksLikeShellPrompt(_ title: String) -> Bool {
         title.range(of: #"^\S+@\S+[:~/]"#, options: .regularExpression) != nil
+    }
+}
+
+/// Small text files (a `HEAD`, a worktree's `.git`) read again only when a `stat` says
+/// they changed: the branch poll reads one per terminal folder every 10 s, and the
+/// open, read and decode were most of its cost. git replaces `HEAD` by a rename, so a
+/// checkout always shows as a new inode; the time and the size cover a rewrite in place.
+enum StatCachedText {
+    private struct Stamp: Equatable {
+        let device: Int32, inode: UInt64, size: Int64, seconds: Int, nanoseconds: Int
+    }
+
+    private static let cache = OSAllocatedUnfairLock<[String: (stamp: Stamp, text: String?)]>(initialState: [:])
+
+    /// The file's text as UTF-8, or nil when it cannot be read.
+    static func read(_ path: String) -> String? {
+        var info = stat()
+        guard stat(path, &info) == 0 else { return nil }
+        let stamp = Stamp(
+            device: info.st_dev, inode: info.st_ino, size: info.st_size,
+            seconds: info.st_mtimespec.tv_sec, nanoseconds: info.st_mtimespec.tv_nsec)
+        if let hit = cache.withLock({ $0[path] }), hit.stamp == stamp { return hit.text }
+        let text = try? String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
+        cache.withLock { entries in
+            // The keys are the git files of live terminals' folders — a handful — but a
+            // long-lived app must not keep every one it ever saw.
+            if entries.count > 512 { entries = [:] }
+            entries[path] = (stamp, text)
+        }
+        return text
     }
 }

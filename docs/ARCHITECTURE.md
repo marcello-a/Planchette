@@ -385,9 +385,25 @@ applied only after explicit confirmation.
 The transcript tail is untrusted text (web pages and files the agent opened), so
 the summarizer is boxed in: it runs in its own empty directory (`summarizer/` in
 the support directory — a GUI app's working directory is `/`, i.e. the whole
-disk), with every tool switched off (`--tools ''`; an older `claude` that does not
-know the flag is run without it, once, and the directory still applies), and the
-prompt tells the model to treat the material as data.
+disk), with every tool switched off (`--tools ''`), and the prompt tells the model
+to treat the material as data.
+
+It also loads nothing of the user's Claude Code setup: no MCP server
+(`--strict-mcp-config`), no skill or command (`--disable-slash-commands`), no hook
+(`--settings '{"disableAllHooks":true}'`, a layer over the user's settings, so their
+`env` and login still apply — never `--bare`, which skips the login), no saved session
+(`--no-session-persistence`) and a short system prompt of its own. A plain `claude -p`
+sent about 387,000 tokens per summary (every MCP tool and skill), ran every hook of the
+user (seven per run) and wrote a 2.5 MB transcript; measured on Claude Code 2.1.332,
+$0.39 against $0.002 a summary. An older `claude` that rejects a flag steps down a level
+(`AIAssist.CommandLevel`: lean → tools off → plain), remembered for the session, and the
+directory still applies. A summary runs on `Stop`, on a question and on a failed turn (`StopFailure`), not on
+`SubagentStop` (the turn goes on), never for a transcript that did not change since the last one, and not at all for 15
+minutes after three failed runs in a row (`SummaryBreaker`); every failure logs its exit
+status and the start of stderr. A run that answered with something other than JSON is not
+a failure — the setup works, one transcript did not summarize — and its transcript is not
+sent again until it changes; an empty answer is. One run waits per terminal at most, with
+the newest transcript path and folder.
 
 ## Robustness & security
 
@@ -407,6 +423,14 @@ from being joined by a copy on the next tick; a request that arrives mid-run
 (a `Stop` hook asking for a fresh context reading) is remembered and gets exactly
 one more run, not dropped.
 
+**A PR is asked about when git may have changed.** A hook asks `gh` about its own
+terminal's checkout only: after a shell command that runs `gh` or a `git` that is
+not only a read (`PullRequests.toolMayChangeGit`), and at the end of a turn unless
+every tool call of it left git alone (`TurnGitRecord`; a shell command counts unless
+all of it is a git read, since `make pr` can push). One checkout and branch is asked
+at most once per `PullRequests.eagerGap`; a terminal that asks inside the gap waits
+for its end, together with every other terminal that asks meanwhile (`EagerLookups`).
+
 **The branch is read, not asked.** `Titles.headState` reads `.git/HEAD`;
 `Worktrees.currentBranch` asks git only when the file cannot answer: the reftable
 layout (whose HEAD is a stub), or a `.git` entry that exists but is unusable (a
@@ -416,16 +440,25 @@ the repository around it would show *its* branch). The walk starts from the
 (`~/code -> /Volumes/work/code`) never reaches its repository by way of the logical
 path, and an unrelated repository on that path (a dotfiles repo in `$HOME`) must not
 be consulted. A subprocess per directory every ten seconds, around the clock, was
-the poll's whole cost. A dev server's working directory comes from `proc_pidinfo`,
-not a second `lsof`; a scan that timed out publishes nothing, so servers do not
-vanish from the sidebar because `lsof` was slow once.
+the poll's whole cost. The `HEAD` and a worktree's `.git` file are read again only when
+a `stat` says they changed (`StatCachedText`). A dev server's listening socket and working directory come
+from libproc (`DevServerScanner.listeningSockets`, `proc_pidinfo`), not from `lsof`,
+which is only the fallback when the process list cannot be read; a scan that failed
+publishes nothing, so servers do not vanish from the sidebar because one read failed.
+A database tunnel's command line comes from the kernel too (`Durable.kernelChildArguments`),
+with `ps` as the fallback.
 
 **What counts as a change.** `AppState.update` drops a write that equals what is
 stored, so no publish and no save. A terminal title is therefore stored without
 its leading status glyph (`TerminalSession.cleanedTitle`): programs animate that
 glyph, and every frame used to be a "different" title. `SaveDebounce` caps how
 long the oldest unsaved change can wait — a trailing debounce alone never saves
-while changes keep arriving less than a second apart.
+while changes keep arriving less than a second apart. `saveNow` writes nothing when the encoded state equals the bytes
+it wrote last (it is asked on every resign and hide), and a scrollback snapshot is
+written only for a terminal whose text changed since its last one, whose file is
+missing, or at quit (a synchronous save always writes). A screen reading
+whose viewport and rules are unchanged gives the kept verdict (`ScreenReadings`);
+everything after the verdict — `fromScreen`, `ScreenConfirmation` — still runs.
 
 **The socket trusts the kernel, not the file name.** `HookServer` lives in
 `/tmp`. The file is 0600, and every accepted connection is also checked with

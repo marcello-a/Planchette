@@ -1,4 +1,5 @@
 import AppKit
+import os
 import GhosttyKit
 import UniformTypeIdentifiers
 
@@ -64,7 +65,14 @@ final class GhosttyRuntime {
             userdata: nil,
             supports_selection_clipboard: false,
             wakeup_cb: { _ in
-                DispatchQueue.main.async { GhosttyRuntime.shared.tick() }
+                // One main-queue block per burst, not one per wakeup: a tick drains
+                // the whole mailbox, so every wakeup that arrives before it runs is
+                // already served by it (see `pendingTick` for the one exception).
+                let schedule = GhosttyRuntime.pendingWakeups.withLock { count -> Bool in
+                    count += 1
+                    return count == 1
+                }
+                if schedule { DispatchQueue.main.async { GhosttyRuntime.shared.pendingTick() } }
             },
             action_cb: { _, target, action in
                 GhosttyRuntime.handleAction(target: target, action: action)
@@ -119,6 +127,22 @@ final class GhosttyRuntime {
     func tick() {
         guard let app else { return }
         ghostty_app_tick(app)
+    }
+
+    /// The wakeups since the queued tick was scheduled; 0 = no tick queued (`wakeup_cb`).
+    nonisolated static let pendingWakeups = OSAllocatedUnfairLock(initialState: 0)
+
+    /// The queued tick. The count is cleared *before* the tick, so a wakeup that comes
+    /// in while it runs queues the next one instead of being lost. A burst gets one
+    /// tick more: libghostty's drain stops at the first message that fails, and the
+    /// tick per wakeup this replaced drained the rest of the mailbox on the next one.
+    private func pendingTick() {
+        let served = Self.pendingWakeups.withLock { count -> Int in
+            defer { count = 0 }
+            return count
+        }
+        tick()
+        if served > 1 { DispatchQueue.main.async { GhosttyRuntime.shared.tick() } }
     }
 
     // MARK: Appearance

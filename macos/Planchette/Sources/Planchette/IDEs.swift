@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 /// An editor/IDE Planchette can hand a project to.
 struct IDE: Identifiable, Equatable {
@@ -57,10 +58,24 @@ enum IDEs {
 
     /// The known IDEs present on this machine — what the menu lists.
     static func installed() -> [IDE] {
-        known.filter {
+        let found = known.filter {
             NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) != nil
         }
+        installedCache.withLock { $0 = (found, Date()) }
+        return found
     }
+
+    /// `installed()`, asked of LaunchServices at most once per `maxAge`. The dev-server
+    /// tick reads it every 5 s, for a list that changes when an app is installed; an
+    /// IDE coming to the front refreshes it at once (`AppState.refreshInstalledIDEs`).
+    static func installed(maxAge: TimeInterval, now: Date = Date()) -> [IDE] {
+        if let cached = installedCache.withLock({ $0 }), now.timeIntervalSince(cached.at) < maxAge {
+            return cached.ides
+        }
+        return installed()
+    }
+
+    private static let installedCache = OSAllocatedUnfairLock<(ides: [IDE], at: Date)?>(initialState: nil)
 
     /// Bundle IDs of the known IDEs currently running.
     static func runningBundleIDs() -> Set<String> {
@@ -140,19 +155,39 @@ enum IDEs {
             for version in versions where version.hasPrefix(product) {
                 let file = jetBrains.appendingPathComponent(
                     "\(version)/options/recentProjects.xml")
-                guard let xml = try? String(contentsOf: file, encoding: .utf8) else { continue }
-                open.formUnion(openJetBrainsProjects(inXML: xml, home: NSHomeDirectory()))
+                open.formUnion(parsedOnChange(file) { file in
+                    guard let xml = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+                    return openJetBrainsProjects(inXML: xml, home: NSHomeDirectory())
+                })
             }
             return open
         }
         if let product = vsCodeDirs[ide.bundleID] {
             let file = support.appendingPathComponent(
                 "\(product)/User/globalStorage/storage.json")
-            guard let data = try? Data(contentsOf: file) else { return [] }
-            return openVSCodeProjects(inJSON: data)
+            return parsedOnChange(file) { file in
+                (try? Data(contentsOf: file)).map(openVSCodeProjects(inJSON:))
+            }
         }
         return []
     }
+
+    /// The answer of `parse` for `file`, parsed again only when the file's modification
+    /// date or size changed (`TranscriptStamp`: a file system with whole-second times
+    /// can take two writes in one second). The dev-server tick asks every 5 s; the files
+    /// (up to ~100 KB of JSON each) change when a window opens or closes.
+    static func parsedOnChange(_ file: URL, parse: (URL) -> Set<String>?) -> Set<String> {
+        guard let stamp = TranscriptStamp.of(path: file.path) else { return [] }
+        if let hit = parsedFiles.withLock({ $0[file.path] }), hit.stamp == stamp {
+            return hit.projects
+        }
+        let projects = parse(file) ?? []
+        parsedFiles.withLock { $0[file.path] = (stamp, projects) }
+        return projects
+    }
+
+    private static let parsedFiles = OSAllocatedUnfairLock<[String: (stamp: String, projects: Set<String>)]>(
+        initialState: [:])
 
     /// Pure: the `opened="true"` entries of a JetBrains `recentProjects.xml`,
     /// with `$USER_HOME$` expanded.

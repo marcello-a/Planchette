@@ -1918,8 +1918,8 @@ final class DisplayTitleTests: XCTestCase {
     func testRowNameIsTheRenameOrTheTicket() throws {
         var plain = session(osc: "✳ x")
         plain.currentTask = "Fix the flaky upload spec"
-        XCTAssertNil(plain.rowName, "no rename and no ticket branch: the path names it")
-        XCTAssertEqual(session(osc: "x", custom: "watcher").rowName, "watcher")
+        XCTAssertNil(plain.rowName(ticket: nil), "no rename and no ticket branch: the path names it")
+        XCTAssertEqual(session(osc: "x", custom: "watcher").rowName(ticket: nil), "watcher")
 
         let repo = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("rowname-\(UUID().uuidString)")
@@ -1932,9 +1932,11 @@ final class DisplayTitleTests: XCTestCase {
         var inRepo = TerminalSession(groupID: UUID(), workingDirectory: repo.path)
         inRepo.currentTask = "Add the format switch"
         XCTAssertEqual(inRepo.ticket, "NIE-1902")
-        XCTAssertEqual(inRepo.rowName, "NIE-1902")
+        XCTAssertEqual(inRepo.rowName(ticket: inRepo.ticket), "NIE-1902")
+        XCTAssertEqual(inRepo.rowName(ticket: Titles.ticket(inBranch: "marcello/feat/NIE-1902-x")), "NIE-1902",
+                       "the ticket of the polled branch names it the same way")
         inRepo.customTitle = "watcher"
-        XCTAssertEqual(inRepo.rowName, "watcher", "a rename still wins")
+        XCTAssertEqual(inRepo.rowName(ticket: inRepo.ticket), "watcher", "a rename still wins")
     }
 
     // Two terminals in the same checkout must not read the same: the ticket
@@ -2220,6 +2222,30 @@ final class ClaudeResumeTests: XCTestCase {
 /// The one "how long ago" label in the app: the sidebar, the notifications
 /// panel, the folder overview and the quick switcher all render this.
 final class WaitingTimeTests: XCTestCase {
+    /// An age label redraws exactly where its text changes, counted from the start.
+    func testAnAgeLabelRedrawsWhereItsTextChanges() {
+        let since = Date(timeIntervalSince1970: 1_000_000)
+        func next(_ age: TimeInterval) -> TimeInterval {
+            AgeSchedule.nextChange(after: since.addingTimeInterval(age), since: since).timeIntervalSince(since)
+        }
+        XCTAssertEqual(next(0), 1)
+        XCTAssertEqual(next(59.5), 60)
+        XCTAssertEqual(next(60), 120)
+        XCTAssertEqual(next(61), 120)
+        XCTAssertEqual(next(86_399), 86_400)
+        XCTAssertEqual(next(86_400 + 10), 86_400 + 3_600)
+        XCTAssertEqual(next(8 * 86_400 + 5), 9 * 86_400)
+        XCTAssertEqual(next(-30), 1)
+        // Every step changes the text, and no change falls between two steps.
+        var age: TimeInterval = 0
+        while age < 10 * 86_400 {
+            let after = next(age)
+            XCTAssertNotEqual(WaitingTimeText.format(age), WaitingTimeText.format(after), "\(age)")
+            XCTAssertEqual(WaitingTimeText.format(age), WaitingTimeText.format(after - 0.5), "\(age)")
+            age = after
+        }
+    }
+
     func testUsesUnitSymbols() {
         XCTAssertEqual(WaitingTimeText.format(0), "0s")
         XCTAssertEqual(WaitingTimeText.format(42), "42s")
@@ -3732,5 +3758,414 @@ final class TabCycleKeysTests: XCTestCase {
         XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .command]))
         XCTAssertNil(TabCycleKeys.action(keyCode: TabCycleKeys.tabKeyCode, flags: [.control, .option]))
         XCTAssertNil(TabCycleKeys.action(keyCode: 36, flags: [.control]), "⌃Return is not ⌃Tab")
+    }
+}
+
+// MARK: - JSONL byte search
+
+final class JSONLinesTests: XCTestCase {
+    private func lines(_ text: String, _ marker: String, stopAfter: Int = .max) -> [String] {
+        var seen: [String] = []
+        JSONLines.newestFirst(in: Data(text.utf8), containing: marker) { line in
+            seen.append(String(decoding: line, as: UTF8.self))
+            return seen.count >= stopAfter
+        }
+        return seen
+    }
+
+    func testVisitsTheMatchingLinesNewestFirst() {
+        let text = "a x\nb\nc x\nd x"
+        XCTAssertEqual(lines(text, "x"), ["d x", "c x", "a x"])
+    }
+
+    func testALineWithSeveralHitsComesOnce() {
+        XCTAssertEqual(lines("x x x\ny\nxx", "x"), ["xx", "x x x"])
+    }
+
+    func testStopsWhenTheBodySaysSo() {
+        XCTAssertEqual(lines("1 k\n2 k\n3 k", "k", stopAfter: 2), ["3 k", "2 k"])
+    }
+
+    func testEdges() {
+        XCTAssertEqual(lines("", "x"), [])
+        XCTAssertEqual(lines("x", "xx"), [])
+        XCTAssertEqual(lines("abc", "abc"), ["abc"])
+        XCTAssertEqual(lines("\n\nabc\n", "abc"), ["abc"])
+        XCTAssertEqual(lines("no hit here", "zz"), [])
+        XCTAssertEqual(lines("a\"usage\"b\nc", "\"usage\""), ["a\"usage\"b"])
+    }
+
+    // The byte search gives the same answers as the old line split, on a sliced `Data`
+    // (non-zero start index) too.
+    func testWorksOnASlice() {
+        let full = Data("junk\nfirst m\nsecond m\n".utf8)
+        let slice = full[5...]
+        var seen: [String] = []
+        JSONLines.newestFirst(in: slice, containing: "m") { seen.append(String(decoding: $0, as: UTF8.self)); return false }
+        XCTAssertEqual(seen, ["second m", "first m"])
+    }
+
+    // A window that starts in the middle of a multi-byte character still finds the title.
+    func testTitleBehindABrokenFirstCharacter() {
+        var data = Data([0xA4, 0x0A]) // the tail of a "ä", then a newline
+        data.append(Data(#"{"type":"ai-title","aiTitle":"Grüße"}"#.utf8))
+        XCTAssertEqual(AgentTitle.latest(inJSONL: data), "Grüße")
+    }
+}
+
+// MARK: - PR sweeps: scope, shared checkouts, decided PRs, tool calls
+
+final class PullRequestSweepTests: XCTestCase {
+    private let a = UUID(), b = UUID(), c = UUID(), d = UUID()
+
+    private func pr(_ status: PullRequest.Status) -> PullRequest {
+        PullRequest(number: 1, status: status, review: nil,
+                    url: URL(string: "https://github.com/o/r/pull/1")!, title: "t")
+    }
+
+    func testTerminalsOfOneCheckoutAndBranchShareOneLookup() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/repo", directory: "/repo", branch: "feat/x"),
+            PullRequests.Terminal(id: b, root: "/repo", directory: "/repo/packages/p", branch: "feat/x"),
+            PullRequests.Terminal(id: c, root: "/repo", directory: "/repo", branch: "feat/y"),
+            PullRequests.Terminal(id: d, root: nil, directory: "/tmp/plain", branch: "feat/x"),
+        ]
+        let checkouts = PullRequests.checkouts(of: terminals, scope: .all, resting: [])
+        XCTAssertEqual(checkouts.count, 3)
+        XCTAssertEqual(checkouts[0].ids, [a, b])
+        XCTAssertEqual(checkouts[1].ids, [c])
+        XCTAssertEqual(checkouts[2].ids, [d])
+    }
+
+    func testTrunkAndFolderlessTerminalsAreNotAskedAbout() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/repo", directory: "/repo", branch: "main"),
+            PullRequests.Terminal(id: b, root: nil, directory: "", branch: "feat/x"),
+        ]
+        XCTAssertTrue(PullRequests.checkouts(of: terminals, scope: .all, resting: []).isEmpty)
+    }
+
+    // A hook in one terminal asks about its checkout only — with every terminal that
+    // shows the same PR, so their pills agree.
+    func testAScopedSweepAsksOnlyAboutTheCheckoutsOfItsTerminals() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/repo", directory: "/repo", branch: "feat/x"),
+            PullRequests.Terminal(id: b, root: "/repo", directory: "/repo/sub", branch: "feat/x"),
+            PullRequests.Terminal(id: c, root: "/other", directory: "/other", branch: "feat/z"),
+        ]
+        let checkouts = PullRequests.checkouts(of: terminals, scope: .sessions([b]), resting: [])
+        XCTAssertEqual(checkouts.map(\.ids), [[a, b]])
+    }
+
+    // The timer leaves a decided PR alone for a while; an eager lookup still asks.
+    func testRestingCheckoutsAreSkippedOnlyByTheRegularPoll() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/repo", directory: "/repo", branch: "feat/x"),
+            PullRequests.Terminal(id: b, root: "/repo", directory: "/repo/sub", branch: "feat/x"),
+        ]
+        XCTAssertTrue(PullRequests.checkouts(of: terminals, scope: .all, resting: [a, b]).isEmpty)
+        XCTAssertEqual(PullRequests.checkouts(of: terminals, scope: .all, resting: [a]).count, 1,
+                       "one terminal of the checkout is not resting")
+        XCTAssertEqual(PullRequests.checkouts(of: terminals, scope: .sessions([a]), resting: [a, b]).count, 1)
+    }
+
+    func testOnlyDecidedPRsCheckedRecentlyRest() {
+        let now = Date()
+        let shown = [a: pr(.merged), b: pr(.closed), c: pr(.open), d: pr(.merged)]
+        let decidedAt = [a: now.addingTimeInterval(-60), b: now.addingTimeInterval(-60),
+                         c: now.addingTimeInterval(-60),
+                         d: now.addingTimeInterval(-PullRequests.decidedRecheck)]
+        XCTAssertEqual(PullRequests.resting(shown: shown, decidedAt: decidedAt, now: now), [a, b])
+        XCTAssertEqual(PullRequests.resting(shown: shown, decidedAt: [:], now: now), [])
+    }
+
+    func testScopesAddUp() {
+        XCTAssertEqual(PullRequests.SweepScope.sessions([a]).adding(.sessions([b])), .sessions([a, b]))
+        // A terminal asked about by name stays named when a sweep of all joins it.
+        XCTAssertEqual(PullRequests.SweepScope.sessions([a]).adding(.all), .allNaming([a]))
+        XCTAssertEqual(PullRequests.SweepScope.all.adding(.sessions([a])), .allNaming([a]))
+        XCTAssertEqual(PullRequests.SweepScope.all.adding(.all), .all)
+        XCTAssertEqual(PullRequests.SweepScope.allNaming([a]).adding(.sessions([b])), .allNaming([a, b]))
+        XCTAssertTrue(PullRequests.SweepScope.all.contains(a))
+        XCTAssertTrue(PullRequests.SweepScope.allNaming([b]).contains(a))
+        XCTAssertFalse(PullRequests.SweepScope.sessions([b]).contains(a))
+    }
+
+    /// `gh pr reopen` during a sweep, then the minute timer: the two wait for one run
+    /// of all terminals, and the one that reopened its PR must still be asked.
+    func testANamedTerminalIsAskedEvenWhileItsDecidedPRRests() {
+        let terminals = [
+            PullRequests.Terminal(id: a, root: "/r", directory: "/r", branch: "feat/x"),
+            PullRequests.Terminal(id: b, root: "/s", directory: "/s", branch: "feat/y"),
+        ]
+        let merged = PullRequests.SweepScope.sessions([a]).adding(.all)
+        let asked = PullRequests.checkouts(of: terminals, scope: merged, resting: [a, b])
+        XCTAssertEqual(asked.map(\.ids), [[a]])
+    }
+
+    func testWhichToolCallsCanChangeABranchOrAPR() {
+        for command in ["git push", "git checkout -b feat/x", "cd app && gh pr create --fill",
+                        "/usr/bin/git switch main", "make && git commit -m x", "(git commit -am x)",
+                        "echo hi; gh pr merge 3"] {
+            XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
+        }
+        for command in ["ls -la", "npm run digit", "cat .github/workflows/x.yml", "pnpm test",
+                        "grep -r ghost .", "legit-tool run", "git-lfs-like",
+                        // A read cannot change a branch or a PR.
+                        "git status", "git diff --stat", "git -C ../app log --oneline -5",
+                        "git --no-pager diff HEAD~1", "cd app && git status && git diff",
+                        "git -c color.ui=never show HEAD"] {
+            XCTAssertFalse(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
+        }
+        for command in ["git status && git push", "git", "git $CMD", "gh pr view 3",
+                        "git -C ../app checkout main", "git branch -m new-name", "git remote set-url origin x",
+                        "git log; git switch -"] {
+            XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: command), command)
+        }
+        XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "Bash", command: nil))
+        XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: nil, command: nil), "no tool name: as before")
+        XCTAssertTrue(PullRequests.toolMayChangeGit(toolName: "shell", command: nil), "another agent's tool")
+        for tool in ["Read", "Edit", "Write", "Grep", "Glob", "WebFetch", "Task", "mcp__github__create_pr"] {
+            XCTAssertFalse(PullRequests.toolMayChangeGit(toolName: tool, command: nil), tool)
+        }
+    }
+
+    func testTheCheckoutRootIsWhereTheGitFolderIs() throws {
+        let base = FileManager.default.temporaryDirectory
+            .appendingPathComponent("planchette-root-\(UUID().uuidString)")
+        let deep = base.appendingPathComponent("packages/app/src")
+        try FileManager.default.createDirectory(at: deep, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: base.appendingPathComponent(".git"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let root = try XCTUnwrap(Titles.checkoutRoot(forDirectory: deep.path))
+        XCTAssertEqual(URL(fileURLWithPath: root).resolvingSymlinksInPath().path,
+                       base.resolvingSymlinksInPath().path)
+        XCTAssertNil(Titles.checkoutRoot(forDirectory: "/"))
+    }
+}
+
+// MARK: - Scrollback tail
+
+final class UTF8TailTests: XCTestCase {
+    private func tail(_ text: String, _ maxBytes: Int) -> String {
+        let bytes = Array(text.utf8)
+        return bytes.withUnsafeBytes {
+            GhosttySurfaceNSView.utf8Tail($0.baseAddress!, count: bytes.count, maxBytes: maxBytes)
+        }
+    }
+
+    func testKeepsTheEnd() {
+        XCTAssertEqual(tail("hello world", 5), "world")
+        XCTAssertEqual(tail("short", 100), "short")
+        XCTAssertEqual(tail("abc", 0), "")
+    }
+
+    // A cut inside a character starts at the next whole one, never with a broken byte.
+    func testNeverStartsInsideACharacter() {
+        XCTAssertEqual(tail("aäb", 2), "b")        // "ä" is two bytes: cut in its middle
+        XCTAssertEqual(tail("aäb", 3), "äb")
+        XCTAssertEqual(tail("x🙂y", 4), "y")       // a four-byte emoji, cut in its middle
+        XCTAssertEqual(tail("x🙂y", 5), "🙂y")
+    }
+}
+
+// MARK: - Cache timer schedule
+
+final class CacheScheduleTests: XCTestCase {
+    private func entries(start: Date, expiresAt: Date) -> [TimeInterval] {
+        Array(CacheSchedule(expiresAt: expiresAt).entries(from: start, mode: .normal))
+            .map { $0.timeIntervalSince(start) }
+    }
+
+    // The label changes where the minutes left drop, at the expiry, and never after.
+    func testEntriesFallOnTheMinutesBeforeTheExpiryAndEnd() {
+        let start = Date(timeIntervalSinceReferenceDate: 10_000)
+        XCTAssertEqual(entries(start: start, expiresAt: start.addingTimeInterval(150)), [0, 30, 90, 150])
+        XCTAssertEqual(entries(start: start, expiresAt: start.addingTimeInterval(120)), [0, 60, 120])
+        XCTAssertEqual(entries(start: start, expiresAt: start.addingTimeInterval(-5)), [0], "expired: one entry")
+    }
+
+    // The orange (five minutes left) starts on an entry, not up to a minute late.
+    func testTheWarningStartsOnAnEntry() {
+        let start = Date(timeIntervalSinceReferenceDate: 10_000)
+        let expiry = start.addingTimeInterval(3600)
+        let offsets = entries(start: start, expiresAt: expiry)
+        XCTAssertTrue(offsets.contains(3600 - CacheTimer.warnRemaining))
+        XCTAssertEqual(offsets.count, 61)
+    }
+}
+
+// MARK: - Listening sockets from the kernel
+
+final class ListeningSocketsTests: XCTestCase {
+    // A socket this test listens on is in the list, with this process's pid and port;
+    // after it closes, it is not.
+    func testFindsASocketThisProcessListensOn() throws {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        try XCTSkipIf(fd < 0, "no socket")
+        var open = true
+        defer { if open { close(fd) } }
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        addr.sin_port = 0
+        let bound = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        try XCTSkipIf(bound != 0 || Darwin.listen(fd, 1) != 0, "cannot listen on 127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        _ = withUnsafeMutablePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
+        }
+        let port = Int(UInt16(bigEndian: addr.sin_port))
+
+        let listeners = try XCTUnwrap(DevServerScanner.listeningSockets())
+        let mine = listeners.filter { $0.pid == Int(getpid()) && $0.port == port }
+        XCTAssertEqual(mine.count, 1, "listed once")
+        XCTAssertFalse(mine.first?.command.isEmpty ?? true, "with the process's name")
+
+        close(fd)
+        open = false
+        let after = try XCTUnwrap(DevServerScanner.listeningSockets())
+        XCTAssertFalse(after.contains { $0.pid == Int(getpid()) && $0.port == port })
+    }
+}
+
+// MARK: - Child command lines from the kernel
+
+final class ChildArgumentsTests: XCTestCase {
+    // The command lines of a process's children, read through libproc, say what `ps` says.
+    func testTheKernelReadsWhatPsPrints() throws {
+        let shell = Process()
+        shell.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // Two children of the shell, so the join is checked too.
+        shell.arguments = ["-c", "/bin/sleep 3000 & /bin/sleep 3001 & wait"]
+        try shell.run()
+        defer {
+            // The children first: they are not the test runner's to clean up.
+            _ = Subprocess.run("/usr/bin/pkill", ["-P", String(shell.processIdentifier)], timeout: 5)
+            shell.terminate()
+        }
+        let parent = shell.processIdentifier
+        // Wait (by progress) until both children have run `exec`: between fork and exec a
+        // child still shows the shell's command line. The deadline only ends a broken run;
+        // a slow machine (endpoint security) may take long to get there.
+        let expected = "/bin/sleep 3000 | /bin/sleep 3001"
+        var kernel: String?
+        let deadline = Date().addingTimeInterval(300)
+        while Date() < deadline {
+            kernel = Durable.kernelChildArguments(of: [parent])?[parent]
+            if kernel == expected { break }
+            usleep(50_000)
+        }
+        XCTAssertEqual(kernel, expected)
+        let ps = try XCTUnwrap(Subprocess.run("/bin/ps", ["-axo", "pid=,ppid=,args="], timeout: 30))
+        XCTAssertEqual(Durable.parseChildArguments(ps.stdoutString, parents: [parent])[parent], kernel)
+    }
+}
+
+
+// MARK: - Small helpers of the performance pass
+
+final class PerformanceHelperTests: XCTestCase {
+    private func tempDir() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("plt-perf-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
+    func testTheSystemLanguageIsTheFirstSupportedOne() {
+        XCTAssertEqual(AppLanguage.match(preferred: ["xx", "fr-CA", "de"]), .fr)
+        XCTAssertEqual(AppLanguage.match(preferred: ["de-DE"]), .de)
+        XCTAssertEqual(AppLanguage.match(preferred: ["xx-YY"]), .en)
+        XCTAssertEqual(AppLanguage.match(preferred: []), .en)
+        XCTAssertEqual(AppLanguage.match(preferred: ["system"]), .en, "never resolves to .system")
+    }
+
+    // The summary skip and the sweep both trust the stamp to change when a line is added.
+    func testATranscriptStampChangesWhenTheFileGrows() throws {
+        let file = try tempDir().appendingPathComponent("t.jsonl")
+        XCTAssertNil(TranscriptStamp.of(path: file.path), "no file, no stamp")
+        try Data("{}\n".utf8).write(to: file)
+        let first = try XCTUnwrap(TranscriptStamp.of(path: file.path))
+        XCTAssertEqual(TranscriptStamp.of(path: file.path), first, "unchanged file, same stamp")
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data("{\"a\":1}\n".utf8))
+        try handle.close()
+        XCTAssertNotEqual(TranscriptStamp.of(path: file.path), first)
+    }
+
+    // An IDE state file is parsed again only when its modification date changes.
+    func testAnIDEStateFileIsParsedOnlyWhenItChanges() throws {
+        let file = try tempDir().appendingPathComponent("storage.json")
+        try Data("one".utf8).write(to: file)
+        var parses = 0
+        let parse: (URL) -> Set<String>? = { url in
+            parses += 1
+            return [String(decoding: (try? Data(contentsOf: url)) ?? Data(), as: UTF8.self)]
+        }
+        XCTAssertEqual(IDEs.parsedOnChange(file, parse: parse), ["one"])
+        XCTAssertEqual(IDEs.parsedOnChange(file, parse: parse), ["one"])
+        XCTAssertEqual(parses, 1, "the second read came from the cache")
+        try Data("two".utf8).write(to: file)
+        try FileManager.default.setAttributes(
+            [.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: file.path)
+        XCTAssertEqual(IDEs.parsedOnChange(file, parse: parse), ["two"])
+        XCTAssertEqual(parses, 2)
+        XCTAssertEqual(IDEs.parsedOnChange(file.appendingPathExtension("gone"), parse: parse), [])
+    }
+
+    // The default sidebar reads transcripts (for the conversation title) but draws no
+    // usage, so the usage is not published.
+    func testTheDefaultSidebarReadsTranscriptsButShowsNoUsage() {
+        let details = SidebarDetails()
+        XCTAssertFalse(details.showsTranscriptUsage)
+        var withRing = details
+        withRing.set(.contextUsage, true)
+        XCTAssertTrue(withRing.showsTranscriptUsage)
+        XCTAssertTrue(withRing.readsTranscripts)
+    }
+
+    // A tail window that starts inside a multi-byte character still yields the prompt and
+    // the answer (the strict decoder returned nil for the whole tail).
+    func testTheSummaryTailSurvivesACutInsideACharacter() throws {
+        let file = try tempDir().appendingPathComponent("t.jsonl")
+        var data = Data()
+        // Padding of umlauts, so the 96 KB window starts inside one ("ä" is two bytes).
+        let filler = String(repeating: "ä", count: 60_000)
+        data.append(Data(#"{"type":"user","message":{"content":"\#(filler)"}}"#.utf8))
+        data.append(0x0A)
+        data.append(Data(#"{"type":"user","message":{"content":"Grüße an das Team"}}"#.utf8))
+        data.append(0x0A)
+        data.append(Data(#"{"type":"assistant","message":{"content":[{"type":"text","text":"Schön, erledigt"}]}}"#.utf8))
+        data.append(0x0A)
+        // Make the window start on the second byte of an "ä": one byte more at the end
+        // moves the start by one, and the filler stays where it is.
+        let window = 96 * 1024
+        let fillerStart = Data(#"{"type":"user","message":{"content":""#.utf8).count
+        if (data.count - window - fillerStart) % 2 == 0 { data.append(0x20) }
+        let start = data.count - window
+        XCTAssertGreaterThan(start, fillerStart)
+        XCTAssertEqual(data[start] & 0xC0, 0x80, "the window starts inside a character")
+        try data.write(to: file)
+        let tail = TranscriptReader.tail(path: file.path)
+        XCTAssertEqual(tail.lastUserPrompt, "Grüße an das Team")
+        XCTAssertEqual(tail.lastAssistantText, "Schön, erledigt")
+    }
+
+    // Rules that read different numbers of lines see different regions, also with the
+    // haystack built once per number of lines.
+    func testRulesWithDifferentTailsSeeTheirOwnRegion() {
+        let short = ScreenRule(id: "short", state: .blocked, priority: 2, tailLines: 1, contains: ["marker"])
+        let long = ScreenRule(id: "long", state: .working, priority: 1, tailLines: 3, contains: ["marker"])
+        let lines = ["marker up here", "something", "last line"]
+        XCTAssertEqual(ScreenDetector.detect(lines: lines, rules: [short, long])?.ruleID, "long",
+                       "the marker is outside the short rule's one line")
+        let sameTail = ScreenRule(id: "same", state: .idle, priority: 3, tailLines: 1, contains: ["last"])
+        XCTAssertEqual(ScreenDetector.detect(lines: lines, rules: [short, long, sameTail])?.ruleID, "same")
     }
 }

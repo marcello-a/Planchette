@@ -565,8 +565,10 @@ extension AppState {
                     }
                 }
             case .findings:
-                if reviewFindings[url] == nil {
-                    reviewFindings[url] = ReviewFindings.load(from: directory)
+                // Written only when the file reads: a missing or broken `findings.json`
+                // wrote nil into the `@Published` table every 2 s, which redrew the window.
+                if reviewFindings[url] == nil, let loaded = ReviewFindings.load(from: directory) {
+                    reviewFindings[url] = loaded
                 }
                 guard record.sending, let sent = ReviewSent.load(from: directory) else { continue }
                 let reviewed = reviewFindings[url]?.pr.headSha ?? record.pr.headSha

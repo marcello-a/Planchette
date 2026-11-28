@@ -96,6 +96,26 @@ struct ModelLabel: View {
     }
 }
 
+/// When `CacheTimer`'s label changes, and only then: each whole minute before the
+/// expiry (the count of minutes left drops there, and the orange starts at one of
+/// them), the expiry itself ("cleared"), then nothing. A periodic 15 s schedule woke
+/// every timer four times a minute, for ever, and restarted on every redraw.
+struct CacheSchedule: TimelineSchedule {
+    let expiresAt: Date
+
+    func entries(from start: Date, mode: TimelineScheduleMode) -> AnyIterator<Date> {
+        var dates = [start]
+        let left = expiresAt.timeIntervalSince(start)
+        if left > 0 {
+            for minutes in stride(from: Int((left / 60).rounded(.up)) - 1, through: 0, by: -1) {
+                let date = expiresAt.addingTimeInterval(-Double(minutes) * 60)
+                if date > start { dates.append(date) }
+            }
+        }
+        return AnyIterator(dates.makeIterator())
+    }
+}
+
 /// How long a Claude session's prompt cache has left: minutes until it clears,
 /// orange in the last five, and "cleared" once it is gone — the next prompt
 /// then pays to write the whole context again. The exact time is on hover.
@@ -104,7 +124,7 @@ struct CacheTimer: View {
     static let warnRemaining: TimeInterval = 5 * 60
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 15)) { context in
+        TimelineView(CacheSchedule(expiresAt: expiresAt)) { context in
             label(remaining: expiresAt.timeIntervalSince(context.date))
         }
     }

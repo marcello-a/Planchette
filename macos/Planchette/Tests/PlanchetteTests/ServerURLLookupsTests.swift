@@ -33,6 +33,20 @@ final class ServerURLLookupsTests: XCTestCase {
                        "one search a minute, not one a tick")
     }
 
+    // A port that never prints an address waits longer after every miss, up to a cap.
+    func testTheRetryWaitDoublesUpToACap() {
+        XCTAssertEqual(ServerURLLookups.retryDelay(afterTries: ServerURLLookups.maxTries), 60)
+        XCTAssertEqual(ServerURLLookups.retryDelay(afterTries: ServerURLLookups.maxTries + 1), 120)
+        XCTAssertEqual(ServerURLLookups.retryDelay(afterTries: ServerURLLookups.maxTries + 2), 240)
+        XCTAssertEqual(ServerURLLookups.retryDelay(afterTries: 500), ServerURLLookups.maxRetryInterval)
+
+        var lookups = ServerURLLookups()
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        for _ in 0...ServerURLLookups.maxTries { lookups.recordTry(3000, now: start) }
+        XCTAssertFalse(lookups.isDue(3000, now: start.addingTimeInterval(119)))
+        XCTAssertTrue(lookups.isDue(3000, now: start.addingTimeInterval(120)))
+    }
+
     func testTriesAreCountedPerPort() {
         var lookups = ServerURLLookups()
         for _ in 1...ServerURLLookups.maxTries { lookups.recordTry(3306) }

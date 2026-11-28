@@ -151,7 +151,7 @@ extension MergedRowFacts {
     /// A terminal as the sidebar knows it.
     @MainActor
     init(group: SessionGroup, session: TerminalSession, state appState: AppState) {
-        let ownName = session.rowName.flatMap {
+        let ownName = appState.rowName(of: session).flatMap {
             $0.localizedCaseInsensitiveCompare(group.name) == .orderedSame ? nil : $0
         }
         self.init(

@@ -284,8 +284,13 @@ struct SidebarDetails: Codable, Equatable {
     /// Whether anything on a row is read out of a transcript — the sweep runs
     /// only for what is actually shown (see `AppState.refreshContextUsage`).
     var readsTranscripts: Bool {
+        showsTranscriptUsage || (shows(.task) && promptSource == .agentTitle)
+    }
+
+    /// Whether a row draws the context usage of a transcript: the model, the ring or
+    /// the cache timer.
+    var showsTranscriptUsage: Bool {
         shows(.model) || shows(.contextUsage) || shows(.cacheTimer)
-            || (shows(.task) && promptSource == .agentTitle)
     }
 }
 
