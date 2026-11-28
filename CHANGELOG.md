@@ -19,6 +19,12 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   terminal engine, so each one blinked its cursor in the background, and the terminal in front
   kept redrawing at the display's refresh rate while another app was active. Only the terminal
   that has the keyboard, in the window in front, is focused now — as in Ghostty itself.
+- **Terminals out of sight cost far less CPU and graphics memory.** A terminal in a background
+  tab, on another Space or behind another window was not drawn, but the terminal engine still
+  prepared every frame of it while its program printed: with many agents at work, about half of
+  Planchette's CPU. It now prepares the frame once, when the terminal comes into view. A hidden
+  terminal also gives back its screen-sized render buffers, which held several hundred MB of
+  graphics memory with many terminals open.
 - **Pull request pills ask GitHub far less.** Any tool call of any agent started a `gh` lookup for
   every checkout, every 15 seconds. Now a finished turn or command looks up only its own terminal,
   a tool call only when it is a shell command with `git` or `gh`, terminals in one repository and

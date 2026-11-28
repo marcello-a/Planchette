@@ -1,0 +1,267 @@
+diff --git a/src/renderer/Thread.zig b/src/renderer/Thread.zig
+index 508721379..3728c33bb 100644
+--- a/src/renderer/Thread.zig
++++ b/src/renderer/Thread.zig
+@@ -19,6 +19,11 @@ const log = std.log.scoped(.renderer_thread);
+ const DRAW_INTERVAL = 8; // 120 FPS
+ const CURSOR_BLINK_INTERVAL = 600;
+ 
++/// Planchette: how long a view stays hidden before it gives back its render
++/// targets. A tab switch or a view re-attached by its host hides and shows
++/// within one frame; freeing and re-growing the targets then is pure churn.
++const RELEASE_TARGETS_DELAY = 5 * std.time.ms_per_s;
++
+ /// Whether calls to `drawFrame` must be done from the app thread.
+ ///
+ /// If this is `true` then we send a `redraw_surface` message to the apprt
+@@ -109,6 +114,12 @@ flags: packed struct {
+     focused: bool = true,
+ } = .{},
+ 
++/// Planchette: gives a hidden view's render targets back once it has been
++/// hidden for RELEASE_TARGETS_DELAY (see the .visible message).
++release_h: xev.Timer,
++release_c: xev.Completion = .{},
++hidden_since: ?std.time.Instant = null,
++
+ pub const DerivedConfig = struct {
+     custom_shader_animation: configpkg.CustomShaderAnimation,
+ 
+@@ -158,6 +169,10 @@ pub fn init(
+     var cursor_timer = try xev.Timer.init();
+     errdefer cursor_timer.deinit();
+ 
++    // Planchette: the timer that releases a hidden view's render targets.
++    var release_h = try xev.Timer.init();
++    errdefer release_h.deinit();
++
+     // The mailbox for messaging this thread
+     var mailbox = try Mailbox.create(alloc);
+     errdefer mailbox.destroy(alloc);
+@@ -172,6 +187,7 @@ pub fn init(
+         .draw_h = draw_h,
+         .draw_now = draw_now,
+         .cursor_h = cursor_timer,
++        .release_h = release_h,
+         .surface = surface,
+         .renderer = renderer_impl,
+         .state = state,
+@@ -189,6 +205,7 @@ pub fn deinit(self: *Thread) void {
+     self.draw_h.deinit();
+     self.draw_now.deinit();
+     self.cursor_h.deinit();
++    self.release_h.deinit();
+     self.loop.deinit();
+ 
+     // Nothing can possibly access the mailbox anymore, destroy it.
+@@ -361,9 +378,26 @@ fn drainMailbox(self: *Thread) !void {
+                 self.setQosClass();
+ 
+                 // If we became visible then we immediately trigger a draw.
+-                // We don't need to update frame data because that should
+-                // still be happening.
+-                if (v) self.drawFrame(false);
++                // Planchette: unless the frame data went stale while hidden
++                // (renderCallback): a drain of the mailbox is always followed
++                // by renderCallback, which updates and draws.
++                if (v and !self.renderer.frameStale()) self.drawFrame(false);
++
++                // Planchette: a view hidden for RELEASE_TARGETS_DELAY gives
++                // back its render targets (releaseTargetsCallback).
++                if (v) {
++                    self.hidden_since = null;
++                } else {
++                    self.hidden_since = std.time.Instant.now() catch null;
++                    if (self.release_c.state() != .active) self.release_h.run(
++                        &self.loop,
++                        &self.release_c,
++                        RELEASE_TARGETS_DELAY,
++                        Thread,
++                        self,
++                        releaseTargetsCallback,
++                    );
++                }
+ 
+                 // Notify the renderer so it can update any state.
+                 self.renderer.setVisible(v);
+@@ -606,6 +640,16 @@ fn renderCallback(
+         return .disarm;
+     };
+ 
++    // Planchette: a view that is not visible is not drawn (drawFrame), so
++    // building its frame data on every wakeup is wasted work — with many
++    // hidden terminals whose programs keep printing, most of the app's CPU.
++    // The terminal keeps its dirty state; the frame is updated by the first
++    // render after the view becomes visible again. Until then the renderer
++    // draws nothing (frameStale), not even from the layer's display
++    // callback. A view that never had a frame gets one, so its first draw
++    // has real data.
++    if (!t.flags.visible and t.renderer.markFrameStale()) return .disarm;
++
+     // Update our frame data
+     t.renderer.updateFrame(
+         t.state,
+@@ -619,6 +663,37 @@ fn renderCallback(
+     return .disarm;
+ }
+ 
++/// Planchette: see RELEASE_TARGETS_DELAY.
++fn releaseTargetsCallback(
++    self_: ?*Thread,
++    _: *xev.Loop,
++    _: *xev.Completion,
++    r: xev.Timer.RunError!void,
++) xev.CallbackAction {
++    _ = r catch return .disarm;
++    const t = self_ orelse return .disarm;
++    if (t.flags.visible) return .disarm;
++    const since = t.hidden_since orelse return .disarm;
++    const now = std.time.Instant.now() catch return .disarm;
++
++    // Shown and hidden again since the timer started: wait out the rest.
++    const elapsed_ms = now.since(since) / std.time.ns_per_ms;
++    if (elapsed_ms < RELEASE_TARGETS_DELAY) {
++        t.release_h.run(
++            &t.loop,
++            &t.release_c,
++            RELEASE_TARGETS_DELAY - elapsed_ms,
++            Thread,
++            t,
++            releaseTargetsCallback,
++        );
++        return .disarm;
++    }
++
++    t.renderer.releaseTargets();
++    return .disarm;
++}
++
+ fn cursorTimerCallback(
+     self_: ?*Thread,
+     _: *xev.Loop,
+diff --git a/src/renderer/generic.zig b/src/renderer/generic.zig
+index ff632f64a..572ba30fb 100644
+--- a/src/renderer/generic.zig
++++ b/src/renderer/generic.zig
+@@ -152,6 +152,18 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+         /// cells for the draw call.
+         cells_rebuilt: bool = false,
+ 
++        /// Planchette: set when releaseTargets gave back the render targets
++        /// of a hidden view; the next draw is a full one.
++        targets_released: bool = false,
++
++        /// Planchette: the frame data (cells, uniforms) was built at least
++        /// once, and whether a render was skipped since, while the view was
++        /// hidden (renderer Thread.renderCallback). A stale frame is not
++        /// drawn: the layer keeps showing what it showed. Guarded by
++        /// draw_mutex.
++        frame_built: bool = false,
++        frame_stale: bool = false,
++
+         /// The current GPU uniform values.
+         uniforms: shaderpkg.Uniforms,
+ 
+@@ -1064,6 +1076,62 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             }
+         }
+ 
++        /// Planchette: a render was skipped while the view was hidden. Returns
++        /// false, and marks nothing, when no frame was ever built: the caller
++        /// then builds one, so a first draw never shows uninitialized data.
++        ///
++        /// Must be called on the render thread.
++        pub fn markFrameStale(self: *Self) bool {
++            self.draw_mutex.lock();
++            defer self.draw_mutex.unlock();
++            if (!self.frame_built) return false;
++            self.frame_stale = true;
++            return true;
++        }
++
++        /// Planchette: whether the frame data is out of date (markFrameStale).
++        ///
++        /// Must be called on the render thread.
++        pub fn frameStale(self: *Self) bool {
++            self.draw_mutex.lock();
++            defer self.draw_mutex.unlock();
++            return self.frame_stale;
++        }
++
++        /// Planchette: a view hidden for a while gives back its render targets
++        /// (and custom shader textures): one screen-sized texture per frame of
++        /// the swap chain, which a host with many hidden terminals holds for
++        /// nothing. Each is shrunk to 1x1; drawFrame sizes a frame's target
++        /// again before it draws into it, and targets_released makes the first
++        /// draw after this a full one rather than a re-present. Waits for the
++        /// frames the GPU still draws, as SwapChain.deinit does, so no target
++        /// in flight is freed.
++        ///
++        /// Must be called on the render thread.
++        pub fn releaseTargets(self: *Self) void {
++            // Not for an API that re-presents its last target (OpenGL keeps
++            // last_target for presentLastTarget): that one must stay alive.
++            // Metal's layer holds the presented IOSurface on its own.
++            if (comptime @hasField(GraphicsAPI, "last_target")) return;
++
++            self.draw_mutex.lock();
++            defer self.draw_mutex.unlock();
++
++            const chain = &self.swap_chain;
++            if (chain.defunct) return;
++            for (0..chain.frames.len) |_| chain.frame_sema.wait();
++            defer for (0..chain.frames.len) |_| chain.frame_sema.post();
++
++            for (&chain.frames) |*frame| {
++                if (frame.target.width <= 1 and frame.target.height <= 1) continue;
++                frame.resize(self.api, 1, 1) catch |err| {
++                    log.warn("error releasing render target err={}", .{err});
++                    continue;
++                };
++                self.targets_released = true;
++            }
++        }
++
+         /// Set the new font grid.
+         ///
+         /// Must be called on the render thread.
+@@ -1377,6 +1445,10 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                     log.warn("error rebuilding GPU cells err={}", .{err});
+                 };
+ 
++                // Planchette: the frame data is current (markFrameStale).
++                self.frame_built = true;
++                self.frame_stale = false;
++
+                 // The scrollbar is only emitted during draws so we also
+                 // check the scrollbar cache here and update if needed.
+                 // This is pretty fast.
+@@ -1446,6 +1518,12 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             self.draw_mutex.lock();
+             defer self.draw_mutex.unlock();
+ 
++            // Planchette: frame data that went stale while the view was
++            // hidden is not drawn, from the render thread or from the layer's
++            // display callback; the first render after the view is visible
++            // again updates it, then draws.
++            if (self.frame_stale) return;
++
+             // After the graphics API is complete (so we defer) we want to
+             // update our scrollbar state.
+             defer if (self.scrollbar_dirty) {
+@@ -1476,6 +1554,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+             // don't need to since the previous frame should be identical.
+             const needs_redraw =
+                 size_changed or
++                self.targets_released or
+                 self.cells_rebuilt or
+                 self.hasAnimations() or
+                 sync;
+@@ -1488,6 +1567,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
+                 return;
+             }
+             self.cells_rebuilt = false;
++            self.targets_released = false;
+ 
+             // Wait for a frame to be available.
+             const frame = try self.swap_chain.nextFrame();

@@ -22,7 +22,11 @@ groups terminals by project. See [README.md](README.md) and
    user explicitly approves a dependency.
 2. **libghostty is pinned.** `vendor/ghostty` is a submodule fixed to a tag
    (currently v1.3.1). Its embedding API is not stable across versions — do not
-   bump it casually; a bump is its own reviewed change.
+   bump it casually; a bump is its own reviewed change. Our changes to it are
+   patches in `vendor/patches/ghostty`, applied before every build by
+   `scripts/apply-ghostty-patches.sh` (CI, CONTRIBUTING); each patch is its own
+   reviewed change too, and a bump must carry every patch forward or drop it on
+   purpose (`scripts/test-ghostty-patches.sh` fails when one no longer fits).
 3. **Everything user-facing is localized.** Never hardcode a display string.
    Add an `LKey` case and a value in **all** language tables in
    `Localization.swift` (EN is the required fallback — a test enforces it).
