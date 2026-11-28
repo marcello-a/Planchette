@@ -234,7 +234,8 @@ class Case:
 
     def __init__(self, name, *, apps=None, stdin=b"{}", args=(b"claude",), session=None,
                  setup=None, expected=None, min_seconds=None, max_seconds=None,
-                 script_slow=False, script_hangs=None, helper_only=False, close_stdin=False, preload=None):
+                 script_slow=False, script_hangs=None, helper_only=False, close_stdin=False, preload=None,
+                 script_alternative=None):
         self.name = name
         self.apps = apps or {}
         self.stdin = stdin
@@ -250,6 +251,9 @@ class Case:
         self.helper_only = helper_only
         self.close_stdin = close_stdin
         self.preload = preload
+        # What the script may deliver instead of `expected` where `nc` races the app: the
+        # helper must still deliver `expected`, and the two are not compared then.
+        self.script_alternative = script_alternative
 
 
 class Context:
@@ -433,11 +437,14 @@ def build_cases():
         # names the same socket and is not tried a second time.
         Case("pointer equal to a socket that failed is not retried", apps={"app": "close_now"}, stdin=mb,
              setup=pointer_same_as_failed, expected=lambda ctx: {"app": [b""]}),
+        # The script goes on to the pointer only when `nc` dies of SIGPIPE before the app's
+        # close reaches it — a race (seen on CI under Rosetta). The helper always does.
         Case("app closes after part of a big event: pointer", apps={"app": "read_some", "live": "read"},
              stdin=mb,
              setup=lambda ctx: (ctx.pointer(ctx.apps["live"].path.encode() + b"\n"),
                                 env_with(ctx, ctx.apps["app"].path))[1],
-             expected=lambda ctx: {"app": [ctx.event()[:100]], "live": [ctx.event()]}),
+             expected=lambda ctx: {"app": [ctx.event()[:100]], "live": [ctx.event()]},
+             script_alternative=lambda ctx: {"app": [ctx.event()[:100]], "live": []}),
         Case("app closes after part of a small event: delivered", apps={"app": "read_some", "live": "read"},
              stdin=event_json("Stop", padding='"' + "p" * 300 + '"'),
              setup=lambda ctx: (ctx.pointer(ctx.apps["live"].path.encode() + b"\n"),
@@ -629,8 +636,14 @@ def check_case(case, script, helper, tools, together=False):
     model = Context(case, None)
     model.apps = {name: None for name in case.apps}
     expected = case.expected(model) if case.expected else {}
+    alternative = case.script_alternative(model) if case.script_alternative else None
+    script_took_alternative = (
+        alternative is not None and "script" in checked
+        and all(checked["script"].received.get(name, []) == alternative.get(name, []) for name in case.apps))
     for label, run in checked.items():
         for name in case.apps:
+            if label == "script" and script_took_alternative:
+                break
             want = expected.get(name, [])
             got = run.received.get(name, [])
             if got != want:
@@ -661,7 +674,7 @@ def check_case(case, script, helper, tools, together=False):
                         f"({case.min_seconds:.1f}s) — nc waits for the app to close")
     if "script" in checked:
         s, h = runs["script"], runs["helper"]
-        if s.received != h.received:
+        if s.received != h.received and not script_took_alternative:
             failures.append("script and helper delivered different bytes:\n"
                             f"        script: { {k: [show(x) for x in v] for k, v in s.received.items()} }\n"
                             f"        helper: { {k: [show(x) for x in v] for k, v in h.received.items()} }")
