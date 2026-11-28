@@ -30,6 +30,9 @@ jobs:
       - uses: ./.github/actions/ghosttykit
 
       - name: Test
+        # The notepad's random edit walks run with two seeds each on a pull request.
+        env:
+          NOTEPAD_DEEP: "2"
         run: cd macos/Planchette && swift test
 
       - name: Test the release rules

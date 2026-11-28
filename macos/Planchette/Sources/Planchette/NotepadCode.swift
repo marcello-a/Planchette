@@ -89,9 +89,17 @@ enum NotepadCode {
     /// The first stretch of code in `range` (a prompt): lines of code, with blank lines between
     /// them but no line of words, outside any fence. Nil when there is none.
     static func suggestion(within range: NSRange, of text: String) -> Suggestion? {
+        let fenced = fencedLineStarts(in: text as NSString)
+        return suggestion(within: range, of: text, isFenced: fenced.contains)
+    }
+
+    /// The same, where `isFenced` says whether the line starting at a location is a fence or inside
+    /// a block — the pad answers that from its fence lines (`NotepadStyle.isFenced`), without
+    /// looking for the blocks of the whole text on every key.
+    static func suggestion(within range: NSRange, of text: String, isFenced: (Int) -> Bool) -> Suggestion? {
         let ns = text as NSString
         guard NSMaxRange(range) <= ns.length else { return nil }
-        let fenced = fencedLineStarts(in: ns)
+        let fenced = isFenced
         var run: [NSRange] = []
         var codeLines = 0
         func finish() -> Suggestion? {
@@ -105,7 +113,7 @@ enum NotepadCode {
         while location < NSMaxRange(range) {
             let line = contentRange(of: ns.lineRange(for: NSRange(location: location, length: 0)), in: ns)
             location = NSMaxRange(ns.lineRange(for: NSRange(location: location, length: 0)))
-            let lineKind: LineKind = fenced.contains(line.location) ? .prose : kind(of: ns.substring(with: line))
+            let lineKind: LineKind = fenced(line.location) ? .prose : kind(of: ns.substring(with: line))
             switch lineKind {
             case .code:
                 run.append(line); codeLines += 1
@@ -285,6 +293,25 @@ enum NotepadCode {
     private static func usesHashComments(_ language: String?) -> Bool {
         let name = language.map { aliases[$0] ?? $0 }
         return ["python", "bash", "ruby", "yaml", "yml", "toml"].contains(name ?? "")
+    }
+
+    /// What of a block's language its colours depend on. Two languages of one class colour every
+    /// line alike — `s`, `sw`, `swi` are all "no language known" — so a fence's name typed letter by
+    /// letter changes the colours below it only when the class changes (`NotepadStyler`).
+    struct TokenClass: Equatable {
+        /// The language whose keywords count; nil for those of the common ones together.
+        let keywords: String?
+        let hashComments: Bool
+        let sql: Bool
+        /// The fence names a language at all: without one, `#` at the start of a line is a comment.
+        let named: Bool
+    }
+
+    /// Everything `tokens(in:language:)` reads of `language`.
+    static func tokenClass(of language: String?) -> TokenClass {
+        let name = language.map { aliases[$0] ?? $0 }
+        return TokenClass(keywords: name.flatMap { keywords[$0] == nil ? nil : $0 },
+                          hashComments: usesHashComments(language), sql: name == "sql", named: language != nil)
     }
 
     private static let word = try! NSRegularExpression(pattern: "[A-Za-z_][A-Za-z0-9_]*")

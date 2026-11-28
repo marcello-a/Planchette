@@ -137,18 +137,23 @@ enum NotepadPrompts {
     }
 
     private static func lines(in text: NSString) -> [Line] {
+        lines(in: text, range: NSRange(location: 0, length: text.length), inFence: false)
+    }
+
+    /// The whole lines of `range`; `inFence` says whether the first one is inside a fenced block.
+    private static func lines(in text: NSString, range: NSRange, inFence startsInFence: Bool) -> [Line] {
         var result: [Line] = []
-        var start = 0, index = 0
+        let limit = NSMaxRange(range)
+        var start = range.location, index = range.location
         func add(end: Int, breakLength: Int) {
             let content = NSRange(location: start, length: end - start)
-            let blank = text.substring(with: content).trimmingCharacters(in: .whitespaces).isEmpty
             result.append(Line(full: NSRange(location: start, length: end + breakLength - start),
-                               content: content, isBlank: blank))
+                               content: content, isBlank: NotepadStyle.isBlank(content, in: text)))
         }
-        while index < text.length {
+        while index < limit {
             if isBreak(text.character(at: index)) {
                 // "\r\n" is one break.
-                let length = text.character(at: index) == 0x0D && index + 1 < text.length
+                let length = text.character(at: index) == 0x0D && index + 1 < limit
                     && text.character(at: index + 1) == 0x0A ? 2 : 1
                 add(end: index, breakLength: length)
                 start = index + length
@@ -157,11 +162,10 @@ enum NotepadPrompts {
                 index += 1
             }
         }
-        if start < text.length { add(end: text.length, breakLength: 0) }
-        var open = false
+        if start < limit { add(end: limit, breakLength: 0) }
+        var open = startsInFence
         for index in result.indices {
-            let content = text.substring(with: result[index].content).trimmingCharacters(in: .whitespaces)
-            if content.hasPrefix("```") {
+            if isFence(result[index].content, in: text) {
                 open.toggle()
                 result[index].inFence = true
             } else {
@@ -171,13 +175,38 @@ enum NotepadPrompts {
         return result
     }
 
+    /// The line, without the spaces around it, starts with three backticks. Only a line whose first
+    /// character can be a backtick — U+0060, or U+1FEF, which Swift counts as one — is made into a
+    /// string to ask: a prompt of thousands of lines is cut on every key it is typed in.
+    private static func isFence(_ content: NSRange, in text: NSString) -> Bool {
+        var index = content.location
+        while index < NSMaxRange(content) {
+            let unit = text.character(at: index)
+            if let scalar = Unicode.Scalar(unit), CharacterSet.whitespaces.contains(scalar) {
+                index += 1
+                continue
+            }
+            guard unit == 0x60 || unit == 0x1FEF else { return false }
+            return text.substring(with: content).trimmingCharacters(in: .whitespaces).hasPrefix("```")
+        }
+        return false
+    }
+
     /// Every prompt, top to bottom. A prompt is the lines from one that holds text to the last one
     /// before `returns` Returns in a row (blank lines between prompts are gaps). With one Return
     /// every line is a prompt; with two, a blank line ends one; with three, two blank lines do.
     /// Blank lines that do not reach that count stay inside the prompt.
     static func prompts(in text: String, returns: Int) -> [Prompt] {
         let ns = text as NSString
-        let all = lines(in: ns)
+        return prompts(in: ns, range: NSRange(location: 0, length: ns.length), inFence: false, returns: returns)
+    }
+
+    /// The prompts of the whole lines in `range`; `inFence` says whether the first line is inside a
+    /// fenced block. The same prompts as `prompts(in:returns:)` finds there when the range starts
+    /// and ends where a prompt can (`NotepadStyle.promptExtent`): the pad looks for struck-through
+    /// prompts only around an edit.
+    static func prompts(in ns: NSString, range: NSRange, inFence: Bool, returns: Int) -> [Prompt] {
+        let all = lines(in: ns, range: range, inFence: inFence)
         let needed = NotepadLook.sanitized(returns: returns)
         // A blank line inside a code fence does not end a prompt: the block is one prompt.
         let filled = all.indices.filter { !all[$0].isBlank || all[$0].inFence }
@@ -192,9 +221,11 @@ enum NotepadPrompts {
         return groups.map { group in
             let first = all[group[0]], last = all[group[group.count - 1]]
             let range = NSRange(location: first.content.location, length: NSMaxRange(last.content) - first.content.location)
-            let text = normalized(ns.substring(with: range))
+            let text = normalized(range, in: ns)
             // ~~like this~~: struck through, and what goes into the terminal is what is inside.
-            if text.count > 2 * doneMark.count, text.hasPrefix(doneMark), text.hasSuffix(doneMark) {
+            // More than the two marks' characters — counted only that far, not through all of them.
+            if text.hasPrefix(doneMark), text.hasSuffix(doneMark),
+               text.index(text.startIndex, offsetBy: 2 * doneMark.count + 1, limitedBy: text.endIndex) != nil {
                 let inner = text.dropFirst(doneMark.count).dropLast(doneMark.count)
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 if !inner.isEmpty { return Prompt(range: range, text: inner, isDone: true) }
@@ -211,10 +242,25 @@ enum NotepadPrompts {
 
     /// The same, with where it is — what is needed to do something to it afterwards.
     static func promptValue(at location: Int, in text: String, returns: Int) -> Prompt? {
-        let length = (text as NSString).length
+        promptValue(at: location, among: prompts(in: text, returns: returns), length: (text as NSString).length)
+    }
+
+    /// The same, among prompts already cut from a text `length` long (`NotepadStyler.prompts`).
+    static func promptValue(at location: Int, among prompts: [Prompt], length: Int) -> Prompt? {
         let at = min(max(location, 0), length)
-        return prompts(in: text, returns: returns)
-            .first { $0.range.location <= at && at <= NSMaxRange($0.range) }
+        return prompts.first { $0.range.location <= at && at <= NSMaxRange($0.range) }
+    }
+
+    private static let otherBreaks = CharacterSet(charactersIn: "\r\u{2028}\u{2029}\u{85}")
+
+    /// `normalized(_:)` of the text in `range`, without five passes over it when it holds no
+    /// break but "\n".
+    private static func normalized(_ range: NSRange, in ns: NSString) -> String {
+        let text = ns.substring(with: range)
+        guard ns.rangeOfCharacter(from: otherBreaks, options: [], range: range).location != NSNotFound else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return normalized(text)
     }
 
     /// Typed text for a terminal: one kind of line break, nothing around it.

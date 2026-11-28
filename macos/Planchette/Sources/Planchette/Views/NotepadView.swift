@@ -426,6 +426,7 @@ struct NotepadEditor: NSViewRepresentable {
         textView.insertionPointColor = .labelColor
         textView.setAccessibilityLabel(L10n.t(.notepad))
         textView.string = appState.notepadText(for: sessionID)
+        context.coordinator.styler.attach(to: storage)
         textView.delegate = context.coordinator
         scroll.documentView = textView
 
@@ -437,6 +438,7 @@ struct NotepadEditor: NSViewRepresentable {
         textView.onClick = { [weak coordinator] point, command in coordinator?.click(at: point, command: command) ?? false }
         textView.onMarks = { [weak coordinator] mark in coordinator?.marks(mark) ?? false }
         textView.onPaste = { [weak coordinator] pasted in coordinator?.pasteLink(pasted) ?? false }
+        textView.onUnmark = { [weak coordinator] in coordinator?.restyle() }
         textView.extraMenuItems = { [weak coordinator] index in coordinator?.menuItems(at: index) ?? [] }
         coordinator.attach(textView: textView, scroll: scroll)
         handle.didLoad = { [weak coordinator] row in coordinator?.applyAfterLoading(row) }
@@ -475,6 +477,8 @@ struct NotepadEditor: NSViewRepresentable {
         weak var textView: NotepadTextView?
         weak var scroll: NSScrollView?
         let folding = NotepadFolding()
+        /// The look of the text, kept in step with its edits.
+        let styler = NotepadStyler()
         private var observers: [NSObjectProtocol] = []
         /// The number of Returns that ended a prompt when the margin was last worked out.
         var returns: Int
@@ -496,6 +500,12 @@ struct NotepadEditor: NSViewRepresentable {
         func attach(textView: NotepadTextView, scroll: NSScrollView) {
             self.textView = textView
             self.scroll = scroll
+            // The text storage's delegate runs on the main thread, inside the text view's edits.
+            styler.lookNow = { [weak self] in MainActor.assumeIsolated { self?.lookNow() } }
+            // Attributes someone else set (a font, a format) are drawn over once that edit is done.
+            styler.onForeignAttributes = { [weak self] in
+                DispatchQueue.main.async { MainActor.assumeIsolated { self?.restyle() } }
+            }
             // The lines move when the text scrolls and when the pad changes width.
             scroll.contentView.postsBoundsChangedNotifications = true
             scroll.postsFrameChangedNotifications = true
@@ -789,10 +799,12 @@ struct NotepadEditor: NSViewRepresentable {
             let text = textView.string
             var found: NotepadCode.Suggestion?
             if textView.isEditable,
-               let prompt = NotepadPrompts.promptValue(at: textView.selectedRange().location, in: text,
-                                                       returns: parent.appState.notepad.returnsPerPrompt),
+               let prompt = NotepadPrompts.promptValue(
+                at: textView.selectedRange().location,
+                among: styler.prompts(returns: parent.appState.notepad.returnsPerPrompt),
+                length: (text as NSString).length),
                !prompt.isDone,
-               let candidate = NotepadCode.suggestion(within: prompt.range, of: text),
+               let candidate = styler.suggestion(within: prompt.range, of: text),
                !dismissed.contains(Self.key(of: candidate, in: text)) {
                 found = candidate
             }
@@ -805,7 +817,7 @@ struct NotepadEditor: NSViewRepresentable {
             guard let textView, let layout = textView.layoutManager else { return }
             let text = textView.string as NSString
             let selection = textView.selectedRange()
-            let folds: [NotepadFold] = NotepadCode.blocks(in: textView.string).compactMap { block in
+            let folds: [NotepadFold] = styler.blocks().compactMap { block in
                 guard let close = block.close, let hidden = NotepadCode.foldedRange(of: block) else { return nil }
                 let range = block.range
                 let key = text.substring(with: range)
@@ -844,110 +856,28 @@ struct NotepadEditor: NSViewRepresentable {
         /// `NotepadMarkdown`), code in small type with colours (`NotepadCode`), and a line through
         /// every prompt written as `~~…~~`. It is drawn, not stored — the file keeps the text as
         /// typed, and a restart gets the same look back.
+        ///
+        /// Only what the edits since the last restyle made stale is drawn again (`NotepadStyler`,
+        /// `NotepadStyle`): a key costs a line, not the whole pad. A new width or another number of
+        /// Returns per prompt draws all of it. Nothing is drawn while a composition (an input
+        /// method's marked text) is open — its edits are kept and drawn when it ends.
         func restyle() {
-            guard let textView, let storage = textView.textStorage, !textView.hasMarkedText() else { return }
-            let width = Double(scroll?.frame.width ?? 0)
-            let size = NotepadMarkdown.bodySize(forWidth: width)
-            appliedSize = size
-            let body = NSFont.systemFont(ofSize: size)
-            let mono = NSFont.monospacedSystemFont(ofSize: size * 0.92, weight: .regular)
-            let code = NSFont.monospacedSystemFont(ofSize: (size * 0.85).rounded(), weight: .regular)
-            let spacing = NotepadMarkdown.lineSpacing(forBodySize: size)
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.lineSpacing = spacing
-            let codeParagraph = NSMutableParagraphStyle()
-            codeParagraph.lineSpacing = 1
-            codeParagraph.tabStops = []
-            codeParagraph.defaultTabInterval = ("    " as NSString).size(withAttributes: [.font: code]).width
-            let plain: [NSAttributedString.Key: Any] = [
-                .font: body, .foregroundColor: NSColor.labelColor, .paragraphStyle: paragraph,
-            ]
-            let text = textView.string as NSString
-            let whole = NSRange(location: 0, length: storage.length)
-            storage.beginEditing()
-            storage.setAttributes(plain, range: whole)
-            func derive(_ range: NSRange, _ change: (NSFont) -> NSFont) {
-                storage.enumerateAttribute(.font, in: range) { value, sub, _ in
-                    storage.addAttribute(.font, value: change(value as? NSFont ?? body), range: sub)
-                }
-            }
-            for span in NotepadMarkdown.spans(in: textView.string) where NSMaxRange(span.range) <= storage.length {
-                switch span.style {
-                case .heading(let level):
-                    let big = NSFont.systemFont(
-                        ofSize: size * NotepadMarkdown.headingScale(level: level, forWidth: width), weight: .bold)
-                    storage.addAttribute(.font, value: big, range: span.range)
-                case .codeBlock:
-                    storage.addAttributes([.font: code, .paragraphStyle: codeParagraph], range: span.range)
-                case .inlineCode:
-                    storage.addAttributes([
-                        .font: mono, .backgroundColor: NSColor.labelColor.withAlphaComponent(0.08),
-                    ], range: span.range)
-                case .bold:
-                    derive(span.range) { NSFontManager.shared.convert($0, toHaveTrait: .boldFontMask) }
-                case .italic:
-                    derive(span.range) { NSFontManager.shared.convert($0, toHaveTrait: .italicFontMask) }
-                case .quote:
-                    storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: span.range)
-                case .mark:
-                    storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: span.range)
-                case .listItem(let prefix):
-                    // A wrapped line of an item lines up under its words, not under its bullet.
-                    let lead = text.substring(with: NSRange(location: span.range.location, length: prefix))
-                    let indent = (lead as NSString).size(withAttributes: [.font: body]).width
-                    let item = NSMutableParagraphStyle()
-                    item.lineSpacing = spacing
-                    item.headIndent = indent
-                    storage.addAttribute(.paragraphStyle, value: item, range: span.range)
-                case .taskBox(let checked):
-                    storage.addAttributes([
-                        .font: mono,
-                        .foregroundColor: checked ? NSColor.systemGreen : NSColor.secondaryLabelColor,
-                    ], range: span.range)
-                case .doneTask:
-                    storage.addAttributes([
-                        .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                        .foregroundColor: NSColor.secondaryLabelColor,
-                    ], range: span.range)
-                case .link:
-                    storage.addAttributes([
-                        .foregroundColor: NSColor.linkColor,
-                        .underlineStyle: NSUnderlineStyle.single.rawValue,
-                    ], range: span.range)
-                }
-            }
-            for block in NotepadCode.blocks(in: textView.string) {
-                for line in block.lines where NSMaxRange(line) <= storage.length {
-                    for token in NotepadCode.tokens(in: text.substring(with: line), language: block.language) {
-                        let range = NSRange(location: line.location + token.range.location, length: token.range.length)
-                        storage.addAttribute(.foregroundColor, value: Self.color(of: token.token), range: range)
-                    }
-                }
-            }
-            for prompt in NotepadPrompts.prompts(in: textView.string, returns: parent.appState.notepad.returnsPerPrompt)
-            where prompt.isDone {
-                storage.addAttributes([
-                    .strikethroughStyle: NSUnderlineStyle.single.rawValue,
-                    .foregroundColor: NSColor.secondaryLabelColor,
-                ], range: prompt.range)
-            }
-            storage.endEditing()
-            textView.typingAttributes = plain
-            textView.codeBlocks = NotepadCode.blocks(in: textView.string).map(\.range)
-            textView.labelFont = NSFont.systemFont(ofSize: (size * 0.8).rounded(), weight: .medium)
+            guard let textView, let look = lookNow() else { return }
+            appliedSize = look.size
+            styler.restyle(look: look)
+            if let attributes = styler.attributes { textView.typingAttributes = attributes.plain }
+            textView.codeBlocks = styler.blockRanges()
+            textView.labelFont = NSFont.systemFont(ofSize: (look.size * 0.8).rounded(), weight: .medium)
             textView.needsDisplay = true
         }
 
-        /// The colours of code, close to what an editor shows; system colours, so they hold in light
-        /// and dark mode.
-        private static func color(of token: NotepadCode.Token) -> NSColor {
-            switch token {
-            case .keyword: .systemPink
-            case .string: .systemRed
-            case .comment: .secondaryLabelColor
-            case .number: .systemBlue
-            case .type: .systemPurple
-            }
+        /// The look to draw in now: nil while an input method composes, or without a text view.
+        /// The styler asks it on every edit, and draws the edit in the same round of editing.
+        func lookNow() -> NotepadStyle.Look? {
+            guard let textView, textView.textStorage != nil, !textView.hasMarkedText(), !textView.isSettingMarkedText
+            else { return nil }
+            return NotepadStyle.Look(width: Double(scroll?.frame.width ?? 0),
+                                     returns: parent.appState.notepad.returnsPerPrompt)
         }
 
         // MARK: Prompts
@@ -979,7 +909,7 @@ struct NotepadEditor: NSViewRepresentable {
             let clip = scroll.contentView
             let visibleTop = clip.bounds.minY
             let shown = clip.bounds.height
-            let rows: [NotepadRow] = NotepadPrompts.prompts(in: textView.string, returns: parent.appState.notepad.returnsPerPrompt).compactMap { line in
+            let rows: [NotepadRow] = styler.prompts(returns: parent.appState.notepad.returnsPerPrompt).compactMap { line in
                 // A prompt in the folded part of a block has no row of its own to put buttons at.
                 guard line.range.location < length, !folding.isHidden(line.range.location) else { return nil }
                 let glyph = layout.glyphIndexForCharacter(at: line.range.location)
@@ -1008,8 +938,9 @@ struct NotepadEditor: NSViewRepresentable {
         func loadCurrentLine(submit: Bool) {
             guard let textView,
                   let prompt = NotepadPrompts.promptValue(
-                    at: textView.selectedRange().location, in: textView.string,
-                    returns: parent.appState.notepad.returnsPerPrompt)
+                    at: textView.selectedRange().location,
+                    among: styler.prompts(returns: parent.appState.notepad.returnsPerPrompt),
+                    length: (textView.string as NSString).length)
             else { return }
             let row = NotepadRow(id: prompt.range.location, prompt: prompt.text, y: 0, height: 0, isDone: prompt.isDone)
             parent.appState.loadPrompt(prompt.text, into: parent.sessionID, submit: submit) { [weak self] in
@@ -1082,6 +1013,30 @@ final class NotepadTextView: NSTextView {
     override func insertText(_ string: Any, replacementRange: NSRange) {
         if (string as? String) == "`", selectedRange().length > 0, !hasMarkedText(), onMarks?("`") == true { return }
         super.insertText(string, replacementRange: replacementRange)
+    }
+
+    /// True while an input method puts its marked text in. The styler draws inside the text
+    /// storage's processing of that edit, and must not draw over the marking even if
+    /// `hasMarkedText()` does not say so yet at that moment.
+    private(set) var isSettingMarkedText = false
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        isSettingMarkedText = true
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        isSettingMarkedText = false
+        // Cancelled (Esc, the last marked letter deleted): the composition ended here, not in
+        // `unmarkText`, which then finds nothing marked. What it replaced was never drawn.
+        if !hasMarkedText() { onUnmark?() }
+    }
+
+    /// A composition ended without a change of characters (a click elsewhere, the pad lost the
+    /// keyboard), or was cancelled: what it typed or replaced was never drawn.
+    var onUnmark: (() -> Void)?
+
+    override func unmarkText() {
+        let composing = hasMarkedText()
+        super.unmarkText()
+        if composing { onUnmark?() }
     }
 
     override func paste(_ sender: Any?) {

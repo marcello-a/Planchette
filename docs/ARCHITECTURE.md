@@ -111,10 +111,44 @@ turned down (`NotepadFormat.isPlausible`). The context menu's "Format code with 
 code (`AIAssist.formatCode`) and puts the answer back only where that code still stands.
 
 Markdown is drawn, never stored. `NotepadMarkdown.spans(in:)` (pure) finds headlines, fenced and
-inline code, bold, italic, quotes and list items; `restyle()` turns the spans into attributes and keeps
-the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the terminal is what was
-typed. The body size follows the width of the pad (`bodySize(forWidth:)`, 12–14 pt), and headline
-scale is damped when the pad is narrow.
+inline code, bold, italic, quotes and list items; `NotepadStyle.apply` turns the spans into attributes
+and keeps the marks (`#`, `**`, backticks) in the text, dimmed — what is loaded into the terminal is
+what was typed. The body size follows the width of the pad (`bodySize(forWidth:)`, 12–14 pt), and
+headline scale is damped when the pad is narrow.
+
+A key does only the work its edit made stale (`NotepadStyle.swift`). Before, every key drew and laid
+out the whole pad again (37–45 ms per key at 16 KB, 150–170 ms at 64 KB) and cut the whole text into
+prompts three times for the margin and the code bar (another 15–18 ms at 16 KB); now a key costs
+1–2 ms at 16 KB and 2–3 ms at 64 KB (`NotepadStyleTests`, run with `NOTEPAD_PERF=1`).
+
+`NotepadStyler` is the text storage's delegate. In `willProcessEditing` it notes every change of
+characters (typing, paste, undo, a composition), keeps the fence lines, the struck-through prompts
+and the prompts current, and draws the stale lines in that same round of editing. Drawn in a round
+of its own after the key's, the same few attributes made TextKit 1 lay out everything below them
+again (39 ms per key at 64 KB instead of 1). What an edit makes stale: its lines and one line on
+each side (`\r` and `\n` that meet or part); every line below when a fence came or went, or up to
+the closing fence when the block is coloured as another language now (`NotepadCode.tokenClass`, so
+`s`, `sw`, `swi` typed after a fence change nothing below); the whole of the prompts around it when
+one became struck through (`~~…~~`) or stopped being so — a key inside a struck prompt draws only its
+lines, struck, and a ticked task (`- [x]`) is struck on its own line; and whole lines until no
+composed character sequence is cut, because AppKit picks one font for a line break and a combining
+mark after it. Attributes changed by anyone else (a font, a format) make their lines stale too; the
+styler's own drawing does not. A new width or another number of Returns per prompt draws everything.
+Nothing is drawn while an input method composes (`hasMarkedText`, or
+`NotepadTextView.isSettingMarkedText`); the edits are kept and drawn when it ends — by the next edit,
+or by `unmarkText` when it ends without one (a click elsewhere).
+
+The folds and the code boxes read the blocks off the same fence list (`NotepadStyler.blocks()`),
+not off a scan of the text. The margin buttons and the code bar read the prompts the same way
+(`NotepadStyler.prompts`): cut once, then kept with every edit — the prompts above the edit stay,
+those below move, and only the prompts around it are cut again (`NotepadStyle.promptExtent` finds
+edges in text the edit did not touch). The code bar asks the fence list which lines are code already
+(`NotepadStyle.isFenced`). What is left of a key's cost grows with the length of the one prompt it
+is typed in: that prompt is cut again, its text included (2–5 ms per key for a single prompt of 64 KB).
+
+`NotepadStyleTests` holds the old full restyle and the old prompt cutter verbatim, and checks after
+each step of seeded random edit walks that the pad is attribute for attribute that full restyle and
+that the kept prompts are that cut. `NOTEPAD_DEEP=n` runs each walk with n seeds.
 
 **The Jira panel** (`JiraTickets.swift`, `Jira.swift`, `Keychain.swift`, `Views/JiraPanel.swift`). One
 panel for the whole app, right of the tab and of the notepad, switched on in Settings (off by default,
