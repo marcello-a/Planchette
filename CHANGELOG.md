@@ -27,21 +27,23 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   tab, on another Space or behind another window was not drawn, but the terminal engine still
   prepared every frame of it while its program printed: with many agents at work, about half of
   Planchette's CPU. It now prepares the frame once, when the terminal comes into view. A hidden
-  terminal also gives back its screen-sized render buffers, which held several hundred MB of
-  graphics memory with many terminals open.
+  terminal also gives back its screen-sized render buffers once it has been out of sight for
+  5 seconds; with 29 terminals open they held about 520 MB of graphics memory.
 - **Pull request pills ask GitHub far less.** Any tool call of any agent started a `gh` lookup for
   every checkout, every 15 seconds. Now a finished turn or command looks up only its own terminal,
   a tool call only when it is a shell command with `git` or `gh`, terminals in one repository and
   branch share one lookup, and a merged or closed PR is checked again every 15 minutes.
 - **One GitHub request for all pull request pills.** The minute poll started one `gh` process per
   checkout and branch — about 3.5 % of a core with 30 terminals. It now asks GitHub about all of
-  them in one request. `gh` itself names each checkout's repository, once a day or when its git,
-  SSH or `gh` settings change. A checkout on another host than github.com (GitHub Enterprise) is
-  still asked on its own.
+  them in one request: with 15 branches, a poll took 11 seconds and 15 `gh` processes, and now
+  takes 0.7 seconds and one (2.3 seconds the first time). `gh` itself names each checkout's
+  repository, once a day or when its git, SSH or `gh` settings change. A checkout on another host
+  than github.com (GitHub Enterprise) is still asked on its own.
 - **Less work per agent turn:** the transcript reading for the conversation title and the context
-  ring is about 15 times faster, the context usage no longer redraws the window while it is not
-  shown, IDE state files are read only when they change, and a dev-server port that never prints
-  its address is searched less and less often.
+  ring is about 15 times faster (1.6–1.8 ms instead of 24–28 ms for a 180–260 MB transcript),
+  the context usage no longer redraws the window while it is not shown, IDE state files are read
+  only when they change, and a dev-server port that never prints its address is searched less
+  and less often.
 - **No more `lsof` and `ps` every 5 seconds.** The dev-server ports and the command line of a
   database tunnel are read from the kernel: about 2 ms instead of 60 ms of CPU per look, and no
   process started.
@@ -52,7 +54,8 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   counts as idle).
 - **Reading the screens costs a fraction of what it did.** A terminal whose screen did not change
   since the last look is not read through the rules again, and the rules match bytes instead of
-  characters — that string work was the largest steady cost on the main thread.
+  characters — that string work was the largest steady cost on the main thread. A terminal whose
+  screen did not change now costs about 0.14 µs per look instead of 85 µs.
 - **Fewer GitHub lookups.** A `git status`, `git diff` or `git log` of an agent no longer starts a
   `gh` lookup (only a `git` that can change something, and `gh` itself, do), and a turn that only
   read, edited, searched and ran read-only `git` no longer asks at its end. A terminal's lookup
@@ -73,9 +76,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
   starts one process less per event.
 - **Typing in a long notepad is much faster.** Every key drew the whole pad again — headlines,
   lists, code colours — laid all of it out again, and cut all of it into prompts three times for
-  the margin buttons and the code bar, which took tens of milliseconds per key in a long pad. A key
-  now draws and lays out only the lines it changed, and cuts again only the prompt it is in. The
-  pad looks and works exactly as before.
+  the margin buttons and the code bar. A key now draws and lays out only the lines it changed, and
+  cuts again only the prompt it is in: in a 16 KB pad about 0.6 ms instead of 35 ms per key, in a
+  64 KB pad about 1.1 ms instead of 143 ms, and the margin and the code bar about 1.3 ms instead of
+  36 ms. The pad looks and works exactly as before.
 
 ## [0.2.56] — 2026-11-27
 
