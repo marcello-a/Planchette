@@ -350,7 +350,7 @@ scripts/perf/with_displays.sh 900 python3 scripts/perf/screenshots.py \
 | Where | What |
 |---|---|
 | `macos/Planchette` | the app (Swift/SwiftUI) |
-| `hook/` | `planchette-hook`, forwards Claude Code hook events to the socket |
+| `hook/` | the hook forwarder (`planchette-hook.c`, and the `planchette-hook` script it falls back to), which sends Claude Code hook events to the socket, and the `planchette` CLI |
 | `scripts/` | install, package, release; `perf/` measures and photographs the running app |
 | `skills/` | the planchette skill for agents, and the default `review-pr` skill the Reviews panel installs |
 | `docs/` | concept, architecture, the API manual |

@@ -9,6 +9,10 @@ Existing users receive each release via the in-app updater (Install & Relaunch).
 ## [Unreleased]
 
 ### Changed
+- **Hooks cost about a sixth of the CPU.** Claude Code runs Planchette's hook on every tool
+  call of every agent. It was a shell script that started `cat` and `nc` each time, 15 to 17 ms
+  of CPU per event; it is now a small native program that does the same in one process, about
+  2.4 ms. The update installs it by itself. On a Mac where it cannot run, the script stays.
 - **AI summaries cost about 200 times less and no longer run your hooks.** Each summary ran a
   full `claude -p` with your MCP servers, skills and plugins — about 387,000 tokens, $0.39 and
   seven hook runs (sounds, notifications) per summary, plus a 2.5 MB transcript. It now loads

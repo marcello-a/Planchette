@@ -7,6 +7,8 @@
 #     $PLANCHETTE_CLI
 # Merges rather than overwrites; existing hooks stay untouched and a timestamped
 # backup is written next to each file. Safe to re-run — installs are idempotent.
+# The hooks run this repository's shell script; the packaged app installs the native
+# helper (planchette-hook.c) instead where it runs.
 set -eu
 
 HOOK_BIN="$(cd "$(dirname "$0")" && pwd)/planchette-hook"

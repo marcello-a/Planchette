@@ -490,7 +490,7 @@ final class HookServerIOTests: XCTestCase {
 /// A one-shot unix-socket server for driving the shipped scripts. Binds a short
 /// path in /tmp (sun_path is only 104 bytes), accepts once, reads to EOF, and
 /// optionally answers.
-private final class FakeApp {
+final class FakeApp {
     let path = "/tmp/plt-\(UUID().uuidString.prefix(8)).sock"
     private var listener: Int32 = -1
     private let done = DispatchSemaphore(value: 0)
@@ -538,18 +538,33 @@ private final class FakeApp {
         let client = acceptScript()
         guard client >= 0 else { return }
         defer { close(client) }
+        var on: Int32 = 1
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
         var buffer = [UInt8](repeating: 0, count: 4096)
+        var sawEOF = false
         while true {
             var p = pollfd(fd: client, events: Int16(POLLIN), revents: 0)
             guard poll(&p, 1, 30_000) > 0 else { break }
             let n = read(client, &buffer, buffer.count)
+            if n == 0 { sawEOF = true }
             if n <= 0 { break }
             received.append(buffer, count: n)
         }
         if let reply {
             _ = reply.withUnsafeBytes { write(client, $0.baseAddress, $0.count) }
+        } else if sawEOF {
+            // The end of the event: was it a half-close (the client still listens, so a
+            // byte goes through) or the client gone (EPIPE)? A forwarder that never
+            // half-closes is only seen ending at its deadline — every tool call 5 s late.
+            var probe: UInt8 = 0x21
+            halfClosed = write(client, &probe, 1) == 1
         }
     }
+
+    /// After the event: true when the client had half-closed and was still connected,
+    /// false when it had gone, nil when there was no end to probe (an answer was sent,
+    /// or no EOF came).
+    private(set) var halfClosed: Bool?
 
     func waitUntilServed() { _ = done.wait(timeout: .now() + 120) }
 
@@ -628,6 +643,7 @@ final class HookScriptTests: XCTestCase {
         XCTAssertEqual(json["planchette_session"] as? String, session)
         XCTAssertEqual(json["agent"] as? String, "claude")
         XCTAssertEqual((json["event"] as? [String: Any])?["hook_event_name"] as? String, "Stop")
+        XCTAssertEqual(app.halfClosed, true, "nc must half-close, or the app waits for its deadline")
         XCTAssertLessThan(result.seconds, 4, "the hook must not linger on the connection")
     }
 
@@ -3136,7 +3152,7 @@ final class SubprocessInputTests: XCTestCase {
 
 /// Accepts one connection and holds it, reading nothing and closing nothing, until
 /// `release()`: an app that took the event and stalls.
-private final class StalledApp {
+final class StalledApp {
     let path = "/tmp/plt-\(UUID().uuidString.prefix(8)).sock"
     private var listener: Int32 = -1
     private var client: Int32 = -1

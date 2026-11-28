@@ -59,6 +59,9 @@ jobs:
       - name: Test the libghostty patches
         run: sh scripts/test-ghostty-patches.sh
 
+      - name: Test the native hook forwarder
+        run: sh scripts/test-hook-helper.sh
+
       # A merge releases only when its pull request has "Trigger new release" ticked
       # (.github/pull_request_template.md). A push without a pull request does not
       # release; a manual run (workflow_dispatch) always may.

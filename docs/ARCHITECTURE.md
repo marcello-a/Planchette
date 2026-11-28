@@ -235,6 +235,29 @@ session. The inbox, menu-bar badge, and quick switcher are all just sorted views
 over these states (favorites first, `asking` before `done`, longest-waiting
 first). Focusing an `asking`/`done` terminal clears it.
 
+**The forwarder is native; the script is its fallback.** Claude Code runs
+`~/.planchette/planchette-hook` on every hook event of every agent — each tool call
+twice — so its cost is paid thousands of times a day. The shell script started a shell,
+`cat` and `nc` for each event (15–17 ms of CPU); `hook/planchette-hook.c` does the
+same in one process (about 2.4 ms). The packaged app carries both, the helper universal
+and signed in `Contents/Helpers`. At launch `HookInstaller.deployHook` writes the helper
+beside the installed forwarder, runs it once (with no session it must exit 0 — a binary
+macOS will not start fails that), and renames it into place; where it fails, the script
+is installed. An installed helper is run again at every launch, so one that a later
+policy or signature cache kills gives way to the script at once, not at the next
+release; a staged copy a crash left behind is removed after a minute. Both under the
+same name, so the command in the agents' configs never changes: an update rewrites no
+config, and an older app after a downgrade finds its own command and puts its script
+back. A `/bin/sh` wrapper choosing at every event would start a shell each time: about
+6.4 ms, a third of the saving given back. The two must send the same bytes:
+`scripts/test-hook-helper.sh` runs them side by side against fake sockets (every event,
+binary-ish and 5 MB payloads, the pointer variants, stalled and closing apps), and the
+fake apps check that each event ends with a half-close — the app answers on EOF, so a
+forwarder that only closed would hold every tool call for the 5 s deadline. Two
+differences are deliberate: the script's `nc` does not bound a write the app never
+drains, the helper does, with the same 5 s deadline; and the helper also asks the kernel
+who listens (`getpeereid`) and refuses another user, which the script cannot.
+
 **What ends `running` and `waiting`.** Claude's own hooks, first (`Stop`,
 `StopFailure`, `SessionEnd`, the tool events — a question only by the tool that asked it,
 `AttentionState.questionStands`). Two things they cannot say are said by others: the
@@ -287,9 +310,10 @@ working. `claude_spinner` reads the status line instead ("✢ Whisking… (3m 59
 tokens)": an ellipsis, then the elapsed time in a parenthesis) and outranks the idle footer. A
 finished turn prints "✻ Cooked for 1m 32s · done", which has neither.
 
-Install the hooks with `hook/install-hooks.sh` (merges into
-`~/.claude/settings.json`, backs it up, and is a no-op outside Planchette
-terminals).
+The packaged app installs the hooks itself at launch (`HookInstaller`). For a dev run,
+install them with `hook/install-hooks.sh` (merges into `~/.claude/settings.json`,
+backs it up, and is a no-op outside Planchette terminals); it points the hooks at the
+repository's shell script, not at the native helper.
 
 ### Snooze — the one thing that silences a terminal
 
@@ -503,11 +527,11 @@ later, and 64 of them would otherwise leave no slot for the hook events that kee
 every terminal's state true. Requests that wait for an answer are bounded on their
 own (64), and a wait ends when its caller closes the connection — detected with
 kqueue's `EV_EOF`, because `poll` reports a closed client and one that merely
-half-closed (the protocol: "the app answers on EOF") the same way. The hook script,
+half-closed (the protocol: "the app answers on EOF") the same way. The hook forwarder,
 the CLI and the notification click command check that the socket is owned by the
 current user — and is not a symlink, which could be swapped for another listener
-between the check and the connect — before they hand it anything; the CLI then asks
-the kernel (`LOCAL_PEERCRED`) who is listening. An event carries the prompt you just
+between the check and the connect — before they hand it anything; the CLI and the
+native hook helper then ask the kernel (`LOCAL_PEERCRED`, `getpeereid`) who is listening. An event carries the prompt you just
 typed. See [API.md](API.md#limits).
 
 **Config files are not ours to break.** `HookInstaller` writes to the *resolved*
