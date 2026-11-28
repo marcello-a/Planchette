@@ -43,6 +43,10 @@ elif mode == "claude":
         "hasAcknowledgedCostThreshold": True, "bypassPermissionsModeAccepted": True,
         "projects": {work: {"hasTrustDialogAccepted": True, "allowedTools": [], "hasCompletedProjectOnboarding": True,
                             "projectOnboardingSeenCount": 5}},
+        # The notices a new Claude Code shows once, over the prompt: unseeded, the first prompt
+        # answered "Try the new fullscreen renderer?" (2.1.332) and was never submitted.
+        "hasResetAutoModeOptInForDefaultOffer": True, "hasSeenAutoDefaultNudge": True, "fullscreenUpsellSeenCount": 10,
+        "lastReleaseNotesSeen": "99.0.0",
     }
     json.dump(cfg, open(f"{home}/.claude.json", "w"))
     json.dump(cfg, open(f"{home}/.claude/.claude.json", "w"))

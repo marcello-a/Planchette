@@ -58,34 +58,44 @@ class Instance:
         zdot = f"{root}/zdot"; os.makedirs(zdot, exist_ok=True)
         open(f"{zdot}/.zshrc", "w").write("PROMPT='PROMPT> '\nHISTFILE=/dev/null\n")
         self.stub = None
+        self.app = None
         self.marker = f"plt-state-sync-{os.getpid()}"
         self.durable = durable
         self.tmux_server = "planchette-" + hashlib.sha256(self.state_dir.encode()).digest()[:4].hex()
         self.files_guard = UserFilesGuard(); self.focus_guard = FocusGuard()
-        if claude:
-            self._claude_setup()
-        json.dump({"autoUpdateCheck": False, "aiEnabled": False, "language": "en", "durableTerminals": durable,
-          "groups": [{"id": G, "name": "probe", "sessionIDs": [S], "activeSessionID": S, "active": True, "favorite": False, "color": "none", "viewMode": "tabs"}],
-          "sessions": [{"id": S, "groupID": G, "workingDirectory": self.work, "currentDirectory": self.work, "durable": durable,
-                        "resumeClaudeOnRestore": False, "state": "free", "stateSince": 780000000, "seen": True,
-                        "tags": [], "agentKind": "claude" if not claude else "none", "color": "none"}],
-          "windows": [{"id": "00000000-0000-0000-0000-0000000000a1", "groupIDs": [G], "selectedGroupID": G, "folders": [], "showsProjectOverview": False}]},
-          open(f"{self.state_dir}/state.json", "w"))
-        env = {k: v for k, v in os.environ.items() if not k.startswith("PLANCHETTE_")}
-        env.update(PLANCHETTE_STATE_DIR=self.state_dir, GHOSTTY_RESOURCES_DIR=f"{REPO}/vendor/ghostty/zig-out/share/ghostty",
-                   ZDOTDIR=zdot, HISTFILE="/dev/null")
-        self.app = subprocess.Popen([binary], env=env, stdout=open(f"{root}/app.log", "w"), stderr=subprocess.STDOUT, cwd="/")
-        self.focus_guard.start(self.app.pid)
-        self.sockpath = None
-        for _ in range(80):
-            time.sleep(0.25)
-            try:
-                self.sockpath = open(f"{self.state_dir}/socket").read().strip()
-                if os.path.exists(self.sockpath): break
-            except OSError: pass
-        if not wait_for(lambda: "PROMPT>" in self.screen(), 30):
-            raise SystemExit("the shell did not come up")
-        time.sleep(1.0)
+        try:
+            if claude:
+                self._claude_setup()
+            json.dump({"autoUpdateCheck": False, "aiEnabled": False, "language": "en", "durableTerminals": durable,
+              "groups": [{"id": G, "name": "probe", "sessionIDs": [S], "activeSessionID": S, "active": True, "favorite": False, "color": "none", "viewMode": "tabs"}],
+              "sessions": [{"id": S, "groupID": G, "workingDirectory": self.work, "currentDirectory": self.work, "durable": durable,
+                            "resumeClaudeOnRestore": False, "state": "free", "stateSince": 780000000, "seen": True,
+                            "tags": [], "agentKind": "claude" if not claude else "none", "color": "none"}],
+              "windows": [{"id": "00000000-0000-0000-0000-0000000000a1", "groupIDs": [G], "selectedGroupID": G, "folders": [], "showsProjectOverview": False}]},
+              open(f"{self.state_dir}/state.json", "w"))
+            env = {k: v for k, v in os.environ.items() if not k.startswith("PLANCHETTE_")}
+            env.update(PLANCHETTE_STATE_DIR=self.state_dir, GHOSTTY_RESOURCES_DIR=f"{REPO}/vendor/ghostty/zig-out/share/ghostty",
+                       ZDOTDIR=zdot, HISTFILE="/dev/null")
+            self.app = subprocess.Popen([binary], env=env, stdout=open(f"{root}/app.log", "w"), stderr=subprocess.STDOUT, cwd="/")
+            self.focus_guard.start(self.app.pid)
+            self.sockpath = None
+            for _ in range(80):
+                time.sleep(0.25)
+                try:
+                    self.sockpath = open(f"{self.state_dir}/socket").read().strip()
+                    if os.path.exists(self.sockpath): break
+                except OSError: pass
+            if not self.sockpath or not os.path.exists(self.sockpath):
+                raise SystemExit("the instance opened no socket")
+            if not wait_for(lambda: "PROMPT>" in self.screen(), 30):
+                raise SystemExit("the shell did not come up")
+            time.sleep(1.0)
+        except BaseException:
+            # A scenario only reaches `close()` through its own `finally`, which needs a
+            # finished constructor: without this, a shell that did not come up left the
+            # instance and the stand-in API running after the script ended.
+            self.close()
+            raise
 
     def _claude_setup(self):
         claude = os.environ.get("CLAUDE_BIN") or shutil.which("claude")
@@ -186,13 +196,15 @@ class Instance:
 
     def close(self):
         self.focus_guard.stop()
-        self.app.send_signal(signal.SIGKILL)
-        try: self.app.wait(timeout=10)
-        except subprocess.TimeoutExpired: pass
+        if self.app:
+            self.app.send_signal(signal.SIGKILL)
+            try: self.app.wait(timeout=10)
+            except subprocess.TimeoutExpired: pass
         if self.stub: self.stub.kill()
         if self.durable: self.tmux("kill-server")   # this instance's server only
-        try: os.unlink(f"/tmp/planchette-{self.app.pid}.sock")
-        except OSError: pass
+        if self.app:
+            try: os.unlink(f"/tmp/planchette-{self.app.pid}.sock")
+            except OSError: pass
         subprocess.run(["pkill", "-f", f"{self.root}/"], capture_output=True)
         self.files_guard.report(os.path.basename(self.root))
 
